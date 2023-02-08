@@ -77,7 +77,10 @@ class ActorPoolMapOperator(MapOperator):
         return len(self._bundle_queue)
 
     def start(self, options: ExecutionOptions):
-        self._actor_locality_enabled = options.actor_locality_enabled
+        # Actor locality optimization doesn't support preserve_order right now.
+        self._actor_locality_enabled = (
+            options.actor_locality_enabled and not options.preserve_order
+        )
         super().start(options)
 
         # Create the actor workers and add them to the pool.
