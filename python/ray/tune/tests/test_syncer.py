@@ -17,7 +17,7 @@ import ray.cloudpickle as pickle
 from ray import tune
 from ray.air import session, Checkpoint, RunConfig
 from ray.tune import TuneError
-from ray.tune.syncer import Syncer, _DefaultSyncer
+from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
 from ray._private.test_utils import simulate_storage
@@ -569,9 +569,14 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
 
+    sync_config = SyncConfig(
+        # upload_dir not actually used, but needed for SyncConfig validation
+        upload_dir="file://not_used",
+        syncer=CustomSyncer(),
+    )
     trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
-        syncer=CustomSyncer(),
+        sync_config=sync_config,
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())
@@ -589,13 +594,17 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
 
-    trainable = ray.remote(TestTrainable).remote(
-        remote_checkpoint_dir=f"file://{tmp_target}",
+    sync_config = SyncConfig(
+        upload_dir="file://not_used",
         syncer=CustomCommandSyncer(
             sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
             sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
             delete_template="rm -rf `echo '{target}' | cut -c 8-`",
         ),
+    )
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        sync_config=sync_config,
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())

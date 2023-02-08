@@ -175,7 +175,12 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.sync_config = sync_config
+        # If no sync_config is provided, but we saving to a remote_checkpoint_dir,
+        # then provide a default syncer. `upload_dir` here is just a dummy directory
+        # that tells the SyncConfig to create a default syncer.
+        self.sync_config = sync_config or SyncConfig(
+            upload_dir=self.remote_checkpoint_dir, syncer="auto"
+        )
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
