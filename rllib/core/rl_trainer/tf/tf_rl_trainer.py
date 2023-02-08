@@ -42,56 +42,13 @@ logger = logging.getLogger(__name__)
 
 
 class TfRLTrainer(RLTrainer):
-    """Base class for RLlib TF algorithm trainers
-
-    Args:
-        module_class: The (MA)RLModule class to use.
-        module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_config: The config for the optimizer.
-        distributed: Whether this trainer is distributed or not.
-        enable_tf_function: Whether to enable tf.function tracing for the update
-            function.
-
-    Abstract Methods:
-        compute_gradients: Compute gradients for the module being optimized.
-        apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer.
-
-    Example:
-        .. code-block:: python
-
-        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_config)
-        trainer.init_trainer()
-        batch = ...
-        results = trainer.update(batch)
-
-        # add a new module, perhaps for league based training or lru caching
-        trainer.add_module("new_player", NewPlayerCls, new_player_kwargs,
-            NewPlayerOptimCls, new_player_optim_kwargs)
-
-        batch = ...
-        results = trainer.update(batch)  # will train previous and new modules.
-
-        # remove a module
-        trainer.remove_module("new_player")
-
-        batch = ...
-        results = trainer.update(batch)  # will train previous modules only.
-
-        # get the state of the trainer
-        state = trainer.get_state()
-
-        # set the state of the trainer
-        trainer.set_state(state)
-
-    """
 
     framework: str = "tf"
 
     def __init__(
         self,
         *,
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        framework_hyperparameters: Optional[FrameworkHPs] = ...,
         **kwargs,
     ):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
@@ -100,11 +57,18 @@ class TfRLTrainer(RLTrainer):
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
         # the default strategy is a no-op that can be used in the local mode
-        # cpu only case
+        # cpu only case, build will override this if needed.
         self._strategy = tf.distribute.get_strategy()
 
     @override(RLTrainer)
     def build(self) -> None:
+        """Build the TfLearner.
+
+        This method is specific TfLearner. Before running super() it sets the correct
+        distributing strategy with the right device, so that computational graph is
+        placed on the correct device. After running super(), depending on eager_tracing
+        flag it will decide whether to wrap the update function with tf.function or not.
+        """
         if self._distributed:
             self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
         else:
@@ -126,6 +90,19 @@ class TfRLTrainer(RLTrainer):
         else:
             self._update_fn = self._do_update_fn
 
+    @override(RLTrainer)
+    def configure_optimizers(self) -> ParamOptimizerPairs:
+
+        # TODO (Kourosh): convert optimizer_config to dataclass later.
+        lr = self.optimizer_config["lr"]
+        return [
+            (
+                self._module[key].trainable_variables,
+                tf.keras.optimizers.Adam(learning_rate=lr),
+            )
+            for key in self._module.keys()
+        ]
+
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
@@ -144,18 +121,6 @@ class TfRLTrainer(RLTrainer):
             }
 
         return self._strategy.run(helper, args=(batch,))
-
-    @override(RLTrainer)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
-        lr = self.optimizer_config["lr"]
-        return [
-            (
-                self._module[key].trainable_variables,
-                tf.keras.optimizers.Adam(learning_rate=lr),
-            )
-            for key in self._module.keys()
-        ]
 
     @override(RLTrainer)
     def update(
