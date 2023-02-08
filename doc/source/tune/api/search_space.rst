@@ -19,7 +19,7 @@ This section covers the functions you can use to define your search spaces.
 .. tip::
 
     Avoid passing large objects as values in the search space, as that will incur a performance overhead.
-    Use :ref:`tune-with-parameters` to pass large objects in or load them inside your trainable
+    Use :func:`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable
     from disk (making sure that all nodes have access to the files) or cloud storage.
     See :ref:`tune-bottlenecks` for more information.
 

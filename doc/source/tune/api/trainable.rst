@@ -240,7 +240,7 @@ Trainables can themselves be distributed. If your trainable function / class cre
 that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
-then you should use :ref:`tune-with-resources` like this:
+then you should use :func:`tune.with_resources <ray.tune.with_resources>` like this:
 
 .. code-block:: python
    :emphasize-lines: 4-10
@@ -267,56 +267,49 @@ It is also possible to specify memory (``"memory"``, in bytes) and custom resour
 session (Function API)
 ----------------------
 
-.. autofunction:: ray.air.session.report
-    :noindex:
+.. currentmodule:: ray
 
-.. autofunction:: ray.air.session.get_checkpoint
-    :noindex:
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.air.session.get_trial_name
-    :noindex:
-
-.. autofunction:: ray.air.session.get_trial_id
-    :noindex:
-
-.. autofunction:: ray.air.session.get_trial_resources
-    :noindex:
-
-.. autofunction:: ray.air.session.get_trial_dir
-    :noindex:
+    air.session.report
+    air.session.get_checkpoint
+    air.session.get_trial_name
+    air.session.get_trial_id
+    air.session.get_trial_resources
+    air.session.get_trial_dir
 
 .. _tune-trainable-docstring:
 
-tune.Trainable (Class API)
---------------------------
+Trainable (Class API)
+---------------------
 
-.. autoclass:: ray.tune.Trainable
-    :member-order: groupwise
-    :private-members:
-    :members:
+.. autosummary::
+    :toctree: doc/
+
+    tune.Trainable
+    tune.Trainable.setup
+    tune.Trainable.save_checkpoint
+    tune.Trainable.load_checkpoint
+    tune.Trainable.step
+    tune.Trainable.reset_config
+    tune.Trainable.cleanup
+    tune.Trainable.default_resource_request
+
+    .. :member-order: groupwise
+    .. :private-members:
+    .. :members:
 
 .. _tune-util-ref:
 
 Utilities
 ---------
 
-.. autofunction:: ray.tune.utils.wait_for_gpu
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.tune.utils.diagnose_serialization
-
-.. autofunction:: ray.tune.utils.validate_save_restore
-
-
-.. _tune-with-parameters:
-
-tune.with_parameters
---------------------
-
-.. autofunction:: ray.tune.with_parameters
-
-.. _tune-with-resources:
-
-tune.with_resources
---------------------
-
-.. autofunction:: ray.tune.with_resources
+    tune.with_parameters
+    tune.with_resources
+    tune.utils.wait_for_gpu
+    tune.utils.diagnose_serialization
+    tune.utils.validate_save_restore

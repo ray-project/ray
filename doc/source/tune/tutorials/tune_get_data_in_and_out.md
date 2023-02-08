@@ -116,7 +116,7 @@ tuner = Tuner(
 TL;DR - use the `tune.with_parameters` util function to specify large constant parameters.
 ```
 
-If we have large objects that are constant across Trials, we can use the [`tune.with_parameters`](tune-with-parameters) utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
+If we have large objects that are constant across Trials, we can use the {func}`tune.with_parameters <ray.tune.with_parameters>` utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
 
 ```{tip}
 Objects put into the Ray object store must be serializable.
