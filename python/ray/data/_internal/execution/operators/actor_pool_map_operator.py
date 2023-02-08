@@ -113,6 +113,7 @@ class ActorPoolMapOperator(MapOperator):
             if actor is None:
                 # No actors available for executing the next task.
                 break
+            # Submit the map task.
             bundle = self._bundle_queue.popleft()
             # Submit the map task.
             input_blocks = [block for block, _ in bundle.blocks]
