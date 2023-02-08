@@ -89,10 +89,20 @@ PyTorch
 ``TorchPredictor``
 ******************
 
-.. automodule:: ray.train.torch
+.. autoclass:: ray.train.torch.TorchPredictor
     :members:
-    :exclude-members: TorchTrainer
     :show-inheritance:
+
+    .. automethod:: __init__
+
+``TorchDetectionPredictor``
+***************************
+
+.. autoclass:: ray.train.torch.TorchDetectionPredictor
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
 
 Horovod
 ~~~~~~~
