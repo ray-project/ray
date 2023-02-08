@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 import gymnasium as gym
-from typing import Mapping, Any, TYPE_CHECKING, Union, Optional, Type, Dict
+from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -171,7 +171,7 @@ class RLModule(abc.ABC):
         cls,
         observation_space: gym.Space,
         action_space: gym.Space,
-        *, 
+        *,
         model_config: Mapping[str, Any],
     ) -> "RLModule":
         """Creates a RLModule instance from a model config dict and spaces.

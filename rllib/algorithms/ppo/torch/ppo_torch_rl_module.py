@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Mapping, Any, Union
+from typing import Mapping, Any
 
 import gymnasium as gym
 

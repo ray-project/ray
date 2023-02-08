@@ -1,5 +1,5 @@
 import gymnasium as gym
-from typing import Any, Mapping, Union
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -40,7 +40,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
         return ["obs"]
-    
+
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
         return ["action_dist"]
