@@ -1,103 +1,30 @@
-from typing import Mapping, Any, Union
+from typing import Mapping, Any
 
-import gymnasium as gym
 import tree
 
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOCatalog
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.algorithms.ppo.ppo_rl_module_base import PPORLModuleBase
 from ray.rllib.core.models.encoder import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
 
 
-class PPOTfRLModule(TfRLModule):
-    def __init__(self, config: RLModuleConfig):
-        super().__init__()
-        self.config = config
-        catalog = config.catalog
+class PPOTfRLModule(PPORLModuleBase, TfRLModule):
+    framework = "tf"
 
-        assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
-
-        # Set output dimensions according
-        catalog.encoder_config.input_dim = config.observation_space.shape[0]
-        catalog.pi_head_config.input_dim = catalog.encoder_config.output_dim
-        if isinstance(config.action_space, gym.spaces.Discrete):
-            catalog.pi_head_config.output_dim = config.action_space.n
-        else:
-            catalog.pi_head_config.output_dim = config.action_space.shape[0] * 2
-        catalog.vf_head_config.output_dim = 1
-
-        # Create models
-        self.encoder = self.config.catalog.build_actor_critic_encoder(framework="tf")
-        self.pi = self.config.catalog.build_pi_head(framework="tf")
-        self.vf = self.config.catalog.build_vf_head(framework="tf")
-
-        self._is_discrete = isinstance(
-            convert_old_gym_space_to_gymnasium_space(self.config.action_space),
-            gym.spaces.Discrete,
-        )
-
-    @classmethod
-    @override(RLModule)
-    def from_model_config(
-        cls,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        *,
-        model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
-        free_log_std = model_config["free_log_std"]
-        assert not free_log_std, "free_log_std not supported yet."
-
-        if model_config["use_lstm"]:
-            raise ValueError("LSTM not supported by PPOTfRLModule yet.")
-
-        assert isinstance(
-            observation_space, gym.spaces.Box
-        ), "This simple PPOModule only supports Box observation space."
-
-        assert (
-            len(observation_space.shape) == 1
-        ), "This simple PPOModule only supports 1D observation space."
-
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPOModule only supports Discrete and Box action space.",
-        )
-        catalog = PPOCatalog(
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config=model_config,
-        )
-
-        config = PPOModuleConfig(
-            observation_space=observation_space,
-            action_space=action_space,
-            catalog=catalog,
-            free_log_std=free_log_std,
-        )
-
-        return config.build(framework="tf")
-
-    # TODO (Artur): We use _get_initial_state here temporarily instead of
-    #  get_initial_state. This should be changed back once Policy supports RNNs.
-    def _get_initial_state(self) -> NestedDict:
-        if hasattr(self.encoder, "get_initial_state"):
-            return self.encoder.get_initial_state()
-        else:
-            return NestedDict({})
+    def __init__(self, *args, **kwargs) -> None:
+        TfRLModule.__init__(self, *args, **kwargs)
+        PPORLModuleBase.__init__(self, *args, **kwargs)
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:

@@ -12,7 +12,7 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+from ray.rllib.algorithms.ppo.ppo_rl_module_base import (
     PPOModuleConfig,
     PPOCatalog,
 )

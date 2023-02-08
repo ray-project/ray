@@ -216,6 +216,8 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    # TODO: (Artur) Add a method `from_catalog` that creates RLModule from Catalog
+
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
 
