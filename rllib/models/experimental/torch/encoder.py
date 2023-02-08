@@ -45,6 +45,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
             {
                 SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim),
                 STATE_IN: None,
+                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -165,6 +166,7 @@ class TorchIdentityEncoder(TorchModel, Encoder):
             {
                 SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.output_dim),
                 STATE_IN: None,
+                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -273,7 +275,7 @@ class TorchActorCriticEncoder(TorchModel, Encoder):
             return {
                 ENCODER_OUT: {
                     ACTOR: actor_out[ENCODER_OUT],
-                    CRITIC[ENCODER_OUT]: critic_out,
+                    CRITIC: critic_out[ENCODER_OUT],
                 },
                 STATE_OUT: {
                     ACTOR: actor_out[STATE_OUT],

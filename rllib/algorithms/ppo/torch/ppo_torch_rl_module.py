@@ -2,15 +2,16 @@ from dataclasses import dataclass
 from typing import Mapping, Any, Union
 
 import gymnasium as gym
+import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.experimental.encoder import STATE_OUT, ACTOR, CRITIC, ENCODER_OUT
+from ray.rllib.models.experimental.catalog import Catalog
 from ray.rllib.models.experimental.configs import (
     MLPModelConfig,
     ActorCriticEncoderConfig,
 )
-from ray.rllib.models.experimental.catalog import Catalog
+from ray.rllib.models.experimental.encoder import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
@@ -24,15 +25,14 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 
-
 torch, nn = try_import_torch()
 
 
 def get_ppo_loss(fwd_in, fwd_out):
     # TODO: we should replace these components later with real ppo components when
-    # RLOptimizer and RLModule are integrated together.
-    # this is not exactly a ppo loss, just something to show that the
-    # forward train works
+    #  RLOptimizer and RLModule are integrated together.
+    #  this is not exactly a ppo loss, just something to show that the
+    #  forward train works
     adv = fwd_in[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
     actor_loss = -(fwd_out[SampleBatch.ACTION_LOGP] * adv).mean()
     critic_loss = (adv**2).mean()
@@ -103,7 +103,7 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
         if framework == "torch":
             return PPOTorchRLModule(self)
         else:
-            from ray.rllib.algorithms.ppo.ppo_tf_rl_module import PPOTfRLModule
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
             return PPOTfRLModule(self)
 
@@ -161,7 +161,9 @@ class PPOTorchRLModule(TorchRLModule):
 
         return config.build(framework="torch")
 
-    def get_initial_state(self) -> NestedDict:
+    # TODO (Artur): We use _get_initial_state here temporarily instead of
+    #  get_initial_state. This should be changed back once Policy supports RNNs.
+    def _get_initial_state(self) -> NestedDict:
         if hasattr(self.encoder, "get_initial_state"):
             return self.encoder.get_initial_state()
         else:
@@ -179,8 +181,16 @@ class PPOTorchRLModule(TorchRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+
         encoder_outs = self.encoder(batch)
-        output[STATE_OUT] = encoder_outs[STATE_OUT]
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
@@ -195,7 +205,8 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return SpecDict(self.encoder.input_spec)
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        return SpecDict()
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -222,9 +233,17 @@ class PPOTorchRLModule(TorchRLModule):
         """
         output = {}
 
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        output[STATE_OUT] = encoder_outs[STATE_OUT]
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -253,8 +272,9 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        # Convert to SpecDict if needed.
-        spec_dict = SpecDict(self.encoder.input_spec)
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        spec_dict = self.input_specs_exploration()
+
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
@@ -279,9 +299,17 @@ class PPOTorchRLModule(TorchRLModule):
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        output[STATE_OUT] = encoder_outs[STATE_OUT]
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])

@@ -19,10 +19,6 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
-from ray.rllib.models.experimental.torch.encoder import (
-    STATE_IN,
-    STATE_OUT,
-)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
@@ -149,11 +145,12 @@ class TestPPO(unittest.TestCase):
 
             batch = _get_input_batch_from_obs(fw, obs)
 
-            state_in = module.get_initial_state()
-            state_in = tree.map_structure(
-                lambda x: x[None], convert_to_torch_tensor(state_in)
-            )
-            batch[STATE_IN] = state_in
+            # TODO (Artur): Un-uncomment once Policy supports RNN
+            # state_in = module._get_initial_state()
+            # state_in = tree.map_structure(
+            #     lambda x: x[None], convert_to_torch_tensor(state_in)
+            # )
+            # batch[STATE_IN] = state_in
             batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
             if fwd_fn == "forward_exploration":
@@ -181,16 +178,18 @@ class TestPPO(unittest.TestCase):
             batches = []
             obs, _ = env.reset()
             tstep = 0
-            state_in = module.get_initial_state()
-            state_in = tree.map_structure(
-                lambda x: x[None], convert_to_torch_tensor(state_in)
-            )
-            initial_state = state_in
+            # TODO (Artur): Un-uncomment once Policy supports RNN
+            # state_in = module._get_initial_state()
+            # state_in = tree.map_structure(
+            #     lambda x: x[None], convert_to_torch_tensor(state_in)
+            # )
+            # initial_state = state_in
 
             while tstep < 10:
                 input_batch = _get_input_batch_from_obs(fw, obs)
-                input_batch[STATE_IN] = state_in
-                input_batch[SampleBatch.SEQ_LENS] = np.array([1])
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # input_batch[STATE_IN] = state_in
+                # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
                 action = convert_to_numpy(fwd_out["action_dist"].sample()[0])
@@ -204,8 +203,9 @@ class TestPPO(unittest.TestCase):
                     SampleBatch.TRUNCATEDS: np.array(truncated),
                 }
 
-                assert STATE_OUT in fwd_out
-                state_in = fwd_out[STATE_OUT]
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # assert STATE_OUT in fwd_out
+                # state_in = fwd_out[STATE_OUT]
                 batches.append(output_batch)
                 obs = new_obs
                 tstep += 1
@@ -217,8 +217,9 @@ class TestPPO(unittest.TestCase):
                 fwd_in = {
                     k: convert_to_torch_tensor(np.array(v)) for k, v in batch.items()
                 }
-                fwd_in[STATE_IN] = initial_state
-                fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # fwd_in[STATE_IN] = initial_state
+                # fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
 
                 # forward train
                 # before training make sure module is on the right device
@@ -236,8 +237,9 @@ class TestPPO(unittest.TestCase):
                 fwd_in = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
                 )
-                fwd_in[STATE_IN] = initial_state
-                fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # fwd_in[STATE_IN] = initial_state
+                # fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
                 with tf.GradientTape() as tape:
                     fwd_out = module.forward_train(fwd_in)
                     loss = dummy_tf_ppo_loss(fwd_in, fwd_out)

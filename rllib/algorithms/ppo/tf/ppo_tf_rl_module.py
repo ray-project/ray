@@ -1,20 +1,23 @@
-import gymnasium as gym
 from typing import Mapping, Any, Union
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+
+import gymnasium as gym
+import tree
+
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOCatalog
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.experimental.encoder import STATE_OUT, ACTOR, CRITIC
+from ray.rllib.models.experimental.encoder import ACTOR, CRITIC, STATE_IN
+from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
-from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
-from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
@@ -75,7 +78,9 @@ class PPOTfRLModule(TfRLModule):
 
         return config.build(framework="tf")
 
-    def get_initial_state(self) -> NestedDict:
+    # TODO (Artur): We use _get_initial_state here temporarily instead of
+    #  get_initial_state. This should be changed back once Policy supports RNNs.
+    def _get_initial_state(self) -> NestedDict:
         if hasattr(self.encoder, "get_initial_state"):
             return self.encoder.get_initial_state()
         else:
@@ -89,8 +94,9 @@ class PPOTfRLModule(TfRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TFTensorSpecs("b, h", h=action_dim)
 
-        # Convert to SpecDict if needed.
-        spec_dict = SpecDict(self.encoder.input_spec)
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        spec_dict = self.input_specs_exploration()
+
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
@@ -115,9 +121,17 @@ class PPOTfRLModule(TfRLModule):
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        output[STATE_OUT] = encoder_outs[STATE_OUT]
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -152,8 +166,16 @@ class PPOTfRLModule(TfRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+
         encoder_outs = self.encoder(batch)
-        output[STATE_OUT] = encoder_outs[STATE_OUT]
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
@@ -168,21 +190,15 @@ class PPOTfRLModule(TfRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return SpecDict(self.encoder.input_spec)
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        return SpecDict()
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        if self._is_discrete:
-            action_dist_inputs = ((SampleBatch.ACTION_DIST_INPUTS, "logits"),)
-        else:
-            action_dist_inputs = (
-                (SampleBatch.ACTION_DIST_INPUTS, "loc"),
-                (SampleBatch.ACTION_DIST_INPUTS, "scale"),
-            )
         return [
-            SampleBatch.VF_PREDS,
             SampleBatch.ACTION_DIST,
-            *action_dist_inputs,
+            SampleBatch.VF_PREDS,
+            SampleBatch.ACTION_DIST_INPUTS,
         ]
 
     @override(RLModule)
@@ -195,9 +211,17 @@ class PPOTfRLModule(TfRLModule):
         """
         output = {}
 
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        output[STATE_OUT] = encoder_outs[STATE_OUT]
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -208,14 +232,12 @@ class PPOTfRLModule(TfRLModule):
         action_logits = pi_out
         if self._is_discrete:
             action_dist = Categorical(action_logits)
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
         else:
-            loc, log_std = tf.split(action_logits, 2, axis=-1)
-            scale = tf.exp(log_std)
             action_dist = DiagGaussian(
                 action_logits, None, action_space=self.config.action_space
             )
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
+
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
         output[SampleBatch.ACTION_DIST] = action_dist
 
         return output
