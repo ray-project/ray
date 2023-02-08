@@ -349,11 +349,25 @@ class RLTrainer:
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
     ) -> Mapping[str, Any]:
-        """Perform an update on this Trainer.
+        """Do `num_iters` minibatch updates given the original batch.
+
+        Given a batch of episodes you can use this method to take more
+        than one backward pass on the batch. The same minibatch_size and num_iters gets
+        will be used for all module ids (previously known as policies) in the
+        multiagent batch
 
         Args:
             batch: A batch of data.
-
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
+            reduce_fn: reduce_fn: A function to reduce the results from a list of
+                minibatch updates. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
+                not get reduced.
         Returns:
             A dictionary of results, in numpy format.
         """
