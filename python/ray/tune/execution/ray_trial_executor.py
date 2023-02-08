@@ -13,6 +13,7 @@ from functools import partial
 from typing import Callable, Dict, Iterable, List, Optional, Set, Union, Tuple
 
 import ray
+from ray.actor import ActorHandle
 from ray.air import Checkpoint, AcquiredResources, ResourceRequest
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
@@ -351,7 +352,7 @@ class RayTrialExecutor:
 
         return None
 
-    def _maybe_use_cached_actor(self, trial, logger_creator) -> Optional:
+    def _maybe_use_cached_actor(self, trial, logger_creator) -> Optional[ActorHandle]:
         if not self._reuse_actors:
             return None
 
@@ -426,7 +427,6 @@ class RayTrialExecutor:
         # configure the remote runner to use a noop-logger.
         trial_config = copy.deepcopy(trial.config)
         trial_config[TRIAL_INFO] = _TrialInfo(trial)
-
         stdout_file, stderr_file = trial.log_to_file
         trial_config[STDOUT_FILE] = stdout_file
         trial_config[STDERR_FILE] = stderr_file

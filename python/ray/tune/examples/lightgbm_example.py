@@ -79,21 +79,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
-    parser.add_argument(
         "--use-cv", action="store_true", help="Use `lgb.cv` instead of `lgb.train`."
     )
     args, _ = parser.parse_known_args()
-
-    if args.server_address:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
 
     config = {
         "objective": "binary",
