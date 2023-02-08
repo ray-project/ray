@@ -64,20 +64,26 @@ class ImmortalActor:
             with open("/tmp/checkpoint.json", "r") as f:
                 self.state = json.load(f)
         else:
-            # Heavy init
-            self.state = {str(i): i for i in range(10)}
-            with open("/tmp/checkpoint.json", "w") as f:
-                json.dump(self.state, f)
+            self.state = {}
 
-    def query(self, key):
+    def update(self, key, value):
         import random
 
         if random.randrange(10) < 5:
             sys.exit(1)
 
+        self.state[key] = value
+
+        # Checkpoint the latest state
+        with open("/tmp/checkpoint.json", "w") as f:
+            json.dump(self.state, f)
+
+    def get(self, key):
         return self.state[key]
 
 
 actor = ImmortalActor.remote()
-assert ray.get(actor.query.remote("3")) == 3
+actor.update.remote("1", 1)
+actor.update.remote("2", 2)
+assert ray.get(actor.get.remote("1")) == 1
 # __actor_checkpointing_auto_restart_end__
