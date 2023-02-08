@@ -36,9 +36,13 @@ def create_checkpoint():
 @pytest.mark.parametrize("device", [None, 0])
 def test_predict_batch(ray_start_4_cpus, caplog, batch_type, device):
     checkpoint = create_checkpoint()
-    predictor = BatchPredictor.from_checkpoint(
-        checkpoint, HuggingFacePredictor, task="text-generation"
-    )
+    kwargs = {}
+    if device:
+        kwargs["device"] = device
+    with caplog.at_level(logging.WARNING):
+        predictor = BatchPredictor.from_checkpoint(
+            checkpoint, HuggingFacePredictor, task="text-generation", **kwargs
+        )
 
     # Todo: Ray data does not support numpy string arrays well
     if batch_type == np.ndarray:
@@ -50,13 +54,9 @@ def test_predict_batch(ray_start_4_cpus, caplog, batch_type, device):
     else:
         raise RuntimeError("Invalid batch_type")
 
-    kwargs = {}
-    if device:
-        kwargs["device"] = device
-    with caplog.at_level(logging.WARNING):
-        predictions = predictor.predict(dataset, num_gpus_per_worker=1, **kwargs)
-    assert "enable GPU prediction" not in caplog.text
+    predictions = predictor.predict(dataset, num_gpus_per_worker=1)
 
+    assert "enable GPU prediction" not in caplog.text
     assert predictions.count() == 3
 
 
