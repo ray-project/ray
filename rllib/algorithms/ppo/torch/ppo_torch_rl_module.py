@@ -117,11 +117,10 @@ class PPOTorchRLModule(TorchRLModule):
 
         assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
 
-        # Set output dimensions according
-        catalog.encoder_config.input_dim = config.observation_space.shape[0]
-        catalog.pi_head_config.input_dim = catalog.encoder_config.output_dim
-        if isinstance(config.action_space, gym.spaces.Discrete):
-            catalog.pi_head_config.output_dim = config.action_space.n
+        self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
+        self.config.pi_config.input_dim = self.config.encoder_config.output_dim
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            self.config.pi_config.output_dim = self.config.action_space.n
         else:
             catalog.pi_head_config.output_dim = config.action_space.shape[0] * 2
         catalog.vf_head_config.output_dim = 1
