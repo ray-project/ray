@@ -38,6 +38,7 @@ class TorchPredictor(DLPredictor):
     ):
         self.model = model
         self.model.eval()
+        self.use_gpu = use_gpu
 
         if use_gpu:
             # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
