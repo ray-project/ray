@@ -89,7 +89,7 @@ class TrialRunnerTest2(unittest.TestCase):
         searchalg, scheduler = create_mock_components()
 
         runner = TrialRunner(
-            searchalg,
+            search_alg=searchalg,
             scheduler=scheduler,
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
@@ -117,7 +117,7 @@ class TrialRunnerTest2(unittest.TestCase):
         searchalg, scheduler = create_mock_components()
 
         runner = TrialRunner(
-            searchalg,
+            search_alg=searchalg,
             scheduler=scheduler,
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )

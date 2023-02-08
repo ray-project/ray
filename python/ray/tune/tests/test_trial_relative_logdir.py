@@ -262,6 +262,7 @@ def test_load_trial_from_json_state(tmpdir):
     trial = Trial(
         "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
     )
+    trial.create_placement_group_factory()
     trial.init_logdir()
     trial.status = Trial.TERMINATED
 
