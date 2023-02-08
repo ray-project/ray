@@ -171,6 +171,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
+  void RecordMetrics(size_t num_profile_events_to_send,
+                     size_t num_status_events_to_send,
+                     size_t num_profile_events_dropped,
+                     size_t num_status_events_dropped,
+                     size_t buffer_size) const;
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
 
@@ -193,7 +199,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer<TaskEvent> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer_space_optimized<TaskEvent> buffer_ GUARDED_BY(mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
