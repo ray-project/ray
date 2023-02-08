@@ -216,7 +216,6 @@ class ActorPoolMapOperator(MapOperator):
         pending = self._actor_pool.num_pending_actors()
         if pending:
             base += f" ({pending} pending)"
-        # TODO(ekl): remove this once we enable by default.
         if self._actor_locality_enabled:
             base += f" [{self._actor_pool._locality_hits} locality hits,"
             base += f" {self._actor_pool._locality_misses} misses]"
@@ -510,9 +509,14 @@ class _ActorPool:
         if self._num_tasks_in_flight[actor] >= self._max_tasks_in_flight:
             # All actors are at capacity.
             return None
-        else:
-            self._num_tasks_in_flight[actor] += 1
-            return actor
+
+        if locality_hint:
+            if self._actor_locations[actor] == preferred_loc:
+                self._locality_hits += 1
+            else:
+                self._locality_misses += 1
+        self._num_tasks_in_flight[actor] += 1
+        return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""

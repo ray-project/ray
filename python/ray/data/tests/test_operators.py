@@ -198,7 +198,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     assert not op.completed()
 
 
-def test_map_operator_actor_locality_config(ray_start_regular_shared):
+def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     compute_strategy = ActorPoolStrategy()
@@ -212,7 +212,8 @@ def test_map_operator_actor_locality_config(ray_start_regular_shared):
     # Feed data and implement streaming exec.
     output = []
     options = ExecutionOptions()
-    options.preserve_order = False
+    options.preserve_order = True
+    options.actor_locality_enabled = True
     op.start(options)
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
