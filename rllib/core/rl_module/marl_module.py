@@ -144,8 +144,6 @@ class MultiAgentRLModule(RLModule):
         multiagent_module = cls()
 
         for module_id, module_spec in module_configs.items():
-            # module_cls: RLModule = module_spec.pop("module_class")
-            # module = module_cls.from_model_config(**module_spec)
             module = module_spec.build()
             multiagent_module.add_module(module_id, module)
 
