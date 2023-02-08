@@ -1,15 +1,15 @@
-from typing import Any, Callable, Dict, Generic, Optional
+from typing import Any, Callable, Dict, Generic, List, Optional
 import logging
 from ray.data.block import Block,  BlockAccessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
+import pandas
 
 from ray.data.datasource.database_datasource import (
     DatabaseConnector, 
     DatabaseDatasource,
     DatabaseConnection, 
     BlockFormat, 
-    QueryResult,
-    _to_block
+    QueryResult
 )
 
 logger = logging.getLogger(__name__)
@@ -49,40 +49,49 @@ class DBAPI2Connector(DatabaseConnector[DatabaseConnection]):
     def _close(self) -> None:
         self.connection.close()  # type: ignore  
           
-    def query(self, query: str, **query_args) -> Any:
-        return self._execute(query, **query_args)
-
+    def query(self, query: str, data: Optional[Any]=None, **query_args) -> None:
+        queries = query.split(';')
+        for q in queries:
+            if 'insert' in q.lower():
+                self._execute(q, data=data, **query_args)
+            else:
+                self._execute(q, **query_args)
+        return None
+    
     def query_value(self, query: str, **query_args: Dict[str, Any]) -> QueryResult:
         results = self._execute(query, **query_args).fetchone()
         return results[0] if results else None
     
-    def _execute(self, query: str, data: Optional[Any]=None, **query_args: Dict[str, Any]):
+    def _execute(self, query: str, data: Optional[Any]=None, args: List = [], **query_args: Dict[str, Any]):
         if not self.connection:
             raise ValueError(f'cannot execute "{query}" connection not open')
         
         if logger.debug:
-            many = 'MANY' if data else ''
+            many = 'many' if data else ''
             query_args_str = ', ' + ','.join([f'{k}={v}' for k,v in query_args.items()]) if query_args else ''
-            logger.debug(f'cursor.execute{many}("{query}"{query_args_str}')
+            log_str = f'cursor.execute{many}("{query}"{query_args_str}'
+            logger.debug(log_str)
         
         try:
             cursor = self.connection.cursor()  # type: ignore  
             if data:
-                cursor.executemany(query, data, **query_args)
+                cursor.executemany(query, data, *args, **query_args)
             else:
-                cursor.execute(query, **query_args)
+                cursor.execute(query, *args, **query_args)
         except BaseException as e:
             logger.error(f'cannot execute {query}', exc_info=True)
             raise e
 
         return cursor
         
-    def query_block(self, query: str, format:BlockFormat='pandas', **query_args: Dict[str, Any]) -> Block:
+    def query_block(self, query: str, **query_args: Dict[str, Any]) -> Block:
         cursor = self._execute(query, **query_args)
         results = cursor.fetchall()
         if results:
             columns = [col_desc[0] for col_desc in cursor.description]
-            return _to_block(results, columns, format)
+            df = pandas.DataFrame(columns=columns, data=results)
+            return df
+            
         else:
             return None
     
@@ -143,15 +152,13 @@ class DBAPI2Datasource(DatabaseDatasource, Generic[DatabaseConnection]):
         )         
 
         # default write queries
-        INSERT_STATEMENT = 'INSERT INTO {table} ({column_list}) VALUES ({qmark_list})'
         default_write_queries = dict(
-            write_query = INSERT_STATEMENT,
-            write_query_staged = INSERT_STATEMENT,
-            write_prepare_query_staged = 'CREATE OR REPLACE TABLE {stage_table} LIKE {table}',
+            write_query = 'INSERT INTO {table} ({column_list}) VALUES ({qmark_list})',
+            write_query_staged = 'INSERT INTO {table}_stage_{block_id} ({column_list}) VALUES ({qmark_list})',
+            write_prepare_query_staged = 'CREATE OR REPLACE TABLE {table}_stage_{block_id} LIKE {table}',
             on_write_complete_query_staged = '''
-                INSERT INTO {table} ({column_list});
-                SELECT {column_list} FROM {stage_table}; 
-                DROP TABLE IF EXISTS {stage_table}
+                INSERT INTO {table} ({column_list}) SELECT {column_list} FROM {table}_stage_{block_id}; 
+                DROP TABLE IF EXISTS {table}_stage_{block_id}
             '''
         )
         

@@ -1,19 +1,18 @@
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.datasource.database_datasource import (
-    DatabaseConnection,
     DatabaseConnector,
     DatabaseReadTask,
-    DatabaseReader
+    DatabaseReader,
+    BlockFormat
 )
 
 from ray.data.datasource.dbapi2_datasource import (
     DBAPI2Connector,
-    DBAPI2Datasource,
-    _to_block
+    DBAPI2Datasource
 )
 
 logger = logging.getLogger(__name__)
@@ -76,8 +75,9 @@ class SnowflakeConnector(DBAPI2Connector):
             query_args_str = ', ' + ','.join([f'{k}={v}' for k,v in query_args.items()]) if query_args else ''
             logger.debug(f'cursor.write_pandas(connection, df, table_name="{query}"{query_args_str}')
 
-        df = _to_block(block, format='pandas')       
-        write_pandas(self.connection, df, table_name=query, parallel=1, **query_args)  # type: ignore
+        accessor = BlockAccessor.for_block(block)
+        df = accessor.to_batch_format('pandas')    
+        write_pandas(self.connection, df, table_name=query, **{'parallel':1, **query_args})  # type: ignore
        
     def query_batches(self, query:str, **query_args: Dict[str, Any]) -> List[ResultBatch]:
         cursor = self.query(query, **query_args)
@@ -94,14 +94,7 @@ class SnowflakeReadTask(DatabaseReadTask):
         self.batch = batch
              
     def _read_fn(self) -> Iterable[Block]:
-        if self.format == 'pandas':
-            block = self.batch.to_pandas()
-        elif self.format == 'pyarrow':
-            block = self.batch.to_arrow()
-        else:
-            raise ValueError(f'format {self.format} not supported.')
-                   
-        return [block]
+        return [self.batch.to_pandas()]                  
 
 @DeveloperAPI
 class SnowflakeReader(DatabaseReader): 
@@ -127,19 +120,26 @@ class SnowflakeReader(DatabaseReader):
                 **self.query_args
             )
 
-        schema = BlockAccessor.for_block(self.sample).schema()
-    
+        accessor = BlockAccessor.for_block(self.sample)
+        schema = accessor.schema()
+        row_size = accessor.size_bytes() / accessor.num_rows()
+        
         # create tasks
         tasks = []
         for batch in batches:
+            if batch.uncompressed_size:
+                size = batch.uncompressed_size
+            else:
+                size = int(row_size * batch.rowcount)
+                
             metadata = BlockMetadata(
                 batch.rowcount, 
-                batch.uncompressed_size, 
+                size, 
                 schema, 
                 None, 
                 None
             ) 
-            tasks.append(self._create_read_task(metadata=metadata, batch=batch, **self.query_args))   
+            tasks.append(self._create_read_task(metadata=metadata, batch=batch))   
 
         return tasks
          

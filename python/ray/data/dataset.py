@@ -2564,11 +2564,17 @@ class Dataset(Generic[T]):
         table: Optional[str] = None,
         mode: Optional[str] = None,
         ray_remote_args: Dict[str, Any] = None,
+        read_queries: Dict[str,str] = {},
+        write_queries: Dict[str, str] = {},
         **dbapi2_args,
     ) -> None:
         from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource
         connector = DBAPI2Connector(connect_fn, **connect_properties)
-        datasource = DBAPI2Datasource(connector)
+        datasource = DBAPI2Datasource(
+            connector,
+            read_queries=read_queries,
+            write_queries=write_queries
+        )
         self.write_datasource(
             datasource,
             table=table,
