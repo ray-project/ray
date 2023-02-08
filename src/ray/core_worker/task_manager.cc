@@ -901,16 +901,16 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
   if (!task_event_buffer_.Enabled()) {
     return;
   }
-  worker::TaskEvent task_event;
-  task_event.task_id = spec.TaskId();
-  task_event.job_id = spec.JobId();
-  task_event.attempt_number = attempt_number;
-  task_event.timestamp = absl::GetCurrentTimeNanos();
-  task_event.task_status = status;
-  task_event.task_spec = std::make_shared<const TaskSpecification>(spec);
-  task_event.node_id = node_id;
-  task_event.worker_id = worker_id;
-  task_event.include_task_info = include_task_info;
+  std::unique_ptr<worker::TaskEvent> task_event = std::make_unique<worker::TaskEvent>();
+  task_event->task_id = spec.TaskId();
+  task_event->job_id = spec.JobId();
+  task_event->attempt_number = attempt_number;
+  task_event->timestamp = absl::GetCurrentTimeNanos();
+  task_event->task_status = status;
+  task_event->task_spec = std::make_shared<const TaskSpecification>(spec);
+  task_event->node_id = node_id;
+  task_event->worker_id = worker_id;
+  task_event->include_task_info = include_task_info;
 
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }

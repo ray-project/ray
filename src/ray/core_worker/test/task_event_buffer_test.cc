@@ -59,27 +59,27 @@ class TaskEventBufferTest : public ::testing::Test {
     return task_ids;
   }
 
-  TaskEvent GenStatusTaskEvent(TaskID task_id,
-                               int32_t attempt_num,
-                               int64_t running_ts = 1) {
-    TaskEvent task_event;
-    task_event.task_id = task_id;
-    task_event.attempt_number = attempt_num;
-    task_event.timestamp = running_ts;
-    task_event.task_status = rpc::TaskStatus::RUNNING;
+  std::unique_ptr<TaskEvent> GenStatusTaskEvent(TaskID task_id,
+                                                int32_t attempt_num,
+                                                int64_t running_ts = 1) {
+    std::unique_ptr<TaskEvent> task_event = std::make_unique<TaskEvent>();
+    task_event->task_id = task_id;
+    task_event->attempt_number = attempt_num;
+    task_event->timestamp = running_ts;
+    task_event->task_status = rpc::TaskStatus::RUNNING;
     return task_event;
   }
 
-  TaskEvent GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
-    TaskEvent task_event;
+  std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
+    std::unique_ptr<TaskEvent> task_event = std::make_unique<TaskEvent>();
     rpc::ProfileEvents profile_events;
 
-    task_event.task_id = task_id;
-    task_event.attempt_number = attempt_num;
+    task_event->task_id = task_id;
+    task_event->attempt_number = attempt_num;
 
     auto event = profile_events.add_events();
     event->set_event_name("test_event");
-    task_event.profile_events = std::move(profile_events);
+    task_event->profile_events = std::move(profile_events);
     return task_event;
   }
 
@@ -146,13 +146,22 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   size_t num_events = 20;
   auto task_ids = GenTaskIDs(num_events);
 
-  std::vector<TaskEvent> task_events;
+  std::vector<std::unique_ptr<TaskEvent>> task_events;
   for (const auto &task_id : task_ids) {
     task_events.push_back(GenStatusTaskEvent(task_id, 0));
   }
 
+  // Expect data flushed match
+  rpc::TaskEventData expected_data;
+  expected_data.set_num_profile_task_events_dropped(0);
+  expected_data.set_num_status_task_events_dropped(0);
   for (const auto &task_event : task_events) {
-    task_event_buffer_->AddTaskEvent(task_event);
+    auto event = expected_data.add_events_by_task();
+    task_event->ToRpcTaskEvents(event);
+  }
+
+  for (auto &task_event : task_events) {
+    task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
   ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), num_events);
@@ -161,15 +170,6 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   auto task_gcs_accessor =
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
-
-  // Expect data flushed match
-  rpc::TaskEventData expected_data;
-  expected_data.set_num_profile_task_events_dropped(0);
-  expected_data.set_num_status_task_events_dropped(0);
-  for (const auto &task_event : task_events) {
-    auto event = expected_data.add_events_by_task();
-    task_event.ToRpcTaskEvents(event);
-  }
 
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
@@ -334,10 +334,10 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   size_t num_status = 50;
 
   // Generate 2 batches of events each, where batch 1 will be evicted by batch 2.
-  std::vector<TaskEvent> profile_events_1;
-  std::vector<TaskEvent> status_events_1;
-  std::vector<TaskEvent> profile_events_2;
-  std::vector<TaskEvent> status_events_2;
+  std::vector<std::unique_ptr<TaskEvent>> profile_events_1;
+  std::vector<std::unique_ptr<TaskEvent>> status_events_1;
+  std::vector<std::unique_ptr<TaskEvent>> profile_events_2;
+  std::vector<std::unique_ptr<TaskEvent>> status_events_2;
 
   // Generate data
   for (size_t i = 0; i < 50; ++i) {
@@ -347,11 +347,29 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
     profile_events_2.push_back(GenProfileTaskEvent(RandomTaskId(), 0));
   }
 
-  auto data = {profile_events_1, status_events_1, profile_events_2, status_events_2};
-  for (auto &events : data) {
-    for (auto &event : events) {
-      task_event_buffer_->AddTaskEvent(event);
-    }
+  rpc::TaskEventData expected_data;
+  expected_data.set_num_profile_task_events_dropped(num_profile);
+  expected_data.set_num_status_task_events_dropped(num_status);
+  for (const auto &event : profile_events_2) {
+    auto expect_event = expected_data.add_events_by_task();
+    event->ToRpcTaskEvents(expect_event);
+  }
+  for (const auto &event : status_events_2) {
+    auto expect_event = expected_data.add_events_by_task();
+    event->ToRpcTaskEvents(expect_event);
+  }
+
+  for (auto &event : profile_events_1) {
+    task_event_buffer_->AddTaskEvent(std::move(event));
+  }
+  for (auto &event : status_events_1) {
+    task_event_buffer_->AddTaskEvent(std::move(event));
+  }
+  for (auto &event : profile_events_2) {
+    task_event_buffer_->AddTaskEvent(std::move(event));
+  }
+  for (auto &event : status_events_2) {
+    task_event_buffer_->AddTaskEvent(std::move(event));
   }
 
   // Expect only limit in buffer.
@@ -361,18 +379,6 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   auto task_gcs_accessor =
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
-
-  rpc::TaskEventData expected_data;
-  expected_data.set_num_profile_task_events_dropped(num_profile);
-  expected_data.set_num_status_task_events_dropped(num_status);
-  for (const auto &event : profile_events_2) {
-    auto expect_event = expected_data.add_events_by_task();
-    event.ToRpcTaskEvents(expect_event);
-  }
-  for (const auto &event : status_events_2) {
-    auto expect_event = expected_data.add_events_by_task();
-    event.ToRpcTaskEvents(expect_event);
-  }
 
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,

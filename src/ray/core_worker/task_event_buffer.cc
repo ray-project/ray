@@ -141,16 +141,15 @@ void TaskEventBufferImpl::Stop() {
 
 bool TaskEventBufferImpl::Enabled() const { return enabled_; }
 
-void TaskEventBufferImpl::AddTaskEvent(TaskEvent task_event) {
+void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
   if (!enabled_) {
     return;
   }
   absl::MutexLock lock(&mutex_);
 
-  auto limit = RayConfig::instance().task_events_max_buffer_size();
-  if (limit > 0 && buffer_.full()) {
+  if (buffer_.full()) {
     const auto &to_evict = buffer_.front();
-    if (to_evict.IsProfileEvent()) {
+    if (to_evict->IsProfileEvent()) {
       num_profile_task_events_dropped_++;
     } else {
       num_status_task_events_dropped_++;
@@ -165,7 +164,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   }
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
-  std::vector<TaskEvent> to_send;
+  std::vector<std::unique_ptr<TaskEvent>> to_send;
 
   {
     absl::MutexLock lock(&mutex_);
@@ -211,12 +210,12 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_status_event_to_send = 0;
   for (const auto &task_event : to_send) {
     auto events_by_task = data->add_events_by_task();
-    if (task_event.profile_events.has_value()) {
+    if (task_event->profile_events.has_value()) {
       num_profile_event_to_send++;
     } else {
       num_status_event_to_send++;
     }
-    task_event.ToRpcTaskEvents(events_by_task);
+    task_event->ToRpcTaskEvents(events_by_task);
   }
   size_t data_size = data->ByteSizeLong();
 

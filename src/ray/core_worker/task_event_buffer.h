@@ -96,7 +96,7 @@ class TaskEventBuffer {
   /// Add a task event to be reported.
   ///
   /// \param task_events Task events.
-  virtual void AddTaskEvent(TaskEvent task_event) = 0;
+  virtual void AddTaskEvent(std::unique_ptr<TaskEvent> task_event) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
   ///
@@ -150,7 +150,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  void AddTaskEvent(TaskEvent task_event) LOCKS_EXCLUDED(mutex_) override;
+  void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
+      LOCKS_EXCLUDED(mutex_) override;
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
 
@@ -166,7 +167,10 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Test only functions.
   std::vector<TaskEvent> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    std::vector<TaskEvent> copy(buffer_.begin(), buffer_.end());
+    std::vector<TaskEvent> copy;
+    for (const auto &e : buffer_) {
+      copy.push_back(*e);
+    }
     return copy;
   }
 
@@ -210,7 +214,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer<TaskEvent> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ GUARDED_BY(mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;

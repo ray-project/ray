@@ -388,15 +388,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     // Add the driver task info.
     if (task_event_buffer_->Enabled()) {
-      worker::TaskEvent task_event;
       const auto spec = builder.Build();
-      task_event.task_spec = std::make_shared<const TaskSpecification>(spec);
-      task_event.include_task_info = true;
-      task_event.task_id = task_id;
-      task_event.job_id = spec.JobId();
-      task_event.attempt_number = 0;
-      task_event.task_status = rpc::TaskStatus::RUNNING;
-      task_event.timestamp = absl::GetCurrentTimeNanos();
+      std::unique_ptr<worker::TaskEvent> task_event =
+          std::make_unique<worker::TaskEvent>();
+      task_event->task_spec = std::make_shared<const TaskSpecification>(spec);
+      task_event->include_task_info = true;
+      task_event->task_id = task_id;
+      task_event->job_id = spec.JobId();
+      task_event->attempt_number = 0;
+      task_event->task_status = rpc::TaskStatus::RUNNING;
+      task_event->timestamp = absl::GetCurrentTimeNanos();
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -682,12 +683,12 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
-    worker::TaskEvent task_event;
-    task_event.task_id = worker_context_.GetCurrentTaskID();
-    task_event.job_id = worker_context_.GetCurrentJobID();
-    task_event.attempt_number = 0;
-    task_event.task_status = rpc::TaskStatus::FINISHED;
-    task_event.timestamp = absl::GetCurrentTimeNanos();
+    std::unique_ptr<worker::TaskEvent> task_event = std::make_unique<worker::TaskEvent>();
+    task_event->task_id = worker_context_.GetCurrentTaskID();
+    task_event->job_id = worker_context_.GetCurrentJobID();
+    task_event->attempt_number = 0;
+    task_event->task_status = rpc::TaskStatus::FINISHED;
+    task_event->timestamp = absl::GetCurrentTimeNanos();
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
