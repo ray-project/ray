@@ -195,10 +195,7 @@ class RLTrainer(BaseTrainer):
             def __init__(
                 self,
                 config: Optional[PartialAlgorithmConfigDict] = None,
-                env: Optional[Union[str, EnvType]] = None,
-                logger_creator: Optional[Callable[[], Logger]] = None,
-                remote_checkpoint_dir: Optional[str] = None,
-                syncer: Optional[Syncer] = None,
+                **kwargs,
             ):
                 resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
@@ -206,13 +203,7 @@ class RLTrainer(BaseTrainer):
                 trainer = trainer_cls(**param_dict)
                 rllib_config = trainer._get_rllib_config(process_datasets=True)
 
-                super(AIRRLTrainer, self).__init__(
-                    config=rllib_config,
-                    env=env,
-                    logger_creator=logger_creator,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                    syncer=syncer,
-                )
+                super(AIRRLTrainer, self).__init__(config=rllib_config, **kwargs)
 
             def save_checkpoint(self, checkpoint_dir: str):
                 checkpoint_path = super(AIRRLTrainer, self).save_checkpoint(
