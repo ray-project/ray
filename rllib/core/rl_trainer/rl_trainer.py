@@ -352,7 +352,7 @@ class RLTrainer:
         """Do `num_iters` minibatch updates given the original batch.
 
         Given a batch of episodes you can use this method to take more
-        than one backward pass on the batch. The same minibatch_size and num_iters gets
+        than one backward pass on the batch. The same minibatch_size and num_iters
         will be used for all module ids (previously known as policies) in the
         multiagent batch
 
