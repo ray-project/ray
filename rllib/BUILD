@@ -1133,6 +1133,14 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo_rl_module.py"]
 )
 
+
+py_test(
+    name = "test_ppo_rl_trainer",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_rl_trainer.py"]
+)
+
 # PPO Reproducibility
 py_test(
     name = "test_repro_ppo",
@@ -1846,15 +1854,8 @@ py_test(
 py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "medium",
+    size = "large",
     srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
-)
-
-py_test(
-    name = "test_trainer_runner_local",
-    tags = ["team:rllib", "core", "exclusive"],
-    size = "medium",
-    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
 )
 
 py_test(
@@ -1980,14 +1981,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/specs/tests/test_spec_dict.py"]
-)
-
-# test TorchVectorEncoder
-py_test(
-    name = "test_torch_vector_encoder",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/torch/encoders/tests/test_torch_vector_encoder.py"]
 )
 
 
@@ -3344,7 +3337,7 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_independent_learning.py"],
-    args = ["--stop-iters=4", "--framework=torch"]
+    args = ["--num-gpus=0", "--as-test"]
 )
 
 py_test(
@@ -3845,6 +3838,44 @@ py_test(
         "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
     ]
+)
+
+# --------------------------------------------------------------------
+# examples/rl_trainer directory
+#
+# 
+# Description: These are RLlib tests for the new multi-gpu enabled 
+# training stack via RLTrainers.
+#
+# NOTE: Add tests alphabetically to this list.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch",
+    main = "examples/rl_trainer/multi_agent_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "examples", "no-gpu"],
+    size = "medium",
+    srcs = ["examples/rl_trainer/multi_agent_cartpole_ppo.py"],
+    args = ["--as-test", "--framework=torch", "--num-gpus=0"]
+)
+
+py_test(
+    name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch_gpu",
+    main = "examples/rl_trainer/multi_agent_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/rl_trainer/multi_agent_cartpole_ppo.py"],
+    args = ["--as-test", "--framework=torch", "--num-gpus=1"]
+)
+
+
+py_test(
+    name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch_multi_gpu",
+    main = "examples/rl_trainer/multi_agent_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "examples", "multi-gpu"],
+    size = "medium",
+    srcs = ["examples/rl_trainer/multi_agent_cartpole_ppo.py"],
+    args = ["--as-test", "--framework=torch", "--num-gpus=2"]
 )
 
 # --------------------------------------------------------------------

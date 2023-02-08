@@ -1,5 +1,6 @@
 import abc
 
+from dataclasses import dataclass, field
 import logging
 import numpy as np
 from typing import (
@@ -11,10 +12,10 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -30,11 +31,14 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ResultDict
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchDummyIterator,
+    MiniBatchCyclicIterator,
+)
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 
-if TYPE_CHECKING:
-    from ray.air.config import ScalingConfig
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -46,6 +50,36 @@ ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
+
+
+@dataclass
+class FrameworkHPs:
+    """The framework specific hyper-parameters.
+
+    Args:
+        eager_tracing: Whether to trace the model in eager mode. This enables tf
+            tracing mode by wrapping the loss function computation in a tf.function.
+            This is useful for speeding up the training loop. However, it is not
+            compatible with all tf operations. For example, tf.print is not supported
+            in tf.function.
+    """
+
+    eager_tracing: bool = False
+
+
+@dataclass
+class RLTrainerHPs:
+    """The hyper-parameters for RLTrainer.
+
+    When creating a new RLTrainer, the new hyper-parameters have to be defined by
+    subclassing this class and adding the new hyper-parameters as fields.
+
+    # TODO (Kourosh): The things that could be part of the base class:
+    - lr_schedule
+    - grad_clip
+    """
+
+    pass
 
 
 class RLTrainer:
@@ -118,9 +152,9 @@ class RLTrainer:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        distributed: bool = False,
-        scaling_config: Optional["ScalingConfig"] = None,
-        algorithm_config: Optional["AlgorithmConfig"] = None,
+        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        trainer_hyperparameters: Optional[RLTrainerHPs] = RLTrainerHPs(),
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
         # the best idea in the world, but it's easy to implement and user will
@@ -140,9 +174,10 @@ class RLTrainer:
         self.module_spec = module_spec
         self.module_obj = module
         self.optimizer_config = optimizer_config
-        self.distributed = distributed
-        self.scaling_config = scaling_config
-        self.config = algorithm_config
+        self.config = trainer_hyperparameters
+
+        # pick the configs that we need for the trainer from scaling config
+        self._distributed = trainer_scaling_config.num_workers > 1
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -150,6 +185,10 @@ class RLTrainer:
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: ParamDictType = {}
+
+    @property
+    def distributed(self) -> bool:
+        return self._distributed
 
     @property
     def module(self) -> MultiAgentRLModule:
@@ -302,22 +341,67 @@ class RLTrainer:
 
         return ret
 
-    def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        """Perform an update on this Trainer.
+    def update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+    ) -> Mapping[str, Any]:
+        """Do `num_iters` minibatch updates given the original batch.
+
+        Given a batch of episodes you can use this method to take more
+        than one backward pass on the batch. The same minibatch_size and num_iters
+        will be used for all module ids (previously known as policies) in the
+        multiagent batch
 
         Args:
             batch: A batch of data.
-
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
+            reduce_fn: reduce_fn: A function to reduce the results from a list of
+                minibatch updates. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
+                not get reduced.
         Returns:
-            A dictionary of results.
+            A dictionary of results, in numpy format.
         """
         self.__check_if_build_called()
-        if not self.distributed:
-            return self._update(batch)
-        else:
-            return self.do_distributed_update(batch)
 
-    def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        batch_iter = (
+            MiniBatchCyclicIterator
+            if minibatch_size is not None
+            else MiniBatchDummyIterator
+        )
+
+        results = []
+        for minibatch in batch_iter(batch, minibatch_size, num_iters):
+
+            if not self.distributed:
+                result = self._update(minibatch)
+            else:
+                result = self.do_distributed_update(minibatch)
+
+            results.append(result)
+
+        # Reduce results across all minibatches, if necessary.
+        if len(results) == 1:
+            return results[0]
+        else:
+            if reduce_fn is None:
+                return results
+            return reduce_fn(results)
+
+    def _update(
+        self,
+        batch: MultiAgentBatch,
+    ) -> Mapping[str, Any]:
+
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.
         batch = self._convert_batch_type(batch)
@@ -326,7 +410,8 @@ class RLTrainer:
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        return convert_to_numpy(result)
 
     @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -408,6 +493,14 @@ class RLTrainer:
             gradients: A dictionary of gradients.
         """
 
+    @abc.abstractmethod
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule"""
+
+    @abc.abstractmethod
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the trainer.
 
@@ -416,6 +509,8 @@ class RLTrainer:
                 from `get_state`.
 
         """
+        # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
+        # having both can become confusing. Can we simplify this API requirement?
         self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))
@@ -533,7 +628,9 @@ class RLTrainer:
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
 
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def do_distributed_update(
+        self, batch: MultiAgentBatch, **kwargs
+    ) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
 
         Args:
@@ -611,3 +708,46 @@ class RLTrainer:
                 "RLTrainer.build() must be called after constructing a "
                 "RLTrainer and before calling any methods on it."
             )
+
+
+@dataclass
+class RLTrainerSpec:
+    """The spec for construcitng RLTrainer actors.
+
+    Args:
+        rl_trainer_class: The RLTrainer class to use.
+        module_spec: The underlying (MA)RLModule spec to completely define the module.
+        module: Alternatively the RLModule instance can be passed in directly. This
+            only works if the RLTrainer is not an actor.
+        backend_config: The backend config for properly distributing the RLModule.
+        optimizer_config: The optimizer setting to apply during training.
+        trainer_hyperparameters: The extra config for the loss/additional update. This
+            should be a subclass of RLTrainerHPs. This is useful for passing in
+            algorithm configs that contains the hyper-parameters for loss computation,
+            change of training behaviors, etc. e.g lr, entropy_coeff.
+    """
+
+    rl_trainer_class: Type["RLTrainer"]
+    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
+    module: Optional["RLModule"] = None
+    trainer_scaling_config: TrainerScalingConfig = field(
+        default_factory=TrainerScalingConfig
+    )
+    optimizer_config: Dict[str, Any] = field(default_factory=dict)
+    trainer_hyperparameters: RLTrainerHPs = field(default_factory=RLTrainerHPs)
+    framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
+
+    def get_params_dict(self) -> Dict[str, Any]:
+        """Returns the parameters than be passed to the RLTrainer constructor."""
+        return {
+            "module": self.module,
+            "module_spec": self.module_spec,
+            "trainer_scaling_config": self.trainer_scaling_config,
+            "optimizer_config": self.optimizer_config,
+            "trainer_hyperparameters": self.trainer_hyperparameters,
+            "framework_hyperparameters": self.framework_hyperparameters,
+        }
+
+    def build(self) -> "RLTrainer":
+        """Builds the RLTrainer instance."""
+        return self.rl_trainer_class(**self.get_params_dict())
