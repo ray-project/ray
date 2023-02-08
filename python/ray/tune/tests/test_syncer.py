@@ -728,6 +728,32 @@ def test_artifact_syncing_on_reset(ray_start_2_cpus, temp_data_dirs, tmp_path):
     assert_file(True, tmp_target, "artifact.txt")
 
 
+def test_avoid_duplicate_artifact_sync(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Checks that artifacts don't get uploaded twice if not needed.
+    For example, a trial will upload artifacts on a final checkpoint, and
+    there is no need to upload again on stop/trial complete."""
+    _, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(tmp_path),
+    )
+
+    ray.get(trainable.train.remote())
+    ray.get(trainable.save.remote())  # Saves an artifact
+    assert_file(True, tmp_target, "artifact.txt")
+    # Delete the artifact to check if it gets uploaded again.
+    os.remove(os.path.join(tmp_target, "artifact.txt"))
+    # Should skip saving the artifact again...
+    ray.get(trainable._maybe_save_artifacts_to_cloud.remote())
+    assert_file(False, tmp_target, "artifact.txt")
+
+    # Step again, then stop --> this time, it should save.
+    ray.get(trainable.train.remote())
+    ray.get(trainable.stop.remote())  # Saves an artifact
+    assert_file(True, tmp_target, "artifact.txt")
+
+
 def test_syncer_serialize(temp_data_dirs):
     tmp_source, tmp_target = temp_data_dirs
 
