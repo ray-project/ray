@@ -1,3 +1,4 @@
+import random
 from typing import Any, List, Optional
 
 import pytest
@@ -77,7 +78,9 @@ class TrainFlow:
     - When a task fails, stop actor, and restart
     """
 
-    def __init__(self, actor_manager: RayActorManager, errors: Optional[str] = None):
+    def __init__(
+        self, actor_manager: RayActorManager, errors: Optional[List[str]] = None
+    ):
         self._actor_manager = actor_manager
         self._finished = False
 
@@ -100,11 +103,14 @@ class TrainFlow:
         self._errors = errors
 
     def setup_actors(self):
-        error_kwargs = {}
-        if self._errors:
-            error_kwargs[self._errors] = True
-
         for actor_id in range(self._actors_to_run):
+            error_kwargs = {}
+            if self._errors:
+                error = random.choice(self._errors)
+                error_kwargs[error] = True
+
+            print("Actor", actor_id, "will be failing with", error_kwargs)
+
             tracked_actor = self._actor_manager.add_actor(
                 cls=Actor,
                 kwargs={"id": actor_id, **error_kwargs},
@@ -124,7 +130,7 @@ class TrainFlow:
         )
 
     def actor_stopped(self, tracked_actor: TrackedActor):
-        self._ready_actors.remove(tracked_actor)
+        self._ready_actors.discard(tracked_actor)
 
         if tracked_actor in self._actors_to_replace:
             self._replace_actor(tracked_actor=tracked_actor)
@@ -230,10 +236,21 @@ class TrainFlow:
         "actor_setup_fail",
         "actor_train_kill",
         "actor_train_fail",
+        # Chaos - every actor fails somehow, but in different ways
+        [
+            "actor_init_kill",
+            "actor_setup_kill",
+            "actor_setup_fail",
+            "actor_train_kill",
+            "actor_train_fail",
+        ],
     ],
 )
 def test_e2e(ray_start_4_cpus, resource_manager_cls, errors):
     actor_manager = RayActorManager(resource_manager=resource_manager_cls())
+
+    if errors and isinstance(errors, str):
+        errors = [errors]
 
     flow = TrainFlow(actor_manager=actor_manager, errors=errors)
     flow.run()

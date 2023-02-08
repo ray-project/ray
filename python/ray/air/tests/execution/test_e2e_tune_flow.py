@@ -1,3 +1,4 @@
+import random
 from collections import defaultdict
 from typing import Dict, List, Optional
 
@@ -69,7 +70,9 @@ class TuneFlow:
     - When a task fails, stop actor, and restart
     """
 
-    def __init__(self, actor_manager: RayActorManager, errors: Optional[str] = None):
+    def __init__(
+        self, actor_manager: RayActorManager, errors: Optional[List[str]] = None
+    ):
         self._actor_manager = actor_manager
         self._finished = False
 
@@ -92,9 +95,13 @@ class TuneFlow:
 
         error_kwargs = {}
         if self._errors:
-            error_kwargs[self._errors] = True
+            error = random.choice(self._errors)
+            error_kwargs[error] = True
 
         actor_id = self._actors_started
+
+        print("Actor", actor_id, "will be failing with", error_kwargs)
+
         tracked_actor = self._actor_manager.add_actor(
             cls=Actor,
             kwargs={"id": actor_id, **error_kwargs},
@@ -190,10 +197,21 @@ class TuneFlow:
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 @pytest.mark.parametrize(
-    "errors", [None, "actor_error_init", "actor_error_task", "task_error"]
+    "errors",
+    [
+        None,
+        "actor_error_init",
+        "actor_error_task",
+        "task_error",
+        # Chaos - every actor fails somehow, but in different ways
+        ["actor_error_init", "actor_error_task", "task_error"],
+    ],
 )
 def test_e2e(ray_start_4_cpus, resource_manager_cls, errors):
     actor_manager = RayActorManager(resource_manager=resource_manager_cls())
+
+    if errors and isinstance(errors, str):
+        errors = [errors]
 
     flow = TuneFlow(actor_manager=actor_manager, errors=errors)
     flow.run()
