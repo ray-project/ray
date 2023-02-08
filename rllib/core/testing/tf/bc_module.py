@@ -91,8 +91,9 @@ class DiscreteBCTFModule(TfRLModule):
         cls,
         observation_space: "gym.Space",
         action_space: "gym.Space",
+        *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "DiscreteBCTFModule":
 
         config = {
             "input_dim": observation_space.shape[0],

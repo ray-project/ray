@@ -74,8 +74,9 @@ class DiscreteBCTorchModule(TorchRLModule):
         cls,
         observation_space: "gym.Space",
         action_space: "gym.Space",
+        *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "DiscreteBCTorchModule":
 
         config = {
             "input_dim": observation_space.shape[0],

@@ -171,8 +171,9 @@ class RLModule(abc.ABC):
         cls,
         observation_space: gym.Space,
         action_space: gym.Space,
+        *, 
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "RLModule":
         """Creates a RLModule instance from a model config dict and spaces.
 
         The model config dict is the same as the one passed to the AlgorithmConfig
@@ -195,7 +196,6 @@ class RLModule(abc.ABC):
                     observation_space: gym.Space,
                     action_space: gym.Space,
                     model_config: Mapping[str, Any],
-                    return_config: bool = False,
                 ):
                     return cls(
                         input_dim=observation_space.shape[0],

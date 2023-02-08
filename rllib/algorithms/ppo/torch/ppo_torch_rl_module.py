@@ -107,7 +107,7 @@ class PPOTorchRLModule(TorchRLModule):
         action_space: gym.Space,
         *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "PPOTorchRLModule":
 
         # TODO: use the new catalog to perform this logic and construct the final config
 
