@@ -108,3 +108,11 @@ def test_invalid_dtype_raises_value_error(predictor):
     with pytest.raises(ValueError):
         # `dtype` should be a single `torch.dtype`.
         predictor.predict(data, dtype=np.float32)
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
