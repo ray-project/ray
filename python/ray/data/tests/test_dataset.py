@@ -15,6 +15,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
@@ -58,6 +59,10 @@ class SlowCSVDatasource(CSVDatasource):
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
 def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    # Defensively shutdown Ray for the first test here to make sure there
+    # is no existing Ray cluster.
+    ray.shutdown()
+
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
@@ -889,7 +894,7 @@ def test_tensor_array_block_slice():
 def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
     is_variable_shaped = len({len(elem) for elem in test_data}) > 1
     n = len(test_data)
-    test_arr = np.array(test_data)
+    test_arr = _create_possibly_ragged_ndarray(test_data)
     df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
     if init_with_pandas:
         table = pa.Table.from_pandas(df)
@@ -998,7 +1003,9 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
-        expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
+        expected_df.loc[:, "two"] = _create_possibly_ragged_ndarray(
+            expected_df["two"].to_numpy()
+        )
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
@@ -1487,6 +1494,16 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 1
 
 
+def test_count_lazy(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=10)
+    # We do not kick off the read task by default.
+    assert ds._plan._in_blocks._num_computed() == 0
+    assert ds.count() == 100
+    # Getting number of rows should not trigger execution of any read tasks
+    # for ray.data.range(), as the number of rows is known beforehand.
+    assert ds._plan._in_blocks._num_computed() == 0
+
+
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
     assert ds._plan.execute()._num_computed() == 0
@@ -1507,26 +1524,28 @@ def test_dataset_repr(ray_start_regular_shared):
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "MapBatches(<lambda>)\n"
+        "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds = ds.filter(lambda x: x > 0)
     assert repr(ds) == (
         "Filter\n"
-        "+- MapBatches\n"
+        "+- MapBatches(<lambda>)\n"
         "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
-        "   +- MapBatches\n"
+        "   +- MapBatches(<lambda>)\n"
         "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds.fully_executed()
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "MapBatches(<lambda>)\n"
+        "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -2432,6 +2451,13 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+    def put(x):
+        # We only support automatic deref in the legacy backend.
+        if DatasetContext.get_current().new_execution_backend:
+            return x
+        else:
+            return ray.put(x)
+
     # Test input validation
     ds = ray.data.range(5)
 
@@ -2483,7 +2509,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
+        fn_args=(put(1),),
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2502,7 +2528,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_kwargs={"b": ray.put(2)},
+        fn_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2522,8 +2548,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
-        fn_kwargs={"b": ray.put(2)},
+        fn_args=(put(1),),
+        fn_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2548,7 +2574,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
+        fn_constructor_args=(put(1),),
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2572,7 +2598,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2598,8 +2624,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_args=(put(1),),
+        fn_constructor_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2610,8 +2636,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2640,8 +2666,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test function + callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2649,8 +2675,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
             batch_size=1,
             batch_format="pandas",
             compute="actors",
-            fn_args=(ray.put(1),),
-            fn_kwargs={"b": ray.put(2)},
+            fn_args=(put(1),),
+            fn_kwargs={"b": put(2)},
         )
         .map_batches(
             CallableFn,
@@ -5387,8 +5413,10 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
                 time.sleep(1000)
                 return block
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        aps._apply(test_func, {}, blocks, False)
+    # No need to test ActorPoolStrategy in new execution backend.
+    if not DatasetContext.get_current().new_execution_backend:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            aps._apply(test_func, {}, blocks, False)
 
     # Check that all actors have been killed by counting the available CPUs
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
@@ -5407,13 +5435,48 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     ray.data.range(10, parallelism=10).map_batches(
         f, batch_size=1, compute=compute_strategy
     ).fully_executed()
-    expected_max_num_workers = math.ceil(
-        num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+
+    # The new execution backend is not using the ActorPoolStrategy under
+    # the hood, so the expectation here applies only to the old backend.
+    # TODO(https://github.com/ray-project/ray/issues/31723): we should check
+    # the num of workers once we have autoscaling in new execution backend.
+    if not DatasetContext.get_current().new_execution_backend:
+        expected_max_num_workers = math.ceil(
+            num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+        )
+        assert (
+            compute_strategy.num_workers >= num_cpus
+            and compute_strategy.num_workers <= expected_max_num_workers
+        ), "Number of actors is out of the expected bound"
+
+
+def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
+    """Tests that blocks are bundled up to the specified max number of actors."""
+
+    def f(x):
+        return x
+
+    max_size = 2
+    compute_strategy = ray.data.ActorPoolStrategy(max_size=max_size)
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=None, compute=compute_strategy)
+        .fully_executed()
     )
-    assert (
-        compute_strategy.num_workers >= num_cpus
-        and compute_strategy.num_workers <= expected_max_num_workers
-    ), "Number of actors is out of the expected bound"
+
+    # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
+    # of capping bundle size by actor pool size, and then re-enable this test.
+    if not DatasetContext.get_current().new_execution_backend:
+        assert f"{max_size}/{max_size} blocks" in ds.stats()
+
+    # Check batch size is still respected.
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=10, compute=compute_strategy)
+        .fully_executed()
+    )
+
+    assert "1/1 blocks" in ds.stats()
 
 
 def test_default_batch_format(shutdown_only):

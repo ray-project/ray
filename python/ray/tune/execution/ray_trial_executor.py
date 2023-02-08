@@ -205,6 +205,9 @@ class RayTrialExecutor:
 
         # future --> (type, trial/pg)
         self._futures = {}
+        # Cache futures that are ready to reduce the number times we iterate through
+        # all futures (and e.g. shuffle them)
+        self._cached_ready_futures = []
 
         # Cleanup
         force_trial_cleanup = int(os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "600"))
@@ -232,7 +235,8 @@ class RayTrialExecutor:
         ] = defaultdict(list)
 
         # Trials for which we requested resources
-        self._staged_trials = set()
+        self._staged_trials = set()  # Staged trials
+        self._staged_resources = Counter()  # Resources of staged trials
         self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
@@ -319,6 +323,7 @@ class RayTrialExecutor:
             resource_request = trial.placement_group_factory
 
             self._staged_trials.add(trial)
+            self._staged_resources[trial.placement_group_factory] += 1
             self._resource_manager.request_resources(resource_request=resource_request)
 
         self._resource_manager.update_state()
@@ -533,6 +538,7 @@ class RayTrialExecutor:
         # Case 1: The trial we started was staged. Just remove it
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
+            self._staged_resources[trial.placement_group_factory] -= 1
             return
 
         # Case 2: We staged a trial "A" with the same resources, but our trial "B"
@@ -551,6 +557,7 @@ class RayTrialExecutor:
 
         if candidate_trial:
             self._staged_trials.remove(candidate_trial)
+            self._staged_resources[candidate_trial.placement_group_factory] -= 1
             return
 
         raise RuntimeError(
@@ -843,18 +850,16 @@ class RayTrialExecutor:
         """Before step() is called, update the available resources."""
         self._resource_updater.update_avail_resources()
 
-    def on_step_end(self) -> None:
-        self._cleanup_cached_actors()
+    def on_step_end(self, search_ended: bool = False) -> None:
+        self._cleanup_cached_actors(search_ended=search_ended)
         self._do_force_trial_cleanup()
 
     def _count_staged_resources(self):
-        counter = Counter()
-        for trial in self._staged_trials:
-            resource_request = trial.placement_group_factory
-            counter[resource_request] += 1
-        return counter
+        return self._staged_resources
 
-    def _cleanup_cached_actors(self, force_all: bool = False):
+    def _cleanup_cached_actors(
+        self, search_ended: bool = False, force_all: bool = False
+    ):
         """Clean up unneeded cached actors.
 
         Ray Tune caches actors for re-use to avoid initialization overhead. This is
@@ -884,8 +889,10 @@ class RayTrialExecutor:
         resources for all cached actors. If we cached more actors than we need, we
         terminate the excess actors and free the resources.
         """
-        if not self._staged_trials and not force_all:
-            # If we don't have any staged trials, keep cached actors
+        if not self._staged_trials and not force_all and not search_ended:
+            # If we don't have any staged trials, keep cached actors,
+            # unless cleanup is forced or no new trials are going to be generated
+            # (if the search ended).
             return
 
         staged_resources = self._count_staged_resources()
@@ -1208,24 +1215,44 @@ class RayTrialExecutor:
             ###################################################################
             # Prepare for futures to wait
             ###################################################################
-            futures_to_wait = list(self._futures.keys())
-            random.shuffle(futures_to_wait)
-            if next_trial_exists:
-                # Only wait for pg explicitly if there is next trial to run.
-                # In which case, handling PG_READY triumphs handling other events.
-                # Since we want to place pending trial ASAP.
-                futures_to_wait = (
-                    self._resource_manager.get_resource_futures() + futures_to_wait
+            if self._cached_ready_futures and not next_trial_exists:
+                # If there are cached ready futures, handle the first.
+                # But: If next trial exists, we want to prioritize PG_READY events.
+                ready_futures = [self._cached_ready_futures.pop(0)]
+            else:
+                # Otherwise, wait for new futures
+                futures_to_wait = list(self._futures.keys())
+                random.shuffle(futures_to_wait)
+                if next_trial_exists:
+                    # Only wait for pg explicitly if there is next trial to run.
+                    # In which case, handling PG_READY triumphs handling other events.
+                    # Since we want to place pending trial ASAP.
+                    futures_to_wait = (
+                        self._resource_manager.get_resource_futures() + futures_to_wait
+                    )
+                logger.debug(
+                    f"get_next_executor_event before wait with futures "
+                    f"{futures_to_wait} and "
+                    f"next_trial_exists={next_trial_exists}"
                 )
-            logger.debug(
-                f"get_next_executor_event before wait with futures "
-                f"{futures_to_wait} and "
-                f"next_trial_exists={next_trial_exists}"
-            )
 
-            ready_futures, _ = ray.wait(
-                futures_to_wait, num_returns=1, timeout=self._get_next_event_wait
-            )
+                # Try to resolve all ready futures that are immediately ready
+                ready, _ = ray.wait(
+                    futures_to_wait, num_returns=len(futures_to_wait), timeout=0
+                )
+
+                if ready:
+                    # If at least one future resolved, use that one. Cache the other
+                    # ones.
+                    ready_futures = [ready.pop(0)]
+                    self._cached_ready_futures = ready
+                else:
+                    # Otherwise, wait for next future with timeout.
+                    ready_futures, _ = ray.wait(
+                        futures_to_wait,
+                        num_returns=1,
+                        timeout=self._get_next_event_wait,
+                    )
 
             ###################################################################
             # Dealing with no future returned case.
@@ -1252,7 +1279,7 @@ class RayTrialExecutor:
             ###################################################################
             # If it is a PG_READY event.
             ###################################################################
-            if ready_future not in self._futures.keys():
+            if ready_future not in self._futures:
                 self._resource_manager.update_state()
                 return _ExecutorEvent(_ExecutorEventType.PG_READY)
 

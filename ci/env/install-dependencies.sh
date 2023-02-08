@@ -448,6 +448,11 @@ install_pip_packages() {
     "${SCRIPT_DIR}"/install-horovod.sh
   fi
 
+  # install hdfs if needed.
+  if [ "${INSTALL_HDFS-}" = 1 ]; then
+    "${SCRIPT_DIR}"/install-hdfs.sh
+  fi
+
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 

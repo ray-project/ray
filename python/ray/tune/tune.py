@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -54,7 +55,6 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
@@ -94,6 +94,17 @@ def _check_default_resources_override(
     return hasattr(trainable_cls, "default_resource_request") and (
         trainable_cls.default_resource_request.__code__
         != Trainable.default_resource_request.__code__
+    )
+
+
+def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
+        # Default to True
+        return True
+
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
     )
 
 
@@ -163,6 +174,7 @@ def _setup_signal_catching() -> threading.Event:
 @PublicAPI
 def run(
     run_or_experiment: Union[str, Callable, Type],
+    *,
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
@@ -194,10 +206,11 @@ def run(
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # Deprecated
+    trial_executor: Optional[RayTrialExecutor] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -380,7 +393,6 @@ def run(
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables and ``False`` for
             class and registered trainables.
-        trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -416,6 +428,12 @@ def run(
 
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
+    elif trial_executor:
+        warnings.warn(
+            "Passing a custom `trial_executor` is deprecated and will be removed "
+            "in the future.",
+            DeprecationWarning,
+        )
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
@@ -529,7 +547,13 @@ def run(
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
+            and not (
+                # Mixins do not work with reuse_actors as the mixin setup will only
+                # be invoked once
+                _check_mixin(trainable)
+            )
         )
+        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -689,7 +713,7 @@ def run(
         search_alg=search_alg,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+        experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,

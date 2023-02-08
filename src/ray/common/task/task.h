@@ -43,6 +43,8 @@ class RayTask {
   /// Construct a `RayTask` object from a `TaskSpecification`.
   RayTask(TaskSpecification task_spec);
 
+  RayTask(TaskSpecification task_spec, std::string preferred_node_id);
+
   /// Get the immutable specification for the task.
   ///
   /// \return The immutable specification for the task.
@@ -53,6 +55,12 @@ class RayTask {
   ///
   /// \return The object dependencies.
   const std::vector<rpc::ObjectReference> &GetDependencies() const;
+
+  /// Get the task's preferred node id for scheduling. If the returned value
+  /// is empty, then it means the task has no preferred node.
+  ///
+  /// \return The preferred node id.
+  const std::string &GetPreferredNodeID() const;
 
   std::string DebugString() const;
 
@@ -66,6 +74,8 @@ class RayTask {
   /// A cached copy of the task's object dependencies, including arguments from
   /// the TaskSpecification.
   std::vector<rpc::ObjectReference> dependencies_;
+
+  std::string preferred_node_id_;
 };
 
 }  // namespace ray
