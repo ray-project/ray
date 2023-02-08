@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
 if sys.version_info >= (3, 8):
@@ -248,7 +249,7 @@ class DatasetIterator(abc.ABC):
         )
 
     @abc.abstractmethod
-    def _to_train_iterator(self) -> "DatasetIterator":
+    def _to_train_iterator(self) -> "TrainDatasetIterator":
         """
         Convert this DatasetIterator to one that is specific
         to Ray Train Trainers.

@@ -1,11 +1,15 @@
+from typing import Iterator, Optional, TYPE_CHECKING
 import warnings
-from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 
+from ray.data.dataset_iterator import DatasetIterator
 from ray.train.error import SessionMisuseError
 
+if TYPE_CHECKING:
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
-class TrainDatasetIterator(BulkDatasetIterator):
-    """A DatasetIterator with training specific logic.
+
+class TrainDatasetIterator(DatasetIterator):
+    """A DatasetIterator with Ray Train specific logic.
 
     Args:
         dataset_iterator: The base dataset iterator.
@@ -13,7 +17,7 @@ class TrainDatasetIterator(BulkDatasetIterator):
 
     def __init__(
         self,
-        dataset_iterator: BulkDatasetIterator,
+        dataset_iterator: DatasetIterator,
     ):
         self._dataset_iterator = dataset_iterator
 
@@ -21,6 +25,7 @@ class TrainDatasetIterator(BulkDatasetIterator):
         self, *, device: Optional[str] = None, **kwargs
     ) -> Iterator["TorchTensorBatchType"]:
 
+        # Automatically move torch tensors to the appropriate device.
         if device is None:
             from ray.train.torch import get_device
 
@@ -38,9 +43,10 @@ class TrainDatasetIterator(BulkDatasetIterator):
         if hasattr(self._dataset_iterator, name):
             return getattr(self._dataset_iterator, name)
 
+        # Warning for backwards compatibility.
         warnings.warn(
             "session.get_dataset_shard returns a ray.data.DatasetIterator "
-            "instead of a Dataset as of Ray v2.3. "
+            "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
             "Use iter_torch_batches(), to_tf(), or iter_batches() to "
             "iterate over one epoch. See "
             "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "

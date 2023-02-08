@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import torch
     from ray.data import Dataset
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.train._internal.dataset_iterator import Train
+    from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
 class BulkDatasetIterator(DatasetIterator):
