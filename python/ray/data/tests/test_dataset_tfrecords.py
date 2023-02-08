@@ -2,7 +2,6 @@ import json
 import os
 
 import numpy as np
-import pandas as pd
 from pandas.api.types import is_int64_dtype, is_float_dtype, is_object_dtype
 import pytest
 
@@ -84,27 +83,31 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
             {
                 "int_item": 1,
                 "int_list": [2, 2, 3],
-                "int_empty": np.array([], dtype=np.int64),
+                "int_empty": [],
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
-                "float_empty": np.array([], dtype=np.float32),
+                "float_empty": 1.0,
                 "bytes_item": b"abc",
-                "bytes_list": [b"abc", b"1234"],
-                "bytes_empty": np.array([], dtype=np.bytes_),
+                "bytes_list": [b"def", b"1234"],
+                "bytes_empty": None,
             },
             # Row two.
             {
                 "int_item": 2,
                 "int_list": [3, 3, 4],
-                "int_empty": np.array([], dtype=np.int64),
+                "int_empty": [9, 2],
                 "float_item": 2.0,
-                "float_list": [2.0, 2.0, 3.0],
-                "float_empty": np.array([], dtype=np.float32),
-                "bytes_item": b"def",
-                "bytes_list": [b"def", b"1234"],
-                "bytes_empty": np.array([], dtype=np.bytes_),
+                "float_list": [5.0, 6.0, 7.0],
+                "float_empty": None,
+                "bytes_item": b"ghi",
+                "bytes_list": [b"jkl", b"5678"],
+                "bytes_empty": b"hello",
             },
-        ]
+        ],
+        # Here, we specify `parallelism=1` to ensure that all rows end up in the same
+        # block, which is required for type inference involving
+        # partially missing columns.
+        parallelism=1,
     )
 
     # The corresponding tf.train.Example that we would expect to read
@@ -131,13 +134,13 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                         float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
                     ),
                     "float_empty": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[])
+                        float_list=tf.train.FloatList(value=[1.0])
                     ),
                     "bytes_item": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"abc"])
                     ),
                     "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
+                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
                     ),
                     "bytes_empty": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[])
@@ -156,25 +159,25 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                         int64_list=tf.train.Int64List(value=[3, 3, 4])
                     ),
                     "int_empty": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[])
+                        int64_list=tf.train.Int64List(value=[9, 2])
                     ),
                     "float_item": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[2.0])
                     ),
                     "float_list": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[2.0, 2.0, 3.0])
+                        float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
                     ),
                     "float_empty": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[])
                     ),
                     "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"def"])
+                        bytes_list=tf.train.BytesList(value=[b"ghi"])
                     ),
                     "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
+                        bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
                     ),
                     "bytes_empty": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[])
+                        bytes_list=tf.train.BytesList(value=[b"hello"])
                     ),
                 }
             )
@@ -215,36 +218,39 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
             {
                 "int_item": 1,
                 "int_list": [2, 2, 3],
-                "int_empty": np.array([], dtype=np.int64),
+                "int_empty": [],
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
-                "float_empty": np.array([], dtype=np.float32),
+                "float_empty": 1.0,
                 "bytes_item": b"abc",
-                "bytes_list": [b"abc", b"1234"],
-                "bytes_empty": np.array([], dtype=np.bytes_),
+                "bytes_list": [b"def", b"1234"],
+                "bytes_empty": None,
             },
             # Row two.
             {
                 "int_item": 2,
                 "int_list": [3, 3, 4],
-                "int_empty": np.array([], dtype=np.int64),
+                "int_empty": [9, 2],
                 "float_item": 2.0,
-                "float_list": [2.0, 2.0, 3.0],
-                "float_empty": np.array([], dtype=np.float32),
-                "bytes_item": b"def",
-                "bytes_list": [b"def", b"1234"],
-                "bytes_empty": np.array([], dtype=np.bytes_),
+                "float_list": [5.0, 6.0, 7.0],
+                "float_empty": None,
+                "bytes_item": b"ghi",
+                "bytes_list": [b"jkl", b"5678"],
+                "bytes_empty": b"hello",
             },
-        ]
+        ],
+        # Here and in the read_tfrecords call below, we specify `parallelism=1`
+        # to ensure that all rows end up in the same block, which is required
+        # for type inference involving partially missing columns.
+        parallelism=1,
     )
 
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path)
 
     # Read the TFRecords.
-    readback_ds = ray.data.read_tfrecords(tmp_path)
-    # Convert to pandas to properly compare entries with (empty) numpy arrays
-    pd.testing.assert_frame_equal(ds.to_pandas(), readback_ds.to_pandas())
+    readback_ds = ray.data.read_tfrecords(tmp_path, parallelism=1)
+    assert ds.take() == readback_ds.take()
 
 
 def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):

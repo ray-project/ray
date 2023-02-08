@@ -78,9 +78,8 @@ class ArrowRow(TableRow):
         )
 
         schema = self._row.schema
-        col_type = schema.field(key).type
         if isinstance(
-            col_type,
+            schema.field(key).type,
             (ArrowTensorType, ArrowVariableShapedTensorType),
         ):
             # Build a tensor row.
@@ -96,8 +95,6 @@ class ArrowRow(TableRow):
         except AttributeError:
             # Assume that this row is an element of an extension array, and
             # that it is bypassing pyarrow's scalar model for Arrow < 8.0.0.
-            if isinstance(item, pyarrow.ListScalar) and len(item) == 0:
-                return np.array([], dtype=col_type.value_type.to_pandas_dtype())
             return item
 
     def __iter__(self) -> Iterator:

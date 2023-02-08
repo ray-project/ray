@@ -80,19 +80,13 @@ def _convert_example_to_dict(
     record = {}
     for feature_name, feature in example.features.feature.items():
         value = _get_feature_value(feature)
-        if len(value) == 0:
-            if pa.types.is_binary(value.type):
-                value = np.array(value, dtype=np.bytes_)
-            else:
-                value = np.array(value, dtype=value.type.to_pandas_dtype())
-        else:
-            value = value.to_pylist()
-            # Return value itself if the list has single value.
-            # This is to give better user experience when writing preprocessing UDF on
-            # these single-value lists.
-            if len(value) == 1:
-                value = value[0]
-        record[feature_name] = [value]
+        value = value.to_pylist()
+        # Return value itself if the list has single value.
+        # This is to give better user experience when writing preprocessing UDF on
+        # these single-value lists.
+        if len(value) == 1:
+            value = value[0]
+        record[feature_name] = pa.array([value])
     return record
 
 
@@ -108,10 +102,7 @@ def _convert_arrow_table_to_examples(
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
             col_value = arrow_table[name][i]
-            if isinstance(col_value, np.ndarray):
-                features[name] = _value_to_feature(col_value)
-            else:
-                features[name] = _value_to_feature(col_value.as_py())
+            features[name] = _value_to_feature(col_value)
 
         # Convert the dictionary to an Example proto.
         proto = tf.train.Example(features=tf.train.Features(feature=features))
@@ -145,39 +136,43 @@ def _get_feature_value(
     )
 
 
+# TODO(Scott): update types for all the function signatures
 def _value_to_feature(
-    value: Union[bytes, float, int, np.ndarray]
+    value: Union[
+        "pyarrow.Scalar", "pyarrow.Array"
+    ]  # Union[bytes, float, int, np.ndarray]
 ) -> "tf.train.Feature":
     import tensorflow as tf
+    import pyarrow as pa
 
-    if isinstance(value, np.ndarray) and len(value) == 0:
-        # Checking for an empty list of byte type
-        if value.dtype == "<U0":
-            return tf.train.Feature(bytes_list=tf.train.BytesList(value=[]))
-        if value.dtype == np.float32:
-            return tf.train.Feature(float_list=tf.train.FloatList(value=[]))
-        if value.dtype == np.int64:
-            return tf.train.Feature(int64_list=tf.train.Int64List(value=[]))
-
-    # A Feature stores a list of values.
-    # If we have a single value, convert it to a singleton list first.
-    values = [value] if not isinstance(value, list) else value
-    if not values:
-        raise ValueError(
-            "Storing an empty value in a tf.train.Feature is not supported."
-        )
-    elif isinstance(values[0], bytes):
-        return tf.train.Feature(bytes_list=tf.train.BytesList(value=values))
-    elif isinstance(values[0], float):
-        return tf.train.Feature(float_list=tf.train.FloatList(value=values))
-    elif isinstance(values[0], int):
-        return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
+    if isinstance(value, pa.ListScalar):
+        value_type = value.type.value_type
+        value = value.as_py()
     else:
+        value_type = value.type
+        value = value.as_py()
+        if value is None:
+            value = []
+        else:
+            value = [value]
+
+    if pa.types.is_integer(value_type):
+        return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
+    if pa.types.is_floating(value_type):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=value))
+    if pa.types.is_binary(value_type):
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if pa.types.is_null(value_type):
         raise ValueError(
-            f"Value is of type {type(values[0])}, "
-            "which is not a supported tf.train.Feature storage type "
-            "(bytes, float, or int)."
+            "Unable to infer type from partially missing column. "
+            "Try setting read parallelism = 1, or use an input data source which "
+            "explicitly specifies the schema."
         )
+    raise ValueError(
+        f"Value is of type {value_type}, "
+        "which we cannot convert to a supported tf.train.Feature storage type "
+        "(bytes, float, or int)."
+    )
 
 
 # Adapted from https://github.com/vahidk/tfrecord/blob/74b2d24a838081356d993ec0e147eaf59ccd4c84/tfrecord/reader.py#L16-L96  # noqa: E501

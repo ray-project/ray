@@ -54,9 +54,17 @@ def unify_schemas(
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
+    import pyarrow as pa
 
     schemas_to_unify = []
     schema_tensor_field_overrides = {}
+    # column rollup for opaque (null-type) lists here
+    cols_with_null_list = set()
+    for schema in schemas:
+        for col_name in schema.names:
+            col_type = schema.field(col_name).type
+            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
+                cols_with_null_list.add(col_name)
 
     if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schemas[0].types):
         # If we have pyarrow extension types that may potentially be variable shaped,
@@ -81,6 +89,24 @@ def unify_schemas(
                         f"but schema is not ArrayTensorType: {tensor_array_types[0]}"
                     )
                 schema_tensor_field_overrides[col_idx] = new_type
+
+    if cols_with_null_list:
+        for col_name in cols_with_null_list:
+            scalar_type = None
+            for schema in schemas:
+                col_type = schema.field(col_name).type
+                if not pa.types.is_list(col_type) or not pa.types.is_null(
+                    col_type.value_type
+                ):
+                    scalar_type = col_type
+                    break
+            if scalar_type is not None:
+                col_idx = schema.get_field_index(col_name)
+                schema_tensor_field_overrides[col_idx] = scalar_type
+
+        # if any of the columns in any block has the opaque list type,
+        # override with the scalar type
+    if schema_tensor_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
             for col_idx, col_new_type in schema_tensor_field_overrides.items():
@@ -114,7 +140,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
                     "_concatenate_chunked_arrays should only be used on non-tensor "
                     f"extension types, but got a chunked array of type {type_}."
                 )
-            assert type_ == arr.type
+            assert type_ == arr.type, f"Types mismatch: {type_} != {arr.type}"
         # Add chunks for this chunked array to flat chunk list.
         chunks.extend(arr.chunks)
     # Construct chunked array on flat list of chunks.
@@ -130,6 +156,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
+    import pyarrow as pa
 
     if not blocks:
         # Short-circuit on empty list of blocks.
@@ -138,8 +165,18 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     if len(blocks) == 1:
         return blocks[0]
 
+    cols_with_null_list = set()
+    for b in blocks:
+        for col_name in b.schema.names:
+            col_type = b.schema.field(col_name).type
+            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
+                cols_with_null_list.add(col_name)
+
     schema = blocks[0].schema
-    if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schema.types):
+    if (
+        any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
+        or cols_with_null_list
+    ):
         # Custom handling for extension array columns.
         cols = []
         for col_name in schema.names:
@@ -159,6 +196,30 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                     [chunk for ca in col_chunked_arrays for chunk in ca.chunks]
                 )
             else:
+                if col_name in cols_with_null_list:
+                    scalar_type = None
+                    for arr in col_chunked_arrays:
+                        if not pa.types.is_list(arr.type) or not pa.types.is_null(
+                            arr.type.value_type
+                        ):
+                            scalar_type = arr.type
+                            break
+
+                    for c_idx in range(len(col_chunked_arrays)):
+                        c = col_chunked_arrays[c_idx]
+                        if not pa.types.is_list(c.type) or not pa.types.is_null(
+                            c.type.value_type
+                        ):
+                            col_chunked_arrays[c_idx] = c
+                        elif pa.types.is_null(c.type.value_type):
+                            if pa.types.is_list(scalar_type):
+                                col_chunked_arrays[c_idx] = col_chunked_arrays[
+                                    c_idx
+                                ].cast(scalar_type)
+                            else:
+                                col_chunked_arrays[c_idx] = pa.chunked_array(
+                                    [pa.nulls(c.length(), type=scalar_type)]
+                                )
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
             cols.append(col)
 
