@@ -2640,8 +2640,6 @@ class Dataset(Generic[T]):
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             write_args: Additional write args to pass to the datasource.
         """
-
-        ctx = DatasetContext.get_current()
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -2655,37 +2653,71 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+        if hasattr(datasource, "write"):
+            # If the write operator succeeds, the resulting Dataset is a list of
+            # WriteResult (one element per write task). Otherwise, an error will
+            # be raised. The Datasource can handle execution outcomes with the
+            # on_write_complete() and on_write_failed().
+            def transform(blocks: Iterable[Block], ctx, fn) -> Iterable[Block]:
+                return [[datasource.write(blocks, ctx, **write_args)]]
 
-        # TODO(ekl) remove this feature flag.
-        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-            write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                blocks, metadata, ray_remote_args=ray_remote_args, **write_args
-            )
-        else:
-            # Prepare write in a remote task so that in Ray client mode, we
-            # don't do metadata resolution from the client machine.
-            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
-            write_results: List[ObjectRef[WriteResult]] = ray.get(
-                do_write.remote(
-                    datasource,
-                    ctx,
-                    blocks,
-                    metadata,
+            plan = self._plan.with_stage(
+                OneToOneStage(
+                    "write",
+                    transform,
+                    "tasks",
                     ray_remote_args,
-                    _wrap_arrow_serialization_workaround(write_args),
+                    fn=lambda x: x,
                 )
             )
+            try:
+                self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
+                datasource.on_write_complete(
+                    ray.get(self._write_ds._plan.execute().get_blocks())
+                )
+            except Exception as e:
+                datasource.on_write_failed([], e)
+                raise
+        else:
+            ctx = DatasetContext.get_current()
+            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
-        progress = ProgressBar("Write Progress", len(write_results))
-        try:
-            progress.block_until_complete(write_results)
-            datasource.on_write_complete(ray.get(write_results))
-        except Exception as e:
-            datasource.on_write_failed(write_results, e)
-            raise
-        finally:
-            progress.close()
+            # TODO(ekl) remove this feature flag.
+            if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+                write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
+                    blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+                )
+            else:
+                logger.warning(
+                    "The Datasource.do_write() is deprecated in "
+                    "Ray 2.4 and will be removed in future release. Use "
+                    "Datasource.write() instead."
+                )
+                # Prepare write in a remote task so that in Ray client mode, we
+                # don't do metadata resolution from the client machine.
+                do_write = cached_remote_fn(
+                    _do_write, retry_exceptions=False, num_cpus=0
+                )
+                write_results: List[ObjectRef[WriteResult]] = ray.get(
+                    do_write.remote(
+                        datasource,
+                        ctx,
+                        blocks,
+                        metadata,
+                        ray_remote_args,
+                        _wrap_arrow_serialization_workaround(write_args),
+                    )
+                )
+
+            progress = ProgressBar("Write Progress", len(write_results))
+            try:
+                progress.block_until_complete(write_results)
+                datasource.on_write_complete(ray.get(write_results))
+            except Exception as e:
+                datasource.on_write_failed(write_results, e)
+                raise
+            finally:
+                progress.close()
 
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that
