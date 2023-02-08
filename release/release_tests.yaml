@@ -3964,25 +3964,24 @@
 
 - name: many_nodes_multi_master_test
   group: core-daily-test
-  working_dir: nightly_tests
+  working_dir: benchmarks
   legacy:
     test_name: many_nodes_multi_master_test
-    test_suite: nightly_tests
+    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
+  env: staging
   cluster:
-    cluster_env: many_nodes_tests/app_config.yaml
-    cluster_compute: many_nodes_tests/compute_config.yaml
+    cluster_env: distributed/many_nodes_tests/app_config.yaml
+    cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
-    timeout: 7200
-    script: python many_nodes_tests/multi_master_test.py
+    timeout: 3600
+    script: python distributed/many_nodes_tests/multi_master_test.py --no-wait --cpus-per-actor=0.2 --total-actors 10000 20000
+    type: job
     wait_for_nodes:
-      num_nodes: 251
-
-    type: sdk_command
-    file_manager: sdk
+      num_nodes: 500
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
