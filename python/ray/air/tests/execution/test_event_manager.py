@@ -4,6 +4,7 @@ from typing import Any, Type
 import pytest
 
 import ray
+from ray.air.execution._internal import Barrier
 from ray.air.execution._internal.event_manager import RayEventManager
 from ray.exceptions import RayTaskError
 
@@ -156,6 +157,36 @@ def test_timeout(ray_start_4_cpus):
     assert taken < 3
 
     assert not event_manager._tracked_futures
+
+
+def test_task_barrier(ray_start_4_cpus):
+    event_manager = RayEventManager()
+
+    seen = set()
+
+    def on_completion(barrier: Barrier):
+        seen.update(barrier.get_results())
+
+    barrier = Barrier(max_results=4, on_completion=on_completion)
+
+    event_manager.track_futures(
+        [
+            succeeding.remote("a"),
+            succeeding.remote("b"),
+            succeeding.remote("c"),
+            succeeding.remote("d"),
+            sleeping.remote(1, "e"),
+        ],
+        on_result=barrier.arrive,
+    )
+
+    event_manager.wait(num_results=None)
+
+    assert "a" in seen
+    assert "b" in seen
+    assert "c" in seen
+    assert "d" in seen
+    assert "e" not in seen
 
 
 if __name__ == "__main__":

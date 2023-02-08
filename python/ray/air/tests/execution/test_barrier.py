@@ -11,37 +11,6 @@ def _raise(exception_type: Type[Exception] = RuntimeError, msg: Optional[str] = 
     return _raise_exception
 
 
-def test_barrier_no_args():
-    """Test that a barrier with no arguments works as expected:
-
-    - Completion callback is never invoked
-    - Num results is as expected
-    - Num errors is as expected
-    - flush resets the data
-    """
-    barrier = Barrier(on_completion=_raise(RuntimeError))
-
-    assert barrier.num_results == 0
-    assert barrier.num_errors == 0
-
-    for i in range(10):
-        barrier.arrive(i)
-
-    assert barrier.num_results == 10
-    assert barrier.num_errors == 0
-
-    for i in range(5):
-        barrier.error(i)
-
-    assert barrier.num_results == 10
-    assert barrier.num_errors == 5
-
-    barrier.flush()
-
-    assert barrier.num_results == 0
-    assert barrier.num_errors == 0
-
-
 def test_barrier_max_results():
     """Test the `max_results` attribute.
 
@@ -49,7 +18,7 @@ def test_barrier_max_results():
     - Assert that the barrier completion callback is not invoked with num_results<10
     - Assert that callback is invoked with num_results=10
     - Assert that callback is not invoked again when more events arrive
-    - Assert that more events can arrive without triggering the callback after flushing
+    - Assert that more events can arrive without triggering the callback after resetting
     """
     barrier = Barrier(max_results=10, on_completion=_raise(AssertionError))
 
@@ -69,39 +38,13 @@ def test_barrier_max_results():
     # Further events will not trigger callback again
     barrier.arrive(11)
 
-    barrier.flush()
+    barrier.reset()
 
     assert not barrier.completed
 
     # After flushing more events can arrive
     barrier.arrive(12)
     assert barrier.num_results == 1
-
-
-def test_barrier_on_first_error():
-    """Test the `on_first_error` attribute.
-
-    - Set on_first_error and max_results=3
-    - Assert that Barrier.error() triggers the callback
-    - Assert that barrier is set to completed
-    - Assert that subsequent errors do not trigger the callback again
-    - Assert that subsequent arrivals do not trigger the callback again
-    """
-    barrier = Barrier(max_results=3, on_first_error=_raise(AssertionError))
-
-    barrier.arrive(1)
-
-    assert barrier.num_errors == 0
-    with pytest.raises(AssertionError):
-        barrier.error(2)
-    assert barrier.num_errors > 0
-
-    assert barrier.num_results == 1
-    assert barrier.num_errors == 1
-
-    # Subsequent errors do not trigger the callback again
-    barrier.error(3)
-    barrier.arrive(4)
 
 
 if __name__ == "__main__":
