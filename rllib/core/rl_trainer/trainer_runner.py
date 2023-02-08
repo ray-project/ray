@@ -106,14 +106,13 @@ class TrainerRunner:
         return self._is_local
 
     def update(
-        
         self,
         batch: MultiAgentBatch,
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
-        block: bool = True
+        block: bool = True,
     ) -> List[Mapping[str, Any]]:
         """Do one gradient based update to the RLTrainer(s).
 
@@ -153,19 +152,18 @@ class TrainerRunner:
             )
 
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        if reduce_fn is None:
+        if reduce_fn is None or not results:
             return results
-        return reduce_fn(results, block=block)
+        return reduce_fn(results)
 
     def _distributed_update(
-        
         self,
         batch: MultiAgentBatch,
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
-        block: bool = True
+        block: bool = True,
     ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
 
@@ -194,9 +192,15 @@ class TrainerRunner:
                 batch = self._in_queue.popleft()
                 batches = self._shard_sample_batch(batch)
                 self._worker_manager.foreach_actor_async(
-                    [lambda w: w.update(b,minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn) for b in batches]
+                    [
+                        lambda w: w.update(
+                            b,
+                            minibatch_size=minibatch_size,
+                            num_iters=num_iters,
+                            reduce_fn=reduce_fn,
+                        )
+                        for b in batches
+                    ]
                 )
 
         return self._get_results(results)
@@ -255,10 +259,7 @@ class TrainerRunner:
             results = [self._trainer.additional_update(**kwargs)]
         else:
             results = self._worker_manager.foreach_actor(
-                [
-                    lambda w: w.additional_update(**kwargs)
-                    for worker in self._workers
-                ]
+                [lambda w: w.additional_update(**kwargs) for worker in self._workers]
             )
             results = self._get_results(results)
             if reduce_fn is None:
@@ -326,14 +327,17 @@ class TrainerRunner:
         if self.is_local:
             self._trainer.set_weights(weights)
         else:
-            ray.get([worker.set_weights.remote(weights) for worker in self._workers])
+            self._worker_manager.foreach_actor(lambda w: w.set_weights(weights))
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
             weights = self._trainer.get_weights(module_ids)
         else:
             worker = next(iter(self._workers))
-            weights = ray.get(worker.get_weights.remote(module_ids))
+            weights = self._worker_manager.foreach_actor(
+                lambda w: w.get_weights(module_ids), remote_actor_ids=[worker]
+            )
+            weights = self._get_results(weights)
 
         return convert_to_numpy(weights)
 
@@ -346,8 +350,9 @@ class TrainerRunner:
             return self._trainer.get_state()
         else:
             worker = next(iter(self._workers))
-            results = self._worker_manager.foreach_actor(lambda w: w.get_state(), 
-                remote_actor_ids=[worker])
+            results = self._worker_manager.foreach_actor(
+                lambda w: w.get_state(), remote_actor_ids=[worker]
+            )
             return self._get_results(results)
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:

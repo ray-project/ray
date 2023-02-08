@@ -208,7 +208,9 @@ class TestTrainerRunner(unittest.TestCase):
             min_loss = float("inf")
             for iter_i in range(1000):
                 batch = reader.next()
-                results = runner.update(batch.as_multi_agent(), block=False)
+                results = runner.update(
+                    batch.as_multi_agent(), block=False, reduce_fn=None
+                )
                 if not results:
                     continue
                 loss = np.mean([res["loss"]["total_loss"] for res in results])
