@@ -14,6 +14,14 @@ Tuner
     Tuner
     Tuner.fit
 
+Tuner Configuration
+~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    TuneConfig
+
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~
 
