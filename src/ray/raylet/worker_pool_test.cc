@@ -41,7 +41,7 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
+  MockWorkerClient() {}
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
@@ -77,9 +77,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   bool last_exit_forced = false;
   int64_t exit_count = 0;
   std::list<rpc::ClientCallback<rpc::ExitReply>> callbacks_;
-
- private:
-  instrumented_io_context &io_service_;
 };
 
 static std::unordered_map<std::string, int> runtime_env_reference;
@@ -278,7 +275,7 @@ class WorkerPoolMock : public WorkerPool {
                                                                worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
-    auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
+    auto rpc_client = std::make_shared<MockWorkerClient>();
     worker->Connect(rpc_client);
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
     if (set_process && !proc.IsNull()) {
