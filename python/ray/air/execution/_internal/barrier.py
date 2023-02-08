@@ -7,34 +7,56 @@ class Barrier:
     A barrier can be used to collect multiple results and process them in bulk once
     a certain count or a timeout is reached.
 
-    For instance, if ``max_results=N``, the :meth:`on_completion` callback will be
+    For instance, if ``max_results=N``, the ``on_completion`` callback will be
     invoked once :meth:`arrive` or :meth:`error` have been called ``N`` times
     (in total).
 
-    The :meth:`on_first_error` callback will be
+    The completion callback will only be invoked once, even if more results
+    arrive after completion. The collected results and errors can be flushed
+    with :meth:`flush`, after which the callback may be invoked again.
+
+    The completion callback should expect one argument, which is the barrier
+    object that completed.
+
+    If ``max_results=None``, an infinite number of events are collected. In this
+    case, the ``on_completion`` callback will never be invoked.
+
+    The ``on_first_error`` callback will be
     invoked once :meth:`error` has been called ``1`` time.
 
-    ``max_results`` can be ``None``, in which case an infinite amount of results
-    will be collected. In this case, the :meth:`on_completion` callback
-    will not be invoked on successful task resolution.
+    The first error callback should expect one argument, which is the barrier
+    object that received the error.
+
+    The first error callback will only be invoked once, even if more errors
+    arrive afterwards. The collected results and errors can be flushed
+    with :meth:`flush`, after which the callback may be invoked again.
 
     Args:
         max_results: Maximum number of results to collect before a call to
             :meth:`wait` resolves or the :meth:`on_completion` callback is invoked.
             If ``None``, will collect an infinite number of results.
+        on_completion: Callback to invoke when ``max_results`` results and errors
+            arrived at the barrier.
+        on_first_error: Callback to invoke when meth:`error` was invoked for the
+            first time.
 
     """
 
-    def __init__(self, max_results: Optional[int] = None):
+    def __init__(
+        self,
+        max_results: Optional[int] = None,
+        on_completion: Optional[Callable[["Barrier"], None]] = None,
+        on_first_error: Optional[Callable[["Barrier"], None]] = None,
+    ):
         self._max_results = max_results
 
         # on_completion callback
         self._completed = False
-        self._on_completion = None
+        self._on_completion = on_completion
 
         # on_first_error_callback
         self._error_callback_called = False
-        self._on_first_error = None
+        self._on_first_error = on_first_error
 
         # Collect received results + errors
         self._results: List[Tuple[Any]] = []
@@ -100,51 +122,6 @@ class Barrier:
 
             if self._on_completion:
                 self._on_completion(self)
-
-    def on_completion(self, callback: Callable[["Barrier"], None]) -> "Barrier":
-        """Define callback to be invoked when the barrier is full.
-
-        Whenever ``max_results`` results and errors arrived at the barrier,
-        the completion callback is invoked.
-
-        The completion callback should expect one argument, which is the barrier
-        object that completed.
-
-        The completion callback will only be invoked once, even if more results
-        arrive after completion. The collected results and errors can be flushed
-        with :meth:`flush`, after which the callback may be invoked again.
-
-        If ``max_results=None``, an infinite number of events are collected. In this
-        case, the ``on_completion`` callback will never be invoked.
-
-        Args:
-            callback: Callback to invoke when ``max_results`` results and errors
-            arrived at the barrier.
-
-        """
-        self._on_completion = callback
-        return self
-
-    def on_first_error(self, callback: Callable[["Barrier"], None]) -> "Barrier":
-        """Define callback to be invoked when the first error arrived.
-
-        When :meth:`error` is called the first time, the first error callback is
-        invoked.
-
-        The first error callback should expect one argument, which is the barrier
-        object that received the error.
-
-        The first error callback will only be invoked once, even if more errors
-        arrive afterwards. The collected results and errors can be flushed
-        with :meth:`flush`, after which the callback may be invoked again.
-
-        Args:
-            callback: Callback to invoke when meth:`error` was invoked for the
-                first time.
-
-        """
-        self._on_first_error = callback
-        return self
 
     @property
     def completed(self) -> bool:

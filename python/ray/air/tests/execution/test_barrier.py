@@ -19,8 +19,7 @@ def test_barrier_no_args():
     - Num errors is as expected
     - flush resets the data
     """
-    barrier = Barrier()
-    barrier.on_completion(_raise(RuntimeError))
+    barrier = Barrier(on_completion=_raise(RuntimeError))
 
     assert barrier.num_results == 0
     assert barrier.num_errors == 0
@@ -52,8 +51,7 @@ def test_barrier_max_results():
     - Assert that callback is not invoked again when more events arrive
     - Assert that more events can arrive without triggering the callback after flushing
     """
-    barrier = Barrier(max_results=10)
-    barrier.on_completion(_raise(AssertionError))
+    barrier = Barrier(max_results=10, on_completion=_raise(AssertionError))
 
     for i in range(9):
         barrier.arrive(i)
@@ -89,8 +87,7 @@ def test_barrier_on_first_error():
     - Assert that subsequent errors do not trigger the callback again
     - Assert that subsequent arrivals do not trigger the callback again
     """
-    barrier = Barrier(max_results=3)
-    barrier.on_first_error(_raise(AssertionError))
+    barrier = Barrier(max_results=3, on_first_error=_raise(AssertionError))
 
     barrier.arrive(1)
 
