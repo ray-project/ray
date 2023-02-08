@@ -595,7 +595,6 @@ def parse_usage(usage: Usage) -> List[str]:
             used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2**30
             formatted_used = format_memory(used)
             formatted_total = format_memory(total)
             line = f"{formatted_used}/{formatted_total} {resource}"
