@@ -28,7 +28,7 @@ How do I configure the memory monitor?
 
 The memory monitor is controlled by the following environment variables:
 
-- ``RAY_memory_monitor_refresh_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. Task killing is disabled when this value is 0.
+- ``RAY_memory_monitor_refresh_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. Task killing is disabled when this value is 0. The memory monitor selects and kills one task at a time and waits for it to be killed before choosing another one, regardless of how frequent the memory monitor runs.
 
 - ``RAY_memory_usage_threshold (float, defaults to 0.95)`` is the threshold when the node is beyond the memory
   capacity. If the memory usage is above this fraction it will start killing processes to free up memory. Ranges from [0, 1].
@@ -39,32 +39,44 @@ Using the Memory Monitor
 Retry policy
 ~~~~~~~~~~~~
 
-When a task or actor is killed by the memory monitor it will be retried with exponential backoff. The retry delay is calculated as
-
-.. code-block:: bash
-
-    delay_seconds = 2 ^ (retry_attempt - 1)
-
-The first ``retry_attempt`` will be delayed by 1 second. There is a cap on the maximum delay, which is 60 seconds.
-
-This retry is applied only when the worker is killed by the memory monitor. For other types of failures (e.g., node failure), it uses :ref:`max_retries <task-fault-tolerance>`, or :ref:`max_restarts <actor-fault-tolerance>` and :ref:`max_task_retries <actor-fault-tolerance>` depending on whether it is a task or actor.
+When a task or actor is killed by the memory monitor it will be retried with exponential backoff. There is a cap on the retry delay, which is 60 seconds. There is no limit to the number of retries when the task is killed by the memory monitor. For other types of failures (e.g., node failure), it uses :ref:`max_retries <task-fault-tolerance>`, or :ref:`max_restarts <actor-fault-tolerance>` and :ref:`max_task_retries <actor-fault-tolerance>` depending on whether it is a task or actor.
 
 Worker killing policy
 ~~~~~~~~~~~~~~~~~~~~~
 
-The memory monitor will ensure liveness by having at least one task or actor execute for each caller. If the last task of a caller is killed then it will fail the workload. Refer to :ref:`how to address memory issues <addressing-memory-issues>` on how to adjust the workload to make it pass when this happens.
+The memory monitor will ensure liveness by having at least one task or actor execute for each caller. If the last task of a caller is killed then it will fail the workload. Refer to :ref:`how to address memory issues <addressing-memory-issues>` on how to adjust the workload to make it pass when this happens. Refer to the :ref:`code example below <last-task-example>` for how this works.
 
 When a worker needs to be killed, the policy first prioritizes tasks that are retriable, i.e. when ``max_retries`` or ``max_restarts`` is > 0. This is done to minimize workload failure.
 
 .. note::
 
-    Actors by default are not retriable since :ref:`max_restarts <actor-fault-tolerance>` defaults to 0, therefore tasks are preferred to actors when it comes to what gets killed first. Also, actors will retry based on its ``max_restarts`` settings, even when it is killed by the memory monitor.
+    Actors by default are not retriable since :ref:`max_restarts <actor-fault-tolerance>` defaults to 0. Therefore, by default, tasks are preferred to actors when it comes to what gets killed first.
 
-When there are multiple callers it will kill a task from the caller with the most number of running tasks. This is done to ensure fairness and allow each caller to make progress.
+    The retry limit on an Actor is always :ref:`max_restarts <actor-fault-tolerance>`, regardless of how it was killed.
 
-For tasks that share the same caller, the last one to start executing will be prioritized for killing.
+When there are multiple callers that has created tasks, the policy will pick a task from the caller with the most number of running tasks. If two callers have the same number of tasks it picks the caller whose earliest task has a later start time. This is done to ensure fairness and allow each caller to make progress.
 
-The memory monitor selects and kills one task at a time and waits for it to be killed before choosing another one, regardless of how frequent the memory monitor runs.
+Amongst the tasks that share the same caller, the latest started task will be killed first.
+
+Below is an example to demonstrate the policy. In the example we have a script that creates two tasks, which in turn creates four more tasks each. The tasks are colored such that each color forms a "group" of tasks where they belong to the same caller.
+
+.. image:: ../images/oom_killer_example.svg
+  :width: 1024
+  :alt: Initial state of the task graph
+
+If, at this point, the node runs out of memory, it will pick a task from the caller with the most number of tasks, and kill its task whose started the last:
+
+.. image:: ../images/oom_killer_example_killed_one.svg
+  :width: 1024
+  :alt: Initial state of the task graph
+
+If, at this point, the node still runs out of memory, the process will repeat:
+
+.. image:: ../images/oom_killer_example_killed_two.svg
+  :width: 1024
+  :alt: Initial state of the task graph
+
+.. _last-task-example:
 
 .. dropdown:: Example: Workloads fails if the last task of the caller is killed
 
@@ -114,8 +126,8 @@ The memory monitor selects and kills one task at a time and waits for it to be k
 
         $ python two_actors.py
         
-        first actor was killed by the memory monitor.
-        second actor finished.
+        First started actor, which is retriable, was killed by the memory monitor.
+        Second started actor, which is not-retriable, finished.
 
 .. _addressing-memory-issues:
 

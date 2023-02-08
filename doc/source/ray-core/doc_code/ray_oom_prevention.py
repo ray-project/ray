@@ -78,10 +78,10 @@ try:
     ray.get(first_actor_task)
 except ray.exceptions.OutOfMemoryError as ex:
     error_thrown = True
-    print("first actor was killed by the memory monitor.")
+    print("First started actor, which is retriable, was killed by the memory monitor.")
 assert error_thrown
 
 ray.get(second_actor_task)
-print("second actor finished.")
+print("Second started actor, which is not-retriable, finished.")
 # __two_actors_end__
 # fmt: on
