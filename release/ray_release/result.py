@@ -48,7 +48,8 @@ class ExitCode(enum.Enum):
     CLUSTER_STARTUP_ERROR = 15
     LOCAL_ENV_SETUP_ERROR = 16
     REMOTE_ENV_SETUP_ERROR = 17
-    ANYSCALE_ERROR = 18
+    FETCH_RESULT_ERROR = 18
+    ANYSCALE_ERROR = 19
 
     # Infra timeouts (retryable)
     RAY_WHEELS_TIMEOUT = 30
@@ -56,7 +57,7 @@ class ExitCode(enum.Enum):
     CLUSTER_STARTUP_TIMEOUT = 32
     CLUSTER_WAIT_TIMEOUT = 33
 
-    # Command errors
+    # Command errors - these are considered application errors
     COMMAND_ERROR = 40
     COMMAND_ALERT = 41
     COMMAND_TIMEOUT = 42
