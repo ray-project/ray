@@ -1,5 +1,5 @@
-Ray State API
-=============
+State API
+=========
 
 .. _state-api-ref:
 

@@ -19,6 +19,7 @@ Computations / Descriptive Stats
 --------------------------------
 
 .. autosummary::
+   :toctree: doc/
 
    grouped_dataset.GroupedDataset.count
    grouped_dataset.GroupedDataset.sum
@@ -31,6 +32,7 @@ Function Application
 --------------------
 
 .. autosummary::
+   :toctree: doc/
 
    grouped_dataset.GroupedDataset.aggregate
    grouped_dataset.GroupedDataset.map_groups
