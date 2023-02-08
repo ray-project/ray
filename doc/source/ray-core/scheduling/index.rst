@@ -111,6 +111,20 @@ they have higher precedence and data locality is no longer considered.
     :start-after: __locality_aware_scheduling_start__
     :end-before: __locality_aware_scheduling_end__
 
+GCS-based Actor Scheduling
+-------------------------
+
+When an actor is created with the (state-of-the-art) raylet-based actor scheduler, we rely on a raylet (where the actor's owner locates, 
+or randomly selected) to make a placement decision based on its local view of the cluster resources. Because there is not a unified 
+resource view across raylets, this actor scheduling might be unbalanced (overly packing at a few nodes) and inefficient (more spillbacks).
+These are inevitable drawbacks of a distributed scheduler.
+
+GCS-based actor scheduling is expected to resolve these issues. With a unified resource view, GCS, as a centralized scheduler, is able
+to schedule actors without any conflicts. 
+
+The existing scheduling strategies (i.e., ``DEFAULT``, ``SPREAD`` and ``NodeAffinitySchedulingStrategy``) are still supported. But different
+from the raylet-based one, GCS-based actor scheduler enforces these strategies only in GCS, where a unified resource view is maintained.
+
 More about Ray Scheduling
 -------------------------
 
@@ -122,3 +136,4 @@ More about Ray Scheduling
     placement-group
     memory-management
     ray-oom-prevention
+    gcs-based-actor-scheduling
