@@ -152,7 +152,7 @@ class ExecutionOptions:
 
     # Always preserve ordering of blocks, even if using operators that
     # don't require it.
-    preserve_order: bool = True
+    preserve_order: bool = False
 
 
 @dataclass
