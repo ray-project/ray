@@ -10,16 +10,16 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
+    _lazy_import_pyarrow_dataset,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -34,13 +34,13 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
+    MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    MongoDatasource,
     ReadTask,
     TextDatasource,
     TFRecordDatasource,
@@ -62,8 +62,8 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
-    import pyspark
     import pymongoarrow.api
+    import pyspark
     import tensorflow as tf
     import torch
 
