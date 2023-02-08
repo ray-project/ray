@@ -160,8 +160,7 @@ class ExecutionOptions:
     # don't require it.
     preserve_order: bool = True
 
-    # Whether to enable locality-aware task dispatch to actors. This only has an effect
-    # if preserve_order = False.
+    # Whether to enable locality-aware task dispatch to actors (on by default).
     actor_locality_enabled: bool = True
 
 

@@ -8,7 +8,6 @@ from ray.tests.conftest import *  # noqa
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorPool,
-    _LocalityManager,
     AutoscalingConfig,
     AutoscalingPolicy,
 )
@@ -412,54 +411,21 @@ class TestActorPool:
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
 
-    def test_locality_manager_indexing(self):
-        lm = _LocalityManager()
-        bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
-        for i, b in enumerate(bundles):
-            if i == 0:
-                # Test the unresolvable case.
-                fake_loc_map[b] = None
-            elif i < 5:
-                fake_loc_map[b] = "node1"
-            else:
-                fake_loc_map[b] = "node2"
-        lm._get_location = lambda b: fake_loc_map[b]
-        assert lm.num_tracked_bundles() == 0
-        for b in bundles:
-            lm.start_tracking(b)
-        assert lm.get_bundles_at_location("node1") == bundles[1:5]
-        assert lm.get_bundles_at_location("node2") == bundles[5:]
-        assert lm.get_bundles_at_location("node3") == []
-        assert lm.num_tracked_bundles() == 10
-        for b in bundles:
-            lm.stop_tracking(b)
-        assert lm.num_tracked_bundles() == 0
-        assert lm.get_bundles_at_location("node1") == []
-        assert lm.get_bundles_at_location("node2") == []
-        assert lm.get_bundles_at_location("node3") == []
-
     def test_locality_manager_actor_ranking(self):
         pool = _ActorPool(max_tasks_in_flight=2)
-        lm = _LocalityManager()
 
         # Setup bundle mocks.
-        pool._locality_manager = lm
         bundles = make_ref_bundles([[0] for _ in range(10)])
         fake_loc_map = {}
         for i, b in enumerate(bundles):
             fake_loc_map[b] = "node1"
-        lm._get_location = lambda b: fake_loc_map[b]
-        assert lm.num_tracked_bundles() == 0
-        for b in bundles:
-            lm.start_tracking(b)
+        pool._get_location = lambda b: fake_loc_map[b]
 
         # Setup an actor on each node.
         actor1 = PoolWorker.remote(node_id="node1")
         ready_ref = actor1.get_location.remote()
         pool.add_pending_actor(actor1, ready_ref)
         ray.get(ready_ref)
-        assert pool.pick_actor_and_bundle_locality_aware(bundles) is None
         pool.pending_to_running(ready_ref)
         actor2 = PoolWorker.remote(node_id="node2")
         ready_ref = actor2.get_location.remote()
@@ -468,37 +434,29 @@ class TestActorPool:
         pool.pending_to_running(ready_ref)
 
         # Actors on node1 should be preferred.
-        res1 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res1[0] == actor1
-        assert len(bundles) == 9
-        res2 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res2[0] == actor1
-        assert len(bundles) == 8
+        res1 = pool.pick_actor(bundles[0])
+        assert res1 == actor1
+        res2 = pool.pick_actor(bundles[1])
+        assert res2 == actor1
 
         # Fallback to remote actors.
-        res3 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res3[0] == actor2
-        assert len(bundles) == 7
-        res4 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res4[0] == actor2
-        assert len(bundles) == 6
-        res5 = pool.pick_actor_and_bundle_locality_aware(bundles)
+        res3 = pool.pick_actor(bundles[2])
+        assert res3 == actor2
+        res4 = pool.pick_actor(bundles[3])
+        assert res4 == actor2
+        res5 = pool.pick_actor(bundles[4])
         assert res5 is None
 
     def test_locality_manager_busyness_ranking(self):
         pool = _ActorPool(max_tasks_in_flight=2)
-        lm = _LocalityManager()
 
         # Setup bundle mocks.
-        pool._locality_manager = lm
         bundles = make_ref_bundles([[0] for _ in range(10)])
         fake_loc_map = {}
+        # Also test unknown location handling.
         for i, b in enumerate(bundles):
-            fake_loc_map[b] = "node1"
-        lm._get_location = lambda b: fake_loc_map[b]
-        assert lm.num_tracked_bundles() == 0
-        for b in bundles:
-            lm.start_tracking(b)
+            fake_loc_map[b] = None
+        pool._get_location = lambda b: fake_loc_map[b]
 
         # Setup two actors on the same node.
         actor1 = PoolWorker.remote(node_id="node1")
@@ -514,60 +472,17 @@ class TestActorPool:
 
         # Fake actor 2 as more busy.
         pool._num_tasks_in_flight[actor2] = 1
-        res1 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res1[0] == actor1
-        assert len(bundles) == 9
+        res1 = pool.pick_actor(bundles[0])
+        assert res1 == actor1
 
         # Fake actor 2 as more busy again.
         pool._num_tasks_in_flight[actor2] = 2
-        res2 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res2[0] == actor1
-        assert len(bundles) == 8
+        res2 = pool.pick_actor(bundles[0])
+        assert res2 == actor1
 
         # Nothing left
-        res3 = pool.pick_actor_and_bundle_locality_aware(bundles)
+        res3 = pool.pick_actor(bundles[0])
         assert res3 is None
-        assert len(bundles) == 8
-
-    def test_locality_manager_bundle_ranking(self):
-        pool = _ActorPool(max_tasks_in_flight=2)
-        lm = _LocalityManager()
-
-        # Setup bundle mocks.
-        pool._locality_manager = lm
-        bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
-        for i, b in enumerate(bundles):
-            if i == 9:
-                fake_loc_map[b] = "node2"
-            else:
-                fake_loc_map[b] = "node1"
-        lm._get_location = lambda b: fake_loc_map[b]
-        assert lm.num_tracked_bundles() == 0
-        for b in bundles:
-            lm.start_tracking(b)
-
-        # Setup an actor on node2 only.
-        actor1 = PoolWorker.remote(node_id="node2")
-        ready_ref = actor1.get_location.remote()
-        pool.add_pending_actor(actor1, ready_ref)
-        ray.get(ready_ref)
-        assert pool.pick_actor_and_bundle_locality_aware(bundles) is None
-        pool.pending_to_running(ready_ref)
-
-        # We should select the actor + bundle on node2.
-        res1 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res1[0] == actor1
-        assert fake_loc_map[res1[1]] == "node2"
-        assert len(bundles) == 9
-
-        # Test fallback.
-        res2 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res2 is not None
-        assert len(bundles) == 8
-        res3 = pool.pick_actor_and_bundle_locality_aware(bundles)
-        assert res3 is None
-        assert len(bundles) == 8
 
 
 class TestAutoscalingConfig:

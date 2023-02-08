@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass
-from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional, Deque
+from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
 import ray
 from ray.data.block import Block, BlockMetadata
@@ -77,10 +77,7 @@ class ActorPoolMapOperator(MapOperator):
         return len(self._bundle_queue)
 
     def start(self, options: ExecutionOptions):
-        # Actor locality optimization doesn't support preserve_order right now.
-        self._actor_locality_enabled = (
-            options.actor_locality_enabled and not options.preserve_order
-        )
+        self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
 
         # Create the actor workers and add them to the pool.
@@ -95,7 +92,6 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
-        self._actor_pool._locality_manager.start_tracking(bundle)
         self._bundle_queue.append(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
@@ -111,18 +107,13 @@ class ActorPoolMapOperator(MapOperator):
         while self._bundle_queue:
             # Pick an actor from the pool.
             if self._actor_locality_enabled:
-                selected_pair = self._actor_pool.pick_actor_and_bundle_locality_aware(
-                    self._bundle_queue
-                )
-                if selected_pair is None:
-                    break
-                actor, bundle = selected_pair
+                actor = self._actor_pool.pick_actor(self._bundle_queue[0])
             else:
                 actor = self._actor_pool.pick_actor()
-                if actor is None:
-                    # No actors available for executing the next task.
-                    break
-                bundle = self._bundle_queue.popleft()
+            if actor is None:
+                # No actors available for executing the next task.
+                break
+            bundle = self._bundle_queue.popleft()
             # Submit the map task.
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
@@ -442,8 +433,6 @@ class _ActorPool:
         # Whether actors that become idle should be eagerly killed. This is False until
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
-        # Tracks locations of bundles that are to be executed by this actor pool.
-        self._locality_manager = _LocalityManager()
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
@@ -484,85 +473,45 @@ class _ActorPool:
         self._actor_locations[actor] = ray.get(ready_ref)
         return True
 
-    def pick_actor(self) -> Optional[ray.actor.ActorHandle]:
+    def pick_actor(
+        self, locality_hint: Optional[RefBundle] = None
+    ) -> Optional[ray.actor.ActorHandle]:
         """Provides the least heavily loaded running actor in the pool for task
         submission.
 
         None will be returned if all actors are either at capacity (according to
         max_tasks_in_flight) or are still pending.
+
+        Args:
+            locality_hint: Try to pick an actor that is local for this bundle.
         """
         if not self._num_tasks_in_flight:
             # Actor pool is empty or all actors are still pending.
             return None
 
-        actor = min(
-            self._num_tasks_in_flight.keys(),
-            key=lambda actor: self._num_tasks_in_flight[actor],
-        )
+        if locality_hint:
+            preferred_loc = self._get_location(locality_hint)
+        else:
+            preferred_loc = None
+
+        def penalty_key(actor):
+            """Returns the key that should be minimized for the best actor.
+
+            We prioritize valid actors, those with argument locality, and those that
+            are not busy, in that order.
+            """
+            busyness = self._num_tasks_in_flight[actor]
+            invalid = busyness >= self._max_tasks_in_flight
+            requires_remote_fetch = self._actor_locations[actor] != preferred_loc
+            return (invalid, requires_remote_fetch, busyness)
+
+        actor = min(self._num_tasks_in_flight.keys(), key=penalty_key)
         if self._num_tasks_in_flight[actor] >= self._max_tasks_in_flight:
             # All actors are at capacity.
             return None
         else:
             self._num_tasks_in_flight[actor] += 1
             return actor
-
-    def pick_actor_and_bundle_locality_aware(
-        self, bundles: Deque[RefBundle]
-    ) -> Optional[Tuple[ray.actor.ActorHandle, RefBundle]]:
-        """Picks a local actor and bundle pair, if possible.
-
-        We pick pairs based on the following order in decreasing preference:
-            (lightly loaded actor, local bundle)
-            (heavily loaded actor, local bundle)
-            (lightly loaded actor, remote bundle)
-            (heavily loaded actor, remote bundle)
-
-        If a pair is selected, the actor's max tasks in flight count will be
-        incremented, and the bundle will be popped from the bundle queue.
-
-        Returns:
-            None if all actors are at capacity or are pending.
-        """
-
-        assert len(bundles) == self._locality_manager.num_tracked_bundles(), (
-            len(bundles),
-            self._locality_manager.num_tracked_bundles(),
-        )
-
-        # Generate candidate list of [no_local, num_tasks_in_flight, actor]
-        candidates: List[Tuple[bool, int, ray.actor.ActorHandle]] = []
-        for actor, num_in_flight in self._num_tasks_in_flight.items():
-            if num_in_flight < self._max_tasks_in_flight:
-                actor_location = self._actor_locations[actor]
-                matching = self._locality_manager.get_bundles_at_location(
-                    actor_location
-                )
-                num_local = len(matching)
-                candidates.append((num_local == 0, num_in_flight, actor))
-
-        if not candidates:
-            # No valid actors to return.
-            return None
-
-        # Find the best candidate pair.
-        candidates.sort(key=lambda t: t[:2])
-        _, _, actor = candidates[0]
-
-        # Generate the pair.
-        actor_location = self._actor_locations[actor]
-        matching = self._locality_manager.get_bundles_at_location(actor_location)
-        if matching:
-            self._locality_hits += 1
-            bundle = matching[0]
-        else:
-            self._locality_misses += 1
-            bundle = bundles[0]
-
-        # Update tracking structures and return.
-        self._num_tasks_in_flight[actor] += 1
-        bundles.remove(bundle)
-        self._locality_manager.stop_tracking(bundle)
-        return (actor, bundle)
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""
@@ -682,47 +631,6 @@ class _ActorPool:
         """Kill the provided pending actor and remove it from the pool."""
         actor = self._pending_actors.pop(ready_ref)
         ray.kill(actor)
-
-
-class _LocalityManager:
-    def __init__(self):
-        """Manages a bidirectional index of RefBundle<>NodeId mappings.
-
-        This is used for fast lookup of bundles available on a particular node.
-        """
-        self._loc_to_bundles: Dict[
-            NodeIdStr, List[RefBundle]
-        ] = collections.defaultdict(list)
-        self._bundle_to_loc: Dict[RefBundle, Optional[NodeIdStr]] = {}
-        self._num_bundles = 0
-
-    def start_tracking(self, bundle: RefBundle) -> None:
-        """Start tracking a bundle in this index."""
-        loc = self._get_location(bundle)
-        if loc:
-            self._loc_to_bundles[loc].append(bundle)
-            self._bundle_to_loc[bundle] = loc
-        else:
-            self._bundle_to_loc[bundle] = None
-        self._num_bundles += 1
-
-    def stop_tracking(self, bundle: RefBundle) -> None:
-        """Stop tracking a bundle and erase it from the index."""
-        loc = self._bundle_to_loc.pop(bundle)
-        if loc is not None:
-            self._loc_to_bundles[loc].remove(bundle)
-        self._num_bundles -= 1
-
-    def get_bundles_at_location(self, node_id: NodeIdStr) -> List[RefBundle]:
-        """Returns the list of bundles at the given location.
-
-        Note that the returned list is not a copy and should not be mutated.
-        """
-        return self._loc_to_bundles[node_id]
-
-    def num_tracked_bundles(self) -> int:
-        """Returns the number of tracked bundles."""
-        return self._num_bundles
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
         """Ask Ray for the node id of the given bundle.
