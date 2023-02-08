@@ -59,6 +59,10 @@ class SlowCSVDatasource(CSVDatasource):
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
 def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    # Defensively shutdown Ray for the first test here to make sure there
+    # is no existing Ray cluster.
+    ray.shutdown()
+
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
@@ -2377,7 +2381,10 @@ def test_select_columns(ray_start_regular_shared):
         ds3.select_columns(cols=[]).fully_executed()
 
 
-def test_map_batches_basic(ray_start_regular_shared, tmp_path):
+def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_context):
+    ctx = DatasetContext.get_current()
+    ctx.execution_options.preserve_order = True
+
     # Test input validation
     ds = ray.data.range(5)
     with pytest.raises(ValueError):
@@ -2706,8 +2713,11 @@ def test_map_batches_actors_preserves_order(ray_start_regular_shared):
     ],
 )
 def test_map_batches_batch_mutation(
-    ray_start_regular_shared, num_rows, num_blocks, batch_size
+    ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_dataset_context
 ):
+    ctx = DatasetContext.get_current()
+    ctx.execution_options.preserve_order = True
+
     # Test that batch mutation works without encountering a read-only error (e.g. if the
     # batch is a zero-copy view on data in the object store).
     def mutate(df):
@@ -4828,7 +4838,9 @@ def test_random_block_order_schema(ray_start_regular_shared):
     ds.schema().names == ["a", "b"]
 
 
-def test_random_block_order(ray_start_regular_shared):
+def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
+    ctx = DatasetContext.get_current()
+    ctx.execution_options.preserve_order = True
 
     # Test BlockList.randomize_block_order.
     ds = ray.data.range(12).repartition(4)
