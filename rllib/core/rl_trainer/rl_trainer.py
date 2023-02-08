@@ -24,7 +24,6 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -32,8 +31,13 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ResultDict
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchDummyIterator,
+    MiniBatchCyclicIterator,
+)
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 
 
 torch, _ = try_import_torch()
@@ -337,22 +341,67 @@ class RLTrainer:
 
         return ret
 
-    def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        """Perform an update on this Trainer.
+    def update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+    ) -> Mapping[str, Any]:
+        """Do `num_iters` minibatch updates given the original batch.
+
+        Given a batch of episodes you can use this method to take more
+        than one backward pass on the batch. The same minibatch_size and num_iters
+        will be used for all module ids (previously known as policies) in the
+        multiagent batch
 
         Args:
             batch: A batch of data.
-
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
+            reduce_fn: reduce_fn: A function to reduce the results from a list of
+                minibatch updates. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
+                not get reduced.
         Returns:
-            A dictionary of results.
+            A dictionary of results, in numpy format.
         """
         self.__check_if_build_called()
-        if not self.distributed:
-            return self._update(batch)
-        else:
-            return self.do_distributed_update(batch)
 
-    def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        batch_iter = (
+            MiniBatchCyclicIterator
+            if minibatch_size is not None
+            else MiniBatchDummyIterator
+        )
+
+        results = []
+        for minibatch in batch_iter(batch, minibatch_size, num_iters):
+
+            if not self.distributed:
+                result = self._update(minibatch)
+            else:
+                result = self.do_distributed_update(minibatch)
+
+            results.append(result)
+
+        # Reduce results across all minibatches, if necessary.
+        if len(results) == 1:
+            return results[0]
+        else:
+            if reduce_fn is None:
+                return results
+            return reduce_fn(results)
+
+    def _update(
+        self,
+        batch: MultiAgentBatch,
+    ) -> Mapping[str, Any]:
+
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.
         batch = self._convert_batch_type(batch)
@@ -361,7 +410,8 @@ class RLTrainer:
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        return convert_to_numpy(result)
 
     @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -578,7 +628,9 @@ class RLTrainer:
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
 
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def do_distributed_update(
+        self, batch: MultiAgentBatch, **kwargs
+    ) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
 
         Args:

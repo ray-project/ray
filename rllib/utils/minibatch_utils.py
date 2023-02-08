@@ -3,7 +3,25 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class MiniBatchCyclicIterator:
+class MiniBatchIteratorBase:
+    """The base class for all minibatch iterators.
+
+    Args:
+        batch: The input multi-agent batch.
+        minibatch_size: The size of the minibatch for each module_id.
+        num_iters: The number of epochs to cover. If the input batch is smaller than
+            minibatch_size, then the iterator will cycle through the batch until it
+            has covered num_iters epochs.
+    """
+
+    def __init__(
+        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
+    ) -> None:
+        pass
+
+
+@DeveloperAPI
+class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """This implements a simple multi-agent minibatch iterator.
 
 
@@ -23,6 +41,7 @@ class MiniBatchCyclicIterator:
     def __init__(
         self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
     ) -> None:
+        super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
         self._minibatch_size = minibatch_size
         self._num_iters = num_iters
@@ -61,3 +80,12 @@ class MiniBatchCyclicIterator:
             # this it will be fine for now.
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
+
+
+class MiniBatchDummyIterator(MiniBatchIteratorBase):
+    def __init__(self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1):
+        super().__init__(batch, minibatch_size, num_iters)
+        self._batch = batch
+
+    def __iter__(self):
+        yield self._batch
