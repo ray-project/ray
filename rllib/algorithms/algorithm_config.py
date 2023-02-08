@@ -883,6 +883,13 @@ class AlgorithmConfig:
             rl_module_class_path = self.get_default_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
+        # make sure the resource requirements for trainer runner is valid
+        if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
+            raise ValueError(
+                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
+                "(i.e. num_trainer_workers = 0)"
+            )
+
         # resolve rl_trainer class
         if self._enable_rl_trainer_api and self.rl_trainer_class is None:
             rl_trainer_class_path = self.get_default_rl_trainer_class()
@@ -1119,9 +1126,10 @@ class AlgorithmConfig:
             env: The environment specifier. This can either be a tune-registered env,
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
-                RLlib will try to interpret the specifier as either an openAI gym env,
-                a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-                Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                RLlib will try to interpret the specifier as either an Farama-Foundation
+                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
+                classpath to an Env class, e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).

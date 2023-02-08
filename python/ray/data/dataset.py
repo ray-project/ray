@@ -30,7 +30,12 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    RandomShuffle,
+    RandomizeBlocks,
+    Repartition,
+    Sort,
+)
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -614,7 +619,7 @@ class Dataset(Generic[T]):
             zero_copy_batch=zero_copy_batch,
         )
 
-        # breakpoint()
+        # TODO(chengsu): pass function name to MapBatches logical operator.
         if hasattr(fn, "__self__") and isinstance(
             fn.__self__, ray.data.preprocessor.Preprocessor
         ):
@@ -960,7 +965,16 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Repartition(
+                logical_plan.dag,
+                num_outputs=num_blocks,
+                shuffle=shuffle,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def random_shuffle(
         self,
@@ -1000,7 +1014,17 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = RandomShuffle(
+                logical_plan.dag,
+                seed=seed,
+                num_outputs=num_blocks,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def randomize_block_order(
         self,
@@ -1983,7 +2007,16 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(SortStage(self, key, descending))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Sort(
+                logical_plan.dag,
+                key=key,
+                descending=descending,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -2607,8 +2640,6 @@ class Dataset(Generic[T]):
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             write_args: Additional write args to pass to the datasource.
         """
-
-        ctx = DatasetContext.get_current()
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -2622,37 +2653,71 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+        if hasattr(datasource, "write"):
+            # If the write operator succeeds, the resulting Dataset is a list of
+            # WriteResult (one element per write task). Otherwise, an error will
+            # be raised. The Datasource can handle execution outcomes with the
+            # on_write_complete() and on_write_failed().
+            def transform(blocks: Iterable[Block], ctx, fn) -> Iterable[Block]:
+                return [[datasource.write(blocks, ctx, **write_args)]]
 
-        # TODO(ekl) remove this feature flag.
-        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-            write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                blocks, metadata, ray_remote_args=ray_remote_args, **write_args
-            )
-        else:
-            # Prepare write in a remote task so that in Ray client mode, we
-            # don't do metadata resolution from the client machine.
-            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
-            write_results: List[ObjectRef[WriteResult]] = ray.get(
-                do_write.remote(
-                    datasource,
-                    ctx,
-                    blocks,
-                    metadata,
+            plan = self._plan.with_stage(
+                OneToOneStage(
+                    "write",
+                    transform,
+                    "tasks",
                     ray_remote_args,
-                    _wrap_arrow_serialization_workaround(write_args),
+                    fn=lambda x: x,
                 )
             )
+            try:
+                self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
+                datasource.on_write_complete(
+                    ray.get(self._write_ds._plan.execute().get_blocks())
+                )
+            except Exception as e:
+                datasource.on_write_failed([], e)
+                raise
+        else:
+            ctx = DatasetContext.get_current()
+            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
-        progress = ProgressBar("Write Progress", len(write_results))
-        try:
-            progress.block_until_complete(write_results)
-            datasource.on_write_complete(ray.get(write_results))
-        except Exception as e:
-            datasource.on_write_failed(write_results, e)
-            raise
-        finally:
-            progress.close()
+            # TODO(ekl) remove this feature flag.
+            if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+                write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
+                    blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+                )
+            else:
+                logger.warning(
+                    "The Datasource.do_write() is deprecated in "
+                    "Ray 2.4 and will be removed in future release. Use "
+                    "Datasource.write() instead."
+                )
+                # Prepare write in a remote task so that in Ray client mode, we
+                # don't do metadata resolution from the client machine.
+                do_write = cached_remote_fn(
+                    _do_write, retry_exceptions=False, num_cpus=0
+                )
+                write_results: List[ObjectRef[WriteResult]] = ray.get(
+                    do_write.remote(
+                        datasource,
+                        ctx,
+                        blocks,
+                        metadata,
+                        ray_remote_args,
+                        _wrap_arrow_serialization_workaround(write_args),
+                    )
+                )
+
+            progress = ProgressBar("Write Progress", len(write_results))
+            try:
+                progress.block_until_complete(write_results)
+                datasource.on_write_complete(ray.get(write_results))
+            except Exception as e:
+                datasource.on_write_failed(write_results, e)
+                raise
+            finally:
+                progress.close()
 
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that

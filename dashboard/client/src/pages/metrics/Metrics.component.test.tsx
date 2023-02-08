@@ -8,6 +8,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
     <GlobalContext.Provider
       value={{
         grafanaHost: "localhost:3000",
+        grafanaDefaultDashboardUid: "rayDefaultDashboard",
         prometheusHealth: true,
         sessionName: "session-name",
         ipLogMap: {},
@@ -26,6 +27,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
     <GlobalContext.Provider
       value={{
         grafanaHost: undefined,
+        grafanaDefaultDashboardUid: undefined,
         prometheusHealth: false,
         sessionName: undefined,
         ipLogMap: {},
@@ -41,30 +43,28 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
 
 describe("Metrics", () => {
   it("renders", async () => {
-    expect.assertions(6);
+    expect.assertions(5);
 
     render(<Metrics newIA />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
-    expect(screen.getByText(/30 minutes/)).toBeVisible();
-    expect(screen.getByText(/Tasks/)).toBeVisible();
-    expect(screen.getByText(/Actors/)).toBeVisible();
-    expect(screen.getByText(/Scheduler and autoscaler/)).toBeVisible();
-    expect(screen.getByText(/Node metrics/)).toBeVisible();
+    expect(screen.getByText(/5 minutes/)).toBeVisible();
+    expect(screen.getByText(/Tasks and Actors/)).toBeVisible();
+    expect(screen.getByText(/Ray Resource Usage/)).toBeVisible();
+    expect(screen.getByText(/Hardware Utilization/)).toBeVisible();
     expect(
       screen.queryByText(/Grafana or prometheus server not detected./),
     ).toBeNull();
   });
 
   it("renders warning when ", async () => {
-    expect.assertions(6);
+    expect.assertions(5);
 
     render(<Metrics newIA />, { wrapper: MetricsDisabledWrapper });
     await screen.findByText(/Grafana or prometheus server not detected./);
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
-    expect(screen.queryByText(/30 minutes/)).toBeNull();
-    expect(screen.queryByText(/Tasks/)).toBeNull();
-    expect(screen.queryByText(/Actors/)).toBeNull();
-    expect(screen.queryByText(/Scheduler and autoscaler/)).toBeNull();
-    expect(screen.queryByText(/Node metrics/)).toBeNull();
+    expect(screen.queryByText(/5 minutes/)).toBeNull();
+    expect(screen.queryByText(/Tasks and Actors/)).toBeNull();
+    expect(screen.queryByText(/Ray Resource Usage/)).toBeNull();
+    expect(screen.queryByText(/Hardware Utilization/)).toBeNull();
   });
 });
