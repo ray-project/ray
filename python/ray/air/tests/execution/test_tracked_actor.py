@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.air.execution._internal.actor_manager import RayActorManager, EventType
+from ray.air.execution._internal.actor_manager import RayActorManager
 
 
 def _raise(exception_type: Type[Exception] = RuntimeError, msg: Optional[str] = None):
@@ -86,7 +86,7 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
 
     # Actor should be started
     with pytest.raises(Started):
-        actor_manager.wait(num_events=1, timeout=5)
+        actor_manager.next()
 
     # Schedule task on actor which should resolve (actor successfully started)
     actor_manager.schedule_actor_task(tracked_actor, "task", (1,)).on_result(
@@ -94,7 +94,7 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
     )
 
     with pytest.raises(Result):
-        actor_manager.wait(num_events=1, event_type=EventType.TASKS)
+        actor_manager.next()
 
     # Now we can assert that there are no CPUS resources available anymore.
     # Note that actor starting is asynchronous, so we can't assert this right away
@@ -105,7 +105,7 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
     actor_manager.remove_actor(tracked_actor, kill=kill)
 
     with pytest.raises(Stopped):
-        actor_manager.wait(num_events=1, timeout=5)
+        actor_manager.next()
 
     # This task takes up all the cluster resources. It should resolve now that
     # the actor was terminated.
@@ -138,28 +138,37 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
         stats["stopped"] += 1
 
     # start 10 actors
+    expected_actors = []
     for i in range(10):
-        actor_manager.add_actor(
-            cls=Actor,
-            kwargs={"key": "val"},
-            resource_request=ResourceRequest([{"CPU": 1}]),
-        ).on_start(start_callback).on_stop(stop_callback).on_error(_raise(Failed))
+        tracked_actor = (
+            actor_manager.add_actor(
+                cls=Actor,
+                kwargs={"key": "val"},
+                resource_request=ResourceRequest([{"CPU": 1}]),
+            )
+            .on_start(start_callback)
+            .on_stop(stop_callback)
+            .on_error(_raise(Failed))
+        )
+        expected_actors.append(tracked_actor)
 
     # wait for some actor starts
-    actor_manager.wait(timeout=5)
+    for i in range(4):
+        actor_manager.next()
 
     # we should now have 4 started actors
     assert stats["started"] == 4
     assert stats["stopped"] == 0
     assert len(running_actors) == 4
+    assert set(running_actors) == set(expected_actors[:4])
 
     # stop 2 actors
     actor_manager.remove_actor(running_actors[0])
     actor_manager.remove_actor(running_actors[1])
 
-    # Wait two times, once for termination, once for start
-    actor_manager.wait(num_events=2, timeout=5)
-    actor_manager.wait(num_events=2, timeout=5)
+    # Wait four times, twice for termination, twice for start
+    for i in range(4):
+        actor_manager.next()
 
     # we should have 4 running actors, 6 started and 2 stopped
     assert stats["started"] == 6
@@ -209,17 +218,18 @@ def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
         resource_request=ResourceRequest([{"CPU": 1}]),
     ).on_error(fail_callback_actor)
 
-    # Wait until it is started. This won't invoke any callback, yet
-    actor_manager.wait(timeout=5)
+    if where != "init":
+        # Wait until it is started. This won't invoke any callback, yet
+        actor_manager.next()
 
-    assert stats["failed_actor"] == 0
-    assert stats["failed_task"] == 0
+        assert stats["failed_actor"] == 0
+        assert stats["failed_task"] == 0
 
     # Schedule task
     actor_manager.schedule_actor_task(tracked_actor, "fn").on_error(fail_callback_task)
 
     # Yield control and wait for task resolution. This will invoke the callback.
-    actor_manager.wait(timeout=5)
+    actor_manager.next()
 
     assert stats["failed_actor"] == 1
     assert stats["failed_task"] == 1

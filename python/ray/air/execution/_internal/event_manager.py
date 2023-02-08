@@ -19,8 +19,8 @@ class RayEventManager:
     def track_future(
         self,
         future: ray.ObjectRef,
-        on_result: Optional[_ResultCallback],
-        on_error: Optional[_ErrorCallback],
+        on_result: Optional[_ResultCallback] = None,
+        on_error: Optional[_ErrorCallback] = None,
     ):
         self._tracked_futures[future] = (on_result, on_error)
 
@@ -32,6 +32,9 @@ class RayEventManager:
     ):
         for future in futures:
             self.track_future(future, on_result=on_result, on_error=on_error)
+
+    def discard_future(self, future: ray.ObjectRef):
+        self._tracked_futures.pop(future, None)
 
     def get_futures(self) -> Set[ray.ObjectRef]:
         return set(self._tracked_futures)

@@ -155,7 +155,7 @@ class TuneFlow:
             return
 
         self._actors_stopped -= 1  # account for extra stop
-        self._actor_manager.remove_actor(tracked_actor, resolve_futures=False)
+        self._actor_manager.remove_actor(tracked_actor)
         actor_id = self._actor_to_id.pop(tracked_actor)
 
         replacement_actor = (
@@ -178,7 +178,7 @@ class TuneFlow:
     def run(self):
         while not self._finished:
             self.maybe_add_actors()
-            self._actor_manager.wait(num_events=1, timeout=1)
+            self._actor_manager.next(timeout=1)
 
     def get_results(self) -> Dict[int, List[float]]:
         return self._results

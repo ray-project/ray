@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.air.execution._internal.actor_manager import RayActorManager, EventType
+from ray.air.execution._internal.actor_manager import RayActorManager
 
 
 RESOURCE_MANAGERS = [FixedResourceManager, PlacementGroupResourceManager]
@@ -47,18 +47,15 @@ def test_resolve(ray_start_4_cpus, resource_manager_cls):
     actor_manager.schedule_actor_task(tracked_actor, "foo", (4, False)).on_result(
         result_callback
     )
-    actor_manager.wait(timeout=5, event_type=EventType.ACTORS)
-    actor_manager.wait(event_type=EventType.TASKS)
+    actor_manager.next()
+    actor_manager.next()
 
     assert seen["data"] == 4
 
 
 @pytest.mark.parametrize("resource_manager_cls", RESOURCE_MANAGERS)
 @pytest.mark.parametrize("num_tasks", [1, 10, 100])
-@pytest.mark.parametrize("wait_for_events", [None, 1, 10])
-def test_resolve_many(
-    ray_start_4_cpus, resource_manager_cls, num_tasks, wait_for_events
-):
+def test_resolve_many(ray_start_4_cpus, resource_manager_cls, num_tasks):
     """Schedule ``num_tasks`` tasks and wait until ``wait_for_events`` of them resolve.
 
     Every resolved task will increase a counter by its return value (1).
@@ -76,23 +73,16 @@ def test_resolve_many(
     tracked_actor = actor_manager.add_actor(
         cls=Actor, kwargs={}, resource_request=ResourceRequest([{"CPU": 4}])
     )
-    actor_manager.wait(timeout=5, event_type=EventType.ACTORS)
+    actor_manager.next()
 
     for i in range(num_tasks):
         actor_manager.schedule_actor_task(tracked_actor, "foo", (1, False)).on_result(
             result_callback
         )
 
-    if wait_for_events and wait_for_events > num_tasks:
-        expected_num_events = 0
-        with pytest.raises(ValueError):
-            actor_manager.wait(num_events=wait_for_events, event_type=EventType.TASKS)
-
-    else:
-        expected_num_events = wait_for_events or num_tasks
-        actor_manager.wait(num_events=wait_for_events, event_type=EventType.TASKS)
-
-    assert seen["data"] == expected_num_events
+    for i in range(num_tasks):
+        actor_manager.next()
+        assert seen["data"] == i + 1
 
 
 @pytest.mark.parametrize("resource_manager_cls", RESOURCE_MANAGERS)
@@ -104,8 +94,8 @@ def test_error_noop(ray_start_4_cpus, resource_manager_cls):
         cls=Actor, kwargs={}, resource_request=ResourceRequest([{"CPU": 4}])
     )
     actor_manager.schedule_actor_task(tracked_actor, "foo", (1, True))
-    actor_manager.wait(timeout=5, event_type=EventType.ACTORS)
-    actor_manager.wait(event_type=EventType.TASKS)
+    actor_manager.next()
+    actor_manager.next()
 
 
 @pytest.mark.parametrize("resource_manager_cls", RESOURCE_MANAGERS)
@@ -125,9 +115,8 @@ def test_error_custom(ray_start_4_cpus, resource_manager_cls):
         error_callback
     )
 
-    actor_manager.wait(timeout=10, event_type=EventType.ACTORS)
-
-    actor_manager.wait(event_type=EventType.TASKS)
+    actor_manager.next()
+    actor_manager.next()
     assert stats["exception"] == 1
 
 

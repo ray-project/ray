@@ -41,3 +41,9 @@ class TrackedActor:
         """Set callback to invoke when actor died."""
         self._on_error = callback
         return self
+
+    def __eq__(self, other):
+        return self.actor_id == other.actor_id
+
+    def __hash__(self):
+        return hash(self.actor_id)
