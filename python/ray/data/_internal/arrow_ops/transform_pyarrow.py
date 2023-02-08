@@ -58,7 +58,8 @@ def unify_schemas(
 
     schemas_to_unify = []
     schema_tensor_field_overrides = {}
-    # column rollup for opaque (null-type) lists here
+    # Rollup columns with opaque (null-typed) lists, to override types in
+    # the following for-loop.
     cols_with_null_list = set()
     for schema in schemas:
         for col_name in schema.names:
@@ -91,21 +92,25 @@ def unify_schemas(
                 schema_tensor_field_overrides[col_idx] = new_type
 
     if cols_with_null_list:
+        # For each opaque list column, iterate through all schemas until we find
+        # a valid value_type that can be used to override the column types in
+        # the following for-loop.
         for col_name in cols_with_null_list:
-            scalar_type = None
+            # scalar_type = None
             for schema in schemas:
                 col_type = schema.field(col_name).type
                 if not pa.types.is_list(col_type) or not pa.types.is_null(
                     col_type.value_type
                 ):
-                    scalar_type = col_type
-                    break
-            if scalar_type is not None:
-                col_idx = schema.get_field_index(col_name)
-                schema_tensor_field_overrides[col_idx] = scalar_type
+                    if col_type is not None:
+                        col_idx = schema.get_field_index(col_name)
+                        schema_tensor_field_overrides[col_idx] = col_type
+                        # scalar_type = col_type
+                        break
+            # if scalar_type is not None:
+            #     col_idx = schema.get_field_index(col_name)
+            #     schema_tensor_field_overrides[col_idx] = scalar_type
 
-        # if any of the columns in any block has the opaque list type,
-        # override with the scalar type
     if schema_tensor_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
@@ -165,6 +170,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     if len(blocks) == 1:
         return blocks[0]
 
+    # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
     cols_with_null_list = set()
     for b in blocks:
         for col_name in b.schema.names:
@@ -197,6 +203,9 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                 )
             else:
                 if col_name in cols_with_null_list:
+                    # For each opaque list column, iterate through all schemas until
+                    # we find a valid value_type that can be used to override the
+                    # column types in the following for-loop.
                     scalar_type = None
                     for arr in col_chunked_arrays:
                         if not pa.types.is_list(arr.type) or not pa.types.is_null(
@@ -213,10 +222,14 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                             col_chunked_arrays[c_idx] = c
                         elif pa.types.is_null(c.type.value_type):
                             if pa.types.is_list(scalar_type):
+                                # If we are dealing with a list input,
+                                # cast the array to the scalar_type found above.
                                 col_chunked_arrays[c_idx] = col_chunked_arrays[
                                     c_idx
                                 ].cast(scalar_type)
                             else:
+                                # If we are dealing with a single value, construct
+                                # a new array with null values filled.
                                 col_chunked_arrays[c_idx] = pa.chunked_array(
                                     [pa.nulls(c.length(), type=scalar_type)]
                                 )

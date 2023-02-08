@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Dict, Union, Iterable, Iterator
 import struct
 
 import numpy as np
@@ -64,17 +64,7 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[
-    str,
-    Union[
-        List[bytes],
-        List[List[bytes]],
-        List[float],
-        List[List[float]],
-        List[int],
-        List[List[int]],
-    ],
-]:
+) -> Dict[str, "pyarrow.Array"]:
     import pyarrow as pa
 
     record = {}
@@ -101,8 +91,7 @@ def _convert_arrow_table_to_examples(
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
-            col_value = arrow_table[name][i]
-            features[name] = _value_to_feature(col_value)
+            features[name] = _value_to_feature(arrow_table[name][i])
 
         # Convert the dictionary to an Example proto.
         proto = tf.train.Example(features=tf.train.Features(feature=features))
@@ -112,7 +101,7 @@ def _convert_arrow_table_to_examples(
 
 def _get_feature_value(
     feature: "tf.train.Feature",
-) -> Union[List[bytes], List[float], List[int]]:
+) -> "pyarrow.Array":
     import pyarrow as pa
 
     values = (
@@ -136,16 +125,15 @@ def _get_feature_value(
     )
 
 
-# TODO(Scott): update types for all the function signatures
 def _value_to_feature(
-    value: Union[
-        "pyarrow.Scalar", "pyarrow.Array"
-    ]  # Union[bytes, float, int, np.ndarray]
+    value: Union["pyarrow.Scalar", "pyarrow.Array"]
 ) -> "tf.train.Feature":
     import tensorflow as tf
     import pyarrow as pa
 
     if isinstance(value, pa.ListScalar):
+        # Use the underlying type of the ListScalar's value in
+        # determining the output feature's data type.
         value_type = value.type.value_type
         value = value.as_py()
     else:
