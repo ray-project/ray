@@ -398,7 +398,7 @@ class PPO(Algorithm):
             # communication between driver and the remote
             # trainer workers
 
-            train_results = self.trainer_runner.fit(
+            train_results = self.trainer_runner.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
