@@ -138,6 +138,12 @@ ray.init("auto")
 def wrapper():
     @ray.remote
     def f():
+        from datetime import datetime
+
+        now = datetime.now()
+
+        current_time = now.strftime("%H:%M:%S")
+        print(current_time)
         time.sleep(999)
 
     ray.get([f.remote() for _ in range(10)])

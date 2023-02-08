@@ -91,19 +91,22 @@ static inline void Init(const TagsType &global_tags,
   }
 
   // Set interval.
+  RAY_LOG(INFO) << "SANG-TODO report interval: " << absl::Milliseconds(std::max(
+      RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000)));
   StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
       RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
   StatsConfig::instance().SetHarvestInterval(
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
-
-  MetricPointExporter::Register(exporter, metrics_report_batch_size);
-  OpenCensusProtoExporter::Register(
-      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id);
+  RAY_LOG(INFO) << "SANG-TODO export interval: " << StatsConfig::instance().GetReportInterval();
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
+
+  MetricPointExporter::Register(exporter, metrics_report_batch_size);
+  OpenCensusProtoExporter::Register(
+      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id);
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
