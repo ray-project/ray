@@ -39,7 +39,6 @@ class TaskEventBufferTest : public ::testing::Test {
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_buffer_size": 100,
-  "task_events_min_buffer_size": 0,
   "task_events_send_batch_size": 100
 }
   )");
@@ -103,7 +102,6 @@ class TaskEventBufferTestBatchSend : public TaskEventBufferTest {
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_buffer_size": 100,
-  "task_events_min_buffer_size": 0,
   "task_events_send_batch_size": 10
 }
   )");
