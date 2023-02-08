@@ -37,7 +37,58 @@ def test_predict(predictor, data):
     # Labels should have shape `(# detections,)`.
     assert all(labels.ndim == 1 for labels in predictions["pred_labels"])
     # Scores should have shape `(# detections,)`.
-    assert all(labels.ndim == 1 for labels in predictions["pred_scores"])
+    assert all(scores.ndim == 1 for scores in predictions["pred_scores"])
+
+
+def test_predict_tensor_dataset():
+    model = models.detection.maskrcnn_resnet50_fpn()
+    checkpoint = TorchCheckpoint.from_model(model)
+    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchDetectionPredictor)
+    dataset = ray.data.from_items([np.zeros((3, 32, 32), dtype=np.float32)])
+
+    predictions = predictor.predict(dataset)
+
+    # Boxes should have shape `(# detections, 4)`.
+    pred_boxes = [row["pred_boxes"] for row in predictions.take_all()]
+    assert all(boxes.ndim == 2 for boxes in pred_boxes)
+    assert all(boxes.shape[-1] == 4 for boxes in pred_boxes)
+    # Labels should have shape `(# detections,)`.
+    pred_labels = [row["pred_labels"] for row in predictions.take_all()]
+    assert all(labels.ndim == 1 for labels in pred_labels)
+    # Scores should have shape `(# detections,)`.
+    pred_scores = [row["pred_scores"] for row in predictions.take_all()]
+    assert all(scores.ndim == 1 for scores in pred_scores)
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [{"image": np.zeros((3, 32, 32), dtype=np.float32)}],
+        [
+            {"image": np.zeros((3, 32, 32), dtype=np.float32)},
+            {"image": np.zeros((3, 64, 64), dtype=np.float32)},
+        ],
+    ],
+)
+def test_predict_tabular_dataset(items):
+    model = models.detection.maskrcnn_resnet50_fpn()
+    checkpoint = TorchCheckpoint.from_model(model)
+    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchDetectionPredictor)
+    dataset = ray.data.from_items(items)
+
+    predictions = predictor.predict(dataset)
+
+    assert predictions.count() == len(items)
+    # Boxes should have shape `(# detections, 4)`.
+    pred_boxes = [row["pred_boxes"] for row in predictions.take_all()]
+    assert all(boxes.ndim == 2 for boxes in pred_boxes)
+    assert all(boxes.shape[-1] == 4 for boxes in pred_boxes)
+    # Labels should have shape `(# detections,)`.
+    pred_labels = [row["pred_labels"] for row in predictions.take_all()]
+    assert all(labels.ndim == 1 for labels in pred_labels)
+    # Scores should have shape `(# detections,)`.
+    pred_scores = [row["pred_scores"] for row in predictions.take_all()]
+    assert all(scores.ndim == 1 for scores in pred_scores)
 
 
 def test_multi_column_batch_raises_value_error(predictor):
@@ -57,3 +108,11 @@ def test_invalid_dtype_raises_value_error(predictor):
     with pytest.raises(ValueError):
         # `dtype` should be a single `torch.dtype`.
         predictor.predict(data, dtype=np.float32)
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
