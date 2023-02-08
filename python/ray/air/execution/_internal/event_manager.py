@@ -53,8 +53,8 @@ class RayEventManager:
     def track_futures(
         self,
         futures: Iterable[ray.ObjectRef],
-        on_result: Optional[_ResultCallback],
-        on_error: Optional[_ErrorCallback],
+        on_result: Optional[_ResultCallback] = None,
+        on_error: Optional[_ErrorCallback] = None,
     ):
         """Track multiple futures and invoke callbacks on resolution.
 
@@ -84,6 +84,10 @@ class RayEventManager:
         """Get futures tracked by the event manager."""
         return set(self._tracked_futures)
 
+    @property
+    def num_futures(self) -> int:
+        return len(self._tracked_futures)
+
     def resolve_future(self, future: ray.ObjectRef):
         """Resolve a single future.
 
@@ -112,7 +116,7 @@ class RayEventManager:
     def wait(
         self,
         timeout: Optional[Union[float, int]] = None,
-        num_results: Optional[int] = None,
+        num_results: Optional[int] = 1,
     ):
         """Wait up to ``timeout`` seconds for ``num_results`` futures to resolve.
 

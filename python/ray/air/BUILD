@@ -170,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_event_manager",
+    size = "medium",
+    srcs = ["tests/execution/test_event_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_resource_manager_fixed",
     size = "small",
     srcs = ["tests/execution/test_resource_manager_fixed.py"],
