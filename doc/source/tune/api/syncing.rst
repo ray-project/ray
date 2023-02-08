@@ -1,9 +1,10 @@
 Syncing in Tune (tune.SyncConfig, tune.Syncer)
 ==============================================
 
-.. _tune-syncconfig:
 
 .. currentmodule:: ray.tune.syncer
+
+.. _tune-sync-config:
 
 Tune Syncing Configuration
 --------------------------
