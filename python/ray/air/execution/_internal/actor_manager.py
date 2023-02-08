@@ -3,7 +3,7 @@ import random
 import time
 import uuid
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
 from ray.air.execution._internal.event_manager import RayEventManager
@@ -14,10 +14,7 @@ from ray.air.execution.resources import (
 )
 
 from ray.air.execution._internal.tracked_actor import TrackedActor
-from ray.air.execution._internal.tracked_actor_task import (
-    TrackedActorTask,
-    TrackedActorTaskCollection,
-)
+from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
 from ray.exceptions import RayTaskError, RayActorError
 
 
@@ -74,7 +71,7 @@ class RayActorManager:
         .. code-block:: python
 
             from ray.air.execution import ResourceRequest
-            from ray.air.execution._internal import EventType, RayActorManager
+            from ray.air.execution._internal import RayActorManager
 
             actor_manager = RayActorManager()
 
@@ -82,25 +79,25 @@ class RayActorManager:
             tracked_actor = actor_manager.add_actor(
                 ActorClass,
                 kwargs={},
-                resource_request=ResourceRequest([{"CPU": 1}])
+                resource_request=ResourceRequest([{"CPU": 1}]),
+                on_start=actor_start_callback,
+                on_stop=actor_stop_callback,
+                on_error=actor_error_callback
             )
-            tracked_actor.on_start(actor_start_callback)
-            tracked_actor.on_stop(actor_stop_callback)
-            tracked_actor.on_fail(actor_fail_callback)
 
             # Yield control to event manager to start actor
-            actor_manager.wait(timeout=1)
+            actor_manager.next()
 
             # Start task on the actor (ActorClass.foo.remote())
             tracked_actor_task = actor_manager.schedule_actor_task(
                 tracked_actor,
-                method_name="foo"
+                method_name="foo",
+                on_result=task_result_callback,
+                on_error=task_error_callback
             )
-            tracked_actor_task.on_result(task_result_callback)
-            tracked_actor_task.on_error(task_error_callback)
 
             # Again yield control to event manager to process task futures
-            actor_manager.wait(event_type=EventType.TASKS)
+            actor_manager.wait()
 
     """
 
@@ -484,6 +481,10 @@ class RayActorManager:
         cls: Union[Type, ray.actor.ActorClass],
         kwargs: Dict[str, Any],
         resource_request: ResourceRequest,
+        *,
+        on_start: Optional[Callable[[TrackedActor], None]] = None,
+        on_stop: Optional[Callable[[TrackedActor], None]] = None,
+        on_error: Optional[Callable[[TrackedActor, Exception], None]] = None,
     ) -> TrackedActor:
         """Add an actor to be tracked.
 
@@ -497,12 +498,17 @@ class RayActorManager:
             cls: Actor class to schedule.
             kwargs: Keyword arguments to pass to actor class on construction.
             resource_request: Resources required to start the actor.
+            on_start: Callback to invoke when the actor started.
+            on_stop: Callback to invoke when the actor stopped.
+            on_error: Callback to invoke when the actor failed.
 
         Returns:
             Tracked actor object to reference actor in subsequent API calls.
 
         """
-        tracked_actor = TrackedActor(uuid.uuid4().int)
+        tracked_actor = TrackedActor(
+            uuid.uuid4().int, on_start=on_start, on_stop=on_stop, on_error=on_error
+        )
 
         self._pending_actors_to_attrs[tracked_actor] = cls, kwargs, resource_request
         self._resource_request_to_pending_actors[resource_request].append(tracked_actor)
@@ -596,16 +602,24 @@ class RayActorManager:
         method_name: str,
         args: Optional[Tuple] = None,
         kwargs: Optional[Dict] = None,
-    ) -> TrackedActorTask:
+        on_result: Optional[Callable[[TrackedActor, Any], None]] = None,
+        on_error: Optional[Callable[[TrackedActor, Exception], None]] = None,
+    ) -> None:
         """Schedule and track a task on an actor.
 
         This method will schedule a remote task ``method_name`` on the
-        ``tracked_actor`` and return a
-        :ref:`TrackedActorTask
-        <ray.air.execution._internal.tracked_actor_task.TrackedActorTask>` object.
+        ``tracked_actor``.
 
-        The ``TrackedActorTask`` object can be used to specify callbacks that are
-        invoked when the task resolves, errors, or times out.
+        This method accepts two optional callbacks that will be invoked when
+        their respective events are triggered.
+
+        The ``on_result`` callback is triggered when a task resolves successfully.
+        It should accept two arguments: The actor for which the
+        task resolved, and the result received from the remote call.
+
+        The ``on_error`` callback is triggered when a task fails.
+        It should accept two arguments: The actor for which the
+        task threw an error, and the exception.
 
         Args:
             tracked_actor: Actor to schedule task on.
@@ -614,6 +628,8 @@ class RayActorManager:
                 scheduled.
             args: Arguments to pass to the task.
             kwargs: Keyword arguments to pass to the task.
+            on_result: Callback to invoke when the task resolves.
+            on_error: Callback to invoke when the task fails.
 
         Raises:
             ValueError: If the ``tracked_actor`` is not managed by this event manager.
@@ -622,7 +638,9 @@ class RayActorManager:
         args = args or tuple()
         kwargs = kwargs or {}
 
-        tracked_actor_task = TrackedActorTask(tracked_actor=tracked_actor)
+        tracked_actor_task = TrackedActorTask(
+            tracked_actor=tracked_actor, on_result=on_result, on_error=on_error
+        )
 
         if tracked_actor not in self._live_actors_to_ray_actors_resources:
             # Actor is not started, yet
@@ -633,7 +651,6 @@ class RayActorManager:
                 )
 
             # Cache tasks for future execution
-            tracked_actor_task = TrackedActorTask(tracked_actor=tracked_actor)
             self._pending_actors_to_enqueued_actor_tasks[tracked_actor].append(
                 (tracked_actor_task, method_name, args, kwargs)
             )
@@ -645,12 +662,11 @@ class RayActorManager:
                 kwargs=kwargs,
             )
 
-        return tracked_actor_task
-
     def _schedule_tracked_actor_task(
         self,
         tracked_actor_task: TrackedActorTask,
         method_name: str,
+        *,
         args: Optional[Tuple] = None,
         kwargs: Optional[Dict] = None,
     ) -> TrackedActorTask:
@@ -688,24 +704,32 @@ class RayActorManager:
         self,
         tracked_actors: List[TrackedActor],
         method_name: str,
+        *,
         args: Optional[Union[Tuple, List[Tuple]]] = None,
         kwargs: Optional[Union[Dict, List[Dict]]] = None,
-    ) -> TrackedActorTaskCollection:
+        on_result: Optional[Callable[[TrackedActor, Any], None]] = None,
+        on_error: Optional[Callable[[TrackedActor, Exception], None]] = None,
+    ) -> None:
         """Schedule and track tasks on a list of actors.
 
         This method will schedule a remote task ``method_name`` on all
-        ``tracked_actors`` and return a
-        :ref:`TrackedActorTaskCollection
-        <ray.air.execution._internal.tracked_actor_task.TrackedActorTaskCollection>`
-        object.
-
-        The ``TrackedActorTaskCollection`` object can be used to specify callbacks that
-        are invoked when the actor tasks resolve, error, or time out.
+        ``tracked_actors``.
 
         ``args`` and ``kwargs`` can be a single tuple/dict, in which case the same
         (keyword) arguments are passed to all actors. If a list is passed instead,
         they are mapped to the respective actors. In that case, the list of
         (keyword) arguments must be the same length as the list of actors.
+
+        This method accepts two optional callbacks that will be invoked when
+        their respective events are triggered.
+
+        The ``on_result`` callback is triggered when a task resolves successfully.
+        It should accept two arguments: The actor for which the
+        task resolved, and the result received from the remote call.
+
+        The ``on_error`` callback is triggered when a task fails.
+        It should accept two arguments: The actor for which the
+        task threw an error, and the exception.
 
         Args:
             tracked_actors: List of actors to schedule tasks on.
@@ -714,6 +738,8 @@ class RayActorManager:
                 scheduled on all actors.
             args: Arguments to pass to the task.
             kwargs: Keyword arguments to pass to the task.
+            on_result: Callback to invoke when the task resolves.
+            on_error: Callback to invoke when the task fails.
 
         """
         if not isinstance(args, List):
@@ -738,14 +764,12 @@ class RayActorManager:
                 )
             kwargs_list = kwargs
 
-        tracked_actor_tasks = []
         for tracked_actor, args, kwargs in zip(tracked_actors, args_list, kwargs_list):
-            tracked_actor_task = self.schedule_actor_task(
+            self.schedule_actor_task(
                 tracked_actor=tracked_actor,
                 method_name=method_name,
                 args=args,
                 kwargs=kwargs,
+                on_result=on_result,
+                on_error=on_error,
             )
-            tracked_actor_tasks.append(tracked_actor_task)
-
-        return TrackedActorTaskCollection(tracked_actor_tasks)

@@ -73,15 +73,13 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
     actor_manager = RayActorManager(resource_manager=resource_manager_cls())
 
     # Start actor, set callbacks
-    tracked_actor = (
-        actor_manager.add_actor(
-            cls=actor_cls,
-            kwargs={"key": "val"},
-            resource_request=ResourceRequest([{"CPU": 4}]),
-        )
-        .on_start(_raise(Started))
-        .on_stop(_raise(Stopped))
-        .on_error(_raise(Failed))
+    tracked_actor = actor_manager.add_actor(
+        cls=actor_cls,
+        kwargs={"key": "val"},
+        resource_request=ResourceRequest([{"CPU": 4}]),
+        on_start=_raise(Started),
+        on_stop=_raise(Stopped),
+        on_error=_raise(Failed),
     )
 
     # Actor should be started
@@ -89,8 +87,8 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
         actor_manager.next()
 
     # Schedule task on actor which should resolve (actor successfully started)
-    actor_manager.schedule_actor_task(tracked_actor, "task", (1,)).on_result(
-        _raise(Result)
+    actor_manager.schedule_actor_task(
+        tracked_actor, "task", (1,), on_result=_raise(Result)
     )
 
     with pytest.raises(Result):
@@ -140,15 +138,13 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
     # start 10 actors
     expected_actors = []
     for i in range(10):
-        tracked_actor = (
-            actor_manager.add_actor(
-                cls=Actor,
-                kwargs={"key": "val"},
-                resource_request=ResourceRequest([{"CPU": 1}]),
-            )
-            .on_start(start_callback)
-            .on_stop(stop_callback)
-            .on_error(_raise(Failed))
+        tracked_actor = actor_manager.add_actor(
+            cls=Actor,
+            kwargs={"key": "val"},
+            resource_request=ResourceRequest([{"CPU": 1}]),
+            on_start=start_callback,
+            on_stop=stop_callback,
+            on_error=_raise(Failed),
         )
         expected_actors.append(tracked_actor)
 
@@ -216,7 +212,8 @@ def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
         cls=FailingActor,
         kwargs={"where": where},
         resource_request=ResourceRequest([{"CPU": 1}]),
-    ).on_error(fail_callback_actor)
+        on_error=fail_callback_actor,
+    )
 
     if where != "init":
         # Wait until it is started. This won't invoke any callback, yet
@@ -225,14 +222,16 @@ def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
         assert stats["failed_actor"] == 0
         assert stats["failed_task"] == 0
 
-    # Schedule task
-    actor_manager.schedule_actor_task(tracked_actor, "fn").on_error(fail_callback_task)
+        # Schedule task
+        actor_manager.schedule_actor_task(
+            tracked_actor, "fn", on_error=fail_callback_task
+        )
 
     # Yield control and wait for task resolution. This will invoke the callback.
     actor_manager.next()
 
     assert stats["failed_actor"] == 1
-    assert stats["failed_task"] == 1
+    assert stats["failed_task"] == bool(where != "init")
 
 
 if __name__ == "__main__":

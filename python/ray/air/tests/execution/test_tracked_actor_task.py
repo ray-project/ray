@@ -44,8 +44,8 @@ def test_resolve(ray_start_4_cpus, resource_manager_cls):
     tracked_actor = actor_manager.add_actor(
         cls=Actor, kwargs={}, resource_request=ResourceRequest([{"CPU": 4}])
     )
-    actor_manager.schedule_actor_task(tracked_actor, "foo", (4, False)).on_result(
-        result_callback
+    actor_manager.schedule_actor_task(
+        tracked_actor, "foo", (4, False), on_result=result_callback
     )
     actor_manager.next()
     actor_manager.next()
@@ -59,9 +59,6 @@ def test_resolve_many(ray_start_4_cpus, resource_manager_cls, num_tasks):
     """Schedule ``num_tasks`` tasks and wait until ``wait_for_events`` of them resolve.
 
     Every resolved task will increase a counter by its return value (1).
-
-    If wait_for_events = None, we expect num_tasks tasks to resolve.
-    If wait_for_events is a number, we expect that many tasks to resolve.
     """
     actor_manager = RayActorManager(resource_manager=resource_manager_cls())
 
@@ -76,8 +73,8 @@ def test_resolve_many(ray_start_4_cpus, resource_manager_cls, num_tasks):
     actor_manager.next()
 
     for i in range(num_tasks):
-        actor_manager.schedule_actor_task(tracked_actor, "foo", (1, False)).on_result(
-            result_callback
+        actor_manager.schedule_actor_task(
+            tracked_actor, "foo", (1, False), on_result=result_callback
         )
 
     for i in range(num_tasks):
@@ -111,8 +108,8 @@ def test_error_custom(ray_start_4_cpus, resource_manager_cls):
     tracked_actor = actor_manager.add_actor(
         cls=Actor, kwargs={}, resource_request=ResourceRequest([{"CPU": 4}])
     )
-    actor_manager.schedule_actor_task(tracked_actor, "foo", (1, True)).on_error(
-        error_callback
+    actor_manager.schedule_actor_task(
+        tracked_actor, "foo", (1, True), on_error=error_callback
     )
 
     actor_manager.next()

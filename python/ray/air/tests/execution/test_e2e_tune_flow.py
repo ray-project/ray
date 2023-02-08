@@ -95,15 +95,13 @@ class TuneFlow:
             error_kwargs[self._errors] = True
 
         actor_id = self._actors_started
-        tracked_actor = (
-            self._actor_manager.add_actor(
-                cls=Actor,
-                kwargs={"id": actor_id, **error_kwargs},
-                resource_request=ResourceRequest([{"CPU": 1}]),
-            )
-            .on_start(self.actor_started)
-            .on_stop(self.actor_stopped)
-            .on_error(self.actor_error)
+        tracked_actor = self._actor_manager.add_actor(
+            cls=Actor,
+            kwargs={"id": actor_id, **error_kwargs},
+            resource_request=ResourceRequest([{"CPU": 1}]),
+            on_start=self.actor_started,
+            on_stop=self.actor_stopped,
+            on_error=self.actor_error,
         )
         self._actor_to_id[tracked_actor] = actor_id
 
@@ -111,8 +109,12 @@ class TuneFlow:
 
     def actor_started(self, tracked_actor: TrackedActor):
         self._actor_manager.schedule_actor_task(
-            tracked_actor, "run", kwargs={"value": 0}
-        ).on_error(self.task_error).on_result(self.task_result)
+            tracked_actor,
+            "run",
+            kwargs={"value": 0},
+            on_error=self.task_error,
+            on_result=self.task_result,
+        )
 
     def actor_stopped(self, tracked_actor: TrackedActor):
         self._actors_stopped += 1
@@ -121,20 +123,18 @@ class TuneFlow:
     def actor_error(self, tracked_actor: TrackedActor, exception: Exception):
         actor_id = self._actor_to_id.pop(tracked_actor)
 
-        replacement_actor = (
-            self._actor_manager.add_actor(
-                cls=Actor,
-                kwargs={
-                    "id": actor_id,
-                    "actor_error_init": False,
-                    "actor_error_task": False,
-                    "task_error": False,
-                },
-                resource_request=ResourceRequest([{"CPU": 1}]),
-            )
-            .on_start(self.actor_started)
-            .on_stop(self.actor_stopped)
-            .on_error(self.actor_error)
+        replacement_actor = self._actor_manager.add_actor(
+            cls=Actor,
+            kwargs={
+                "id": actor_id,
+                "actor_error_init": False,
+                "actor_error_task": False,
+                "task_error": False,
+            },
+            resource_request=ResourceRequest([{"CPU": 1}]),
+            on_start=self.actor_started,
+            on_stop=self.actor_stopped,
+            on_error=self.actor_error,
         )
 
         self._actor_to_id[replacement_actor] = actor_id
@@ -147,8 +147,12 @@ class TuneFlow:
             self._actor_manager.remove_actor(tracked_actor)
         else:
             self._actor_manager.schedule_actor_task(
-                tracked_actor, "run", kwargs={"value": result + 1}
-            ).on_error(self.task_error).on_result(self.task_result)
+                tracked_actor,
+                "run",
+                kwargs={"value": result + 1},
+                on_result=self.task_result,
+                on_error=self.task_error,
+            )
 
     def task_error(self, tracked_actor: TrackedActor, exception: Exception):
         if isinstance(exception, RayActorError):
@@ -158,20 +162,18 @@ class TuneFlow:
         self._actor_manager.remove_actor(tracked_actor)
         actor_id = self._actor_to_id.pop(tracked_actor)
 
-        replacement_actor = (
-            self._actor_manager.add_actor(
-                cls=Actor,
-                kwargs={
-                    "id": actor_id,
-                    "actor_error_init": False,
-                    "actor_error_task": False,
-                    "task_error": False,
-                },
-                resource_request=ResourceRequest([{"CPU": 1}]),
-            )
-            .on_start(self.actor_started)
-            .on_stop(self.actor_stopped)
-            .on_error(self.actor_error)
+        replacement_actor = self._actor_manager.add_actor(
+            cls=Actor,
+            kwargs={
+                "id": actor_id,
+                "actor_error_init": False,
+                "actor_error_task": False,
+                "task_error": False,
+            },
+            resource_request=ResourceRequest([{"CPU": 1}]),
+            on_start=self.actor_started,
+            on_stop=self.actor_stopped,
+            on_error=self.actor_error,
         )
         self._actor_to_id[replacement_actor] = actor_id
 
