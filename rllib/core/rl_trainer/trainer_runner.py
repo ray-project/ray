@@ -1,13 +1,10 @@
 import math
-import tree  # pip install dm-tree
-import numpy as np
 from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
 
 import ray
 
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
 from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -106,56 +103,21 @@ class TrainerRunner:
     def is_local(self) -> bool:
         return self._is_local
 
-    def fit(
-        self,
-        batch: MultiAgentBatch,
-        *,
-        minibatch_size: int,
-        num_iters: int,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
-    ) -> Mapping[str, Any]:
-        """Do `num_iters` minibatch updates given the original batch.
-
-        Given a batch of episodes you can use this method to take more
-        than one backward pass on the batch. The same minibatch_size and num_iters gets
-        will be used for all module ids (previously known as policies) in the
-        multiagent batch
-
-        Args:
-            batch: The data to use for the update.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
-            reduce_fn: See `update()` documenation for more details.
-
-        Returns:
-            A dictionary of results summarizing the statistics of the updates.
-        """
-
-        # TODO (Kourosh): One data transfer is probably better than many for each mini
-        # batch. How should we do this?
-        # loop until the number of passes through all modules batches reaches the
-        # num_iters
-        results = []
-        for minibatch in MiniBatchCyclicIterator(batch, minibatch_size, num_iters):
-            results.append(self.update(minibatch, reduce_fn=reduce_fn))
-
-        # return the average of the results using tree map
-        # TODO (Kourosh): There should be system for reporting back metrics from
-        # RLTrainers. Some metrics should be averaged, while some should be just
-        # concatenated.
-        return tree.map_structure(lambda *x: np.mean(x), *results)
-
     def update(
         self,
         batch: MultiAgentBatch,
         *,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
     ) -> List[Mapping[str, Any]]:
         """Do one gradient based update to the RLTrainer(s).
 
         Args:
             batch: The data to use for the update.
+            minibatch_size: The minibatch size to use for the update.
+            num_iters: The number of complete passes over all the sub-batches in the
+                input multi-agent batch.
             reduce_fn: A function to reduce the results from a list of RLTrainer Actors
                 into a single result. This can be any arbitrary function that takes a
                 list of dictionaries and returns a single dictionary. For example you
@@ -168,16 +130,35 @@ class TrainerRunner:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
         if self.is_local:
-            results = [self._trainer.update(batch)]
+            results = [
+                self._trainer.update(
+                    batch,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn,
+                )
+            ]
         else:
-            results = self._distributed_update(batch)
+            results = self._distributed_update(
+                batch,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
+            )
 
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
         if reduce_fn is None:
             return results
         return reduce_fn(results)
 
-    def _distributed_update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
+    def _distributed_update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+    ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
 
         Note: this function is used if the num_gpus this TrainerRunner is configured
@@ -186,7 +167,7 @@ class TrainerRunner:
             different backend than the cuda backend.
 
         Args:
-            batch: The data to use for the update.
+            See `.update()` docstring.
 
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
@@ -202,7 +183,14 @@ class TrainerRunner:
                 batch_to_send[pid] = sub_batch[int(start) : int(end)]
             # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
-            refs.append(worker.update.remote(new_batch))
+            refs.append(
+                worker.update.remote(
+                    new_batch,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn,
+                )
+            )
 
         results = ray.get(refs)
         return results
