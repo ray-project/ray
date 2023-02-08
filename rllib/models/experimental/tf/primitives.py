@@ -1,58 +1,62 @@
+import abc
 from typing import List
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.models.specs.checker import (
-    is_input_decorated,
-    is_output_decorated,
-)
-from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.models.experimental.base import Model
-from ray.rllib.utils.typing import TensorType
-from ray.rllib.models.utils import get_activation_fn
-from typing import Tuple
+
+from ray.rllib.models.experimental.base import Model, ModelConfig
 from ray.rllib.models.specs.checker import (
     check_input_specs,
     check_output_specs,
 )
+from ray.rllib.models.specs.checker import (
+    is_input_decorated,
+    is_output_decorated,
+)
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
 
-def _call_not_decorated(input_or_output):
-    return (
-        f"forward not decorated with {input_or_output} specification. Decorate "
-        f"with @check_{input_or_output}_specs() to define a specification. See "
-        f"BaseModel for examples."
+def _raise_not_decorated_exception(input_or_output):
+    raise ValueError(
+        f"`TfModel.__call__()` not decorated with {input_or_output} specification. "
+        f"Decorate it with @check_{input_or_output}_specs() to define a specification."
     )
 
 
-class TfModel(Model, tf.Module):
-    """Base class for RLlib models.
+class TfModel(Model, tf.Module, abc.ABC):
+    """Base class for RLlib's TensorFlow models.
 
-    This class is used to define the general interface for RLlib models and checks
-    whether inputs and outputs are checked with `check_input_specs()` and
+    This class defines the interface for RLlib's TensorFlow models and checks
+    whether inputs and outputs of __call__ are checked with `check_input_specs()` and
     `check_output_specs()` respectively.
     """
 
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config: ModelConfig):
+        tf.Module.__init__(self)
+        Model.__init__(self, config)
+
         # automatically apply spec checking
         if not is_input_decorated(self.__call__):
-            self.__call__ = check_input_specs("input_spec", cache=True)(self.__call__)
+            _raise_not_decorated_exception("input")
         if not is_output_decorated(self.__call__):
-            self.__call__ = check_output_specs("output_spec", cache=True)(self.__call__)
+            _raise_not_decorated_exception("output")
 
     @check_input_specs("input_spec", cache=True)
     @check_output_specs("output_spec", cache=True)
-    def __call__(self, input_dict: TensorDict) -> Tuple[TensorDict, List[TensorType]]:
+    def __call__(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         """Returns the output of this model for the given input.
+
+        This method only makes sure that we have a spec-checked _forward() method.
 
         Args:
             input_dict: The input tensors.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
-            Tuple[TensorDict, List[TensorType]]: The output tensors.
+            NestedDict: The output tensors.
         """
-        raise NotImplementedError
+        return self._forward(input_dict, **kwargs)
 
 
 class TfMLP(tf.Module):

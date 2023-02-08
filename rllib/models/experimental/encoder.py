@@ -1,11 +1,8 @@
 import abc
 
-from ray.rllib.models.experimental.base import Model, ForwardOutputType
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.experimental.base import Model, ModelConfig
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.
 STATE_IN: str = "state_in"
@@ -16,7 +13,7 @@ ACTOR: str = "actor"
 CRITIC: str = "critic"
 
 
-class Encoder(Model):
+class Encoder(Model, abc.ABC):
     """The framework-agnostic base class for all encoders RLlib produces.
 
     Encoders are used to encode observations into a latent space in RLModules.
@@ -30,43 +27,7 @@ class Encoder(Model):
     This should be reflected in the output_spec.
     """
 
-    def get_initial_state(self) -> TensorType:
-        """Returns the initial state of the encoder.
-
-        It can be left empty if this encoder is not stateful.
-
-        Examples:
-            >>> encoder = Encoder(...)
-            >>> state = encoder.get_initial_state()
-            >>> out = encoder.forward({"obs": ..., STATE_IN: state})
-        """
-        return {}
-
-    @property
-    def input_spec(self) -> SpecDict:
-        return SpecDict({SampleBatch.OBS: None, STATE_IN: None})
-
-    @property
-    def output_spec(self) -> SpecDict:
-        return [ENCODER_OUT, STATE_OUT]
-
-    @check_input_specs("input_spec", cache=True)
-    @check_output_specs("output_spec", cache=True)
-    @abc.abstractmethod
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        """Computes the output of this module for each timestep.
-
-        Outputs and inputs are subjected to spec checking.
-
-        Args:
-            inputs: A TensorDict containing model inputs
-            kwargs: For forwards compatibility
-
-        Returns:
-            outputs: A TensorDict containing model outputs
-
-        Examples:
-            # This is abstract, see the framework implementations
-            >>> out = encoder.forward({"obs": np.arange(10)}))
-        """
-        raise NotImplementedError
+    def __init__(self, config: ModelConfig):
+        super().__init__(config)
+        self.input_spec = SpecDict({SampleBatch.OBS: None, STATE_IN: None})
+        self.output_spec = [ENCODER_OUT, STATE_OUT]

@@ -1,11 +1,10 @@
-from dataclasses import dataclass
 import abc
+from dataclasses import dataclass
+from typing import List, Union
 
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.annotations import ExperimentalAPI
-
-ForwardOutputType = TensorDict
+from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.nested_dict import NestedDict
 
 
 @ExperimentalAPI
@@ -29,7 +28,7 @@ class ModelConfig(abc.ABC):
         raise NotImplementedError
 
 
-class Model:
+class Model(abc.ABC):
     """Framework-agnostic base class for RLlib models.
 
     Models are low-level neural network components that offer input- and
@@ -40,33 +39,24 @@ class Model:
     def __init__(self, config: ModelConfig):
         self.config = config
 
-    @abc.abstractmethod
-    def get_initial_state(self):
-        """Returns the initial state of the model."""
+    def get_initial_state(self) -> Union[NestedDict, List[TensorType]]:
+        """Returns the initial state of the Model.
+
+        It can be left empty if this Model is not stateful.
+        """
         return {}
 
-    @property
     @abc.abstractmethod
-    def output_spec(self) -> SpecDict:
-        """Returns the outputs spec of this model.
+    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+        """Returns the output of this model for the given input.
 
-        This can include the state specs as well.
+        Implement this method to write your own Model in Rllib.
 
-        Examples:
-            >>> ...
+        Args:
+            input_dict: The input tensors.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            NestedDict: The output tensors.
         """
-        # If no checking is needed, we can simply return an empty spec.
-        return SpecDict()
-
-    @property
-    @abc.abstractmethod
-    def input_spec(self) -> SpecDict:
-        """Returns the input spec of this model.
-
-        This can include the state specs as well.
-
-        Examples:
-            >>> ...
-        """
-        # If no checking is needed, we can simply return an empty spec.
-        return SpecDict()
+        raise NotImplementedError

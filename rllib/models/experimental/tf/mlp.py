@@ -1,9 +1,10 @@
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.experimental.base import Model
+from ray.rllib.models.experimental.base import ModelConfig
+from ray.rllib.models.experimental.tf.primitives import TfMLP, TfModel
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.utils import try_import_tf
-from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.models.experimental.tf.primitives import TfMLP, TfModel
-from ray.rllib.models.experimental.base import ModelConfig, ForwardOutputType
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -20,15 +21,9 @@ class TfMLPModel(TfModel):
             output_activation=config.output_activation,
         )
 
-    @property
-    def input_spec(self):
-        return TFTensorSpecs("b, h", h=self.config.input_dim)
+        self.input_spec = TFTensorSpecs("b, h", h=self.config.input_dim)
+        self.output_spec = TFTensorSpecs("b, h", h=self.config.output_dim)
 
-    @property
-    def output_spec(self):
-        return TFTensorSpecs("b, h", h=self.config.output_dim)
-
-    @check_input_specs("input_spec", cache=False)
-    @check_output_specs("output_spec", cache=False)
-    def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return self.net(inputs)

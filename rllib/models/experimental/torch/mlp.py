@@ -1,12 +1,12 @@
-import torch.nn as nn
-
-from ray.rllib.models.experimental.base import ForwardOutputType, Model, ModelConfig
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.experimental.base import ModelConfig
+from ray.rllib.models.experimental.base import Model
+from ray.rllib.models.experimental.torch.primitives import TorchMLP, TorchModel
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.models.experimental.torch.primitives import TorchMLP
-from ray.rllib.models.experimental.torch.primitives import TorchModel
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.nested_dict import NestedDict
+
+_, nn = try_import_torch()
 
 
 class TorchMLPModel(TorchModel, nn.Module):
@@ -22,18 +22,9 @@ class TorchMLPModel(TorchModel, nn.Module):
             output_activation=config.output_activation,
         )
 
-    @property
-    @override(Model)
-    def input_spec(self) -> TorchTensorSpec:
-        return TorchTensorSpec("b, h", h=self.config.input_dim)
+        self.input_spec = TorchTensorSpec("b, h", h=self.config.input_dim)
+        self.output_spec = TorchTensorSpec("b, h", h=self.config.output_dim)
 
-    @property
     @override(Model)
-    def output_spec(self) -> TorchTensorSpec:
-        return TorchTensorSpec("b, h", h=self.config.output_dim)
-
-    @check_input_specs("input_spec", cache=False)
-    @check_output_specs("output_spec", cache=False)
-    @override(TorchModel)
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return self.net(inputs)

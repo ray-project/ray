@@ -96,8 +96,8 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm):
-    model_config = {"use_lstm": lstm}
+def _get_ppo_module(framework, env, lstm, shared_encoder):
+    model_config = {"use_lstm": lstm, "vf_share_layers": shared_encoder}
     config = get_expected_module_config(env, model_config=model_config)
     if framework == "torch":
         module = PPOTorchRLModule(config)
@@ -130,16 +130,23 @@ class TestPPO(unittest.TestCase):
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
         fwd_fns = ["forward_exploration", "forward_inference"]
+        shared_encoder = [True, False]
         lstm = [False, True]
-        config_combinations = [frameworks, env_names, fwd_fns, lstm]
+        config_combinations = [frameworks, env_names, fwd_fns, lstm, shared_encoder]
         for config in itertools.product(*config_combinations):
-            fw, env_name, fwd_fn, lstm = config
+            fw, env_name, fwd_fn, lstm, shared_encoder = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
-            print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
+            print(
+                f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM"
+                f"={lstm} | "
+                f"SHARED_ENCODER={shared_encoder}]"
+            )
             env = gym.make(env_name)
-            module = _get_ppo_module(framework=fw, env=env, lstm=lstm)
+            module = _get_ppo_module(
+                framework=fw, env=env, lstm=lstm, shared_encoder=shared_encoder
+            )
 
             obs, _ = env.reset()
 
@@ -163,16 +170,23 @@ class TestPPO(unittest.TestCase):
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
         lstm = [False, True]
-        config_combinations = [frameworks, env_names, lstm]
+        shared_encoder = [True, False]
+        config_combinations = [frameworks, env_names, lstm, shared_encoder]
         for config in itertools.product(*config_combinations):
-            fw, env_name, lstm = config
+            fw, env_name, lstm, shared_encoder = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
-            print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
+            print(
+                f"[FW={fw} | [ENV={env_name}] | LSTM"
+                f"={lstm} | "
+                f"SHARED_ENCODER={shared_encoder}]"
+            )
             env = gym.make(env_name)
 
-            module = _get_ppo_module(fw, env, lstm)
+            module = _get_ppo_module(
+                framework=fw, env=env, lstm=lstm, shared_encoder=shared_encoder
+            )
 
             # collect a batch of data
             batches = []
