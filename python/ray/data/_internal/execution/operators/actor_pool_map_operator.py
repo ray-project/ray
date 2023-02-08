@@ -686,6 +686,10 @@ class _ActorPool:
 
 class _LocalityManager:
     def __init__(self):
+        """Manages a bidirectional index of RefBundle<>NodeId mappings.
+
+        This is used for fast lookup of bundles available on a particular node.
+        """
         self._loc_to_bundles: Dict[
             NodeIdStr, List[RefBundle]
         ] = collections.defaultdict(list)
@@ -693,6 +697,7 @@ class _LocalityManager:
         self._num_bundles = 0
 
     def start_tracking(self, bundle: RefBundle) -> None:
+        """Start tracking a bundle in this index."""
         loc = self._get_location(bundle)
         if loc:
             self._loc_to_bundles[loc].append(bundle)
@@ -702,19 +707,31 @@ class _LocalityManager:
         self._num_bundles += 1
 
     def stop_tracking(self, bundle: RefBundle) -> None:
+        """Stop tracking a bundle and erase it from the index."""
         loc = self._bundle_to_loc.pop(bundle)
         if loc is not None:
             self._loc_to_bundles[loc].remove(bundle)
         self._num_bundles -= 1
 
     def get_bundles_at_location(self, node_id: NodeIdStr) -> List[RefBundle]:
+        """Returns the list of bundles at the given location.
+
+        Note that the returned list is not a copy and should not be mutated.
+        """
         return self._loc_to_bundles[node_id]
 
     def num_tracked_bundles(self) -> int:
+        """Returns the number of tracked bundles."""
         return self._num_bundles
 
-    @staticmethod
-    def _get_location(bundle: RefBundle) -> Optional[NodeIdStr]:
+    def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
+        """Ask Ray for the node id of the given bundle.
+
+        This method may be overriden for testing.
+
+        Returns:
+            A node id associated with the bundle, or None if unknown.
+        """
         ref = bundle.blocks[0][0]
         # This call is pretty fast for owned objects (~5k/s), so we don't need to
         # batch it for now.

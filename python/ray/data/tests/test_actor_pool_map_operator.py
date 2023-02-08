@@ -8,9 +8,11 @@ from ray.tests.conftest import *  # noqa
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorPool,
+    _LocalityManager,
     AutoscalingConfig,
     AutoscalingPolicy,
 )
+from ray.data._internal.execution.util import make_ref_bundles
 
 
 @ray.remote
@@ -406,6 +408,39 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+
+    def test_locality_manager_indexing(self):
+        lm = _LocalityManager()
+        bundles = make_ref_bundles([[0] for _ in range(10)])
+        fake_loc_map = {}
+        for i, b in enumerate(bundles):
+            if i == 0:
+                # Test the unresolvable case.
+                fake_loc_map[b] = None
+            elif i < 5:
+                fake_loc_map[b] = "node1"
+            else:
+                fake_loc_map[b] = "node2"
+        lm._get_location = lambda b: fake_loc_map[b]
+        assert lm.num_tracked_bundles() == 0
+        for b in bundles:
+            lm.start_tracking(b)
+        assert lm.get_bundles_at_location("node1") == bundles[1:5]
+        assert lm.get_bundles_at_location("node2") == bundles[5:]
+        assert lm.get_bundles_at_location("node3") == []
+        assert lm.num_tracked_bundles() == 10
+        for b in bundles:
+            lm.stop_tracking(b)
+        assert lm.num_tracked_bundles() == 0
+        assert lm.get_bundles_at_location("node1") == []
+        assert lm.get_bundles_at_location("node2") == []
+        assert lm.get_bundles_at_location("node3") == []
+
+    def test_locality_manager_ranking(self):
+        assert False
+        # Insert fake patch locations method.
+        # Check actors with local bundles matched first.
+        # Check less busy actors matched first.
 
 
 class TestAutoscalingConfig:
