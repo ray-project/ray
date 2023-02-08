@@ -251,6 +251,10 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     auto &existing_events = task_events_.at(idx);
 
     // Update the events.
+    if (events_by_task.has_task_info() && !existing_events.has_task_info()) {
+      num_tasks_by_type_[events_by_task.task_info().type()]++;
+    }
+
     num_bytes_task_events_ -= existing_events.ByteSizeLong();
     existing_events.MergeFrom(events_by_task);
     num_bytes_task_events_ += existing_events.ByteSizeLong();
@@ -260,6 +264,11 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 
   // A new task event, add to storage and index.
+
+  // Bump the task counters by type.
+  if (events_by_task.has_task_info() && events_by_task.attempt_number() == 0) {
+    num_tasks_by_type_[events_by_task.task_info().type()]++;
+  }
 
   // If limit enforced, replace one.
   // TODO(rickyx): Optimize this to per job limit with bounded FIFO map.
@@ -444,8 +453,16 @@ std::string GcsTaskManager::DebugString() {
      << "\n-Total num profile events dropped: " << total_num_profile_task_events_dropped_
      << "\n-Total num bytes of task event stored: "
      << 1.0 * task_event_storage_->GetTaskEventsBytes() / 1024 / 1024 << "MiB"
-     << "\n-Total num of task events stored: "
-     << task_event_storage_->GetTaskEventsCount() << "\n";
+     << "\n-Current num of task events stored: "
+     << task_event_storage_->GetTaskEventsCount()
+     << "\n-Total num of actor creation tasks: "
+     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_CREATION_TASK]
+     << "\n-Total num of actor tasks: "
+     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_TASK]
+     << "\n-Total num of normal tasks: "
+     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::NORMAL_TASK]
+     << "\n-Total num of driver tasks: "
+     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::DRIVER_TASK];
 
   return ss.str();
 }
@@ -464,6 +481,26 @@ void GcsTaskManager::RecordMetrics() {
       task_event_storage_->GetTaskEventsCount());
   ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
       task_event_storage_->GetTaskEventsBytes());
+
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(
+        usage::TagKey::NUM_ACTOR_CREATION_TASKS,
+        task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_CREATION_TASK]);
+    usage_stats_client_->RecordExtraUsageCounter(
+        usage::TagKey::NUM_ACTOR_TASKS,
+        task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_TASK]);
+    usage_stats_client_->RecordExtraUsageCounter(
+        usage::TagKey::NUM_NORMAL_TASKS,
+        task_event_storage_->num_tasks_by_type_[rpc::TaskType::NORMAL_TASK]);
+    usage_stats_client_->RecordExtraUsageCounter(
+        usage::TagKey::NUM_DRIVERS,
+        task_event_storage_->num_tasks_by_type_[rpc::TaskType::DRIVER_TASK]);
+  }
+}
+
+void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+  absl::MutexLock lock(&mutex_);
+  usage_stats_client_ = usage_stats_client;
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
