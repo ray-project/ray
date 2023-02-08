@@ -70,7 +70,7 @@ def get_expected_model_config(
     )
     vf_config = MLPConfig(
         input_dim=32,
-        hidden_layer_dims=[32, 1],
+        hidden_layer_dims=[32],
         hidden_layer_activation="ReLU",
     )
 
