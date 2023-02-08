@@ -27,7 +27,20 @@ class PPOTfRLModule(TfRLModule):
     def __init__(self, config: RLModuleConfig):
         super().__init__()
         self.config = config
+        catalog = config.catalog
 
+        assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
+
+        # Set output dimensions according
+        catalog.encoder_config.input_dim = config.observation_space.shape[0]
+        catalog.pi_head_config.input_dim = catalog.encoder_config.output_dim
+        if isinstance(config.action_space, gym.spaces.Discrete):
+            catalog.pi_head_config.output_dim = config.action_space.n
+        else:
+            catalog.pi_head_config.output_dim = config.action_space.shape[0] * 2
+        catalog.vf_head_config.output_dim = 1
+
+        # Create models
         self.encoder = self.config.catalog.build_actor_critic_encoder(framework="tf")
         self.pi = self.config.catalog.build_pi_head(framework="tf")
         self.vf = self.config.catalog.build_vf_head(framework="tf")

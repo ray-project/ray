@@ -87,8 +87,9 @@ class TorchMLP(nn.Module):
             hidden_layer_activation, framework="torch"
         )
 
-        output_activation_class = get_activation_fn(output_activation,
-                                                    framework="torch")
+        output_activation_class = get_activation_fn(
+            output_activation, framework="torch"
+        )
 
         layers = []
         dims = [input_dim] + hidden_layer_dims + [output_dim]
