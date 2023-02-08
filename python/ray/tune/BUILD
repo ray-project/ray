@@ -241,6 +241,14 @@ py_test(
 )
 
 py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_searchers",
     size = "large",
     srcs = ["tests/test_searchers.py"],

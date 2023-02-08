@@ -114,6 +114,20 @@ class PPOTorchRLModule(TorchRLModule):
         assert type(config) is PPOModuleConfig
         self.config = config
 
+        assert self.config.pi_config, "pi_config must be provided."
+        assert self.config.vf_config, "vf_config must be provided."
+        assert self.config.encoder_config, "shared encoder config must be " "provided."
+
+        # Set output dimensions according
+        self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
+        self.config.pi_config.input_dim = self.config.encoder_config.output_dim
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            self.config.pi_config.output_dim = self.config.action_space.n
+        else:
+            self.config.pi_config.output_dim = self.config.action_space.shape[0] * 2
+        self.config.vf_config.output_dim = 1
+
+        # Create models
         self.encoder = self.config.catalog.build_actor_critic_encoder(framework="torch")
         self.pi = self.config.catalog.build_pi_head(framework="torch")
         self.vf = self.config.catalog.build_vf_head(framework="torch")

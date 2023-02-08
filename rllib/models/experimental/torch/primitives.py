@@ -87,9 +87,13 @@ class TorchMLP(nn.Module):
             hidden_layer_activation, framework="torch"
         )
 
+        output_activation_class = get_activation_fn(output_activation,
+                                                    framework="torch")
+
         layers = []
         dims = [input_dim] + hidden_layer_dims + [output_dim]
-        for i in range(len(dims) - 1):
+        layers.append(nn.Linear(dims[0], dims[1]))
+        for i in range(1, len(dims) - 1):
             if hidden_layer_activation != "linear":
                 layers.append(hidden_activation_class())
             layers.append(nn.Linear(dims[i], dims[i + 1]))
@@ -97,7 +101,7 @@ class TorchMLP(nn.Module):
         self.output_dim = dims[-1]
 
         if output_activation != "linear":
-            layers.append(get_activation_fn(output_activation, framework="torch")())
+            layers.append(output_activation_class())
 
         self.mlp = nn.Sequential(*layers)
 
