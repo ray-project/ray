@@ -113,13 +113,14 @@ if __name__ == "__main__":
         num_columns=1,
     )
     exc = None
+    ds_stats = None
     try:
         if args.shuffle:
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
         ds.fully_executed()
-        print(ds.stats())
+        ds_stats = ds.stats()
     except Exception as e:
         exc = e
         pass
@@ -143,6 +144,9 @@ if __name__ == "__main__":
         print("Failed to retrieve memory summary")
         print(traceback.format_exc())
     print("")
+
+    if ds_stats is not None:
+        print(ds_stats)
 
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
