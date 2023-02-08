@@ -83,62 +83,110 @@ class RLTrainerHPs:
 
 
 class RLTrainer:
-    """Base class for RLlib algorithm trainers.
+    """Base class for learners.
+
+    This class will be used to train RLModules. It is responsible for defining the loss
+    function, and updating the neural network weights that it owns. It also provides a
+    way to add/remove modules to/from RLModules in a multi-agent scenario, in the
+    middle of training (This is useful for league based training).
+
+    TF and Torch specific implementation of this class fills in the framework-specific
+    implementation details for distributed training, and for computing and applying
+    gradients. User should not need to sub-class this class, but instead inherit from
+    the TF or Torch specific sub-classes to implement their algorithm-specific update
+    logic.
+
 
     Args:
-        module_class: The (MA)RLModule class to use.
-        module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_config: The config for the optimizer.
-        in_test: Whether to enable additional logging behavior for testing purposes.
-        distributed: Whether this trainer is distributed or not.
+        module_spec: The module specification for the RLModule that is being trained.
+            If the module is a single agent module, after building the module it will
+            be converted to a multi-agent module with a default key. Can be none if the
+            module is provided directly via the `module` argument. Refer to
+            ray.rllib.core.rl_module.SingleAgentRLModuleSpec
+            or ray.rllib.core.rl_module.MultiAgentRLModuleSpec for more info.
+        module: If learner is being used stand-alone, the RLModule can be optionally
+            passed in directly instead of the through the `module_spec`.
+        optimizer_config: The deep learning gradient optimizer configuration to be
+            used. For example lr=0.0001, momentum=0.9, etc.
+        scaling_config: Configuration for scaling the learner actors.
+            Refer to ray.rllib.core.rl_trainer.scaling_config.TrainerScalingConfig
+            for more info.
+        trainer_hyperparameters: The hyper-parameters for the Learner.
+            Algorithm specific learner hyper-parameters will passed in via this
+            argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
+            passed in via this argument. Refer to
+            ray.rllib.core.rl_trainer.rl_trainer.RLTrainerHPs for more info.
+        framework_hps: The framework specific hyper-parameters. This will be used to
+            pass in any framework specific hyper-parameter that will impact the module
+            creation. For example eager_tracing in TF or compile in Torch.
+            Refer to ray.rllib.core.rl_trainer.rl_trainer.FrameworkHPs for more info.
 
-    Abstract Methods:
-        compute_gradients: Compute gradients for the module being optimized.
-        apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer. Both compute_gradients and
-            apply_gradients are meant for framework-specific specializations.
-        compute_loss: Compute the loss for the module being optimized. Override this
-            method to customize the loss function of the multi-agent RLModule that is
-            being optimized.
-        configure_optimizers: Configure the optimizers for the module being optimized.
-            Override this to cutomize the optimizers and the parameters that they are
-            optimizing.
 
+    Usage pattern:
 
-    Example:
         .. code-block:: python
 
-        trainer = MyRLTrainer(
-            module_class,
-            module_kwargs,
-            optimizer_config
+        # create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=MyModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config = {"hidden": [128, 128]}
         )
-        trainer.build()
-        batch = ...
-        results = trainer.update(batch)
 
-        # add a new module, perhaps for league based training or lru caching
-        trainer.add_module(
+        # create a learner instance that will train the module
+        learner = MyLearner(module_spec=module_spec)
+
+        # Note: the learner should be built before it can be used.
+        learner.build()
+
+        # take one gradient update on the module and report the results
+        results = learner.update(batch)
+
+        # add a new module, perhaps for league based training
+        learner.add_module(
             module_id="new_player",
-            module_cls=NewPlayerCls,
-            module_kwargs=new_player_kwargs,
+            module_spec=SingleAgentRLModuleSpec(
+                module_class=NewPlayerModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config = {"hidden": [128, 128]}
+            )
         )
 
-        batch = ...
-        results = trainer.update(batch)  # will train previous and new modules.
+        # Take another gradient update with both previous and new modules.
+        results = learner.update(batch)
 
         # remove a module
-        trainer.remove_module("new_player")
+        learner.remove_module("new_player")
 
-        batch = ...
-        results = trainer.update(batch)  # will train previous modules only.
+        # will train previous modules only.
+        results = learner.update(batch)
 
         # get the state of the trainer
-        state = trainer.get_state()
+        state = learner.get_state()
 
         # set the state of the trainer
-        trainer.set_state(state)
+        learner.set_state(state)
 
+        # get the weights of the underly multi-agent RLModule
+        weights = learner.get_weights()
+
+        # set the weights of the underly multi-agent RLModule
+        learner.set_weights(weights)
+
+
+    Extension pattern:
+
+        .. code-block:: python
+
+        class MyLearner(TorchLearner):
+
+            def compute_loss(self, fwd_out, batch):
+                # compute the loss based on batch and output of the forward pass
+                # to access the learner hyper-parameters use `self.hps`
+
+                return {self.TOTAL_LOSS_KEY: loss}
     """
 
     framework: str = None
@@ -156,10 +204,6 @@ class RLTrainer:
         trainer_hyperparameters: Optional[RLTrainerHPs] = RLTrainerHPs(),
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
-        # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
-        # the best idea in the world, but it's easy to implement and user will
-        # understand it. If we can find a better way to make subset of the config
-        # available to the trainer, that would be great.
         # TODO (Kourosh): convert optimizer configs to dataclasses
         if module_spec is not None and module is not None:
             raise ValueError(
@@ -171,10 +215,10 @@ class RLTrainer:
                 "Either module_spec or module should be provided to RLTrainer."
             )
 
-        self.module_spec = module_spec
-        self.module_obj = module
-        self.optimizer_config = optimizer_config
-        self.config = trainer_hyperparameters
+        self._module_spec = module_spec
+        self._module_obj = module
+        self._optimizer_config = optimizer_config
+        self._hps = trainer_hyperparameters
 
         # pick the configs that we need for the trainer from scaling config
         self._distributed = trainer_scaling_config.num_workers > 1
@@ -188,15 +232,17 @@ class RLTrainer:
 
     @property
     def distributed(self) -> bool:
+        """Whether the learner is running in distributed mode."""
         return self._distributed
 
     @property
     def module(self) -> MultiAgentRLModule:
+        """The multi-agent RLModule that is being trained."""
         return self._module
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the trainer.
+        """Configures the optimizers for the Learner.
 
         This method is responsible for setting up the optimizers that will be used to
         train the model. The optimizers are responsible for updating the model's
@@ -606,10 +652,10 @@ class RLTrainer:
         Returns:
             The constructed module.
         """
-        if self.module_obj is not None:
-            module = self.module_obj
+        if self._module_obj is not None:
+            module = self._module_obj
         else:
-            module = self.module_spec.build()
+            module = self._module_spec.build()
         module = module.as_multi_agent()
         return module
 
