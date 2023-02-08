@@ -292,7 +292,7 @@ def read_datasource(
 
     if force_local:
         requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, local_uri, read_args
+            datasource, cur_pg, parallelism, local_uri, read_args
         )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
@@ -304,7 +304,6 @@ def read_datasource(
         requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
                 datasource,
-                ctx,
                 cur_pg,
                 parallelism,
                 local_uri,
@@ -1585,7 +1584,6 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
 
 def _get_read_tasks(
     ds: Datasource,
-    ctx: DatasetContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     local_uri: bool,
@@ -1595,7 +1593,6 @@ def _get_read_tasks(
 
     Args:
         ds: Datasource to read from.
-        ctx: Dataset config to use.
         cur_pg: The current placement group, if any.
         parallelism: The user-requested parallelism, or -1 for autodetection.
         kwargs: Additional kwargs to pass to the reader.
@@ -1607,7 +1604,6 @@ def _get_read_tasks(
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
         kwargs["local_uri"] = local_uri
-    DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
         parallelism, cur_pg, DatasetContext.get_current(), reader
