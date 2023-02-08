@@ -35,8 +35,10 @@ class ProfileEvent {
   void SetExtraData(const std::string &extra_data);
 
  private:
+  // Reference to the TaskEventBuffer.
   TaskEventBuffer &task_event_buffer_;
 
+  // The underlying TaskEvent.
   TaskEvent event_;
 };
 

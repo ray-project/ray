@@ -471,7 +471,11 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 /// will be dropped. This is set to a large value to avoid worker side data loss.
 /// For now, avg size of task event is 200Bytes, 1M task events would incur 200MiB
 /// overhead.
-RAY_CONFIG(uint64_t, task_events_max_num_task_events_in_buffer, 1 * 1000 * 1000)
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 1 * 1000 * 1000)
+
+/// Min capacity of the task events buffer. This should be lower than
+/// `task_events_max_buffer_size`
+RAY_CONFIG(uint64_t, task_events_min_buffer_size, 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.

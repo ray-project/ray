@@ -68,7 +68,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
-  buffer_.set_capacity(RayConfig::instance().task_events_max_num_task_events_in_buffer());
+  buffer_.set_capacity({RayConfig::instance().task_events_max_buffer_size()});
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
@@ -89,6 +89,17 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     sigaddset(&mask, SIGINT);
     sigaddset(&mask, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
+    // Decrease the thread priority to allow worker threads to run.
+    int new_nice = std::min(RayConfig::instance().worker_niceness() + 5, 19);
+    new_nice = nice(new_nice);
+    if (new_nice == -1) {
+      RAY_LOG(WARNING) << "Failed to set lower priority for task event buffer io thread: "
+                       << errno;
+    } else {
+      RAY_LOG(INFO) << "Current task event io thread's nice = " << new_nice;
+    }
+
 #endif
     SetThreadName("task_event_buffer.io");
     io_service_.run();
@@ -136,7 +147,7 @@ void TaskEventBufferImpl::AddTaskEvent(TaskEvent task_event) {
   }
   absl::MutexLock lock(&mutex_);
 
-  auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
+  auto limit = RayConfig::instance().task_events_max_buffer_size();
   if (limit > 0 && buffer_.full()) {
     const auto &to_evict = buffer_.front();
     if (to_evict.IsProfileEvent()) {

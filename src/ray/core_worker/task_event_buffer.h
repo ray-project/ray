@@ -33,21 +33,42 @@ namespace core {
 
 namespace worker {
 
+/// A  wrapper class that will be converted to rpc::TaskEvents
+///
+/// This will be created by CoreWorker and stored in TaskEventBuffer, and
+/// when it is being flushed periodically to GCS, it will be converted to
+/// rpc::TaskEvents.
+/// This is an optimization so that converting to protobuf (which is costly)
+/// will not happen in the critical path of task execution/submission.
 class TaskEvent {
  public:
+  /// Convert itself a rpc::TaskEvents
+  ///
+  /// \param[out] rpc_task_events The rpc task event to be filled.
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) const;
 
+  /// If it is a profile event.
   bool IsProfileEvent() const { return profile_events.has_value(); }
 
+  /// Task Id.
   TaskID task_id = TaskID::Nil();
+  /// Job id.
   JobID job_id = JobID::Nil();
+  /// Attempt number
   int32_t attempt_number = -1;
+  /// The task status change if it's a status change event.
   rpc::TaskStatus task_status = rpc::TaskStatus::NIL;
+  /// The time when the task status change happens.
   int64_t timestamp = -1;
+  /// Pointer to the task spec.
   std::shared_ptr<const TaskSpecification> task_spec = nullptr;
+  /// If task info needs to be included in rpc::TaskEvents
   bool include_task_info = false;
+  /// Node id if it's a SUBMITTED_TO_WORKER status change.
   absl::optional<NodeID> node_id = absl::nullopt;
+  /// Worker id if it's a SUBMITTED_TO_WORKER status change.
   absl::optional<WorkerID> worker_id = absl::nullopt;
+  /// Profile event.
   absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt;
 };
 
@@ -60,7 +81,7 @@ class TaskEvent {
 ///   1. If any of the gRPC call failed, the task events will be dropped and warnings
 ///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
-///   2. More than `RAY_task_events_max_num_task_events_in_buffer` tasks have been stored
+///   2. More than `RAY_task_events_max_buffer_size` tasks have been stored
 ///   in the buffer, any new task events will be dropped. In this case, the number of
 ///   dropped task events will also be included in the next flush to surface this.
 ///
@@ -142,10 +163,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
 
  private:
-  void MakeRpcTaskEvents(rpc::TaskEvents *rpc_task_events, const TaskEvent &task_event);
-
-  void MakeTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_spec);
-
   /// Test only functions.
   std::vector<TaskEvent> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
@@ -193,7 +210,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer<TaskEvent> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer_space_optimized<TaskEvent> buffer_ GUARDED_BY(mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
