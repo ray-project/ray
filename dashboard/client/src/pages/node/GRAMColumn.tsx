@@ -40,7 +40,7 @@ export const WorkerGRAM = ({
 }) => {
   const workerGRAMEntries = (node.gpus ?? [])
     .map((gpu, i) => {
-      const process = gpu.processes.find(
+      const process = gpu.processes?.find(
         (process) => process.pid === worker.pid,
       );
       if (!process) {

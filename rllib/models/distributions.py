@@ -1,6 +1,6 @@
 """This is the next version of action distribution base class."""
 from typing import Tuple
-import gym
+import gymnasium as gym
 import abc
 
 from ray.rllib.utils.annotations import ExperimentalAPI
@@ -19,7 +19,6 @@ class Distribution(abc.ABC):
         >>> logp = action_dist.logp(action)
         >>> kl = action_dist.kl(action_dist2)
         >>> entropy = action_dist.entropy()
-
     """
 
     @abc.abstractmethod

@@ -220,3 +220,39 @@ will be equal to `RAY_GRAFANA_HOST`.
 
 For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
 to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
+
+
+Using an existing Grafana instance
+##################################
+
+When you want to use existing Grafana instance, before starting your Ray cluster you will need to setup environment variable `RAY_GRAFANA_HOST` with an URL of your Grafana. After starting Ray, you can find Grafana dashboard json at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
+
+If Grafana reports that datasource is not found, you can `add a datasource variable <https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable>`_ and using `JSON model view <https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model>`_ change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
+
+.. code-block:: json
+
+  "datasource": {
+    "type": "prometheus",
+    "uid": "$data_source"
+  }
+
+When existing Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray dashboard:
+
+.. code-block:: ini
+
+  [security]
+  allow_embedding = true
+  cookie_secure = true
+  cookie_samesite = none
+
+If Grafana is exposed via nginx ingress on Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
+
+.. code-block:: yaml
+
+  nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options SAMEORIGIN always;
+
+When both Grafana and Ray cluster are on the same Kubernetes cluster, it is important to set `RAY_GRAFANA_HOST` to the external URL of the Grafana ingress. For successful embedding, `RAY_GRAFANA_HOST` needs to be accessible to both Ray cluster backend and Ray dashboard frontend:
+
+* On the backend, *Ray cluster head* does health checks on Grafana. Hence `RAY_GRAFANA_HOST` needs to be accessible in the Kubernetes pod which is running the head node.
+* When accessing *Ray dashboard* from the browser, frontend embeds Grafana dashboard using the URL specified in `RAY_GRAFANA_HOST`. Hence `RAY_GRAFANA_HOST` needs to be accessible from the browser as well.

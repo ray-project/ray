@@ -1,5 +1,13 @@
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import (
+    get_load_metrics_report,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+    wait_for_condition,
+    get_resource_usage,
+)
+import pytest
+import os
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -46,9 +54,174 @@ f.remote()
     ray.get([f._remote(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)])
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_kill_driver_clears_backlog(call_ray_start):
+    driver = """
+import ray
+
+@ray.remote
+def f():
+    import time
+    time.sleep(300)
+
+refs = [f.remote() for _ in range(10000)]
+
+ray.get(refs)
+  """
+    proc = run_string_as_driver_nonblocking(driver)
+    ctx = ray.init(address=call_ray_start)
+
+    def get_backlog_and_pending():
+        resources_batch = get_resource_usage(
+            gcs_address=ctx.address_info["gcs_address"]
+        )
+        backlog = (
+            resources_batch.resource_load_by_shape.resource_demands[0].backlog_size
+            if resources_batch.resource_load_by_shape.resource_demands
+            else 0
+        )
+
+        pending = 0
+        demands = get_load_metrics_report(webui_url=ctx.address_info["webui_url"])[
+            "resourceDemand"
+        ]
+        for demand in demands:
+            resource_dict, amount = demand
+            if "CPU" in resource_dict:
+                pending = amount
+
+        return pending, backlog
+
+    def check_backlog(expect_backlog) -> bool:
+        pending, backlog = get_backlog_and_pending()
+        if expect_backlog:
+            return pending > 0 and backlog > 0
+        else:
+            return pending == 0 and backlog == 0
+
+    wait_for_condition(
+        check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog=True
+    )
+
+    os.kill(proc.pid, 9)
+
+    wait_for_condition(
+        check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog=False
+    )
+
+
+def get_infeasible_queued(ray_ctx):
+    resources_batch = get_resource_usage(
+        gcs_address=ray_ctx.address_info["gcs_address"]
+    )
+
+    infeasible_queued = (
+        resources_batch.resource_load_by_shape.resource_demands[
+            0
+        ].num_infeasible_requests_queued
+        if len(resources_batch.resource_load_by_shape.resource_demands) > 0
+        and hasattr(
+            resources_batch.resource_load_by_shape.resource_demands[0],
+            "num_infeasible_requests_queued",
+        )
+        else 0
+    )
+
+    return infeasible_queued
+
+
+def check_infeasible(expect_infeasible, ray_ctx) -> bool:
+    infeasible_queued = get_infeasible_queued(ray_ctx)
+    if expect_infeasible:
+        return infeasible_queued > 0
+    else:
+        return infeasible_queued == 0
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_kill_driver_clears_infeasible(call_ray_start):
+    driver = """
+import ray
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.options(num_cpus=99999999).remote())
+  """
+    proc = run_string_as_driver_nonblocking(driver)
+    ctx = ray.init(address=call_ray_start)
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=True,
+        ray_ctx=ctx,
+    )
+
+    os.kill(proc.pid, 9)
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=False,
+        ray_ctx=ctx,
+    )
+
+
+def test_kill_driver_keep_infeasible_detached_actor(ray_start_cluster):
+    cluster = ray_start_cluster
+    address = cluster.address
+
+    cluster.add_node(num_cpus=1)
+
+    driver_script = """
+import ray
+
+@ray.remote
+class A:
+    def fn(self):
+        pass
+
+ray.init(address="{}", namespace="test_det")
+
+ray.get(A.options(num_cpus=123, name="det", lifetime="detached").remote())
+""".format(
+        cluster.address
+    )
+
+    proc = run_string_as_driver_nonblocking(driver_script)
+
+    ctx = ray.init(address=address, namespace="test_det")
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=True,
+        ray_ctx=ctx,
+    )
+
+    os.kill(proc.pid, 9)
+
+    cluster.add_node(num_cpus=200)
+
+    det_actor = ray.get_actor("det")
+
+    ray.get(det_actor.fn.remote())
+
+
 if __name__ == "__main__":
-    import pytest
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

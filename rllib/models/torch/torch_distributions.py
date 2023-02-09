@@ -3,7 +3,7 @@ has more explicit input args. So that the input format does not have to be guess
 the code. This matches the design pattern of torch distribution which developers may
 already be familiar with.
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional
 import abc
@@ -23,7 +23,7 @@ class TorchDistribution(Distribution, abc.ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.dist = self._get_torch_distribution(*args, **kwargs)
+        self._dist = self._get_torch_distribution(*args, **kwargs)
 
     @abc.abstractmethod
     def _get_torch_distribution(
@@ -33,21 +33,21 @@ class TorchDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        return self.dist.log_prob(value, **kwargs)
+        return self._dist.log_prob(value, **kwargs)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
-        return self.dist.entropy()
+        return self._dist.entropy()
 
     @override(Distribution)
     def kl(self, other: "Distribution") -> TensorType:
-        return torch.distributions.kl.kl_divergence(self.dist, other.dist)
+        return torch.distributions.kl.kl_divergence(self._dist, other._dist)
 
     @override(Distribution)
     def sample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        sample = self.dist.sample(sample_shape)
+        sample = self._dist.sample(sample_shape)
         if return_logp:
             return sample, self.logp(sample)
         return sample
@@ -56,7 +56,7 @@ class TorchDistribution(Distribution, abc.ABC):
     def rsample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        rsample = self.dist.rsample(sample_shape)
+        rsample = self._dist.rsample(sample_shape)
         if return_logp:
             return rsample, self.logp(rsample)
         return rsample
@@ -93,6 +93,7 @@ class TorchCategorical(TorchDistribution):
             larger value will result in uniform sampling.
     """
 
+    @override(TorchDistribution)
     def __init__(
         self,
         probs: torch.Tensor = None,
@@ -147,7 +148,7 @@ class TorchDiagGaussian(TorchDistribution):
             Has to be positive.
     """
 
-    @override(Distribution)
+    @override(TorchDistribution)
     def __init__(
         self,
         loc: Union[float, torch.Tensor],
@@ -202,6 +203,7 @@ class TorchDeterministic(Distribution):
         loc: the determinsitic value to return
     """
 
+    @override(Distribution)
     def __init__(self, loc: torch.Tensor) -> None:
         super().__init__()
         self.loc = loc

@@ -235,7 +235,13 @@ def test_reserved_cpus(ray_start_4_cpus):
     tune.run(trainer.as_trainable(), num_samples=4)
 
 
+@patch("ray.available_resources", ray.cluster_resources)
 def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
+    # ray.available_resources() is used in the warning logic.
+    # We mock it as it can be stochastic due to garbage collection etc.
+    # The aim of this test is not to check if ray.available_resources()
+    # works correctly, but to test the warning logic.
+
     def train_loop(config):
         pass
 

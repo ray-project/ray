@@ -79,6 +79,10 @@ allows you to create custom dashboards with your favorite metrics. Ray exports s
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
 
+
+Deploying Grafana
+~~~~~~~~~~~~~~~~~
+
 First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
 Then go to to the location of the binary and run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
@@ -97,7 +101,8 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 .. image:: images/graphs.png
     :align: center
 
-See :ref:`here <multi-node-metrics>` for more information on how to set up Grafana on a Ray Cluster.
+
+See :ref:`here <multi-node-metrics-grafana>` for more information on how to set up Grafana on a Ray Cluster.
 
 .. _system-metrics:
 
@@ -159,7 +164,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - The amount of physical memory available per node, in bytes.
    * - `ray_component_uss_mb`
      - `Component`, `InstanceId`
-     - The measured unique set size in megabytes, broken down by logical Ray component (e.g., raylet, gcs, workers).
+     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_cpu_percentage`
+     - `Component`, `InstanceId`
+     - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
      - `InstanceId`
      - The amount of GPU memory used per node, in bytes.
@@ -290,3 +298,9 @@ When downloading binaries from the internet, Mac requires that the binary be sig
 Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
 See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
+
+Grafana dashboards are not embedded in the Ray dashboard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
+That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).

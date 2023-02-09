@@ -2,9 +2,9 @@ import click
 import time
 import json
 import os
-import numpy as np
-import pandas as pd
+from typing import Dict
 
+import numpy as np
 from torchvision import transforms
 from torchvision.models import resnet18
 import torch.nn as nn
@@ -12,29 +12,17 @@ import torch.optim as optim
 
 import ray
 from ray.train.torch import TorchCheckpoint
-from ray.data.preprocessors import BatchMapper
+from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
 
-def preprocess_image_with_label(batch: np.ndarray) -> pd.DataFrame:
-    """
-    User Pytorch code to transform user image.
-    """
-    preprocess = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    df = pd.DataFrame(
-        {"image": [preprocess(image) for image in batch], "label": [1] * len(batch)}
-    )
-    return df
+def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    batch_size = len(batch["image"])
+    batch["label"] = np.zeros([batch_size], dtype=int)
+    return batch
 
 
 def train_loop_per_worker(config):
@@ -51,8 +39,8 @@ def train_loop_per_worker(config):
             train_dataset_shard.iter_torch_batches(batch_size=config["batch_size"])
         ):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data["image"].to(device="cuda")
-            labels = data["label"].to(device="cuda")
+            inputs = data["image"].to(device=train.torch.get_device())
+            labels = data["label"].to(device=train.torch.get_device())
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -78,24 +66,48 @@ def train_loop_per_worker(config):
 @click.option("--data-size-gb", type=int, default=1)
 @click.option("--num-epochs", type=int, default=2)
 @click.option("--num-workers", type=int, default=1)
-def main(data_size_gb: int, num_epochs=2, num_workers=1):
-    data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = False):
+    data_url = (
+        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+    )
     print(
         "Running Pytorch image model training with "
         f"{data_size_gb}GB data from {data_url}"
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
+
+    if smoke_test:
+        # Only read one image
+        data_url = [data_url + "/dog.jpg"]
+        print("Running smoke test on CPU with a single example")
+    else:
+        print(f"Running GPU training with {data_size_gb}GB data from {data_url}")
+
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
-    preprocessor = BatchMapper(preprocess_image_with_label, batch_format="numpy")
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    preprocessor = Chain(
+        BatchMapper(add_fake_labels, batch_format="numpy"),
+        TorchVisionPreprocessor(columns=["image"], transform=transform),
+    )
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 64, "num_epochs": num_epochs},
         datasets={"train": dataset},
         preprocessor=preprocessor,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(
+            num_workers=num_workers, use_gpu=int(not smoke_test)
+        ),
     )
     trainer.fit()
 

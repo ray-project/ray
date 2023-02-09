@@ -1,7 +1,7 @@
 .. _tune-search-space:
 
-Search Space API
-================
+Tune Search Space API
+=====================
 
 .. _tune-sample-docs:
 
@@ -15,6 +15,13 @@ This section covers the functions you can use to define your search spaces.
     Not all Search Algorithms support all distributions. In particular,
     ``tune.sample_from`` and ``tune.grid_search`` are often unsupported.
     The default :ref:`tune-basicvariant` supports all distributions.
+
+.. tip::
+
+    Avoid passing large objects as values in the search space, as that will incur a performance overhead.
+    Use :ref:`tune-with-parameters` to pass large objects in or load them inside your trainable
+    from disk (making sure that all nodes have access to the files) or cloud storage.
+    See :ref:`tune-bottlenecks` for more information.
 
 For a high-level overview, see this example:
 

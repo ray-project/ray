@@ -7,6 +7,7 @@ import time
 import tqdm
 
 from ray.experimental.state.api import summarize_tasks
+from dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
@@ -47,7 +48,9 @@ def test_max_running_tasks(num_tasks):
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
     used_cpus = max_cpus - min_cpus_available
     err_str = f"Only {used_cpus}/{max_cpus} cpus used."
-    threshold = num_tasks * cpus_per_task * 0.70
+    # 1500 tasks. Note that it is a pretty low threshold, and the
+    # performance should be tracked via perf dashboard.
+    threshold = num_tasks * cpus_per_task * 0.60
     print(f"{used_cpus}/{max_cpus} used.")
     assert used_cpus > threshold, err_str
 
@@ -72,10 +75,11 @@ def no_resource_leaks():
     help="If set, it's a smoke test",
 )
 def test(num_tasks, smoke_test):
-    ray.init(address="auto")
+    addr = ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
+    dashboard_test = DashboardTestAtScale(addr)
 
     def not_none(res):
         return res is not None
@@ -129,6 +133,7 @@ def test(num_tasks, smoke_test):
                     "perf_metric_type": "THROUGHPUT",
                 },
             ]
+        dashboard_test.update_release_test_result(results)
         json.dump(results, out_file)
 
 

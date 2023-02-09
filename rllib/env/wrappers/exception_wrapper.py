@@ -1,7 +1,7 @@
 import logging
 import traceback
 
-import gym
+import gymnasium as gym
 
 logger = logging.getLogger(__name__)
 

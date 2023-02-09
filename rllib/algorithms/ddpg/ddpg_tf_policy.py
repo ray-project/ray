@@ -1,6 +1,6 @@
 from functools import partial
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, Tuple, List, Type, Union, Optional, Any
 
 import ray
@@ -42,7 +42,7 @@ class ComputeTDErrorMixin:
     def __init__(self: Union[DynamicTFPolicyV2, EagerTFPolicyV2]):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = SampleBatch(
                 {
@@ -50,7 +50,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(terminateds_mask),
                     PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 }
             )
@@ -320,7 +320,7 @@ def get_ddpg_tf_policy(
 
             q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
             q_tp1_best_masked = (
-                1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+                1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
             ) * q_tp1_best
 
             # Compute RHS of bellman equation.
@@ -367,7 +367,9 @@ def get_ddpg_tf_policy(
                 # Expand input_dict in case custom_loss' need them.
                 input_dict[SampleBatch.ACTIONS] = train_batch[SampleBatch.ACTIONS]
                 input_dict[SampleBatch.REWARDS] = train_batch[SampleBatch.REWARDS]
-                input_dict[SampleBatch.DONES] = train_batch[SampleBatch.DONES]
+                input_dict[SampleBatch.TERMINATEDS] = train_batch[
+                    SampleBatch.TERMINATEDS
+                ]
                 input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
                 if log_once("ddpg_custom_loss"):
                     logger.warning(

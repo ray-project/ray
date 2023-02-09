@@ -16,10 +16,12 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
@@ -49,6 +51,21 @@ rpc::Address GetRandomWorkerAddr() {
   return addr;
 }
 
+class MockTaskEventBuffer : public worker::TaskEventBuffer {
+ public:
+  MOCK_METHOD(void, AddTaskEvent, (rpc::TaskEvents task_events), (override));
+
+  MOCK_METHOD(void, FlushEvents, (bool forced), (override));
+
+  MOCK_METHOD(Status, Start, (bool manual_flush), (override));
+
+  MOCK_METHOD(void, Stop, (), (override));
+
+  MOCK_METHOD(bool, Enabled, (), (const, override));
+
+  MOCK_METHOD(const std::string, DebugString, (), (override));
+};
+
 class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false,
@@ -56,6 +73,7 @@ class TaskManagerTest : public ::testing::Test {
       : addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             addr_,
             publisher_.get(),
@@ -80,7 +98,8 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &type,
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
-            max_lineage_bytes) {}
+            max_lineage_bytes,
+            *task_event_buffer_mock_.get()) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -94,6 +113,7 @@ class TaskManagerTest : public ::testing::Test {
   rpc::Address addr_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
@@ -125,7 +145,8 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -204,7 +225,8 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -410,6 +432,23 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
 }
 
+TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
+  RayConfig::instance().initialize(R"({"task_oom_retries": -1})");
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  int num_retries = 1;
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+
+  for (int i = 0; i < 10000; i++) {
+    ASSERT_EQ(num_retries_, i);
+    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+  }
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+}
+
 TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryCounter) {
   RayConfig::instance().initialize(R"({"task_oom_retries": 1})");
   int num_retries = 0;
@@ -435,6 +474,58 @@ TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryC
   ASSERT_EQ(stored_error, rpc::ErrorType::OUT_OF_MEMORY);
 }
 
+TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
+  RayConfig::instance().initialize(R"({"task_oom_retries": 1})");
+
+  {
+    ray::rpc::ErrorType error = rpc::ErrorType::OUT_OF_MEMORY;
+
+    rpc::Address caller_address;
+    auto spec = CreateTaskHelper(1, {});
+    manager_.AddPendingTask(caller_address, spec, "", /*max retries*/ 10);
+    auto return_id = spec.ReturnId(0);
+
+    manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                    error,
+                                    /*status*/ nullptr,
+                                    /*error info*/ nullptr,
+                                    /*mark object failed*/ true,
+                                    /*fail immediately*/ true);
+
+    std::vector<std::shared_ptr<RayObject>> results;
+    WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    ASSERT_EQ(results.size(), 1);
+    rpc::ErrorType stored_error;
+    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_EQ(stored_error, error);
+  }
+
+  {
+    ray::rpc::ErrorType error = rpc::ErrorType::WORKER_DIED;
+
+    rpc::Address caller_address;
+    auto spec = CreateTaskHelper(1, {});
+    manager_.AddPendingTask(caller_address, spec, "", /*max retries*/ 10);
+    auto return_id = spec.ReturnId(0);
+
+    manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                    error,
+                                    /*status*/ nullptr,
+                                    /*error info*/ nullptr,
+                                    /*mark object failed*/ true,
+                                    /*fail immediately*/ true);
+
+    std::vector<std::shared_ptr<RayObject>> results;
+    WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    ASSERT_EQ(results.size(), 1);
+    rpc::ErrorType stored_error;
+    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_EQ(stored_error, error);
+  }
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // evicted when lineage pinning is disabled in the ReferenceCounter.
 TEST_F(TaskManagerTest, TestLineageEvicted) {
@@ -449,7 +540,8 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   auto return_id = spec.ReturnId(0);
   rpc::PushTaskReply reply;
@@ -518,7 +610,8 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -561,7 +654,8 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -607,7 +701,8 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -640,7 +735,8 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -686,7 +782,8 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -739,7 +836,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task completes.
-  manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -797,7 +895,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
 
   // The task completes. Both return objects are stored in plasma.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -829,7 +928,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -861,7 +961,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
 
   // The task completes. One return object is stored in plasma.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
@@ -891,7 +992,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
@@ -913,7 +1015,8 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
 
   // The task completes and returns dynamic returns.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -974,7 +1077,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
 
   // The task completes and returns dynamic returns.
   {
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
@@ -1015,7 +1119,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-    manager_.MarkTaskWaitingForExecution(spec.TaskId(), NodeID::FromRandom());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
     ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);

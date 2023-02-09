@@ -10,12 +10,27 @@ import pytest
 
 import ray
 from ray import tune
-from ray.air import Checkpoint, CheckpointConfig, FailureConfig, RunConfig, session
-from ray.air._internal.remote_storage import delete_at_uri, download_from_uri
+from ray.air import (
+    Checkpoint,
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+    session,
+)
+from ray.air._internal.remote_storage import (
+    delete_at_uri,
+    download_from_uri,
+    upload_to_uri,
+    list_at_uri,
+)
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
+from ray.tune.schedulers.async_hyperband import ASHAScheduler
+from ray.tune.search.optuna import OptunaSearch
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -44,6 +59,12 @@ def chdir_tmpdir(tmpdir):
     os.chdir(old_cwd)
 
 
+@pytest.fixture
+def clear_memory_filesys():
+    yield
+    delete_at_uri("memory:///")
+
+
 def _train_fn_sometimes_failing(config):
     # Fails if failing is set and marker file exists.
     # Hangs if hanging is set and marker file exists.
@@ -51,7 +72,8 @@ def _train_fn_sometimes_failing(config):
 
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        state = checkpoint.to_dict()
+        checkpoint_dict = checkpoint.to_dict()
+        state = {"it": checkpoint_dict["it"]}
     else:
         state = {"it": 0}
 
@@ -265,8 +287,8 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir):
             ),
         },
     )
-    # Catch the FailOnStats erro
-    with pytest.raises(tune.TuneError):
+    # Catch the FailOnStats error
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -324,7 +346,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
         },
     )
     # Catch the FailOnStats error
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(RuntimeError):
         tuner.fit()
 
     # After this run we have the following trial states (status, metric):
@@ -354,7 +376,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
+def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys):
     """Check that restoring Tuner() objects from cloud storage works"""
     tuner = Tuner(
         lambda config: 1,
@@ -408,7 +430,7 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     [None, "memory:///test/test_tuner_restore_latest_available_checkpoint"],
 )
 def test_tuner_restore_latest_available_checkpoint(
-    ray_start_4_cpus, tmpdir, upload_uri
+    ray_start_4_cpus, tmpdir, upload_uri, clear_memory_filesys
 ):
     """Resuming errored trials should pick up from previous state"""
     fail_marker = tmpdir / "fail_marker"
@@ -623,7 +645,9 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
             local_dir=str(tmp_path),
             stop={"training_iteration": 3},
             failure_config=FailureConfig(max_failures=0),
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            checkpoint_config=CheckpointConfig(
+                checkpoint_frequency=0 if use_function_trainable else 1
+            ),
         ),
         param_space={"fail_marker": fail_marker},
     )
@@ -638,7 +662,7 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     assert len(tuner.get_results().errors) == 1
 
     # Continuing to fit should fail if we didn't re-specify the trainable
-    with pytest.raises(tune.TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
 
     fail_marker.unlink()
@@ -733,6 +757,68 @@ def test_tuner_restore_from_moved_experiment_path(
     assert not old_local_dir.exists()
 
 
+def test_tuner_restore_from_moved_cloud_uri(
+    ray_start_2_cpus, tmp_path, clear_memory_filesys
+):
+    """Test that restoring an experiment that was moved to a new remote URI
+    resumes and continues saving new results at that URI."""
+
+    def failing_fn(config):
+        data = {"score": 1}
+        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        raise RuntimeError("Failing!")
+
+    tuner = Tuner(
+        failing_fn,
+        run_config=RunConfig(
+            name="exp_dir",
+            local_dir=str(tmp_path / "ray_results"),
+            sync_config=tune.SyncConfig(upload_dir="memory:///original"),
+        ),
+        tune_config=TuneConfig(trial_dirname_creator=lambda _: "test"),
+    )
+    tuner.fit()
+
+    # mv memory:///original/exp_dir memory:///moved/new_exp_dir
+    download_from_uri(
+        "memory:///original/exp_dir", str(tmp_path / "moved" / "new_exp_dir")
+    )
+    delete_at_uri("memory:///original")
+    upload_to_uri(str(tmp_path / "moved"), "memory:///moved")
+
+    tuner = Tuner.restore("memory:///moved/new_exp_dir", resume_errored=True)
+    # Just for the test, since we're using `memory://` to mock a remote filesystem,
+    # the checkpoint needs to be copied to the new local directory.
+    # This is because the trainable actor uploads its checkpoints to a
+    # different `memory://` filesystem than the driver and is not
+    # downloaded along with the other parts of the experiment dir.
+    # NOTE: A new local directory is used since the experiment name got modified.
+    shutil.move(
+        tmp_path / "ray_results/exp_dir/test/checkpoint_000000",
+        tmp_path / "ray_results/new_exp_dir/test/checkpoint_000000",
+    )
+    results = tuner.fit()
+
+    assert list_at_uri("memory:///") == ["moved"]
+    num_experiment_checkpoints = len(
+        [
+            path
+            for path in list_at_uri("memory:///moved/new_exp_dir")
+            if path.startswith("experiment_state")
+        ]
+    )
+    assert num_experiment_checkpoints == 2
+
+    num_trial_checkpoints = len(
+        [
+            path
+            for path in os.listdir(results[0].log_dir)
+            if path.startswith("checkpoint_")
+        ]
+    )
+    assert num_trial_checkpoints == 2
+
+
 def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
     tuner = Tuner(
         lambda config: session.report({"score": 1}),
@@ -744,6 +830,174 @@ def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
     results = tuner.fit()
     assert not results.errors
     assert results[0].metrics["score"] == 1
+
+
+def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
+    """Check that a restored Tune experiment uses the original searcher/scheduler."""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    class MockSearcher(OptunaSearch):
+        def on_trial_result(self, trial_id: str, result: dict):
+            super().on_trial_result(trial_id, result)
+            if not hasattr(self, "_test_result_counter"):
+                self._test_result_counter = 0
+            self._test_result_counter += 1
+
+    class MockScheduler(ASHAScheduler):
+        def on_trial_result(self, runner, trial, result):
+            decision = super().on_trial_result(runner, trial, result)
+            if not hasattr(self, "_test_result_counter"):
+                self._test_result_counter = 0
+            self._test_result_counter += 1
+            return decision
+
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        run_config=RunConfig(local_dir=str(tmpdir), name="exp_name"),
+        tune_config=TuneConfig(
+            search_alg=MockSearcher(),
+            scheduler=MockScheduler(),
+            metric="it",
+            mode="max",
+        ),
+        param_space={"a": tune.uniform(0, 1), "failing_hanging": (fail_marker, None)},
+    )
+    tuner.fit()
+
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    tuner = Tuner.restore(str(tmpdir / "exp_name"), resume_errored=True)
+    tuner.fit()
+    searcher = tuner._local_tuner._tune_config.search_alg
+    scheduler = tuner._local_tuner._tune_config.scheduler
+    assert isinstance(searcher, MockSearcher)
+    assert isinstance(scheduler, MockScheduler)
+    # Searcher state should get loaded correctly
+    # Total of 3 reported results (1 from before failure, 2 after restore)
+    assert searcher._test_result_counter == 3
+    # Make sure that the restored scheduler is at least used
+    assert (
+        hasattr(scheduler, "_test_result_counter")
+        and scheduler._test_result_counter > 0
+    )
+
+
+@pytest.mark.parametrize("use_air_trainer", [True, False])
+def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trainer):
+    """Checkpoints saved after experiment restore should pick up at the correct
+    iteration and should not overwrite the checkpoints from the original run.
+    Old checkpoints should still be deleted if the total number of checkpoints
+    (old + new) exceeds `num_to_keep`.
+
+    In this test, `num_to_keep=4`:
+    - Initial run saves checkpoint_000000 and checkpoint_000001
+    - Restored run saves checkpoint_000002, checkpoint_000003, and checkpoint_000004
+    - Checkpoint 000000 should be deleted.
+    """
+
+    def get_checkpoints(experiment_dir):
+        checkpoint_dirs = [
+            path
+            for path in os.listdir(experiment_dir)
+            if path.startswith("checkpoint_")
+        ]
+        sorted_checkpoint_dirs = sorted(checkpoint_dirs)
+        checkpoints = [
+            Checkpoint.from_directory(os.path.join(experiment_dir, d))
+            for d in sorted_checkpoint_dirs
+        ]
+        return sorted_checkpoint_dirs, checkpoints
+
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    trainable = (
+        DataParallelTrainer(
+            _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
+        )
+        if use_air_trainer
+        else _train_fn_sometimes_failing
+    )
+    param_space = {
+        "failing_hanging": (fail_marker, None),
+        "num_epochs": 2,
+    }
+    if use_air_trainer:
+        param_space = {"train_loop_config": param_space}
+
+    num_to_keep = 4
+    tuner = Tuner(
+        trainable,
+        tune_config=TuneConfig(num_samples=1),
+        run_config=RunConfig(
+            name="exp_name",
+            local_dir=str(tmp_path),
+            checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
+        ),
+        param_space=param_space,
+    )
+    results = tuner.fit()
+    training_iteration = results[0].metrics["training_iteration"]
+    assert (
+        training_iteration == 2
+    ), f"Should be at 2 iters before erroring, got {training_iteration}"
+
+    # Initial run saves the first 2 checkpoints
+    checkpoint_dirs, checkpoints = get_checkpoints(results[0].log_dir)
+    assert checkpoint_dirs == ["checkpoint_000000", "checkpoint_000001"]
+    assert [ckpt.to_dict()["it"] for ckpt in checkpoints] == [1, 2]
+
+    fail_marker.unlink()
+    tuner = Tuner.restore(str(tmp_path / "exp_name"), resume_errored=True)
+    results = tuner.fit()
+
+    assert len(results.errors) == 0
+    training_iteration = results[0].metrics["training_iteration"]
+    # Restored at it=2, reported 3 more times -> should have it=5
+    assert training_iteration == 5
+
+    # Restored run saves the 3 more checkpoints, and first checkpoint should be deleted
+    checkpoint_dirs, checkpoints = get_checkpoints(results[0].log_dir)
+    assert checkpoint_dirs == [f"checkpoint_00000{i}" for i in range(1, 5)]
+    assert [ckpt.to_dict()["it"] for ckpt in checkpoints] == [2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
+def test_tuner_can_restore(tmp_path, upload_dir):
+    """Make sure that `can_restore` detects an existing experiment at a
+    local/remote path and only returns True if it's at the experiment dir root.
+    """
+    name = "exp_name"
+    if upload_dir:
+        path = Path(upload_dir) / name
+    else:
+        path = tmp_path / name
+
+    assert not Tuner.can_restore(path)
+    Tuner(
+        lambda config: None,
+        run_config=RunConfig(
+            name=name,
+            local_dir=str(tmp_path),
+            sync_config=tune.SyncConfig(upload_dir=upload_dir),
+        ),
+        tune_config=TuneConfig(trial_dirname_creator=lambda t: "trial_dir"),
+    )
+    (path / "trial_dir").mkdir(parents=True, exist_ok=True)
+    if upload_dir:
+        upload_to_uri(str(tmp_path / name), str(path))
+    assert Tuner.can_restore(path)
+    # Can't restore from the trial level
+    assert not Tuner.can_restore(path / "trial_dir")
+    # Can't restore from the local_dir level
+    assert not Tuner.can_restore(tmp_path)
+
+    if upload_dir:
+        assert not Tuner.can_restore(Path(upload_dir) / "new_exp")
+    else:
+        assert not Tuner.can_restore(tmp_path / "new_exp")
 
 
 if __name__ == "__main__":

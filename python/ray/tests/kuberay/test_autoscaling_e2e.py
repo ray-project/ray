@@ -110,7 +110,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
             ray_container = containers[0]
             # Confirm the first container in the example config is the Ray container.
-            assert ray_container["name"] in ["ray-head", "machine-learning"]
+            assert ray_container["name"] in ["ray-head", "ray-worker"]
             # ("machine-learning" is the name of the worker Ray container)
 
             ray_container["image"] = RAY_IMAGE

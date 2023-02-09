@@ -1,0 +1,33 @@
+sac-halfcheetah-v4:
+    env: HalfCheetah-v4
+    run: SAC
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 500.0
+        timesteps_total: 400000
+    stop:
+        time_total_s: 3600
+    config:
+        q_model_config:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256]
+        policy_model_config:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256]
+        tau: 0.005
+        target_entropy: auto
+        n_step: 3
+        rollout_fragment_length: auto
+        train_batch_size: 256
+        target_network_update_freq: 1
+        min_sample_timesteps_per_iteration: 1000
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+        num_steps_sampled_before_learning_starts: 10000
+        optimization:
+            actor_learning_rate: 0.0003
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0003
+        num_workers: 0
+        num_gpus: 1
+        metrics_num_episodes_for_smoothing: 5

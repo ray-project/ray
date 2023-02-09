@@ -39,7 +39,7 @@ Other options for running this example:
 import argparse
 import os
 
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import ray
 from ray import air, tune
 from ray.rllib.algorithms import ppo
@@ -169,13 +169,13 @@ if __name__ == "__main__":
         # prepare environment with max 10 steps
         config["env_config"]["max_episode_len"] = 10
         env = ActionMaskEnv(config["env_config"])
-        obs = env.reset()
+        obs, info = env.reset()
         done = False
         # run one iteration until done
         print(f"ActionMaskEnv with {config['env_config']}")
         while not done:
             action = algo.compute_single_action(obs)
-            next_obs, reward, done, _ = env.step(action)
+            next_obs, reward, done, truncated, _ = env.step(action)
             # observations contain original observations and the action mask
             # reward is random and irrelevant here and therefore not printed
             print(f"Obs: {obs}, Action: {action}")

@@ -150,11 +150,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (),
               (const, override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
-  MOCK_METHOD(Status,
-              AsyncReportHeartbeat,
-              (const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
               AsyncGetInternalConfig,
@@ -212,16 +207,11 @@ class MockErrorInfoAccessor : public ErrorInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockStatsInfoAccessor : public StatsInfoAccessor {
+class MockTaskInfoAccessor : public TaskInfoAccessor {
  public:
   MOCK_METHOD(Status,
-              AsyncAddProfileData,
-              (const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncGetAll,
-              (const MultiItemCallback<rpc::ProfileTableData> &callback),
+              AsyncAddTaskEventData,
+              (std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback),
               (override));
 };
 

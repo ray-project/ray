@@ -93,7 +93,7 @@ This section shows how to create single and multi-column tensor datasets.
     :start-after: __create_parquet_3_begin__
     :end-before: __create_parquet_3_end__
 
-.. tabbed:: Images (experimental)
+.. tabbed:: Images
 
   Load image data stored as individual files using :func:`~ray.data.read_images`:
 

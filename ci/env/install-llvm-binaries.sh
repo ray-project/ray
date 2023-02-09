@@ -25,7 +25,14 @@ log_err() {
 
 trap '[ $? -eq 0 ] || log_err' EXIT
 
-LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz"
+FILE_NAME="clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz"
+
+if [ "$HOSTTYPE" = "aarch64" ]; then
+  FILE_NAME="clang+llvm-12.0.1-aarch64-linux-gnu.tar.xz "
+fi
+
+LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/${FILE_NAME}"
+
 TARGET_DIR="/opt/llvm"
 
 install_llvm() {
@@ -67,7 +74,7 @@ install_llvm() {
         WGET_OPTIONS="-nv"
       fi
 
-      wget ${WGET_OPTIONS} -c $url -O llvm.tar.xz
+      wget ${WGET_OPTIONS} -c "$url" -O llvm.tar.xz
 
       printInfo "Installing LLVM to ${targetdir}"
       mkdir -p "${targetdir}"

@@ -13,8 +13,10 @@ import ray
 from ray._private.dict import flatten_dict
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
+from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air._internal.util import is_nan
 from ray.util import log_once
+from ray._private.ray_constants import env_integer
 
 
 logger = logging.getLogger(__name__)
@@ -53,33 +55,48 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
+        local_dir_to_remote_uri_fn: Function that takes in this checkpoint's local
+            directory path and returns the corresponding remote URI in the cloud.
+            This should only be specified if the data was synced to cloud.
+            Only applied during conversion to AIR checkpoint and only
+            if ``dir_or_data`` is or resolves to a directory path.
     """
 
     def __init__(
         self,
-        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
+        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef, Checkpoint]],
         storage_mode: CheckpointStorage,
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
+        local_to_remote_path_fn: Optional[Callable[[str], str]] = None,
     ):
         from ray.tune.result import NODE_IP
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
+        # This is a function because dir_or_data may be an object ref
+        # and we need to wait until its resolved first.
+        self.local_to_remote_path_fn = local_to_remote_path_fn
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
+        # If True, and the checkpoint is an AIR Checkpoint backed by
+        # a local directory, will move files instead of copying them
+        # when commiting to disk.
+        self._move_instead_of_copy = not bool(
+            env_integer(COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV, 0)
+        )
 
         if (
             dir_or_data is not None
             and storage_mode == CheckpointStorage.MEMORY
-            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef, Checkpoint))
         ):
             raise ValueError(
-                f"Memory checkpoints only support Ray object references and dicts "
-                f"as their data. Got: {dir_or_data}"
+                f"Memory checkpoints only support Ray object references, dicts "
+                f"and AIR Checkpoint as their data. Got: {dir_or_data}"
             )
 
     def commit(self, path: Optional[Path] = None) -> None:
@@ -94,6 +111,13 @@ class _TrackedCheckpoint:
 
         if not path:
             # If no path is given, skip
+            return
+
+        if isinstance(self.dir_or_data, Checkpoint):
+            if self.dir_or_data._local_path and self._move_instead_of_copy:
+                self.dir_or_data = self.dir_or_data._move_directory(str(path))
+            else:
+                self.dir_or_data = self.dir_or_data.to_directory(str(path))
             return
 
         if not isinstance(self.dir_or_data, dict):
@@ -129,22 +153,32 @@ class _TrackedCheckpoint:
         if isinstance(checkpoint_data, ray.ObjectRef):
             checkpoint_data = ray.get(checkpoint_data)
 
+        if isinstance(checkpoint_data, Checkpoint):
+            return checkpoint_data
+
         if isinstance(checkpoint_data, str):
-            try:
-                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
-            except FileNotFoundError:
-                if log_once("checkpoint_not_available"):
-                    logger.error(
-                        f"The requested checkpoint is not available on this node, "
-                        f"most likely because you are using Ray client or disabled "
-                        f"checkpoint synchronization. To avoid this, enable checkpoint "
-                        f"synchronization to cloud storage by specifying a "
-                        f"`SyncConfig`. The checkpoint may be available on a different "
-                        f"node - please check this location on worker nodes: "
-                        f"{checkpoint_data}"
-                    )
-                return None
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            # Prefer cloud checkpoints.
+            if self.local_to_remote_path_fn:
+                checkpoint = Checkpoint.from_uri(
+                    self.local_to_remote_path_fn(checkpoint_data)
+                )
+            else:
+                try:
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+                except FileNotFoundError:
+                    if log_once("checkpoint_not_available"):
+                        logger.error(
+                            f"The requested checkpoint is not available on this node, "
+                            f"most likely because you are using Ray client or disabled "
+                            f"checkpoint synchronization. To avoid this, enable "
+                            f"checkpoint synchronization to cloud storage by "
+                            f"specifying a `SyncConfig`. The checkpoint may be "
+                            f"available on a different  node - please check this "
+                            f"location on worker nodes: "
+                            f"{checkpoint_data}"
+                        )
+                    return None
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
             checkpoint = Checkpoint.from_bytes(checkpoint_data)
         elif isinstance(checkpoint_data, dict):

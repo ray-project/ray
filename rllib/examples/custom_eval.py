@@ -175,12 +175,12 @@ if __name__ == "__main__":
             evaluation_duration="auto" if args.evaluation_parallel_to_training else 10,
             # Evaluate parallelly to training.
             evaluation_parallel_to_training=args.evaluation_parallel_to_training,
-            evaluation_config={
-                "env_config": {
+            evaluation_config=PGConfig.overrides(
+                env_config={
                     # Evaluate using LONGER corridor than trained on.
                     "corridor_length": 5,
                 },
-            },
+            ),
             custom_evaluation_function=eval_fn,
         )
         .framework(args.framework)

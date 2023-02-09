@@ -9,7 +9,7 @@ export type NodeDetail = {
   cpu: number; // cpu usage
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
-  gpus?: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
+  gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
   disk: {
@@ -66,7 +66,7 @@ export type GPUStats = {
   enforcedPowerLimit: number;
   memoryUsed: number;
   memoryTotal: number;
-  processes: GPUProcessStats[];
+  processes?: GPUProcessStats[];
 };
 
 export type NodeDetailExtend = {

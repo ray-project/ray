@@ -7,9 +7,11 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
+import urllib.parse
 
 import ray
 import ray.cloudpickle as pickle
+from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
@@ -79,10 +81,23 @@ class TunerInternal:
     ):
         from ray.train.trainer import BaseTrainer
 
-        # If no run config was passed to Tuner directly, use the one from the Trainer,
-        # if available
-        if not run_config and isinstance(trainable, BaseTrainer):
-            run_config = trainable.run_config
+        if isinstance(trainable, BaseTrainer):
+            # If no run config was passed to the Tuner directly,
+            # use the one from the Trainer, if available
+            if not run_config:
+                run_config = trainable.run_config
+            if run_config and trainable.run_config != RunConfig():
+                logger.info(
+                    "A `RunConfig` was passed to both the `Tuner` and the "
+                    f"`{trainable.__class__.__name__}`. The run config passed to "
+                    "the `Tuner` is the one that will be used."
+                )
+            if param_space and "run_config" in param_space:
+                raise ValueError(
+                    "`RunConfig` cannot be tuned as part of the `param_space`! "
+                    "Move the run config to be a parameter of the `Tuner`: "
+                    "Tuner(..., run_config=RunConfig(...))"
+                )
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
@@ -127,8 +142,19 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
             pickle.dump(self, fp)
 
-        with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
-            pickle.dump(self.trainable, fp)
+        try:
+            with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
+                pickle.dump(self.trainable, fp)
+        except TypeError as e:
+            inspect_serializability(self.trainable)
+            msg = (
+                "The provided trainable is not serializable, which is a requirement "
+                "since the trainable is serialized and deserialized when transferred "
+                "to remote workers. See above for a trace of the non-serializable "
+                "objects that were found in your trainable."
+            )
+            raise TypeError(msg) from e
+
         self._maybe_warn_resource_contention()
 
     def get_run_config(self) -> RunConfig:
@@ -225,7 +251,7 @@ class TunerInternal:
                 "# Reconstruct the trainable with the same parameters\n"
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
-                "    ..., overwrite_trainable=trainable_with_params\n"
+                "    ..., trainable=trainable_with_params\n"
                 ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
                 "#tune-with-parameters for more details."
             )
@@ -233,9 +259,8 @@ class TunerInternal:
             return
 
         error_message = (
-            "Usage of `overwrite_trainable` is limited to re-specifying the "
-            "same trainable that was passed to `Tuner`, in the case "
-            "that the trainable is not serializable (e.g. it holds object references)."
+            "Invalid trainable input. To avoid errors, pass in the same trainable "
+            "that was used to initialize the Tuner."
         )
 
         if type(original_trainable) != type(overwrite_trainable):
@@ -322,6 +347,16 @@ class TunerInternal:
             self._run_config.local_dir = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
+            # Set the experiment `name` and `upload_dir` according to the URI
+            parsed_uri = urllib.parse.urlparse(path_or_uri)
+            remote_path = Path(os.path.normpath(parsed_uri.netloc + parsed_uri.path))
+            upload_dir = parsed_uri._replace(
+                netloc="", path=str(remote_path.parent)
+            ).geturl()
+
+            self._run_config.name = remote_path.name
+            self._run_config.sync_config.upload_dir = upload_dir
+
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
@@ -448,19 +483,22 @@ class TunerInternal:
                 # If we specifically know this trainable doesn't support the
                 # argument, raise an error
                 raise ValueError(
-                    f"You passed `checkpoint_freq={checkpoint_freq}` to your "
-                    f"CheckpointConfig, but this trainer does not support "
-                    f"this argument. If the trainer takes in a training loop, "
-                    f"you will need to trigger checkpointing yourself using "
-                    f"`ray.air.session.report(metrics=..., checkpoint=...)`."
+                    f"You passed `checkpoint_frequency={checkpoint_freq}` to your "
+                    "CheckpointConfig, but this trainer does not support "
+                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "custom training loop, you will need to "
+                    "report a checkpoint every `checkpoint_frequency` iterations "
+                    "within your training loop using "
+                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's bookkeeping.
                 checkpoint_freq = 0
-            # Otherwise, this is a non-trainer trainable and we just keep the
+            # Otherwise, the trainable is not an AIR trainer and we just keep the
             # user-supplied value.
-
+            # Function trainables will raise a runtime error later if set > 0
         if checkpoint_at_end is not None:
             # Again, function trainables usually don't handle this argument.
             handle_cp_at_end = getattr(trainable, "_handles_checkpoint_at_end", None)
@@ -468,16 +506,18 @@ class TunerInternal:
                 # If we specifically know we don't support it, raise an error.
                 raise ValueError(
                     f"You passed `checkpoint_at_end={checkpoint_at_end}` to your "
-                    f"CheckpointConfig, but this trainer does not support "
-                    f"this argument. If the trainer takes in a training loop, "
-                    f"you will need to trigger checkpointing yourself using "
-                    f"`ray.air.session.report(metrics=..., checkpoint=...)`. "
+                    "CheckpointConfig, but this trainer does not support "
+                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "custom training loop, you should include one last call to "
+                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "at the end of your training loop to get this behavior."
                 )
             elif handle_cp_at_end is True:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's internal bookkeeping.
                 checkpoint_at_end = False
             # If this is a user-defined trainable, just keep the value
+            # Function trainables will raise a runtime error later if set to True
         else:
             # Set default to False for function trainables and True for everything else
             if is_function_trainable(trainable):
@@ -559,6 +599,8 @@ class TunerInternal:
             **dict(
                 run_or_experiment=trainable,
                 resume=resume,
+                search_alg=self._tune_config.search_alg,
+                scheduler=self._tune_config.scheduler,
             ),
             **self._tuner_kwargs,
         }

@@ -1,8 +1,8 @@
 .. _tune-60-seconds:
 
-============
-Key Concepts
-============
+========================
+Key Concepts of Ray Tune
+========================
 
 .. TODO: should we introduce checkpoints as well?
 .. TODO: should we at least mention "Stopper" classes here?
@@ -22,8 +22,10 @@ The following figure shows an overview of these components, which we cover in de
 
 .. image:: images/tune_flow.png
 
-Trainables
-----------
+.. _tune_60_seconds_trainables:
+
+Ray Tune Trainables
+-------------------
 
 In short, a :ref:`Trainable <trainable-docs>` is an object that you can pass into a Tune run.
 Ray Tune has two ways of defining a `trainable`, namely the :ref:`Function API <tune-function-api>`
@@ -68,8 +70,10 @@ Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
-Search Spaces
--------------
+.. _tune-key-concepts-search-spaces:
+
+Tune Search Spaces
+------------------
 
 To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
@@ -87,15 +91,17 @@ Here's an example covering all search space functions. Again,
     :start-after: __config_start__
     :end-before: __config_end__
 
-Trials
-------
+.. _tune_60_seconds_trials:
+
+Tune Trials
+-----------
 
 You use :ref:`Tuner.fit <tune-run-ref>` to execute and manage hyperparameter tuning and generate your `trials`.
 At a minimum, your ``Tuner`` call takes in a trainable as first argument, and a ``param_space`` dictionary
 to define your search space.
 
 The ``Tuner.fit()`` function also provides many features such as :ref:`logging <tune-logging>`,
-:ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping-ref>`.
+:ref:`checkpointing <tune-function-checkpointing>`, and :ref:`early stopping <tune-stopping-ref>`.
 Continuing with the example defined earlier (minimizing ``a (x ** 2) + b``), a simple Tune run with a simplistic
 search space for ``a`` and ``b`` would look like this:
 
@@ -155,8 +161,8 @@ check out the :ref:`Tuner API reference <tune-run-ref>`.
 
 .. _search-alg-ref:
 
-Search Algorithms
------------------
+Tune Search Algorithms
+----------------------
 
 To optimize the hyperparameters of your training process, you use
 a :ref:`Search Algorithm <tune-search-alg>` which suggests hyperparameter configurations.
@@ -264,8 +270,8 @@ This way of stopping trials with explicit rules is useful, but in many cases we 
 
 .. _schedulers-ref:
 
-Schedulers
-----------
+Tune Schedulers
+---------------
 
 To make your training process more efficient, you can use a :ref:`Trial Scheduler <tune-schedulers>`.
 For instance, in our ``trainable`` example minimizing a function in a training loop, we used ``session.report()``.
@@ -300,7 +306,7 @@ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
 Certain schedulers cannot be used with search algorithms,
-and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
+and certain schedulers require :ref:`checkpointing to be implemented <tune-function-checkpointing>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
 This is currently implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
@@ -342,8 +348,8 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation <sche
 
 .. _tune-concepts-analysis:
 
-Analyses
---------
+Tune Run Analyses
+-----------------
 
 ``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.
@@ -362,6 +368,8 @@ allowing you to do ad-hoc data analysis over your results.
     :language: python
     :start-after: __results_start__
     :end-before: __results_end__
+
+See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
 
 What's Next?
 -------------

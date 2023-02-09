@@ -79,8 +79,9 @@ class ViewRequirementAgentConnector(AgentConnector):
             "and agent_id({agent_id})"
         )
 
-        vr = self._view_requirements
-        assert vr, "ViewRequirements required by ViewRequirementAgentConnector"
+        assert (
+            self._view_requirements
+        ), "ViewRequirements required by ViewRequirementAgentConnector"
 
         # Note(jungong) : we need to keep the entire input dict here.
         # A column may be used by postprocessing (GAE) even if its
@@ -108,6 +109,7 @@ class ViewRequirementAgentConnector(AgentConnector):
                 agent_index=agent_index,
                 env_id=env_id,
                 init_obs=d[SampleBatch.NEXT_OBS],
+                init_infos=d.get(SampleBatch.INFOS),
             )
         else:
             agent_collector.add_action_reward_next_obs(d)

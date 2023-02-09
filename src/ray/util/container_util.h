@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <deque>
 #include <map>
 #include <set>
 #include <sstream>
@@ -94,6 +95,23 @@ template <typename C>
 typename C::mapped_type &map_find_or_die(C &c, const typename C::key_type &k) {
   return const_cast<typename C::mapped_type &>(
       map_find_or_die(const_cast<const C &>(c), k));
+}
+
+/// Remove elements whole matcher returns true against the element.
+///
+/// @param matcher the matcher function to be applied to each elements
+/// @param container the container of the elements
+template <typename T>
+void remove_elements(std::function<bool(T)> matcher, std::deque<T> &container) {
+  auto itr = container.begin();
+  while (itr != container.end()) {
+    if (matcher(*itr)) {
+      itr = container.erase(itr);
+    }
+    if (itr != container.end()) {
+      itr++;
+    }
+  }
 }
 
 }  // namespace ray

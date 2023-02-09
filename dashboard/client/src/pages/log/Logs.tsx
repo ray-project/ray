@@ -44,8 +44,6 @@ type LogsProps = {
 const useLogs = ({ theme, newIA }: LogsProps) => {
   const { search: urlSearch } = useLocation();
   const { host, path } = useParams();
-  console.log("Host: " + host);
-  console.log("Path: " + path);
   const searchMap = new URLSearchParams(urlSearch);
   const urlFileName = searchMap.get("fileName");
   const el = useRef<HTMLDivElement>(null);
@@ -128,7 +126,7 @@ const Logs = (props: LogsProps) => {
     setEnd,
   } = useLogs(props);
   const { newIA } = props;
-  let href = newIA ? "#/new/log/" : "#/log/";
+  let href = newIA ? "#/new/logs/" : "#/log/";
 
   if (origin) {
     if (path) {
@@ -146,7 +144,7 @@ const Logs = (props: LogsProps) => {
     <div className={classes.root} ref={el}>
       <TitleCard title="Logs Viewer">
         <Paper>
-          {!origin && <p>Please choose an url to see logs for that node</p>}
+          {!origin && <p>Select a node to view logs</p>}
           {origin && (
             <p>
               Node: {origin}

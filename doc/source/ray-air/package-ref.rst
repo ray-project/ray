@@ -83,6 +83,12 @@ K-Bins Discretizers
 .. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
     :show-inheritance:
 
+Image Preprocessors
+###################
+
+.. autoclass:: ray.data.preprocessors.TorchVisionPreprocessor
+    :show-inheritance:
+    
 Text Encoders
 #############
 
@@ -123,7 +129,22 @@ Abstract Classes
 
     .. automethod:: __init__
 
+.. autoclass:: ray.air.util.check_ingest.DummyTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
 .. _air-results-ref:
+
+Dataset Iteration
+#################
+
+.. autoclass:: ray.data.DatasetIterator
+    :members:
+    :noindex:
+
+.. autofunction:: ray.air.util.check_ingest.make_local_dataset_iterator
 
 Training Result
 ###############

@@ -62,13 +62,21 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
     const ray::rpc::WorkerExitType &disconnect_type,
     const std::string &disconnect_detail) {
   ray::rpc::ActorDeathCause death_cause;
-  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
-  AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(absl::StrCat(
-      "The actor is dead because its worker process has died. Worker exit type: ",
-      ray::rpc::WorkerExitType_Name(disconnect_type),
-      " Worker exit detail: ",
-      disconnect_detail));
+  if (disconnect_type == ray::rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    auto oom_ctx = death_cause.mutable_oom_context();
+    /// TODO(clarng): actors typically don't retry. Support actor (task) oom retry
+    /// and set this value from raylet here.
+    oom_ctx->set_fail_immediately(false);
+    oom_ctx->set_error_message(disconnect_detail);
+  } else {
+    auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+    AddActorInfo(actor, actor_died_error_ctx);
+    actor_died_error_ctx->set_error_message(absl::StrCat(
+        "The actor is dead because its worker process has died. Worker exit type: ",
+        ray::rpc::WorkerExitType_Name(disconnect_type),
+        " Worker exit detail: ",
+        disconnect_detail));
+  }
   return death_cause;
 }
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
@@ -233,7 +241,8 @@ GcsActorManager::GcsActorManager(
             num_actors,
             {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
              {"Name", key.second},
-             {"Source", "gcs"}});
+             {"Source", "gcs"},
+             {"JobId", ""}});
       });
 }
 
@@ -309,15 +318,18 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   const auto &registered_actor_iter = registered_actors_.find(actor_id);
+  GcsActor *ptr = nullptr;
   if (registered_actor_iter != registered_actors_.end()) {
-    reply->unsafe_arena_set_allocated_actor_table_data(
-        registered_actor_iter->second->GetMutableActorTableData());
+    ptr = registered_actor_iter->second.get();
   } else {
     const auto &destroyed_actor_iter = destroyed_actors_.find(actor_id);
     if (destroyed_actor_iter != destroyed_actors_.end()) {
-      reply->unsafe_arena_set_allocated_actor_table_data(
-          destroyed_actor_iter->second->GetMutableActorTableData());
+      ptr = destroyed_actor_iter->second.get();
     }
+  }
+
+  if (ptr != nullptr) {
+    *reply->mutable_actor_table_data() = ptr->GetActorTableData();
   }
 
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
@@ -332,7 +344,6 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
-
   if (request.show_dead_jobs() == false) {
     auto total_actors = registered_actors_.size() + destroyed_actors_.size();
     reply->set_total(total_actors);
@@ -343,18 +354,15 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         break;
       }
       count += 1;
-
-      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-          const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
+      *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
+
     for (const auto &iter : destroyed_actors_) {
       if (limit != -1 && count >= limit) {
         break;
       }
       count += 1;
-
-      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-          const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
+      *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -366,12 +374,16 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
       [reply, send_reply_callback, limit](
-          const absl::flat_hash_map<ActorID, rpc::ActorTableData> &result) {
+          absl::flat_hash_map<ActorID, rpc::ActorTableData> &&result) {
         auto total_actors = result.size();
-        reply->set_total(total_actors);
 
+        reply->set_total(total_actors);
+        auto arena = reply->GetArena();
+        RAY_CHECK(arena != nullptr);
+        auto ptr = google::protobuf::Arena::Create<
+            absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
         auto count = 0;
-        for (const auto &pair : result) {
+        for (const auto &pair : *ptr) {
           if (limit != -1 && count >= limit) {
             break;
           }
@@ -411,9 +423,8 @@ void GcsActorManager::HandleGetNamedActorInfo(
     RAY_LOG(WARNING) << stream.str();
     status = Status::NotFound(stream.str());
   } else {
-    reply->unsafe_arena_set_allocated_actor_table_data(
-        iter->second->GetMutableActorTableData());
-    reply->unsafe_arena_set_allocated_task_spec(iter->second->GetMutableTaskSpec());
+    *reply->mutable_actor_table_data() = iter->second->GetActorTableData();
+    *reply->mutable_task_spec() = *iter->second->GetMutableTaskSpec();
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
@@ -905,6 +916,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                      rpc::WorkerExitType_Name(disconnect_type),
                                      ", has creation_task_exception = ",
                                      (creation_task_exception != nullptr));
+  RAY_LOG(DEBUG) << "on worker dead worker id " << worker_id << " disconnect detail "
+                 << disconnect_detail;
   if (disconnect_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
       disconnect_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
@@ -1183,6 +1196,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                                              const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
+  liftime_num_created_actors_++;
   RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
@@ -1590,6 +1604,10 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
+                                                 liftime_num_created_actors_);
+  }
   actor_state_counter_->FlushOnChangeCallbacks();
 }
 
