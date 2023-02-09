@@ -21,39 +21,86 @@ namespace core {
 
 namespace worker {
 
-void TaskEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) const {
-  const auto &status = task_status;
-  // Common fields
-  rpc_task_events->set_task_id(task_id.Binary());
-  rpc_task_events->set_job_id(job_id.Binary());
-  rpc_task_events->set_attempt_number(attempt_number);
+TaskEvent::TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number)
+    : task_id_(task_id), job_id_(job_id), attempt_number_(attempt_number) {}
+
+TaskStatusEvent::TaskStatusEvent(
+    TaskID task_id,
+    JobID job_id,
+    int32_t attempt_number,
+    const rpc::TaskStatus &task_status,
+    int64_t timestamp,
+    const std::shared_ptr<const TaskSpecification> &task_spec,
+    absl::optional<NodeID> node_id,
+    absl::optional<WorkerID> worker_id)
+    : TaskEvent(task_id, job_id, attempt_number),
+      task_status_(task_status),
+      timestamp_(timestamp),
+      task_spec_(task_spec),
+      node_id_(node_id),
+      worker_id_(worker_id) {}
+
+TaskProfileEvent::TaskProfileEvent(TaskID task_id,
+                                   JobID job_id,
+                                   int32_t attempt_number,
+                                   const std::string &component_type,
+                                   const std::string &component_id,
+                                   const std::string &node_ip_address,
+                                   const std::string &event_name,
+                                   int64_t start_time)
+    : TaskEvent(task_id, job_id, attempt_number),
+      component_type_(component_type),
+      component_id_(component_id),
+      node_ip_address_(node_ip_address),
+      event_name_(event_name),
+      start_time_(start_time) {}
+
+void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
+  // Base fields
+  rpc_task_events->set_task_id(task_id_.Binary());
+  rpc_task_events->set_job_id(job_id_.Binary());
+  rpc_task_events->set_attempt_number(attempt_number_);
 
   // Task info.
-  if (include_task_info) {
-    RAY_CHECK(task_spec != nullptr);
-    gcs::FillTaskInfo(rpc_task_events->mutable_task_info(), *task_spec);
+  if (task_spec_) {
+    gcs::FillTaskInfo(rpc_task_events->mutable_task_info(), *task_spec_);
   }
 
-  if (IsProfileEvent()) {
-    // Profile events.
-    rpc_task_events->mutable_profile_events()->CopyFrom(profile_events.value());
-  } else {
-    // Task status update.
-    auto state_updates = rpc_task_events->mutable_state_updates();
-    if (node_id.has_value()) {
-      RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-          << "Node ID should be included when task status changes to "
-             "SUBMITTED_TO_WORKER.";
-      state_updates->set_node_id(node_id->Binary());
-    }
-    if (worker_id.has_value()) {
-      RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-          << "Worker ID should be included when task status changes to "
-             "SUBMITTED_TO_WORKER.";
-      state_updates->set_worker_id(worker_id->Binary());
-    }
-    gcs::FillTaskStatusUpdateTime(status, timestamp, state_updates);
+  // Task status update.
+  auto state_updates = rpc_task_events->mutable_state_updates();
+
+  if (node_id_.has_value()) {
+    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Node ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    state_updates->set_node_id(node_id_->Binary());
   }
+
+  if (worker_id_.has_value()) {
+    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Worker ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    state_updates->set_worker_id(worker_id_->Binary());
+  }
+  gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, state_updates);
+}
+
+void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
+  // Base fields
+  rpc_task_events->set_task_id(task_id_.Binary());
+  rpc_task_events->set_job_id(job_id_.Binary());
+  rpc_task_events->set_attempt_number(attempt_number_);
+
+  // Profile data
+  auto profile_events = rpc_task_events->mutable_profile_events();
+  profile_events->set_component_type(std::move(component_type_));
+  profile_events->set_component_id(std::move(component_id_));
+  profile_events->set_node_ip_address(std::move(node_ip_address_));
+  auto event_entry = profile_events->add_events();
+  event_entry->set_event_name(std::move(event_name_));
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  event_entry->set_extra_data(std::move(extra_data_));
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client)
@@ -91,11 +138,12 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
     // Decrease the thread priority to allow worker threads to run.
-    int new_nice = std::min(RayConfig::instance().worker_niceness() + 5, 19);
+    int new_nice = std::min(
+        RayConfig::instance().worker_niceness() + kTaskEventBufferAdditionalNice, 19);
     new_nice = nice(new_nice);
     if (new_nice == -1) {
-      RAY_LOG(WARNING) << "Failed to set lower priority for task event buffer io thread: "
-                       << errno;
+      RAY_LOG(WARNING) << "Failed to set nice(" << new_nice
+                       << ") for task event buffer io thread: " << strerror(errno);
     } else {
       RAY_LOG(INFO) << "Current task event io thread's nice = " << new_nice;
     }
@@ -165,6 +213,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
   std::vector<std::unique_ptr<TaskEvent>> to_send;
+  to_send.reserve(RayConfig::instance().task_events_send_batch_size());
 
   {
     absl::MutexLock lock(&mutex_);
@@ -208,9 +257,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_task_events = to_send.size();
   size_t num_profile_event_to_send = 0;
   size_t num_status_event_to_send = 0;
-  for (const auto &task_event : to_send) {
+  for (auto &task_event : to_send) {
     auto events_by_task = data->add_events_by_task();
-    if (task_event->profile_events.has_value()) {
+    if (task_event->IsProfileEvent()) {
       num_profile_event_to_send++;
     } else {
       num_status_event_to_send++;

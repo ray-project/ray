@@ -62,25 +62,13 @@ class TaskEventBufferTest : public ::testing::Test {
   std::unique_ptr<TaskEvent> GenStatusTaskEvent(TaskID task_id,
                                                 int32_t attempt_num,
                                                 int64_t running_ts = 1) {
-    std::unique_ptr<TaskEvent> task_event = std::make_unique<TaskEvent>();
-    task_event->task_id = task_id;
-    task_event->attempt_number = attempt_num;
-    task_event->timestamp = running_ts;
-    task_event->task_status = rpc::TaskStatus::RUNNING;
-    return task_event;
+    return std::make_unique<TaskStatusEvent>(
+        task_id, JobID::FromInt(0), attempt_num, rpc::TaskStatus::RUNNING, running_ts);
   }
 
   std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
-    std::unique_ptr<TaskEvent> task_event = std::make_unique<TaskEvent>();
-    rpc::ProfileEvents profile_events;
-
-    task_event->task_id = task_id;
-    task_event->attempt_number = attempt_num;
-
-    auto event = profile_events.add_events();
-    event->set_event_name("test_event");
-    task_event->profile_events = std::move(profile_events);
-    return task_event;
+    return std::make_unique<TaskProfileEvent>(
+        task_id, JobID::FromInt(0), attempt_num, "", "", "", "test_event", 1);
   }
 
   static bool SortTaskEvents(const rpc::TaskEvents &a, const rpc::TaskEvents &b) {

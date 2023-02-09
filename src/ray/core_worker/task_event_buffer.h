@@ -42,34 +42,89 @@ namespace worker {
 /// will not happen in the critical path of task execution/submission.
 class TaskEvent {
  public:
+  /// Constructor for Profile events
+  explicit TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number);
+
+  virtual ~TaskEvent() = default;
+
   /// Convert itself a rpc::TaskEvents
   ///
+  /// NOTE: this method will modify internal states by moving fields to the
+  /// rpc::TaskEvents.
   /// \param[out] rpc_task_events The rpc task event to be filled.
-  void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) const;
+  virtual void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) = 0;
 
   /// If it is a profile event.
-  bool IsProfileEvent() const { return profile_events.has_value(); }
+  virtual bool IsProfileEvent() const = 0;
 
+ protected:
   /// Task Id.
-  TaskID task_id = TaskID::Nil();
+  const TaskID task_id_ = TaskID::Nil();
   /// Job id.
-  JobID job_id = JobID::Nil();
+  const JobID job_id_ = JobID::Nil();
   /// Attempt number
-  int32_t attempt_number = -1;
+  const int32_t attempt_number_ = -1;
+};
+
+/// TaskStatusEvent is generated when a task changes its status.
+class TaskStatusEvent : public TaskEvent {
+ public:
+  explicit TaskStatusEvent(
+      TaskID task_id,
+      JobID job_id,
+      int32_t attempt_number,
+      const rpc::TaskStatus &task_status,
+      int64_t timestamp,
+      const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
+      absl::optional<NodeID> node_id = absl::nullopt,
+      absl::optional<WorkerID> worker_id = absl::nullopt);
+
+  void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
+
+  bool IsProfileEvent() const override { return false; }
+
+ private:
   /// The task status change if it's a status change event.
-  rpc::TaskStatus task_status = rpc::TaskStatus::NIL;
+  const rpc::TaskStatus task_status_ = rpc::TaskStatus::NIL;
   /// The time when the task status change happens.
-  int64_t timestamp = -1;
+  const int64_t timestamp_ = -1;
   /// Pointer to the task spec.
-  std::shared_ptr<const TaskSpecification> task_spec = nullptr;
-  /// If task info needs to be included in rpc::TaskEvents
-  bool include_task_info = false;
+  const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Node id if it's a SUBMITTED_TO_WORKER status change.
-  absl::optional<NodeID> node_id = absl::nullopt;
+  const absl::optional<NodeID> node_id_ = absl::nullopt;
   /// Worker id if it's a SUBMITTED_TO_WORKER status change.
-  absl::optional<WorkerID> worker_id = absl::nullopt;
-  /// Profile event.
-  absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt;
+  const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+};
+
+/// TaskProfileEvent is generated when `RAY_enable_timeline` is on.
+class TaskProfileEvent : public TaskEvent {
+ public:
+  explicit TaskProfileEvent(TaskID task_id,
+                            JobID job_id,
+                            int32_t attempt_number,
+                            const std::string &component_type,
+                            const std::string &component_id,
+                            const std::string &node_ip_address,
+                            const std::string &event_name,
+                            int64_t start_time);
+
+  void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
+
+  bool IsProfileEvent() const override { return true; }
+
+  void SetEndTime(int64_t end_time) { end_time_ = end_time; }
+
+  void SetExtraData(const std::string &extra_data) { extra_data_ = extra_data; }
+
+ private:
+  /// The below fields mirror rpc::ProfileEvent
+  const std::string component_type_;
+  const std::string component_id_;
+  const std::string node_ip_address_;
+  const std::string event_name_;
+  const int64_t start_time_;
+  int64_t end_time_;
+  std::string extra_data_;
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,
@@ -165,11 +220,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
  private:
   /// Test only functions.
-  std::vector<TaskEvent> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
+  std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
+      LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    std::vector<TaskEvent> copy;
+    std::vector<std::reference_wrapper<const TaskEvent>> copy;
     for (const auto &e : buffer_) {
-      copy.push_back(*e);
+      copy.push_back(std::cref(*e));
     }
     return copy;
   }

@@ -389,15 +389,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     // Add the driver task info.
     if (task_event_buffer_->Enabled()) {
       const auto spec = builder.Build();
-      std::unique_ptr<worker::TaskEvent> task_event =
-          std::make_unique<worker::TaskEvent>();
-      task_event->task_spec = std::make_shared<const TaskSpecification>(spec);
-      task_event->include_task_info = true;
-      task_event->task_id = task_id;
-      task_event->job_id = spec.JobId();
-      task_event->attempt_number = 0;
-      task_event->task_status = rpc::TaskStatus::RUNNING;
-      task_event->timestamp = absl::GetCurrentTimeNanos();
+      auto task_event = std::make_unique<worker::TaskStatusEvent>(
+          task_id,
+          spec.JobId(),
+          /* attempt_number */ 0,
+          rpc::TaskStatus::RUNNING,
+          /* timestamp */ absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(spec));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -683,12 +681,12 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
-    std::unique_ptr<worker::TaskEvent> task_event = std::make_unique<worker::TaskEvent>();
-    task_event->task_id = worker_context_.GetCurrentTaskID();
-    task_event->job_id = worker_context_.GetCurrentJobID();
-    task_event->attempt_number = 0;
-    task_event->task_status = rpc::TaskStatus::FINISHED;
-    task_event->timestamp = absl::GetCurrentTimeNanos();
+    auto task_event = std::make_unique<worker::TaskStatusEvent>(
+        worker_context_.GetCurrentTaskID(),
+        worker_context_.GetCurrentJobID(),
+        /* attempt_number */ 0,
+        rpc::TaskStatus::FINISHED,
+        /* timestamp */ absl::GetCurrentTimeNanos());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
