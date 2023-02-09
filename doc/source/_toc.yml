@@ -181,7 +181,7 @@ parts:
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
                 title: "Torch Data Prefetching Benchmark"
           - file: train/faq
-          - file: train/api
+          - file: train/api/api
 
       - file: tune/index
         title: Ray Tune
