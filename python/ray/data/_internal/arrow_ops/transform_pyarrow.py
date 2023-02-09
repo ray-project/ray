@@ -121,7 +121,11 @@ def unify_schemas(
     else:
         schemas_to_unify = schemas
     # Let Arrow unify the schema of non-tensor extension type columns.
-    if "int_empty" in cols_with_null_list or "float_empty" in cols_with_null_list or "bytes_empty" in cols_with_null_list:
+    if (
+        "int_empty" in cols_with_null_list
+        or "float_empty" in cols_with_null_list
+        or "bytes_empty" in cols_with_null_list
+    ):
         raise Exception(f"===> schemas_to_unify: {schemas_to_unify}")
     return pyarrow.unify_schemas(schemas_to_unify)
 
@@ -180,6 +184,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
+    print("===> cols_with_null_list:", cols_with_null_list)
     schema = blocks[0].schema
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
@@ -240,6 +245,8 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 
         # If the result contains pyarrow schemas, unify them
         schemas_to_unify = [b.schema for b in blocks]
+        print("===> columns before unification:", cols)
+        print("===> schemas_to_unify:", schemas_to_unify)
         if pyarrow is not None and any(
             isinstance(s, pyarrow.Schema) for s in schemas_to_unify
         ):
