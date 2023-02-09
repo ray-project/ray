@@ -83,12 +83,17 @@ class GcsTaskManagerTest : public ::testing::Test {
     std::promise<bool> promise;
 
     request.mutable_data()->CopyFrom(events_data);
-    task_manager->HandleAddTaskEventData(
-        request,
-        &reply,
-        [&promise](Status, std::function<void()>, std::function<void()>) {
-          promise.set_value(true);
-        });
+    // Dispatch so that it runs in GcsTaskManager's io service.
+    task_manager->GetIoContext().dispatch(
+        [this, &promise, &request, &reply]() {
+          task_manager->HandleAddTaskEventData(
+              request,
+              &reply,
+              [&promise](Status, std::function<void()>, std::function<void()>) {
+                promise.set_value(true);
+              });
+        },
+        "SyncAddTaskEventData");
 
     promise.get_future().get();
 
@@ -120,13 +125,16 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     request.set_exclude_driver(exclude_driver);
-
-    task_manager->HandleGetTaskEvents(
-        request,
-        &reply,
-        [&promise](Status, std::function<void()>, std::function<void()>) {
-          promise.set_value(true);
-        });
+    task_manager->GetIoContext().dispatch(
+        [this, &promise, &request, &reply]() {
+          task_manager->HandleGetTaskEvents(
+              request,
+              &reply,
+              [&promise](Status, std::function<void()>, std::function<void()>) {
+                promise.set_value(true);
+              });
+        },
+        "SyncGetTaskEvents");
 
     promise.get_future().get();
 
