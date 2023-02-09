@@ -199,7 +199,12 @@ class TrainerRunner:
         if block:
             results = self._worker_manager.foreach_actor(
                 [
-                    lambda w: w.update(b)
+                    lambda w: w.update(
+                        b,
+                        minibatch_size=minibatch_size,
+                        num_iters=num_iters,
+                        reduce_fn=reduce_fn,
+                    )
                     for b in ShardBatchIterator(batch, len(self._workers))
                 ]
             )
