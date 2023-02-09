@@ -47,7 +47,10 @@ class TorchRLTrainer(RLTrainer):
     framework: str = "torch"
 
     def __init__(
-        self, *, framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(), **kwargs
+        self,
+        *,
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        **kwargs,
     ):
         super().__init__(**kwargs)
 
