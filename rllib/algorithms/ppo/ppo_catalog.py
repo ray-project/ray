@@ -25,10 +25,18 @@ class PPOCatalog(Catalog):
     methods. Alternatively, the PiHeadConfig and VfHeadConfig can be overridden to
     build custom heads.
     """
-    def __init__(self, observation_space: gym.Space, action_space: gym.Space,
-                 model_config_dict: dict):
-        super().__init__(observation_space=observation_space, action_space=action_space,
-                         model_config_dict=model_config_dict)
+
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        model_config_dict: dict,
+    ):
+        super().__init__(
+            observation_space=observation_space,
+            action_space=action_space,
+            model_config_dict=model_config_dict,
+        )
         latent_dim = self.encoder_config.output_dim
 
         # Replace EncoderConfig by ActorCriticEncoderConfig

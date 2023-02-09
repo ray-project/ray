@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+import itertools
 
 from gymnasium.spaces import Box
 
@@ -33,7 +34,7 @@ class TestCatalog(unittest.TestCase):
         ]
 
         # TODO (Artur): Add support for the commented out configs
-        configs = [
+        model_config_dicts = [
             {
                 "fcnet_activation": "relu",
                 "fcnet_hiddens": [256, 256, 256],
@@ -76,17 +77,17 @@ class TestCatalog(unittest.TestCase):
 
         frameworks = ["tf", "torch"]
 
-        for input_space in input_spaces:
-            for config in configs:
-                for framework in frameworks:
-                    print(
-                        "Testing framework: \n{}\n, input space: \n{}\n and config: \n{"
-                        "}\n".format(framework, input_space, config)
-                    )
-                    base_model_config = Catalog.get_base_model_config(
-                        input_space=input_space, model_config_dict=config
-                    )
-                    base_model_config.build(framework="torch")
+        config_combinations = [input_spaces, model_config_dicts, frameworks]
+        for config in itertools.product(*config_combinations):
+            framework, input_space, model_config_dict = config
+            print(
+                "Testing framework: \n{}\n, input space: \n{}\n and config: \n{"
+                "}\n".format(framework, input_space, model_config_dict)
+            )
+            base_model_config = Catalog.get_base_model_config(
+                input_space=input_space, model_config_dict=model_config_dict
+            )
+            base_model_config.build(framework=framework)
 
 
 if __name__ == "__main__":
