@@ -3754,7 +3754,7 @@
     wait_for_nodes:
       num_nodes: 101
 
-    script: python stress_tests/test_many_tasks.py
+    script: RAY_task_events_send_batch_size=1000 python stress_tests/test_many_tasks.py
 
   smoke_test:
     frequency: nightly
