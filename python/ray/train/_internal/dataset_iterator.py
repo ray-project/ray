@@ -36,6 +36,9 @@ class TrainDatasetIterator(DatasetIterator):
 
         return self._dataset_iterator.iter_torch_batches(device=device, **kwargs)
 
+    def stats(self) -> str:
+        return self._dataset_iterator.stats()
+
     def __getattr__(self, name):
         if name == "_dataset_iterator":
             raise AttributeError

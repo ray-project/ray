@@ -248,7 +248,6 @@ class DatasetIterator(abc.ABC):
             "iter_torch_batches(), or to_tf()."
         )
 
-    @abc.abstractmethod
     def _to_train_iterator(self) -> "TrainDatasetIterator":
         """
         Convert this DatasetIterator to one that is specific
