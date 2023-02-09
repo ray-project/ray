@@ -502,39 +502,42 @@ class AttentionWrapper(TFModelV2):
             # one-hot discrete/multi-discrete actions here and concatenate the
             # n most recent actions together.
             else:
+                encoded = []
                 if isinstance(self.action_space, Discrete):
                     for i in range(self.use_n_prev_actions):
-                        prev_a_r.append(
+                        encoded.append(
                             one_hot(prev_n_actions[:, i], self.action_space)
                         )
                 elif isinstance(self.action_space, MultiDiscrete):
                     for i in range(
                         0, self.use_n_prev_actions, self.action_space.shape[0]
                     ):
-                        prev_a_r.append(
+                        encoded.append(
                             one_hot(
                                 tf.cast(
                                     prev_n_actions[
                                         :, i : i + self.action_space.shape[0]
                                     ],
-                                    tf.float32,
+                                    tf.int32,
                                 ),
-                                space=self.action_space,
+                                space=self.action_space
                             )
                         )
                 else:
-                    prev_a_r.append(
-                        tf.reshape(
-                            tf.cast(prev_n_actions, tf.float32),
-                            [-1, self.use_n_prev_actions * self.action_dim],
-                        )
+                    encoded = prev_n_actions
+
+                prev_a_r.append(
+                    tf.reshape(
+                        tf.cast(encoded, tf.float32),
+                        [-1, self.use_n_prev_actions * self.action_dim]
                     )
+                )
         # Prev rewards.
         if self.use_n_prev_rewards:
             prev_a_r.append(
                 tf.reshape(
                     tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
-                    [-1, self.use_n_prev_rewards],
+                    [-1, self.use_n_prev_rewards]
                 )
             )
 

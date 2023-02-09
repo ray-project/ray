@@ -33,25 +33,40 @@ class TestAttentionNets(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_attention_nets_w_prev_actions_and_prev_rewards(self):
+    def test_attention_nets_complex_action_w_prev_actions_and_prev_rewards(self):
+        self._run_attention_nets(
+            action_space=Dict(
+                {
+                    "a": Box(-1.0, 1.0, ()),
+                    "b": Box(-1.0, 1.0, (2,)),
+                    "c": Tuple(
+                        [
+                            Discrete(2),
+                            MultiDiscrete([2, 3]),
+                            Box(-1.0, 1.0, (3,)),
+                        ]
+                    ),
+                }
+            ),
+            prev_n_actions=3,
+            prev_n_rewards=2
+        )
+
+    def test_attention_nets_multidiscrete_w_prev_actions_and_prev_rewards(self):
+        self._run_attention_nets(
+            action_space=MultiDiscrete([2, 3]),
+            prev_n_actions=3,
+            prev_n_rewards=2
+        )
+
+
+    def _run_attention_nets(self, action_space, prev_n_actions, prev_n_rewards):
         """Tests attention prev-a/r input insertions using complex actions."""
         config = {
             "env": RandomEnv,
             "env_config": {
                 "config": {
-                    "action_space": Dict(
-                        {
-                            "a": Box(-1.0, 1.0, ()),
-                            "b": Box(-1.0, 1.0, (2,)),
-                            "c": Tuple(
-                                [
-                                    Discrete(2),
-                                    MultiDiscrete([2, 3]),
-                                    Box(-1.0, 1.0, (3,)),
-                                ]
-                            ),
-                        }
-                    ),
+                    "action_space": action_space,
                 },
             },
             # Need to set this to True to enable complex (prev.) actions
@@ -61,8 +76,8 @@ class TestAttentionNets(unittest.TestCase):
                 "fcnet_hiddens": [10],
                 "use_attention": True,
                 "attention_dim": 16,
-                "attention_use_n_prev_actions": 3,
-                "attention_use_n_prev_rewards": 2,
+                "attention_use_n_prev_actions": prev_n_actions,
+                "attention_use_n_prev_rewards": prev_n_rewards,
             },
             "num_sgd_iter": 1,
             "train_batch_size": 200,
