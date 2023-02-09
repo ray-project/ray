@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Union
+import warnings
 
 import numpy as np
 
@@ -89,7 +90,13 @@ class TorchVisionPreprocessor(Preprocessor):
 
         def apply_torchvision_transform(array: np.ndarray) -> np.ndarray:
             try:
-                output = self._torchvision_transform(torch.as_tensor(array))
+                # `array` isn't writeable because it comes from the Ray object store.
+                # Torch throws a verbose warning, which we suppress, as we don't write
+                # to the tensors. We also don't want to copy the array to avoid memory
+                # overhead.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    output = self._torchvision_transform(torch.as_tensor(array))
             except TypeError:
                 # Transforms like `ToTensor` expect a `np.ndarray` as input.
                 output = self._torchvision_transform(array)
