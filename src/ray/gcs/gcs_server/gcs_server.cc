@@ -755,6 +755,8 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "GcsTaskManager Event stats:\n\n"
+                  << gcs_task_manager_->GetIoContext().stats().StatsString() << "\n\n";
   }
 }
 
