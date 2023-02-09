@@ -4873,3 +4873,18 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
+
+- name: release-log-regression-collector
+  group: core-daily-test
+  working_dir: release_logs/release-log-regression-collector
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_2.yaml
+
+  run:
+    timeout: 600
+    script: python fetch_release_logs.py 2.2.0
