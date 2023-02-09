@@ -4538,25 +4538,6 @@
     wait_for_nodes:
       num_nodes: 20
 
-- name: shuffle_1tb_5000_partitions
-  group: data-tests
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_1tb_5000_partitions
-    test_suite: dataset_test
-
-  frequency: nightly-3x
-  team: data
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 9000
-    script: python dataset/sort.py --num-partitions=5000 --partition-size=200e6 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
