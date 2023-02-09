@@ -476,8 +476,7 @@ class _ActorPool:
     def pick_actor(
         self, locality_hint: Optional[RefBundle] = None
     ) -> Optional[ray.actor.ActorHandle]:
-        """Provides the least heavily loaded running actor in the pool for task
-        submission.
+        """Picks an actor for task submission based on busyness and locality.
 
         None will be returned if all actors are either at capacity (according to
         max_tasks_in_flight) or are still pending.
@@ -645,6 +644,8 @@ class _ActorPool:
         Returns:
             A node id associated with the bundle, or None if unknown.
         """
+        # Only consider the first block in the bundle for now. TODO(ekl) consider
+        # taking into account other blocks.
         ref = bundle.blocks[0][0]
         # This call is pretty fast for owned objects (~5k/s), so we don't need to
         # batch it for now.
