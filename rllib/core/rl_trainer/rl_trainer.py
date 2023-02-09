@@ -246,6 +246,11 @@ class RLTrainer:
         """The multi-agent RLModule that is being trained."""
         return self._module
 
+    @property
+    def hps(self) -> RLTrainerHPs:
+        """The hyper-parameters for the trainer."""
+        return self._hps
+
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
