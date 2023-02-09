@@ -1,9 +1,6 @@
 """
-Example showing how you can use your trained policy for inference
+Example showing how you can use your attention net policy for inference
 (computing actions) in an environment.
-
-Includes options for LSTM-based models (--use-lstm), attention-net models
-(--use-attention), and plain (non-recurrent) models.
 """
 import argparse
 import gymnasium as gym
@@ -182,9 +179,9 @@ if __name__ == "__main__":
                 for i in range(num_transformers)
             ]
             if init_prev_a is not None:
-                prev_a = a
+                prev_a = np.concatenate([prev_a, [a]], axis=0)[1:]
             if init_prev_r is not None:
-                prev_r = reward
+                prev_r = np.concatenate([prev_r, [reward]], axis=0)[1:]
 
     algo.stop()
 
