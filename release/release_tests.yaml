@@ -3535,27 +3535,6 @@
     script: python stress_tests/test_placement_group.py
     type: sdk_command
 
-- name: shuffle_1tb_5000_partitions
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_1tb_5000_partitions
-    test_suite: nightly_tests
-
-  frequency: nightly-3x
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
-
-  run:
-    timeout: 9000
-    script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
-    wait_for_nodes:
-      num_nodes: 20
-
-
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
