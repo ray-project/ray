@@ -175,12 +175,12 @@ def test_task_barrier(ray_start_4_cpus):
             succeeding.remote("b"),
             succeeding.remote("c"),
             succeeding.remote("d"),
-            sleeping.remote(1, "e"),
+            sleeping.remote(2, "e"),
         ],
         on_result=barrier.arrive,
     )
 
-    event_manager.wait(num_results=None)
+    event_manager.wait(num_results=4)
 
     assert "a" in seen
     assert "b" in seen

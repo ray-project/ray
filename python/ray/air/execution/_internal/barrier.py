@@ -50,6 +50,9 @@ class Barrier:
             *data: Result data to be cached. Can be obtained via :meth:`get_results`.
 
         """
+        if len(data) == 1:
+            data = data[0]
+
         self._results.append(data)
         self._check_completion()
 
