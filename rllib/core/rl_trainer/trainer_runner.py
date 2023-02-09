@@ -1,5 +1,4 @@
 from collections import deque
-import math
 from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
 
 import ray
@@ -76,6 +75,10 @@ class TrainerRunner:
         self._is_local = scaling_config.num_workers == 0
         self._trainer = None
         self._workers = None
+        # if a user calls self.shutdown() on their own then this flag is set to true.
+        # When del is called the backend executor isn't shutdown twice if this flag is
+        # true. the backend executor would otherwise log a warning to the console from
+        # ray train
         self._is_shut_down = False
 
         if self._is_local:

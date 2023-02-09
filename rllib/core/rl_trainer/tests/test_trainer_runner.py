@@ -12,6 +12,7 @@ from ray.rllib.core.testing.utils import (
     get_rl_trainer,
     add_module_to_runner_or_trainer,
 )
+from ray.util.timer import _Timer
 
 
 REMOTE_SCALING_CONFIGS = {
@@ -210,8 +211,23 @@ class TestTrainerRunner(unittest.TestCase):
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
             runner = get_trainer_runner(fw, env, scaling_config)
-            reader = get_cartpole_dataset_reader(batch_size=500)
+            reader = get_cartpole_dataset_reader(batch_size=512)
             min_loss = float("inf")
+            batch = reader.next()
+            timer_sync = _Timer()
+            timer_async = _Timer()
+            with timer_sync:
+                runner.update(batch.as_multi_agent(), block=True, reduce_fn=None)
+            with timer_async:
+                result_async = runner.update(
+                    batch.as_multi_agent(), block=False, reduce_fn=None
+                )
+            # ideally the the first async update will return nothing, and an easy
+            # way to check that is if the time for an async update call is faster
+            # than the time for a sync update call.
+            self.assertLess(timer_async.mean, timer_sync.mean)
+            self.assertIsInstance(result_async, list)
+            self.assertEqual(len(result_async), 0)
             for iter_i in range(1000):
                 batch = reader.next()
                 results = runner.update(
