@@ -213,10 +213,11 @@ exported by Ray.
 
 Next, the head node must be able to access Prometheus and Grafana and the browser of the dashboard user
 must be able to access Grafana. You can configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
-and `RAY_GRAFANA_IFRAME_HOST` environment variables. `RAY_GRAFANA_HOST` should be set to an address that the head node
-can use to access Grafana. `RAY_PROMETHEUS_HOST` should be set to an address the head node can use to access Prometheus.
-`RAY_GRAFANA_IFRAME_HOST` can be set to an address for the user's browsers to use to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST`
-will be equal to `RAY_GRAFANA_HOST`.
+and `RAY_GRAFANA_IFRAME_HOST` environment variables.
+
+* `RAY_GRAFANA_HOST` should be set to an address that the head node can use to access Grafana.
+* `RAY_PROMETHEUS_HOST` should be set to an address the head node can use to access Prometheus.
+* `RAY_GRAFANA_IFRAME_HOST` can be set to an address for the user's browsers to use to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST` will be equal to `RAY_GRAFANA_HOST`.
 
 For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
 to `RAY_GRAFANA_HOST=55.66.77.88:3000`.

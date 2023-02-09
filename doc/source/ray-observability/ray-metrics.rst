@@ -67,13 +67,14 @@ See :ref:`here <multi-node-metrics>` for more information on how to set up Prome
 
 .. _grafana:
 
+Grafana
+-------
+
 .. tip::
 
   The below instructions for Grafana setup to enable a basic workflow of running and accessing the dashboard on your local machine.
   For more information about how to run Grafana on a remote cluster, see :ref:`here <multi-node-metrics-grafana>`.
 
-Grafana
--------
 Grafana is a tool that supports more advanced visualizations of prometheus metrics and
 allows you to create custom dashboards with your favorite metrics. Ray exports some default
 configurations which includes a default dashboard showing some of the most valuable metrics
