@@ -70,6 +70,12 @@ class RefBundle:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
 
+    def __eq__(self, other) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return id(self)
+
 
 @dataclass
 class ExecutionResources:
@@ -152,6 +158,9 @@ class ExecutionOptions:
 
     # Set this to preserve the ordering between blocks processed by operators.
     preserve_order: bool = False
+
+    # Whether to enable locality-aware task dispatch to actors (on by default).
+    actor_locality_enabled: bool = True
 
 
 @dataclass

@@ -112,10 +112,10 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=False))
     if use_actors:
         # Actor will be pending after starting the operator.
-        assert op.progress_str() == "0 actors (1 pending)"
+        assert op.progress_str() == "0 actors (1 pending) [locality off]"
     assert op.internal_queue_size() == 0
     i = 0
     while input_op.has_next():
@@ -135,11 +135,11 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
         if use_actors and work_refs:
             # After actor is ready (first work ref resolved), actor will remain ready
             # while there is work to do.
-            assert op.progress_str() == "1 actors"
+            assert op.progress_str() == "1 actors [locality off]"
     assert op.internal_queue_size() == 0
     if use_actors:
         # After all work is done, actor will have been killed to free up resources..
-        assert op.progress_str() == "0 actors"
+        assert op.progress_str() == "0 actors [locality off]"
     else:
         assert op.progress_str() == ""
 
@@ -192,6 +192,52 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    if use_actors:
+        assert "locality_hits" in metrics, metrics
+        assert "locality_misses" in metrics, metrics
+    else:
+        assert "locality_hits" not in metrics, metrics
+        assert "locality_misses" not in metrics, metrics
+    assert not op.completed()
+
+
+def test_map_operator_actor_locality_stats(ray_start_regular_shared):
+    # Create with inputs.
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    compute_strategy = ActorPoolStrategy()
+    op = MapOperator.create(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    # Feed data and implement streaming exec.
+    output = []
+    options = ExecutionOptions()
+    options.preserve_order = True
+    options.actor_locality_enabled = True
+    op.start(options)
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        while not op.has_next():
+            work_refs = op.get_work_refs()
+            ready, _ = ray.wait(work_refs, num_returns=1, fetch_local=False)
+            op.notify_work_completed(ready[0])
+        while op.has_next():
+            ref = op.get_next()
+            assert ref.owns_blocks, ref
+            _get_blocks(ref, output)
+
+    # Check equivalent to bulk execution in order.
+    assert output == [[i * 2] for i in range(100)]
+    metrics = op.get_metrics()
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    # Check e2e locality manager working.
+    assert metrics["locality_hits"] == 100, metrics
+    assert metrics["locality_misses"] == 0, metrics
     assert not op.completed()
 
 
