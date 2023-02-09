@@ -100,7 +100,7 @@ def main():
     # dashboard_test = DashboardTestAtScale(addr)
     result = {}
     for i in args.total_actors:
-        result[f"many_nodes_actor_tests_{i}"] = run_one(
+        result[f"many_nodes_multi_master_tests_{i}"] = run_one(
             i, args.cpus_per_actor, args.no_wait
         )
 
