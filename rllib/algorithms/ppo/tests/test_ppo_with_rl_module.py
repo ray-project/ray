@@ -119,10 +119,10 @@ class TestPPO(unittest.TestCase):
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
             for env in ["CartPole-v1", "Pendulum-v1"]:
-                print("Env={}".format(env))
+                print(f"Env={env}")
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
-                    print("LSTM={}".format(lstm))
+                    print(f"LSTM={lstm}")
                     config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)

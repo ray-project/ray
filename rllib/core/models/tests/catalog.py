@@ -81,8 +81,8 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space, model_config_dict = config
             print(
-                "Testing framework: \n{}\n, input space: \n{}\n and config: \n{"
-                "}\n".format(framework, input_space, model_config_dict)
+                f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
+                f"and config: \n{model_config_dict}\n"
             )
             base_model_config = Catalog.get_base_model_config(
                 input_space=input_space, model_config_dict=model_config_dict
