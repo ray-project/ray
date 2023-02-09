@@ -3,6 +3,13 @@ Tune Internals
 
 .. _raytrialexecutor-docstring:
 
+TunerInternal
+---------------
+
+.. autoclass:: ray.tune.impl.tuner_internal.TunerInternal
+    :members:
+
+
 RayTrialExecutor
 ----------------
 
@@ -15,6 +22,7 @@ TrialRunner
 -----------
 
 .. autoclass:: ray.tune.execution.trial_runner.TrialRunner
+    :members:
 
 .. _trial-docstring:
 
@@ -22,6 +30,14 @@ Trial
 -----
 
 .. autoclass:: ray.tune.experiment.trial.Trial
+    :members:
+
+FunctionTrainable
+-----------------
+
+.. autoclass:: ray.tune.trainable.function_trainable.FunctionTrainable
+
+.. autofunction:: ray.tune.trainable.function_trainable.wrap_function
 
 
 Registry
