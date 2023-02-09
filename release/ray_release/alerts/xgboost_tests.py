@@ -13,12 +13,7 @@ def handle_result(
     time_taken = result.results.get("time_taken", float("inf"))
     num_terminated = result.results.get("trial_states", {}).get("TERMINATED", 0)
 
-    if test_name in ["distributed_api_test", "ft_small_elastic", "ft_small_nonelastic"]:
-        if not result.status == "finished":
-            return f"Test script did not finish successfully ({result.status})."
-
-        return None
-    elif test_name.startswith("tune_"):
+    if test_name.startswith("tune_"):
         msg = ""
         if test_name == "tune_small":
             target_terminated = 4
