@@ -377,10 +377,7 @@ class Trainable:
         self._time_total += time_this_iter
         self._time_since_restore += time_this_iter
 
-        if result.get(TIMESTAMP) is not None:
-            result_timestamp = result[TIMESTAMP]
-        else:
-            result_timestamp = None
+        result_timestamp = result.get(TIMESTAMP, None)
 
         result.setdefault(DONE, False)
 
