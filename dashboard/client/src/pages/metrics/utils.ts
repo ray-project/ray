@@ -43,7 +43,7 @@ export const getMetricsInfo = async () => {
   try {
     const resp = await fetchGrafanaHealthcheck();
     if (resp.data.result) {
-      info.grafanaHost = resp.data.data.grafanaHost;
+      info.grafanaHost = getGrafanaIframeHost(resp.data.data.grafanaHost);
       info.sessionName = resp.data.data.sessionName;
       info.grafanaDefaultDashboardUid =
         resp.data.data.grafanaDefaultDashboardUid;
@@ -57,4 +57,19 @@ export const getMetricsInfo = async () => {
   } catch (e) {}
 
   return info;
+};
+
+const getGrafanaIframeHost = (grafanaHost: string) => {
+  try {
+    const grafanaUrl = new URL(grafanaHost);
+    if (grafanaUrl.hostname === "localhost") {
+      grafanaUrl.hostname = window.location.hostname;
+    }
+    const grafanaIframeHost = grafanaUrl.toString();
+    return grafanaIframeHost.endsWith("/")
+      ? grafanaIframeHost.substring(0, grafanaIframeHost.length - 1)
+      : grafanaIframeHost;
+  } catch (error) {
+    return grafanaHost;
+  }
 };
