@@ -66,19 +66,17 @@ Execution
 
 This section covers Dataset execution modes and performance considerations.
 
-Lazy Execution Mode
-~~~~~~~~~~~~~~~~~~~
+Lazy Execution
+~~~~~~~~~~~~~~
 
-By default, most Datasets operations are eager, which provides a simpler iterative
-development experience. Datasets also has a lazy execution mode that can offer
-improved performance due to stage fusion optimizations.
-
-Lazy execution mode can be enabled by calling
-:meth:`ds = ds.lazy() <ray.data.Dataset.lazy()>`, which
-returns a Dataset whose all subsequent operations will be lazy. These operations
-won't be executed until the dataset is consumed or
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` is called to manually
-trigger execution.
+By default, most Datasets operations are lazy, with execution triggered via "sink"
+APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
+writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), certain
+transformations (:meth:`ds.union() <ray.data.Dataset.union>` or
+:meth:`ds.zip() <ray.data.Dataset.zip>`), or manually triggering via
+:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>`. Lazy execution offers opportunities
+for improved performance and memory stability due to stage fusion optimizations and
+aggressive garbage collection of intermediate results.
 
 Stage Fusion Optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,10 +101,6 @@ You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <dat
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * Output num rows: N min, N max, N mean, N total
-
-To avoid unnecessary data movement in the distributed setting,
-:class:`DatasetPipelines <ray.data.dataset_pipelines.DatasetPipeline>` will always use
-lazy execution under the hood.
 
 Memory Management
 =================
