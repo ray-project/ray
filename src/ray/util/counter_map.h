@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
 
 /// \class CounterMap
@@ -118,9 +119,79 @@ class CounterMap {
     }
   }
 
+  /// Return a snapshot of all the counters.
+  absl::flat_hash_map<K, int64_t> GetAll() const { return counters_; }
+
  private:
   absl::flat_hash_map<K, int64_t> counters_;
   absl::flat_hash_set<K> pending_changes_;
   std::function<void(const K &)> on_change_;
   size_t total_ = 0;
+};
+
+/// \class A thread safe version of CounterMap with mutex guarded all methods.
+template <typename K>
+class CounterMapThreadSafe {
+ public:
+  CounterMapThreadSafe() = default;
+
+  void SetOnChangeCallback(std::function<void(const K &)> on_change)
+      LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.SetOnChangeCallback(std::move(on_change));
+  }
+
+  void FlushOnChangeCallbacks() LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.FlushOnChangeCallbacks();
+  }
+
+  void Increment(const K &key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.Increment(key, val);
+  }
+
+  void Decrement(const K &key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.Decrement(key, val);
+  }
+
+  int64_t Get(const K &key) {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.Get(key);
+  }
+
+  void Swap(const K &old_key, const K &new_key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.Swap(old_key, new_key, val);
+  }
+
+  size_t Size() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.Size();
+  }
+
+  size_t Total() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.Total();
+  }
+
+  size_t NumPendingCallbacks() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.NumPendingCallbacks();
+  }
+
+  void ForEachEntry(std::function<void(const K &, int64_t)> callback) {
+    absl::ReaderMutexLock lock(&mutex_);
+    counter_map_.ForEachEntry(std::move(callback));
+  }
+
+  absl::flat_hash_map<K, int64_t> GetAll() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.GetAll();
+  }
+
+ private:
+  absl::Mutex mutex_;
+  CounterMap<K> counter_map_;
 };
