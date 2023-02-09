@@ -85,7 +85,7 @@ class MyResettableClass(Trainable):
         return None
 
 
-def _run_trials_with_frequent_pauses(trainable, reuse=False):
+def _run_trials_with_frequent_pauses(trainable, reuse=False, **kwargs):
     analysis = tune.run(
         trainable,
         num_samples=1,
@@ -93,6 +93,7 @@ def _run_trials_with_frequent_pauses(trainable, reuse=False):
         reuse_actors=reuse,
         scheduler=FrequentPausesScheduler(),
         verbose=0,
+        **kwargs,
     )
     return analysis.trials
 
@@ -396,6 +397,61 @@ def test_detect_reuse_mixins():
 
     assert not _check_mixin(MyTrainable)
     assert _check_mixin(mlflow_mixin(MyTrainable))
+
+
+from ray.tune.tests.test_syncer import temp_data_dirs
+
+
+def test_artifact_syncing_with_actor_reuse(temp_data_dirs, tmp_path):
+    """Check that artifacts get synced to the right places with actor reuse.
+
+    In this test, there are 4 trials that are getting paused + reused.
+    max_concurrent_trials=2 to force trials to swap places with each other.
+    On each pause + Trianable.reset, artifacts should get synced to their respective
+    location in the target directory.
+    """
+    _, tmp_target = temp_data_dirs
+
+    exp_name = "sync_artifacts_with_actor_reuse"
+
+    class MyResettableClassWithArtifacts(MyResettableClass):
+        def step(self) -> dict:
+            result = super().step()
+            # Mock some artifact logging (appending to a log)
+            with open(os.path.join(self.logdir, "artifact.txt"), "a") as f:
+                f.write(f"{self.config.get('id')}\n")
+            return result
+
+        def reset(self, *args, **kwargs):
+            success = super().reset(*args, **kwargs)
+
+            remote_trial_dir = os.path.join(
+                tmp_target, exp_name, str(self.config.get("id"))
+            )
+            assert self.remote_checkpoint_dir == "file://" + remote_trial_dir
+
+            artifact_path = os.path.join(remote_trial_dir, "artifact.txt")
+            with open(artifact_path, "r") as f:
+                artifact_data = f.read()
+
+            # Add 1 to iteration, since it's 0 indexed.
+            assert artifact_data.split("\n")[:-1] == [str(self.config.get("id"))] * (
+                self.iteration + 1
+            )
+            return success
+
+    trials = _run_trials_with_frequent_pauses(
+        MyResettableClassWithArtifacts,
+        reuse=True,
+        max_concurrent_trials=2,
+        local_dir=str(tmp_path),
+        name=exp_name,
+        sync_config=tune.SyncConfig(
+            upload_dir=f"file://{tmp_target}", sync_artifacts=True
+        ),
+        trial_dirname_creator=lambda t: str(t.config.get("id")),
+    )
+    assert not any(trial.error_file for trial in trials)
 
 
 if __name__ == "__main__":
