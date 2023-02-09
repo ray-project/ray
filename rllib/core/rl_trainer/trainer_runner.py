@@ -4,8 +4,6 @@ from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECK
 
 import ray
 
-from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -19,6 +17,9 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.minibatch_utils import ShardBatchIterator
+from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 
 if TYPE_CHECKING:
@@ -49,15 +50,23 @@ class TrainerRunner:
         .get_state() -> returns the state of the RLModule and RLOptimizer from
                         all of the RLTrainers.
         .set_state() -> sets the state of all the RLTrainers.
+        .get_weights() -> returns the weights of the RLModule from the RLTrainer(s).
+        .set_weights() -> sets the weights of the RLModule in the RLTrainer(s).
         .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
                          this TrainerRunner.
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
                             by this TrainerRunner.
+    Args:
+        rl_trainer_spec: The specification for constructing RLTrainers.
+        max_queue_len: The maximum number of batches to queue up if doing non-blocking
+            updates (e.g. `self.update(batch, block=False)`). If the queue is full it
+            will evict the oldest batch first.
     """
 
     def __init__(
         self,
         rl_trainer_spec: RLTrainerSpec,
+        max_queue_len: int = 20,
     ):
         scaling_config = rl_trainer_spec.trainer_scaling_config
         rl_trainer_class = rl_trainer_spec.rl_trainer_class
@@ -99,7 +108,7 @@ class TrainerRunner:
                 self._workers,
                 max_remote_requests_in_flight_per_actor=1,
             )
-            self._in_queue = deque(maxlen=20)
+            self._in_queue = deque(maxlen=max_queue_len)
 
     @property
     def is_local(self) -> bool:
@@ -134,6 +143,11 @@ class TrainerRunner:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
         if self.is_local:
+            if not block:
+                raise ValueError(
+                    "Cannot run update in non-blocking mode when running in local "
+                    "mode with num_workers=0."
+                )
             results = [
                 self._trainer.update(
                     batch,
@@ -180,9 +194,11 @@ class TrainerRunner:
         """
 
         if block:
-            batches = self._shard_sample_batch(batch)
             results = self._worker_manager.foreach_actor(
-                [lambda w: w.update(b) for b in batches]
+                [
+                    lambda w: w.update(b)
+                    for b in ShardBatchIterator(batch, len(self._workers))
+                ]
             )
         else:
             if batch is not None:
@@ -190,7 +206,6 @@ class TrainerRunner:
             results = self._worker_manager.fetch_ready_async_reqs()
             if self._worker_manager_ready() and self._in_queue:
                 batch = self._in_queue.popleft()
-                batches = self._shard_sample_batch(batch)
                 self._worker_manager.foreach_actor_async(
                     [
                         lambda w: w.update(
@@ -199,7 +214,7 @@ class TrainerRunner:
                             num_iters=num_iters,
                             reduce_fn=reduce_fn,
                         )
-                        for b in batches
+                        for b in ShardBatchIterator(batch, len(self._workers))
                     ]
                 )
 
@@ -207,22 +222,6 @@ class TrainerRunner:
 
     def _worker_manager_ready(self):
         return self._worker_manager.num_outstanding_async_reqs() == 0
-
-    def _shard_sample_batch(self, batch: MultiAgentBatch) -> List[MultiAgentBatch]:
-        global_size = len(self._workers)
-        batch_size = math.ceil(len(batch) / global_size)
-        batches = []
-        for i in range(len(self._workers)):
-            batch_to_send = {}
-            for pid, sub_batch in batch.policy_batches.items():
-                batch_size = math.ceil(len(sub_batch) / global_size)
-                start = batch_size * i
-                end = min(start + batch_size, len(sub_batch))
-                batch_to_send[pid] = sub_batch[int(start) : int(end)]
-            # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
-            new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
-            batches.append(new_batch)
-        return batches
 
     def _get_results(self, results):
         processed_results = []

@@ -89,8 +89,8 @@ class TestTrainerRunner(unittest.TestCase):
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
 
     def test_update_multigpu(self):
-        fws = ["torch"]
-        scaling_modes = ["remote-cpu"]
+        fws = ["tf", "torch"]
+        scaling_modes = REMOTE_SCALING_CONFIGS.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:

@@ -687,7 +687,7 @@ class RLTrainer:
 
 @dataclass
 class RLTrainerSpec:
-    """The spec for construcitng RLTrainer actors.
+    """The spec for constructing RLTrainer actors.
 
     Args:
         rl_trainer_class: The RLTrainer class to use.
