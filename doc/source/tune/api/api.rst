@@ -23,6 +23,7 @@ on `Github`_.
     reporters.rst
     syncing.rst
     logging.rst
+    callbacks.rst
     env.rst
     sklearn.rst
     integration.rst
