@@ -10,7 +10,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 class ReorderRandomizeBlocksRule(Rule):
     """Rule for reordering RandomizeBlocks logical operator.
 
-    Reordering RandomizeBlocks operators is to help fuse multiple AbstractMap operators together for better performance.
+    Reordering RandomizeBlocks operators is to help fuse multiple
+    AbstractMap operators together for better performance.
 
     1. Dedupes multiple RandomizeBlocks operators if they are not seeded.
     2. Moves RandomizeBlocks operator to the end of a sequence of AbstractMap
@@ -23,7 +24,7 @@ class ReorderRandomizeBlocksRule(Rule):
         return LogicalPlan(dag=optimized_dag)
 
     def _apply(self, op: LogicalOperator) -> LogicalOperator:
-        seeds = []
+        operators = []
 
         # Post-order traversal.
         nodes = deque()
@@ -41,8 +42,8 @@ class ReorderRandomizeBlocksRule(Rule):
                     # If no seeds are provided, then collapse into a single
                     # RandomizeBlocks operator.
                     current_seed = upstream_ops[i]._seed
-                    if not seeds or current_seed or seeds[-1]:
-                        seeds.append(current_seed)
+                    if not operators or current_seed or operators[-1]._seed:
+                        operators.append(upstream_ops[i])
 
                     # Remove RandomizeBlocks operator from the dag and wire in new input
                     # dependencies.
@@ -57,13 +58,15 @@ class ReorderRandomizeBlocksRule(Rule):
                 # All-to-all operators can have only 1 input operator.
                 assert len(upstream_ops) == 1
                 input_op = upstream_ops[0]
-                for seed in seeds:
-                    input_op = RandomizeBlocks(input_op=input_op, seed=seed)
+                for random_op in operators:
+                    random_op._input_dependencies = [input_op]
+                    input_op = random_op
                 upstream_ops[0] = input_op
-                seeds = []
+                operators = []
 
         # Add RandomizeBlocks operator as the last operator in the DAG if necessary.
-        for seed in seeds:
-            op = RandomizeBlocks(input_op=op, seed=seed)
+        for random_op in operators:
+            random_op._input_dependencies = [op]
+            op = random_op
 
         return op

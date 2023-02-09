@@ -49,7 +49,7 @@ def test_randomize_block_order_rule():
 
     # Check that multiple RandomizeBlocks operators are deduped.
     operator_count = 0
-    for _ in optimized_plan.dag:
+    for _ in optimized_plan.dag.post_order_iter():
         operator_count += 1
 
     assert operator_count == 3
@@ -75,7 +75,7 @@ def test_randomize_block_order_rule_seed():
     assert isinstance(optimized_plan.dag.input_dependencies[0], RandomizeBlocks)
     assert optimized_plan.dag.input_dependencies[0]._seed is None
     operator_count = 0
-    for _ in optimized_plan.dag:
+    for _ in optimized_plan.dag.post_order_iter():
         operator_count += 1
 
     # RandomizeBlocks operators should not be deduped.
