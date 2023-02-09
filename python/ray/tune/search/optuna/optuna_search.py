@@ -120,7 +120,7 @@ class OptunaSearch(Searcher):
             draw hyperparameter configurations. Defaults to ``MOTPESampler``
             for multi-objective optimization with Optuna<2.9.0, and
             ``TPESampler`` in every other case.
-            See https://optuna.readthedocs.io/en/stable/reference/samplers.html
+            See https://optuna.readthedocs.io/en/stable/reference/samplers/index.html
             for available Optuna samplers.
 
             .. warning::
