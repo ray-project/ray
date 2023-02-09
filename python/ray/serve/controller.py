@@ -311,13 +311,14 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            config_checkpoints_dict = pickle.loads(checkpoint)
+            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
             applications = [
                 app_config_dict
-                for _, app_config_dict, _ in config_checkpoints_dict.values()
+                for app_config_dict, _ in config_checkpoints_dict.values()
             ]
             self.deploy_apps(
-                ServeDeploySchema.parse_obj({"applications": applications})
+                ServeDeploySchema.parse_obj({"applications": applications}),
+                deployment_time,
             )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -437,36 +438,44 @@ class ServeController:
         return deployments_success
 
     def deploy_apps(
-        self, config: Union[ServeApplicationSchema, ServeDeploySchema]
+        self,
+        config: Union[ServeApplicationSchema, ServeDeploySchema],
+        deployment_time: float = 0,
     ) -> None:
-        """Kicks off a task that deploys a Serve application.
+        """Kicks off a task that deploys a set of Serve applications.
 
-        Cancels in-progress task that is deploying a Serve
-        application with same name.
+        Cancels in-progress tasks that are deploying Serve applications with the same
+        name as newly deployed applications.
 
         Args:
-            config: Contains the following:
-                name: Application name. If not provided, it is empty string.
-                import_path: Serve deployment graph's import path
-                runtime_env: runtime_env to run the deployment graph in
-                deployment_override_options: Dictionaries that
-                    contain argument-value options that can be passed directly
-                    into a set_options() call. Overrides deployment options set
-                    in the graph's code itself.
+            config:
+                [if ServeApplicationSchema]
+                    name: Application name. If not provided, it is empty string.
+                    import_path: Serve deployment graph's import path
+                    runtime_env: runtime_env to run the deployment graph in
+                    deployments: Dictionaries that contain argument-value options
+                        that can be passed directly into a set_options() call. Overrides
+                        deployment options set in the graph's code itself.
+                [if ServeDeploySchema]
+                    applications: Dictionaries of the format ServeApplicationSchema.
+
+            deployment_time: set deployment_timestamp. If not provided, time.time() is
+                used to indicate the deployment time.
         """
         # We should still support single-app mode, i.e. ServeApplicationSchema.
         # Eventually, after migration is complete, we should deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
             config = serve_application_to_deploy_schema(config)
 
-        timestamp = time.time()
+        if not deployment_time:
+            deployment_time = time.time()
 
         # Load checkpointed data from last time deploy_apps was called
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            config_checkpoints_dict = pickle.loads(config_checkpoint)
+            _, config_checkpoints_dict = pickle.loads(config_checkpoint)
 
         new_config_checkpoint = {}
 
@@ -475,32 +484,21 @@ class ServeController:
 
             # Compare new config options with old ones, set versions of new deployments
             if app_config.name in config_checkpoints_dict:
-                (
-                    prev_deployment_time,
-                    prev_app_config,
-                    prev_versions,
-                ) = config_checkpoints_dict[app_config.name]
+                (prev_app_config, prev_versions) = config_checkpoints_dict[
+                    app_config.name
+                ]
 
                 updated_versions = _generate_deployment_config_versions(
                     app_config_dict,
                     prev_app_config,
                     prev_versions,
                 )
-
-                # If none of the deployments' versions were changed, the application
-                # effectively was not redeployed, so don't update the deployment time.
-                if updated_versions == prev_versions:
-                    deployment_time = prev_deployment_time
-                else:
-                    deployment_time = timestamp
             else:
                 updated_versions = _generate_deployment_config_versions(app_config_dict)
-                deployment_time = timestamp
 
             deployment_override_options = app_config_dict.get("deployments", [])
 
             new_config_checkpoint[app_config.name] = (
-                deployment_time,
                 app_config_dict,
                 updated_versions,
             )
@@ -524,7 +522,7 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps(new_config_checkpoint),
+            pickle.dumps((deployment_time, new_config_checkpoint)),
         )
 
     def delete_deployment(self, name: str):
