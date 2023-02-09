@@ -1,5 +1,5 @@
-Tune Execution (Tuner)
-======================
+Tune Execution (tune.Tuner)
+===========================
 
 .. _tune-run-ref:
 
@@ -13,6 +13,7 @@ Tuner
 
     Tuner
     Tuner.fit
+    Tuner.get_results
 
 Tuner Configuration
 ~~~~~~~~~~~~~~~~~~~
@@ -30,7 +31,6 @@ Restoring a Tuner
 
     Tuner.restore
     Tuner.can_restore
-    Tuner.get_results
 
 
 tune.run_experiments
