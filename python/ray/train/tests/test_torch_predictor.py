@@ -281,6 +281,23 @@ def test_multi_modal_real_model(use_gpu):
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
+def test_predictor_w_ckpt_from_uri():
+    def create_model():
+        return torch.nn.Sequential(
+            torch.nn.Linear(1, 1),
+            torch.nn.Sigmoid(),
+        )
+
+    model = create_model()
+    saved_checkpoint = TorchCheckpoint.from_model(model=model)
+    saved_checkpoint.to_uri("memory:///unit-test/")
+    loaded_checkpoint = TorchCheckpoint.from_uri("memory:///unit-test/")
+    batch_predictor = BatchPredictor.from_checkpoint(
+        checkpoint=loaded_checkpoint, predictor_cls=TorchPredictor
+    )
+    batch_predictor.predict(ray.data.from_numpy(np.array([1])), dtype=torch.float)
+
+
 if __name__ == "__main__":
     import sys
 

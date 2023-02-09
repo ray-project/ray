@@ -30,6 +30,26 @@ class TorchCheckpoint(Checkpoint):
     ``TorchCheckpoint.from_checkpoint(ckpt)``.
     """
 
+    @classmethod
+    def from_uri(cls, uri: str) -> "TorchCheckpoint":
+        """Load from URI in an eager fashion (data will be downloaded).
+
+        This is different than how Checkpoint in general does this,
+        which is in a lazy fashion.
+        """
+        # This is needed as TorchCheckpoint upon deserialization, needs
+        # access to dict for `_encode_data_dict` logic.
+        # This won't introduce any regression at the moment when this comment
+        # is written, as putting a "from_uri" Checkpoint
+        # into Ray object store involves ser/deser of its data anyways by
+        # current implementation.
+        # However this is a wrong design and should be fixed together with
+        # https://github.com/ray-project/ray/issues/32385
+
+        ckpt = super(TorchCheckpoint, cls).from_uri(uri)
+        ckpt_dict = ckpt.to_dict()
+        return TorchCheckpoint.from_dict(ckpt_dict)
+
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
