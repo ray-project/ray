@@ -433,7 +433,11 @@ def wait_for_node(
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for node to startup.")
+    raise TimeoutError(
+        f"Timed out after {timeout} seconds while waiting for node to startup. "
+        f"Did not find socket name {node_plasma_store_socket_name} in the list "
+        "of object store socket names."
+    )
 
 
 def get_node_to_connect_for_driver(gcs_address, node_ip_address):
