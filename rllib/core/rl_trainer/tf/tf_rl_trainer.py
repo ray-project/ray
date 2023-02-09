@@ -32,7 +32,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.tf_utils import get_gpu_devices
 
 
 tf1, tf, tfv = try_import_tf()
@@ -191,7 +190,7 @@ class TfRLTrainer(RLTrainer):
             if self._use_gpu:
                 # mirrored strategy is typically used for multi-gpu training
                 # on a single machine, however we can use it for single-gpu
-                devices = get_gpu_devices()
+                devices = tf.config.list_logical_devices("GPU")
                 assert self._local_gpu_idx < len(devices), (
                     f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
                     " not available."
