@@ -1,10 +1,12 @@
 from typing import Iterator, Optional, TYPE_CHECKING
 import warnings
 
+from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
 from ray.train.error import SessionMisuseError
 
 if TYPE_CHECKING:
+    import tensorflow as tf
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -21,7 +23,7 @@ class TrainDatasetIterator(DatasetIterator):
     ):
         self._dataset_iterator = dataset_iterator
 
-    def iter_batches(self, *args, **kwargs):
+    def iter_batches(self, *args, **kwargs) -> Iterator["DataBatch"]:
         return self._dataset_iterator.iter_batches(*args, **kwargs)
 
     def iter_torch_batches(
@@ -38,6 +40,9 @@ class TrainDatasetIterator(DatasetIterator):
                 pass
 
         return self._dataset_iterator.iter_torch_batches(device=device, **kwargs)
+
+    def to_tf(self, *args, **kwargs) -> "tf.data.Dataset":
+        return self._dataset_iterator.to_tf(*args, **kwargs)
 
     def stats(self) -> str:
         return self._dataset_iterator.stats()
