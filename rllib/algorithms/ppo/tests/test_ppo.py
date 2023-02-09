@@ -126,9 +126,9 @@ class TestPPO(unittest.TestCase):
 
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
-                print(f"Env={env}")
+                print("Env={}".format(env))
                 for lstm in [False, True]:
-                    print(f"LSTM={lstm}")
+                    print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
                             use_lstm=lstm,
@@ -190,9 +190,9 @@ class TestPPO(unittest.TestCase):
 
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
-                print(f"Env={env}")
+                print("Env={}".format(env))
                 for lstm in [False, True]:
-                    print(f"LSTM={lstm}")
+                    print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
                             use_lstm=lstm,
