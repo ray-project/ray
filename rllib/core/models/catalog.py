@@ -1,3 +1,4 @@
+import gymnasium as gym
 from ray.rllib.core.models.configs import (
     MLPModelConfig,
     MLPEncoderConfig,
@@ -11,47 +12,72 @@ from gymnasium.spaces import Box
 class Catalog:
     """Defines how what models an RLModules builds.
 
-    RLlib's native RLModules get their Models from a ModelBuilder object.
-    By default, that ModelBuilder builds the configs it holds.
-    You can modify the ModelBuilder so that it builds different Models by subclassing
-    and don't have to write configs.
+    RLlib's native RLModules get their Models from a Catalog object.
+    By default, that Catalog builds the configs it holds.
+    You can modify a Catalog so that it builds different Models by subclassing and
+    overriding the build_* methods. Alternatively, you can customize the configs
+    inside RLlib's Catalogs to customize what is being built by Rllib.
     """
 
-    def __init__(self, observation_space, action_space, model_config):
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        model_config_dict: dict,
+    ):
         self.observation_space = observation_space
         self.action_space = action_space
         # TODO (Artur): Possibly get rid of this config merge
-        self.model_config = {**MODEL_DEFAULTS, **model_config}
+        self.model_config = {**MODEL_DEFAULTS, **model_config_dict}
         self.encoder_config = self.get_encoder_config(
             observation_space, self.model_config
         )
+        # The dimensions of the latent vector that is output by the encoder and fed
+        # to the heads.
         self.latent_dim = self.encoder_config.output_dim
 
-    def build_encoder(self, framework="torch"):
+    def build_encoder(self, framework: str):
+        """Builds the encoder.
+
+        By default, this method builds the encoder config.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf".
+
+        Returns:
+            The encoder.
+        """
         return self.encoder_config.build(framework=framework)
 
     @staticmethod
-    def get_encoder_config(observation_space, model_config) -> ModelConfig:
-        """Returns a Model config for the given observation space.
+    def get_encoder_config(
+        observation_space: gym.Space, model_config_dict: dict
+    ) -> ModelConfig:
+        """Infers the encoder config from the observation space and model config.
 
-        Args
+        Args:
+            observation_space: The observation space to use.
+            model_config_dict: The model config to use.
+
+        Returns:
+            The encoder config.
         """
         assert (
             len(observation_space.shape) == 1
         ), "No multidimensional obs space supported."
 
-        activation = model_config["fcnet_activation"]
-        output_activation = model_config["fcnet_activation"]
+        activation = model_config_dict["fcnet_activation"]
+        output_activation = model_config_dict["fcnet_activation"]
         input_dim = observation_space.shape[0]
-        fcnet_hiddens = model_config["fcnet_hiddens"]
+        fcnet_hiddens = model_config_dict["fcnet_hiddens"]
 
-        if model_config["use_lstm"]:
+        if model_config_dict["use_lstm"]:
             encoder_config = LSTMEncoderConfig(
                 input_dim=input_dim,
-                hidden_dim=model_config["lstm_cell_size"],
-                batch_first=not model_config["_time_major"],
+                hidden_dim=model_config_dict["lstm_cell_size"],
+                batch_first=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dim=model_config["lstm_cell_size"],
+                output_dim=model_config_dict["lstm_cell_size"],
                 output_activation=output_activation,
             )
         else:
@@ -65,14 +91,29 @@ class Catalog:
         return encoder_config
 
     @staticmethod
-    def get_base_model_config(input_space, model_config) -> ModelConfig:
+    def get_base_model_config(
+        input_space: gym.Space, model_config_dict: dict
+    ) -> ModelConfig:
         """Returns a ModelConfig for the given input_space space.
+
+        The following input spaces lead to the following configs:
+        - 1D-Box: MLPModelConfig
+        # TODO (Artur): Support more spaces here
+        # - 3D-Box: CNNModelConfig
+        # ...
+
+        Args:
+            input_space: The input space to use.
+            model_config_dict: The model config to use.
+
+        Returns:
+            The base ModelConfig.
 
         The returned ModelConfig can be used as is or inside an encoder.
         It is either an MLPModelConfig, a CNNModelConfig or a NestedModelConfig.
         """
         # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
-        model_config = {**MODEL_DEFAULTS, **model_config}
+        model_config = {**MODEL_DEFAULTS, **model_config_dict}
         input_dim = input_space.shape[0]
 
         # input_space is a 1D Box

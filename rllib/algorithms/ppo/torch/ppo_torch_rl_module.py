@@ -37,7 +37,7 @@ def get_ppo_loss(fwd_in, fwd_out):
 class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
     framework = "torch"
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
         TorchRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
 
@@ -78,7 +78,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
     @override(RLModule)
     def input_specs_exploration(self):
         # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
-        return SpecDict()
+        return NestedDict({})
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:

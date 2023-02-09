@@ -74,17 +74,19 @@ class TestCatalog(unittest.TestCase):
             # }
         ]
 
+        frameworks = ["tf", "torch"]
+
         for input_space in input_spaces:
             for config in configs:
-                print(
-                    "Testing input space: \n{}\n and config: \n{}\n".format(
-                        input_space, config
+                for framework in frameworks:
+                    print(
+                        "Testing framework: \n{}\n, input space: \n{}\n and config: \n{"
+                        "}\n".format(framework, input_space, config)
                     )
-                )
-                base_model_config = Catalog.get_base_model_config(
-                    input_space=input_space, model_config=config
-                )
-                base_model_config.build(framework="torch")
+                    base_model_config = Catalog.get_base_model_config(
+                        input_space=input_space, model_config_dict=config
+                    )
+                    base_model_config.build(framework="torch")
 
 
 if __name__ == "__main__":

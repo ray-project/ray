@@ -91,12 +91,12 @@ class DiscreteBCTFModule(TfRLModule):
         cls,
         observation_space: "gym.Space",
         action_space: "gym.Space",
-        model_config: Mapping[str, Any],
+        model_config_dict: Mapping[str, Any],
     ) -> Union["RLModule", Mapping[str, Any]]:
 
         config = {
             "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config["hidden_dim"],
+            "hidden_dim": model_config_dict["hidden_dim"],
             "output_dim": action_space.n,
         }
 

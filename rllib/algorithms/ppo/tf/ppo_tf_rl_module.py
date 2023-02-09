@@ -22,7 +22,7 @@ tf1.enable_eager_execution()
 class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     framework = "tf"
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
 

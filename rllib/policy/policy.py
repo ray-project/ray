@@ -382,7 +382,9 @@ class Policy(metaclass=ABCMeta):
         """
         module_class: RLModule = self.config["rl_module_class"]
         return module_class.from_model_config(
-            self.observation_space, self.action_space, model_config=self.config["model"]
+            self.observation_space,
+            self.action_space,
+            model_config_dict=self.config["model"],
         )
 
     @DeveloperAPI

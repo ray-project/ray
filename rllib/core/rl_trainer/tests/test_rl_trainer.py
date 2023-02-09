@@ -22,7 +22,7 @@ def get_trainer() -> RLTrainer:
             module_class=DiscreteBCTFModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"hidden_dim": 32},
+            model_config_dict={"hidden_dim": 32},
         ),
         optimizer_config={"lr": 1e-3},
         trainer_scaling_config=TrainerScalingConfig(),
@@ -126,7 +126,7 @@ class TestRLTrainer(unittest.TestCase):
                 module_class=DiscreteBCTFModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"hidden_dim": 16},
+                model_config_dict={"hidden_dim": 16},
             ),
             set_optimizer_fn=set_optimizer_fn,
         )
