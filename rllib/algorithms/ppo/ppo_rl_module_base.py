@@ -26,18 +26,19 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
         assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
 
-        self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
-        self.config.pi_config.input_dim = self.config.encoder_config.output_dim
+        # Set input- and output dimensions to fit PPO's needs.
+        catalog.encoder_config.input_dim = self.config.observation_space.shape[0]
+        catalog.pi_head_config.input_dim = catalog.encoder_config.output_dim
         if isinstance(self.config.action_space, gym.spaces.Discrete):
-            self.config.pi_config.output_dim = self.config.action_space.n
+            catalog.pi_head_config.output_dim = self.config.action_space.n
         else:
-            self.config.pi_config.output_dim = self.config.action_space.shape[0] * 2
-        self.config.vf_config.output_dim = 1
+            catalog.pi_head_config.output_dim = self.config.action_space.shape[0] * 2
+        catalog.vf_head_config.output_dim = 1
 
-        # TODO(Artur): Unify to tf and torch setup with Catalog
-        self.encoder = self.config.encoder_config.build(framework="torch")
-        self.pi = self.config.pi_config.build(framework="torch")
-        self.vf = self.config.vf_config.build(framework="torch")
+        # Build models from catalog
+        self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
+        self.pi = catalog.build_pi_head(framework=self.framework)
+        self.vf = catalog.build_vf_head(framework=self.framework)
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),

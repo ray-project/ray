@@ -174,7 +174,7 @@ class TfIdentityEncoder(TfModel):
 
 
 class TfActorCriticEncoder(TfModel, Encoder):
-    """An encoder that potentially holds two encoders.
+    """An encoder that can hold two encoders.
 
     This is a special case of encoder that potentially holds two encoders:
     One for the actor and one for the critic. If not, it will use the same encoder

@@ -4,6 +4,7 @@ import tree
 
 from ray.rllib.algorithms.ppo.ppo_rl_module_base import PPORLModuleBase
 from ray.rllib.core.models.encoder import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
+from ray.rllib.core.models.torch.encoder import TorchActorCriticEncoder
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
@@ -40,6 +41,9 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
     def __init__(self, *args, **kwargs):
         TorchRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
+
+        # TODO(Artur): After unifying ActorCriticEncoder, move this to PPORLModuleBase
+        assert isinstance(self.encoder, TorchActorCriticEncoder)
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:

@@ -7,6 +7,7 @@ from ray.rllib.core.models.encoder import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.core.models.tf.encoder import TfActorCriticEncoder
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
@@ -25,6 +26,9 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
+
+        # TODO(Artur): After unifying ActorCriticEncoder, move this to PPORLModuleBase
+        assert isinstance(self.encoder, TfActorCriticEncoder)
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
