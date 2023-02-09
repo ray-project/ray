@@ -87,8 +87,15 @@ below.
 
 .. _multi-node-metrics:
 
-Prometheus metrics
-^^^^^^^^^^^^^^^^^^
+Prometheus
+^^^^^^^^^^
+Ray supports prometheus for emitting and recording time-series metrics.
+See :ref:`metrics <ray-metrics>` for more details of the metrics emitted.
+When using Prometheus in a Ray cluster, one must decide where they want to host prometheus and then configure
+Prometheus so that Prometheus can scrape the metrics from Ray.
+
+Scraping metrics
+################
 
 Ray runs a metrics agent per node to export :ref:`metrics <ray-metrics>` about Ray core as well as
 custom user-defined metrics. Each metrics agent collects metrics from the local
@@ -189,13 +196,27 @@ Ray Cluster information. Here, we will use a Python script and the
      'alive': True}]
     """
 
-Setting up Grafana and Metrics
-##############################
 
-One common pattern of supporting :ref:`metrics <ray-metrics>` on a remote ray cluster is by running the Prometheus and Grafana services
-on the head node of the cluster. However, in order to view the :ref:`Dashboard <ray-dashboard>` metrics on your local
-machine, you must configure the Dashboard UI to embed the metrics graphs via a public address for the Grafana instance.
+.. _multi-node-metrics-grafana:
 
-The `RAY_GRAFANA_HOST` env var can be set when launching Ray to configure how the Dashboard UI embeds the metrics.
+
+Grafana
+^^^^^^^^^^
+Ray dashboard integrates with grafana to show visualizations of time-series metrics.
+
+.. image:: images/graphs.png
+    :align: center
+
+First, you must decide where you want to host Grafana. One common place is to run it on the head node of the cluster.
+See :ref:`here <grafana>` for instructions on how to install Grafana and how to use the default Grafana configurations
+exported by Ray.
+
+Next, the head node must be able to access Prometheus and Grafana and the browser of the dashboard user
+must be able to access Grafana. You can configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
+and `RAY_GRAFANA_IFRAME_HOST` environment variables. `RAY_GRAFANA_HOST` should be set to an address that the head node
+can use to access Grafana. `RAY_PROMETHEUS_HOST` should be set to an address the head node can use to access Prometheus.
+`RAY_GRAFANA_IFRAME_HOST` can be set to an address for the user's browsers to use to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST`
+will be equal to `RAY_GRAFANA_HOST`.
+
 For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
 to `RAY_GRAFANA_HOST=55.66.77.88:3000`.

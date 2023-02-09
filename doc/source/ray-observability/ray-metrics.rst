@@ -16,10 +16,8 @@ Getting Started
 
 .. tip::
 
-  The below instructions for Prometheus and Grafana setup to enable a basic workflow
-  of running and accessing the dashboard on your local machine.
-  For more information about how to run Prometheus and Grafana on a remote cluster, see :ref:`here <multi-node-metrics>`.
-
+  The below instructions for Prometheus to enable a basic workflow of running and accessing the dashboard on your local machine.
+  For more information about how to run Prometheus on a remote cluster, see :ref:`here <multi-node-metrics>`.
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
@@ -68,6 +66,11 @@ Now, you can access Ray metrics from the default Prometheus url, `http://localho
 See :ref:`here <multi-node-metrics>` for more information on how to set up Prometheus on a Ray Cluster.
 
 .. _grafana:
+
+.. tip::
+
+  The below instructions for Grafana setup to enable a basic workflow of running and accessing the dashboard on your local machine.
+  For more information about how to run Grafana on a remote cluster, see :ref:`here <multi-node-metrics-grafana>`.
 
 Grafana
 -------
@@ -216,7 +219,6 @@ If you open this in the browser, you should see the following output:
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
 
-
 Configurations
 --------------
 
@@ -231,6 +233,27 @@ To do that, you may want to customize the port that metrics gets exposed to a pr
     ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
 
 Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
+
+Alternate Prometheus host location
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can choose to run Prometheus on a non-default port or on a different machine. When doing so, you should
+make sure that prometheus can scrape the metrics from your ray nodes following instructions :ref:`here <multi-node-metrics>`.
+
+In addition, both Ray and Grafana needs to know how to access this prometheus instance. This can be configured
+by setting the `RAY_PROMETHEUS_HOST` env var when launching ray. The env var takes in the address to access Prometheus.
+
+
+Alternate Grafana host location
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can choose to run Grafana on a non-default port or on a different machine. If you choose to do this, the
+:ref:`Dashboard <ray-dashboard>` needs to be configured with a public address to that service so the web page
+can load the graphs. This can be done with the `RAY_GRAFANA_HOST` env var when launching ray. The env var takes
+in the address to access Grafana.
+
+For the Grafana charts to work on the Ray dashboard, the user of the dashboard's browser must be able to reach
+the Grafana service. If this browser cannot reach Grafana the same way the Ray head node can, you can use a separate
+env var `RAY_GRAFANA_IFRAME_HOST` to customize the host the browser users to attempt to reach Grafana. If this is not set,
+we use the value of `RAY_GRAFANA_HOST` by default.
 
 
 Alternate Prometheus host location
