@@ -640,10 +640,10 @@ class ServeController:
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
         else:
-            config_checkpoints_dict = pickle.loads(checkpoint)
+            _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name not in config_checkpoints_dict:
                 return ServeApplicationSchema.get_empty_schema_dict()
-            _, config, _ = config_checkpoints_dict[name]
+            config, _ = config_checkpoints_dict[name]
 
             return config
 
