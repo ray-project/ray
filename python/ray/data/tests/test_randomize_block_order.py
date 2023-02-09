@@ -10,7 +10,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
 from ray.data._internal.logical.operators.map_operator import MapBatches
-from ray.data._internal.logical.rules.randomize_blocks import RandomizeBlockOrderRule
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.planner.planner import Planner
@@ -39,7 +39,7 @@ def test_randomize_block_order_rule():
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
     original_plan = LogicalPlan(dag=operator3)
 
-    rule = RandomizeBlockOrderRule()
+    rule = ReorderRandomizeBlocksRule()
     optimized_plan = rule.apply(original_plan)
 
     # Check that RandomizeBlocks is the last operator in the DAG.
@@ -62,7 +62,7 @@ def test_randomize_block_order_rule_seed():
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
     original_plan = LogicalPlan(dag=operator3)
 
-    rule = RandomizeBlockOrderRule()
+    rule = ReorderRandomizeBlocksRule()
     optimized_plan = rule.apply(original_plan)
 
     # Check that RandomizeBlocks is the last operator in the DAG.
@@ -92,7 +92,7 @@ def test_randomize_block_order_after_repartition():
     operator6 = Repartition(input_op=operator5, num_outputs=1, shuffle=False)
     original_plan = LogicalPlan(dag=operator6)
 
-    rule = RandomizeBlockOrderRule()
+    rule = ReorderRandomizeBlocksRule()
     optimized_plan = rule.apply(original_plan)
 
     assert isinstance(optimized_plan.dag, Repartition)
@@ -101,7 +101,7 @@ def test_randomize_block_order_after_repartition():
     # Check that multiple RandomizeBlocks operators are deduped within repartition
     # boundaries.
     operator_count = 0
-    for _ in optimized_plan.dag:
+    for _ in optimized_plan.dag.post_order_iter():
         operator_count += 1
 
     # Read -> RandomizeBlocks -> Repartition -> MapBatches -> RandomizeBlocks ->
@@ -124,7 +124,7 @@ def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
     optimized_plan = LogicalOptimizer().optimize(plan)
 
     inverse_order = iter([Read, AbstractMap, RandomizeBlocks])
-    for node in optimized_plan.dag:
+    for node in optimized_plan.dag.post_order_iter():
         assert isinstance(node, next(inverse_order))
 
     ds = (
@@ -137,7 +137,7 @@ def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
     optimized_plan = LogicalOptimizer().optimize(plan)
 
     inverse_order = iter([Read, RandomizeBlocks, Repartition, AbstractMap])
-    for node in optimized_plan.dag:
+    for node in optimized_plan.dag.post_order_iter():
         assert isinstance(node, next(inverse_order))
 
 

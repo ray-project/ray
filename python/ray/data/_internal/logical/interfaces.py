@@ -28,7 +28,7 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._input_dependencies
 
-    def __iter__(self) -> Iterator["Operator"]:
+    def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""
         for op in self.input_dependencies:
             yield from op

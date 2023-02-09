@@ -6,7 +6,10 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     PhysicalPlan,
 )
-from ray.data._internal.logical.rules import OperatorFusionRule, RandomizeBlockOrderRule
+from ray.data._internal.logical.rules import (
+    OperatorFusionRule,
+    ReorderRandomizeBlocksRule,
+)
 from ray.data._internal.planner.planner import Planner
 
 
@@ -15,8 +18,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        # TODO: Add logical optimizer rules.
-        return [RandomizeBlockOrderRule()]
+        return [ReorderRandomizeBlocksRule()]
 
 
 class PhysicalOptimizer(Optimizer):
