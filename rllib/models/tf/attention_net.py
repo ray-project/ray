@@ -505,9 +505,7 @@ class AttentionWrapper(TFModelV2):
                 encoded = []
                 if isinstance(self.action_space, Discrete):
                     for i in range(self.use_n_prev_actions):
-                        encoded.append(
-                            one_hot(prev_n_actions[:, i], self.action_space)
-                        )
+                        encoded.append(one_hot(prev_n_actions[:, i], self.action_space))
                 elif isinstance(self.action_space, MultiDiscrete):
                     for i in range(
                         0, self.use_n_prev_actions, self.action_space.shape[0]
@@ -520,7 +518,7 @@ class AttentionWrapper(TFModelV2):
                                     ],
                                     tf.int32,
                                 ),
-                                space=self.action_space
+                                space=self.action_space,
                             )
                         )
                 else:
@@ -529,7 +527,7 @@ class AttentionWrapper(TFModelV2):
                 prev_a_r.append(
                     tf.reshape(
                         tf.cast(encoded, tf.float32),
-                        [-1, self.use_n_prev_actions * self.action_dim]
+                        [-1, self.use_n_prev_actions * self.action_dim],
                     )
                 )
         # Prev rewards.
@@ -537,7 +535,7 @@ class AttentionWrapper(TFModelV2):
             prev_a_r.append(
                 tf.reshape(
                     tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
-                    [-1, self.use_n_prev_rewards]
+                    [-1, self.use_n_prev_rewards],
                 )
             )
 
