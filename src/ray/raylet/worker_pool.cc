@@ -976,6 +976,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
                                     &found,
                                     &used,
                                     &task_id);
+  RAY_LOG(DEBUG) << "PushWorker " << worker->WorkerId() << " used: " << used;
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
@@ -1110,7 +1111,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         rpc::ExitRequest request;
         if (finished_jobs_.contains(job_id) &&
             RayConfig::instance().kill_idle_workers_of_terminated_job()) {
-          RAY_LOG(INFO) << "Force exiting worker whose job has exited"
+          RAY_LOG(INFO) << "Force exiting worker whose job has exited "
                         << worker->WorkerId();
           request.set_force_exit(true);
         }
