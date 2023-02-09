@@ -32,9 +32,6 @@ EPISODE_REWARD_MEAN = "episode_reward_mean"
 # (Optional) Mean loss for training iteration
 MEAN_LOSS = "mean_loss"
 
-# (Optional) Mean loss for training iteration
-NEG_MEAN_LOSS = "neg_mean_loss"
-
 # (Optional) Mean accuracy for training iteration
 MEAN_ACCURACY = "mean_accuracy"
 
@@ -92,6 +89,7 @@ AUTO_RESULT_KEYS = (
     TRAINING_ITERATION,
     TIME_TOTAL_S,
     EPISODES_TOTAL,
+    TIMESTEPS_TOTAL,
     NODE_IP,
     HOSTNAME,
     PID,
@@ -100,6 +98,7 @@ AUTO_RESULT_KEYS = (
     TIMESTAMP,
     "date",
     "time_since_restore",
+    "timesteps_since_restore",
     "iterations_since_restore",
     "config",
 )

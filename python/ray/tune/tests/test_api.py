@@ -156,7 +156,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "time_since_restore",
             "experiment_id",
             "date",
-            "warmup_time",
         }
 
         self.assertEqual(len(class_output), len(results))

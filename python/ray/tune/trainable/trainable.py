@@ -7,7 +7,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
@@ -134,7 +133,6 @@ class Trainable:
             sync_timeout: Timeout after which sync processes are aborted.
         """
 
-        self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
@@ -252,7 +250,6 @@ class Trainable:
             now = datetime.today()
         autofilled = {
             TRIAL_ID: self.trial_id,
-            "experiment_id": self._experiment_id,
             "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
             "timestamp": timestamp if timestamp else int(time.mktime(now.timetuple())),
             TIME_THIS_ITER_S: time_this_iter,
@@ -262,9 +259,11 @@ class Trainable:
             NODE_IP: self._local_ip,
             "config": self.config,
             "time_since_restore": self._time_since_restore,
-            "timesteps_since_restore": self._timesteps_since_restore,
             "iterations_since_restore": self._iterations_since_restore,
         }
+        if self._timesteps_since_restore:
+            autofilled["timesteps_since_restore"] = self._timesteps_since_restore
+
         if debug_metrics_only:
             autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
         return autofilled
@@ -333,10 +332,6 @@ class Trainable:
             `time_total_s` (float): Accumulated time in seconds for this
             entire experiment.
 
-            `experiment_id` (str): Unique string identifier
-            for this experiment. This id is preserved
-            across checkpoint / restore calls.
-
             `training_iteration` (int): The index of this
             training iteration, e.g. call to train(). This is incremented
             after `step()` is called.
@@ -403,13 +398,11 @@ class Trainable:
             self._episodes_total += result[EPISODES_THIS_ITER]
 
         # self._timesteps_total should not override user-provided total
-        result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
-        result.setdefault(EPISODES_TOTAL, self._episodes_total)
+        if self._timesteps_total:
+            result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+        if self._episodes_total:
+            result.setdefault(EPISODES_TOTAL, self._episodes_total)
         result.setdefault(TRAINING_ITERATION, self._iteration)
-
-        # Provides auto-filled neg_mean_loss for avoiding regressions
-        if result.get("mean_loss"):
-            result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
         result.update(
@@ -435,7 +428,6 @@ class Trainable:
 
     def get_state(self):
         return {
-            "experiment_id": self._experiment_id,
             "iteration": self._iteration,
             "timesteps_total": self._timesteps_total,
             "time_total": self._time_total,
@@ -780,7 +772,6 @@ class Trainable:
             to_load = os.path.join(checkpoint_dir, relative_checkpoint_path)
 
         # Set metadata
-        self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
