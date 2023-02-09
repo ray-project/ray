@@ -870,7 +870,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         results1 = [dict(mean_accuracy=5, done=i == 99) for i in range(100)]
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
-        self.assertTrue(all(log[TIMESTEPS_TOTAL] is None for log in logs1))
+        self.assertTrue(all(TIMESTEPS_TOTAL not in log for log in logs1))
 
         # Test that no timesteps_this_iter are logged if only timesteps_total
         # are returned.
@@ -890,7 +890,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertFalse(any(hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2))
 
         # Test that timesteps_total and episodes_total are reported when
-        # timesteps_this_iter and episodes_this_iter despite only return zeros.
+        # timesteps_this_iter and episodes_this_iter are provided by user,
+        # despite only return zeros.
         results3 = [
             dict(timesteps_this_iter=0, episodes_this_iter=0) for i in range(10)
         ]

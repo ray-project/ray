@@ -395,9 +395,9 @@ class Trainable:
             self._episodes_total += result[EPISODES_THIS_ITER]
 
         # self._timesteps_total should not override user-provided total
-        if self._timesteps_total:
+        if self._timesteps_total is not None:
             result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
-        if self._episodes_total:
+        if self._episodes_total is not None:
             result.setdefault(EPISODES_TOTAL, self._episodes_total)
         result.setdefault(TRAINING_ITERATION, self._iteration)
 
