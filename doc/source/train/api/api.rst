@@ -1,11 +1,12 @@
 .. _train-api:
+.. _air-trainer-ref:
 
 Ray Train API
 =============
 
 This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
-For core Ray AIR APIs, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
+For core Ray AIR APIs, take a look at the :ref:`AIR package reference <air-api-ref>`.
 
 Ray Train Base Classes (Developer APIs)
 ---------------------------------------
