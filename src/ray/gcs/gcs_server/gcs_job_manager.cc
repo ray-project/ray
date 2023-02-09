@@ -170,6 +170,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     std::unordered_map<std::string, int> job_data_key_to_index;
 
     // print full data
+    RAY_LOG(ERROR) << "result.size() = " << result.size();
     for (auto &data : result) {
       RAY_LOG(ERROR) << "job_table_data = " << data.second.DebugString();
     }
