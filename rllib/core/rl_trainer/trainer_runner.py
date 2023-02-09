@@ -335,11 +335,12 @@ class TrainerRunner:
         if self.is_local:
             weights = self._trainer.get_weights(module_ids)
         else:
-            worker = next(iter(self._workers))
+            worker = self._worker_manager.healthy_actor_ids()[0]
+            assert len(self._workers) == self._worker_manager.num_healthy_actors()
             weights = self._worker_manager.foreach_actor(
                 lambda w: w.get_weights(module_ids), remote_actor_ids=[worker]
             )
-            weights = self._get_results(weights)
+            weights = self._get_results(weights)[0]
 
         return convert_to_numpy(weights)
 
@@ -351,11 +352,12 @@ class TrainerRunner:
         if self.is_local:
             return self._trainer.get_state()
         else:
-            worker = next(iter(self._workers))
+            worker = self._worker_manager.healthy_actor_ids()[0]
+            assert len(self._workers) == self._worker_manager.num_healthy_actors()
             results = self._worker_manager.foreach_actor(
                 lambda w: w.get_state(), remote_actor_ids=[worker]
             )
-            return self._get_results(results)
+            return self._get_results(results)[0]
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
         """Sets the states of the RLTrainers.
