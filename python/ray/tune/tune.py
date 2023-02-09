@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 import ray
 from ray.air import CheckpointConfig
 from ray.air.util.node import _force_on_current_node
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -182,7 +183,7 @@ def run(
     mode: Optional[str] = None,
     stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
-    config: Optional[Dict[str, Any]] = None,
+    config: Optional[Union[Dict[str, Any], AlgorithmConfig]] = None,
     resources_per_trial: Union[
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
     ] = None,
@@ -477,6 +478,8 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
+    if isinstance(config, AlgorithmConfig):
+        config = config.to_dict()
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
 
