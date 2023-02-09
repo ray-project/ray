@@ -394,7 +394,11 @@ class TrialRunner:
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
-            trainable_kwargs={"sync_timeout": self._sync_config.sync_timeout},
+            # TODO(ml-team): Remove these in 2.6.
+            trainable_kwargs={
+                "sync_timeout": self._sync_config.sync_timeout,
+                "custom_syncer": self._sync_config.syncer,
+            },
         )
 
         self._metric = metric

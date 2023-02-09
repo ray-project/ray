@@ -1,4 +1,5 @@
 import copy
+from datetime import datetime
 import logging
 import os
 import platform
@@ -8,8 +9,8 @@ import tempfile
 import time
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
+import warnings
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri, _ensure_directory
@@ -45,7 +46,7 @@ from ray.tune import TuneError
 from ray.tune.utils import UtilMonitor, warn_if_slow
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -105,6 +106,8 @@ class Trainable:
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
+        custom_syncer: Optional[Syncer] = None,  # Deprecated
+        sync_timeout: Optional[int] = None,  # Deprecated
         sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
@@ -181,8 +184,25 @@ class Trainable:
         self.sync_config = sync_config or SyncConfig(
             upload_dir=self.remote_checkpoint_dir, syncer="auto"
         )
-        # Resolves syncer="auto" to an actual syncer if needed
-        self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
+
+        # TODO(ml-team): `custom_syncer` and `syncer` are deprecated. Remove in 2.6.
+        warning_message = (
+            "Specifying `custom_syncer` and `sync_timeout` as arguments in the "
+            "Trainable constructor is deprecated and will be removed in version 2.6. "
+            "Pass in a `tune.SyncConfig` object through the `sync_config` "
+            "argument instead."
+        )
+        if custom_syncer:
+            warnings.warn(warning_message, DeprecationWarning)
+            self.sync_config.syncer = custom_syncer
+        else:
+            # Resolves syncer="auto" to an actual syncer if needed
+            self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
+
+        if sync_timeout:
+            warnings.warn(warning_message, DeprecationWarning)
+            self.sync_config.sync_timeout = sync_timeout
+
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
