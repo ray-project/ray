@@ -263,7 +263,7 @@ class RayActorError(RayError):
             but it is there as a safety check.
     """
 
-    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext, str] = None):
+    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
         # -- If the actor has failed in the middle of __init__, this is set. --
         self._actor_init_failed = False
         # -- The base actor error message. --
@@ -271,8 +271,6 @@ class RayActorError(RayError):
 
         if not cause:
             self.error_msg = self.base_error_msg
-        elif isinstance(cause, str):
-            self.error_msg = cause
         elif isinstance(cause, RayTaskError):
             self._actor_init_failed = True
             self.error_msg = (
