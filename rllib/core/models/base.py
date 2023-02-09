@@ -20,23 +20,36 @@ class ModelConfig(abc.ABC):
     Attributes:
         output_dim: The output dimension of the network.
 
-    Usage Example together with Model:
+    Usage Example together with a Model:
 
-    >>> class MyModel(Model):
-    ...     def __init__(self, config):
-    ...         super().__init__(config)
-    ...         self.my_param = config.my_param * 2
-    >>>
-    >>> def _forward(self, input_dict):
-    ...     return input_dict["obs"] * self.my_param
-    >>>
-    >>> class MyModelConfig(ModelConfig):
-    ...     my_parameter: int = 42
-    ...
-    ...     @classmethod
-    ...     def build(self, framework: str):
-    ...         if framework == "bork":
-    ...             return MyModel(self)
+    .. testcode::
+
+        class MyModel(Model):
+            def __init__(self, config):
+                super().__init__(config)
+                self.my_param = config.my_param * 2
+
+            def _forward(self, input_dict):
+                return input_dict["obs"] * self.my_param
+
+
+        @dataclass
+        class MyModelConfig(ModelConfig):
+            my_param: int = 42
+
+            def build(self, framework: str):
+                if framework == "bork":
+                    return MyModel(self)
+
+
+        config = MyModelConfig(my_param=3)
+        model = config.build(framework="bork")
+        print(model._forward({"obs": 1}))
+
+    .. testoutput::
+
+        6
+
     """
 
     output_dim: int = None
@@ -60,22 +73,33 @@ class Model(abc.ABC):
 
     Usage Example together with ModelConfig:
 
-    >>> class MyModel(Model):
-    ...     def __init__(self, config):
-    ...         super().__init__(config)
-    ...         self.my_param = config.my_param * 2
-    >>>
-    >>> def _forward(self, input_dict):
-    ...     return input_dict["obs"] * self.my_param
-    >>>
-    >>>
-    >>> class MyModelConfig(ModelConfig):
-    ...     my_parameter: int = 42
-    ...
-    ...     @classmethod
-    ...     def build(self, framework: str):
-    ...         if framework == "bork":
-    ...             return MyModel(self)
+    .. testcode::
+
+        class MyModel(Model):
+            def __init__(self, config):
+                super().__init__(config)
+                self.my_param = config.my_param * 2
+
+            def _forward(self, input_dict):
+                return input_dict["obs"] * self.my_param
+
+
+        @dataclass
+        class MyModelConfig(ModelConfig):
+            my_param: int = 42
+
+            def build(self, framework: str):
+                if framework == "bork":
+                    return MyModel(self)
+
+
+        config = MyModelConfig(my_param=3)
+        model = config.build(framework="bork")
+        print(model._forward({"obs": 1}))
+
+    .. testoutput::
+
+        6
 
     """
 

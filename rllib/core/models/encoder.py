@@ -25,13 +25,13 @@ class Encoder(Model, abc.ABC):
 
     Abstract illustration of typical flow of tensors:
 
-          Inputs
-             |
-          Encoder
-         /       \
-    SomeHead   SomeOtherHead
-         \       /
-          Outputs
+    Inputs
+    |
+    Encoder
+    |      \
+    Head1  Head2
+    |      /
+    Outputs
 
     Outputs of encoders are generally of shape (B, latent_dim) or (B, T, latent_dim).
     That is, for time-series data, we encode into the latent space for each time step.
