@@ -6,7 +6,7 @@ import numpy as np
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, FrameworkHPs
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -26,6 +26,7 @@ def get_trainer() -> RLTrainer:
         ),
         optimizer_config={"lr": 1e-3},
         trainer_scaling_config=TrainerScalingConfig(),
+        framework_hyperparameters=FrameworkHPs(eager_tracing=True),
     )
 
     trainer.build()

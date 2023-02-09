@@ -333,4 +333,3 @@ class TrainerRunner:
 
     def __del__(self):
         self.shutdown()
-        super().__del__()

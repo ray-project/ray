@@ -301,7 +301,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_train pass the specified modules.
         """
-        return self.__run_forward_pass("forward_train", batch, **kwargs)
+        return self._run_forward_pass("forward_train", batch, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
@@ -318,7 +318,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_inference pass the specified modules.
         """
-        return self.__run_forward_pass("forward_inference", batch, **kwargs)
+        return self._run_forward_pass("forward_inference", batch, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
@@ -335,7 +335,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_exploration pass the specified modules.
         """
-        return self.__run_forward_pass("forward_exploration", batch, **kwargs)
+        return self._run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -411,7 +411,7 @@ class MultiAgentRLModule(RLModule):
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
 
-    def __run_forward_pass(
+    def _run_forward_pass(
         self,
         forward_fn_name: str,
         batch: NestedDict[Any],
