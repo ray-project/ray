@@ -1,6 +1,7 @@
 import os
 from github import Github
 from datetime import date, timedelta, datetime
+from dataclasses import dataclass
 from run_release_test import run
 from typing import Optional
 
@@ -9,7 +10,10 @@ from typing import Optional
 # using an access token
 token = os.getenv("GITHUB_ACCESS_TOKEN")
 if not token:
-    raise ValueError("You should provide a github access token via `GITHUB_ACCESS_TOKEN` env variable.")
+    raise ValueError(
+        "You should provide a github access token via "
+        "`GITHUB_ACCESS_TOKEN` env variable."
+    )
 g = Github(token)
 
 today = date.today()
@@ -31,11 +35,13 @@ for i, commit in enumerate(commits):
 
 assert last_success_idx
 assert first_failure_idx
-commits = commits[first_failure_idx:last_success_idx+1]
+commits = commits[first_failure_idx : last_success_idx + 1]
 
 test_name = "many_tasks"
+
+
 def run_test(commit) -> bool:
-    wheel = f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/{commit}/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    wheel = f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/{commit}/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"  # noqa
     result = run(
         test_name,
         test_collection_file=None,
@@ -49,10 +55,10 @@ def run_test(commit) -> bool:
     )
     return result.return_code == 0
 
+
 last_success_idx = len(commits) - 1
 first_failure_idx = 0
 
-from dataclasses import dataclass
 
 @dataclass
 class Commit:

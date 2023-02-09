@@ -22,6 +22,7 @@ from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
+
 def run(
     test_name: str,
     test_collection_file: Optional[str] = None,
