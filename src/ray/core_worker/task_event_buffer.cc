@@ -174,11 +174,13 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     events_by_task->Swap(&task_event);
   }
 
-  RecordMetrics(num_profile_event_to_send,
-                num_status_event_to_send,
-                num_profile_task_events_dropped,
-                num_status_task_events_dropped,
-                buffer_size);
+  if (RayConfig::instance().task_events_worker_report_metrics()) {
+    RecordMetrics(num_profile_event_to_send,
+                  num_status_event_to_send,
+                  num_profile_task_events_dropped,
+                  num_status_task_events_dropped,
+                  buffer_size);
+  }
 
   gcs::TaskInfoAccessor *task_accessor;
   {
