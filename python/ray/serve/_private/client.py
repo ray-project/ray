@@ -350,7 +350,9 @@ class ServeControllerClient:
                     return
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
             else:
-                raise TimeoutError(f"Applications {names} wasn't deleted after 60s.")
+                raise TimeoutError(
+                    f"Some of these applications weren't deleted after 60s: {names}"
+                )
 
     @_ensure_connected
     def delete_all_apps(self, blocking: bool = True):

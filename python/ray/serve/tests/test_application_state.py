@@ -8,6 +8,7 @@ from ray._private.test_utils import SignalActor
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.exceptions import RayServeException
 
 
 class MockDeploymentStateManager:
@@ -152,15 +153,19 @@ def test_config_deploy_app(fail_deploy):
 
 
 def test_redeploy_same_app():
-    """Test deploy same app with different deploy params"""
+    """Test deploying the same app with different deploy_params."""
 
     app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
     app_state_manager.deploy_application("test_app", [{"name": "d1"}, {"name": "d2"}])
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
 
-    # deploy same app with different deployment
-    app_state_manager.deploy_application("test_app", [{"name": "d2"}, {"name": "d3"}])
+    # Deploy the same app with different deployments
+    unused_deployments = app_state_manager.deploy_application(
+        "test_app", [{"name": "d2"}, {"name": "d3"}]
+    )
+    assert unused_deployments == ["d1"]
+
     app_state_manager.deployment_state_manager.add_deployment_status(
         DeploymentStatusInfo("d3", DeploymentStatus.UPDATING)
     )
@@ -168,8 +173,9 @@ def test_redeploy_same_app():
         "d1"
     }
 
-    # after update (deployment deleted successfully),
+    # After updating, the deployment should be deleted successfully, and
     # deployments_to_delete should be empty
+    app_state_manager.deployment_state_manager.delete_deployment("d1")
     app_state_manager.update()
     assert (
         app_state_manager._application_states["test_app"].deployments_to_delete == set()
@@ -177,21 +183,16 @@ def test_redeploy_same_app():
 
 
 def test_deploy_with_route_prefix_conflict():
-    """Test deploy fail with route prefix conflict"""
+    """Test that an application fails to deploy with a route prefix conflict."""
     app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
 
-    assert (
-        app_state_manager.deploy_application(
-            "test_app", [{"name": "d1", "route_prefix": "/url1"}]
-        )
-        is True
+    app_state_manager.deploy_application(
+        "test_app", [{"name": "d1", "route_prefix": "/url1"}]
     )
-    assert (
+    with pytest.raises(RayServeException):
         app_state_manager.deploy_application(
             "test_app1", [{"name": "d1", "route_prefix": "/url1"}]
         )
-        is False
-    )
 
 
 if __name__ == "__main__":
