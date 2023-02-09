@@ -23,7 +23,7 @@ result_to_handle_map = {
     ),
     "rllib_tests": (rllib_tests.handle_result, False),
     "tune_tests": (tune_tests.handle_result, True),
-    "xgboost_tests": (xgboost_tests.handle_result, xgboost_tests.require_result),
+    "xgboost_tests": (xgboost_tests.handle_result, True),
 }
 
 
@@ -31,11 +31,7 @@ def require_result(test: Test) -> bool:
     alert_suite = test.get("alert", "default")
     if alert_suite not in result_to_handle_map:
         raise ReleaseTestConfigError(f"Alert suite {alert_suite} not found.")
-    require_result = result_to_handle_map[alert_suite][1]
-    if callable(require_result):
-        require_result = require_result(test)
-    assert isinstance(require_result, bool)
-    return require_result
+    return result_to_handle_map[alert_suite][1]
 
 
 def handle_result(test: Test, result: Result):
