@@ -36,12 +36,15 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
 
   std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id,
                                                              int32_t max_restarts) {
+    RAY_LOG(ERROR) << owner_id.Binary();                                                    
     rpc::TaskSpec message;
     message.set_task_id(TaskID::FromRandom(job_id_).Binary());
     message.set_parent_task_id(owner_id.Binary());
     message.mutable_actor_creation_task_spec()->set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
+    RAY_LOG(ERROR) << message.parent_task_id();
     TaskSpecification task_spec(message);
+    RAY_LOG(ERROR) << task_spec.ParentTaskId().Binary();
     RayTask task(task_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
     worker->SetAssignedTask(task);
@@ -61,6 +64,13 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
     worker->SetAssignedTask(task);
     worker->AssignTaskId(task.GetTaskSpecification().TaskId());
+    return worker;
+  }
+
+  std::shared_ptr<WorkerInterface> CreateUnusedCreationWorker(TaskID owner_id,
+                                                             int32_t max_restarts) {
+    auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
+
     return worker;
   }
 };
