@@ -45,7 +45,7 @@ from ray.tune import TuneError
 from ray.tune.utils import UtilMonitor, warn_if_slow
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -181,6 +181,8 @@ class Trainable:
         self.sync_config = sync_config or SyncConfig(
             upload_dir=self.remote_checkpoint_dir, syncer="auto"
         )
+        # Resolves syncer="auto" to an actual syncer if needed
+        self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
