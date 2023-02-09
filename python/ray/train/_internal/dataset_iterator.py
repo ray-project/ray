@@ -21,6 +21,9 @@ class TrainDatasetIterator(DatasetIterator):
     ):
         self._dataset_iterator = dataset_iterator
 
+    def iter_batches(self, *args, **kwargs):
+        return self._dataset_iterator.iter_batches(*args, **kwargs)
+
     def iter_torch_batches(
         self, *, device: Optional[str] = None, **kwargs
     ) -> Iterator["TorchTensorBatchType"]:
