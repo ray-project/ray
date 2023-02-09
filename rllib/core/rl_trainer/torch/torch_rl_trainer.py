@@ -55,6 +55,112 @@ class TorchRLTrainer(RLTrainer):
         self._device = None
 
     @override(RLTrainer)
+    def configure_optimizers(self) -> ParamOptimizerPairs:
+        """Configures the optimizers for the Learner.
+
+        By default it sets up a single Adam optimizer for each sub-module in module
+        accessible via `moduel.keys()`.
+        """
+        # TODO (Kourosh): convert optimizer_config to dataclass later.
+        lr = self._optimizer_config["lr"]
+        return [
+            (
+                self.get_parameters(self._module[key]),
+                torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
+            )
+            for key in self._module.keys()
+        ]
+
+    @override(RLTrainer)
+    def compute_gradients(
+        self, loss: Union[TensorType, Mapping[str, Any]]
+    ) -> ParamDictType:
+        for optim in self._optim_to_param:
+            # set_to_none is a faster way to zero out the gradients
+            optim.zero_grad(set_to_none=True)
+        loss[self.TOTAL_LOSS_KEY].backward()
+        grads = {pid: p.grad for pid, p in self._params.items()}
+
+        return grads
+
+    @override(RLTrainer)
+    def apply_gradients(self, gradients: ParamDictType) -> None:
+        # make sure the parameters do not carry gradients on their own
+        for optim in self._optim_to_param:
+            optim.zero_grad(set_to_none=True)
+
+        # set the gradient of the parameters
+        for pid, grad in gradients.items():
+            self._params[pid].grad = grad
+
+        # for each optimizer call its step function with the gradients
+        for optim in self._optim_to_param:
+            optim.step()
+
+    @override(RLTrainer)
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule"""
+        module_weights = self._module.get_state()
+        if module_ids is None:
+            return module_weights
+
+        return convert_to_numpy(
+            {k: v for k, v in module_weights.items() if k in module_ids}
+        )
+
+    @override(RLTrainer)
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+        weights = convert_to_torch_tensor(weights, device=self._device)
+        return self._module.set_state(weights)
+
+    @override(RLTrainer)
+    def get_param_ref(self, param: ParamType) -> Hashable:
+        return param
+
+    @override(RLTrainer)
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        return list(module.parameters())
+
+    @override(RLTrainer)
+    def get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        # TODO (Kourosh): the abstraction should take in optimizer_config as a
+        # parameter as well.
+        lr = self.optimizer_config.get("lr", 1e-3)
+        return optimizer_cls(module.parameters(), lr=lr)
+
+    @override(RLTrainer)
+    def _convert_batch_type(self, batch: MultiAgentBatch):
+        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+        batch = NestedDict(batch)
+        return batch
+
+    @override(RLTrainer)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
+    ) -> None:
+        super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            set_optimizer_fn=set_optimizer_fn,
+            optimizer_cls=optimizer_cls,
+        )
+
+        # we need to ddpify the module that was just added to the pool
+        self._module[module_id].to(self._device)
+        if self.distributed:
+            self._module.add_module(
+                module_id, TorchDDPRLModule(self._module[module_id]), override=True
+            )
+
+    @override(RLTrainer)
     def build(self) -> None:
         """Builds the TorchLearner.
 
@@ -104,114 +210,10 @@ class TorchRLTrainer(RLTrainer):
                     )
 
     @override(RLTrainer)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the Learner.
-
-        By default it sets up a single Adam optimizer for each sub-module in module
-        accessible via `moduel.keys()`.
-        """
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
-        lr = self.optimizer_config["lr"]
-        return [
-            (
-                self.get_parameters(self._module[key]),
-                torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
-            )
-            for key in self._module.keys()
-        ]
-
-    @override(RLTrainer)
-    def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> ParamDictType:
-        for optim in self._optim_to_param:
-            # set_to_none is a faster way to zero out the gradients
-            optim.zero_grad(set_to_none=True)
-        loss[self.TOTAL_LOSS_KEY].backward()
-        grads = {pid: p.grad for pid, p in self._params.items()}
-
-        return grads
-
-    @override(RLTrainer)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
-        # make sure the parameters do not carry gradients on their own
-        for optim in self._optim_to_param:
-            optim.zero_grad(set_to_none=True)
-
-        # set the gradient of the parameters
-        for pid, grad in gradients.items():
-            self._params[pid].grad = grad
-
-        # for each optimizer call its step function with the gradients
-        for optim in self._optim_to_param:
-            optim.step()
-
-    @override(RLTrainer)
     def _make_module(self) -> MultiAgentRLModule:
         module = super()._make_module()
         self._map_module_to_device(module)
         return module
-
-    @override(RLTrainer)
-    def _convert_batch_type(self, batch: MultiAgentBatch):
-        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
-        batch = NestedDict(batch)
-        return batch
-
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule"""
-        module_weights = self._module.get_state()
-        if module_ids is None:
-            return module_weights
-
-        return convert_to_numpy(
-            {k: v for k, v in module_weights.items() if k in module_ids}
-        )
-
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
-        weights = convert_to_torch_tensor(weights, device=self._device)
-        return self._module.set_state(weights)
-
-    @override(RLTrainer)
-    def get_param_ref(self, param: ParamType) -> Hashable:
-        return param
-
-    @override(RLTrainer)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
-        return list(module.parameters())
-
-    @override(RLTrainer)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        # TODO (Kourosh): the abstraction should take in optimizer_config as a
-        # parameter as well.
-        lr = self.optimizer_config.get("lr", 1e-3)
-        return optimizer_cls(module.parameters(), lr=lr)
-
-    @override(RLTrainer)
-    def add_module(
-        self,
-        *,
-        module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
-    ) -> None:
-        super().add_module(
-            module_id=module_id,
-            module_spec=module_spec,
-            set_optimizer_fn=set_optimizer_fn,
-            optimizer_cls=optimizer_cls,
-        )
-
-        # we need to ddpify the module that was just added to the pool
-        self._module[module_id].to(self._device)
-        if self.distributed:
-            self._module.add_module(
-                module_id, TorchDDPRLModule(self._module[module_id]), override=True
-            )
 
     def _map_module_to_device(self, module: MultiAgentRLModule) -> None:
         """Moves the module to the correct device."""

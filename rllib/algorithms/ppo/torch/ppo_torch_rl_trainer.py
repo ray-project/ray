@@ -46,7 +46,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         self.kl_target = self.config.kl_target
 
     @override(TorchRLTrainer)
-    def _compute_loss_per_module(
+    def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
@@ -128,7 +128,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         }
 
     @override(TorchRLTrainer)
-    def _additional_update_per_module(
+    def additional_update_per_module(
         self, module_id: str, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:
 

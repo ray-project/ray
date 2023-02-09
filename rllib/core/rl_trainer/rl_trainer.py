@@ -38,7 +38,10 @@ from ray.rllib.utils.minibatch_utils import (
 )
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
-
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -243,21 +246,6 @@ class RLTrainer:
         """The multi-agent RLModule that is being trained."""
         return self._module
 
-    def build(self) -> None:
-        """Builds the Learner.
-
-        This method should be called before the learner is used. It is responsible for
-        setting up the module and optimizers.
-        """
-        self._module = self._make_module()
-        for param_seq, optimizer in self.configure_optimizers():
-            self._optim_to_param[optimizer] = []
-            for param in param_seq:
-                param_ref = self.get_param_ref(param)
-                self._optim_to_param[optimizer].append(param_ref)
-                self._params[param_ref] = param
-                self._param_to_optim[param_ref] = optimizer
-
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
@@ -275,25 +263,238 @@ class RLTrainer:
         Returns:
             A list of tuples (parameters, optimizer), where parameters is a list of
             model parameters and optimizer is a deep learning optimizer.
-
         """
 
+    @abc.abstractmethod
+    def compute_gradients(
+        self, loss: Union[TensorType, Mapping[str, Any]]
+    ) -> ParamDictType:
+        """Perform an update on self._module.
+
+        For example compute and apply gradients to self._module if
+        necessary.
+
+        Args:
+            loss: variable(s) used for optimizing self._module.
+
+        Returns:
+            A dictionary of extra information and statistics.
+        """
+
+    @abc.abstractmethod
+    def apply_gradients(self, gradients: ParamDictType) -> None:
+        """Perform an update on self._module
+
+        Args:
+            gradients: A dictionary of gradients.
+        """
+
+    @abc.abstractmethod
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule"""
+
+    @abc.abstractmethod
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+
+    @abc.abstractmethod
+    def get_param_ref(self, param: ParamType) -> Hashable:
+        """Returns a reference to a parameter.
+
+        This should be overriden in framework specific trainer. For example in torch it
+        will return the parameter itself, while in tf it returns the .ref() of the
+        variable. The purpose is to retrieve a unique reference to the parameters.
+
+        Args:
+            param: The parameter to get the reference to.
+
+        Returns:
+            A reference to the parameter.
+        """
+
+    @abc.abstractmethod
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        """Returns the parameters of a module.
+
+        This should be overriden in framework specific trainer. For example in torch it
+        will return .parameters(), while in tf it returns .trainable_variables.
+
+        Args:
+            module: The module to get the parameters from.
+
+        Returns:
+            The parameters of the module.
+        """
+        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to
+        # get the parameters of a module based on what the underlying framework is.
+
+    @abc.abstractmethod
+    def get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        """Returns the optimizer instance of type optimizer_cls from the module
+
+        In torch this is the optimizer object initialize with module parameters. In tf
+        this is initialized without module parameters.
+
+        Args:
+            module: The module of type RLModule to get the optimizer from.
+            optimizer_cls: The optimizer class to use.
+
+        Returns:
+            The optimizer object.
+        """
+
+    @abc.abstractmethod
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+        """Converts a MultiAgentBatch to a NestedDict of Tensors.
+
+        This should convert the input batch from a MultiAgentBatch format to framework
+        specific tensor format located on the correct device.
+
+        Args:
+            batch: A MultiAgentBatch.
+
+        Returns:
+            A NestedDict.
+        """
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def compile_results(
+        self,
+        batch: NestedDict,
+        fwd_out: Mapping[str, Any],
+        postprocessed_loss: Mapping[str, Any],
+        postprocessed_gradients: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Compile results from the update in a numpy-friendly format.
+
+        Args:
+            batch: The batch that was used for the update.
+            fwd_out: The output of the forward train pass.
+            postprocessed_loss: The loss after postprocessing.
+            postprocessed_gradients: The gradients after postprocessing.
+
+        Returns:
+            A dictionary of results.
+        """
+        loss_numpy = convert_to_numpy(postprocessed_loss)
+        mean_grads = [
+            np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
+        ]
+        ret = {
+            "loss": loss_numpy,
+            "mean_gradient": np.mean(mean_grads),
+        }
+
+        return ret
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
+    ) -> None:
+        """Add a module to the underlying MultiAgentRLModule and the Learner.
+
+        Args:
+            module_id: The id of the module to add.
+            module_cls: The module class to add.
+            module_kwargs: The config for the module.
+            set_optimizer_fn: A function that takes in the module and returns a list of
+                (param, optimizer) pairs. Each element in the tuple describes a
+                parameter group that share the same optimizer object, if None, the
+                default optimizer_cls will be used with all the parameters from the
+                module.
+            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
+                should be provided.
+        """
+        self.__check_if_build_called()
+        module = module_spec.build()
+
+        # construct a default set_optimizer_fn if not provided
+        if set_optimizer_fn is None:
+            if optimizer_cls is None:
+                raise ValueError(
+                    "Either set_optimizer_fn or optimizer_cls must be provided."
+                )
+
+            def set_optimizer_fn(module):
+                optimizer = self.get_optimizer_obj(module, optimizer_cls)
+                parameters = self.get_parameters(module)
+                return [(parameters, optimizer)]
+
+        for param_seq, optimizer in set_optimizer_fn(module):
+            self._optim_to_param[optimizer] = []
+            for param in param_seq:
+                param_ref = self.get_param_ref(param)
+                self._optim_to_param[optimizer].append(param_ref)
+                self._params[param_ref] = param
+                self._param_to_optim[param_ref] = optimizer
+
+        self._module.add_module(module_id, module)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def remove_module(self, module_id: ModuleID) -> None:
+        """Remove a module from the Learner.
+
+        Args:
+            module_id: The id of the module to remove.
+
+        """
+        self.__check_if_build_called()
+        module = self._module[module_id]
+
+        parameters = self.get_parameters(module)
+        for param in parameters:
+            param_ref = self.get_param_ref(param)
+            if param_ref in self._params:
+                del self._params[param_ref]
+            if param_ref in self._param_to_optim:
+                optimizer = self._param_to_optim[param_ref]
+                if optimizer in self._optim_to_param:
+                    del self._optim_to_param[optimizer]
+                del self._param_to_optim[param_ref]
+
+        self._module.remove_module(module_id)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def build(self) -> None:
+        """Builds the Learner.
+
+        This method should be called before the learner is used. It is responsible for
+        setting up the module and optimizers.
+        """
+        self._module = self._make_module()
+        for param_seq, optimizer in self.configure_optimizers():
+            self._optim_to_param[optimizer] = []
+            for param in param_seq:
+                param_ref = self.get_param_ref(param)
+                self._optim_to_param[optimizer].append(param_ref)
+                self._params[param_ref] = param
+                self._param_to_optim[param_ref] = optimizer
+
+    @OverrideToImplementCustomLogic
     def compute_loss(
         self,
         *,
-        fwd_out: MultiAgentBatch,
-        batch: MultiAgentBatch,
+        fwd_out: Union[MultiAgentBatch, NestedDict],
+        batch: Union[MultiAgentBatch, NestedDict],
     ) -> Union[TensorType, Mapping[str, Any]]:
         """Computes the loss for the module being optimized.
 
-        This method must be overridden by each algorithm's trainer to specify the
-        specific loss computation logic. The input "fwd_out" is the output of a call to
-        the "forward_train" method on the instance's "_module" attribute during
-        training. The input "batch" is the data that was used to compute "fwd_out". The
-        returned dictionary must contain a key called "total_loss", which will be used
-        to compute gradients. It is recommended to not compute any forward passes
-        within this method, and to use the "forward_train" outputs to compute the
-        required tensors for loss calculation.
+        This method must be overridden multiagent-specific algorithm learners to
+        specify the specific loss computation logic. If the algorithm is single agent
+        `compute_loss_per_module()` should be overriden instead.
+        The input "fwd_out" is the output "forward_train" method of the underlying
+        MultiAgentRLModule. The input "batch" is the data that was used to compute
+        "fwd_out". The returned dictionary must contain a key called "total_loss",
+        which will be used to compute gradients. It is recommended to not compute any
+        forward passes within this method, and to use the "forward_train" outputs to
+        compute the required tensors for loss calculation.
 
         Args:
             fwd_out: Output from a call to `forward_train` on self._module during
@@ -305,18 +506,13 @@ class RLTrainer:
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
-        # TODO (Kourosh): This method is built for multi-agent. While it is still
-        # possible to write single-agent losses, it may become confusing to users. We
-        # should find a way to allow them to specify single-agent losses as well,
-        # without having to think about one extra layer of hierarchy for module ids.
-
         loss_total = None
         results_all_modules = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            module_results = self._compute_loss_per_module(
+            module_results = self.compute_loss_per_module(
                 module_id, module_batch, module_fwd_out
             )
             results_all_modules[module_id] = module_results
@@ -331,14 +527,15 @@ class RLTrainer:
 
         return results_all_modules
 
-    def _compute_loss_per_module(
+    @OverrideToImplementCustomLogic
+    def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> Mapping[str, Any]:
         """Computes the loss for a single module.
 
-        Think of this as computing loss for a
-        single agent. For multi-agent use-cases that require more complicated
-        computation for loss, consider overriding the `compute_loss` method instead.
+        Think of this as computing loss for a single agent. For multi-agent use-cases
+        that require more complicated computation for loss, consider overriding the
+        `compute_loss` method instead.
 
         Args:
             module_id: The id of the module.
@@ -352,58 +549,66 @@ class RLTrainer:
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
+    def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
+        """Apply additional non-gradient based updates to this Trainer.
+
+        For example, this could be used to do a polyak averaging update
+        of a target network in off policy algorithms like SAC or DQN.
+
+        This can be called on its own, or via a call to a `TrainerRunner`
+        that is managing multiple RLTrainer instances via a call to
+        `TrainerRunner.additional_update`.
+
+        Args:
+            *args: Arguments to use for the update.
+            **kwargs: Keyword arguments to use for the additional update.
+
+        Returns:
+            A dictionary of results from the update
+        """
+        results_all_modules = {}
+        for module_id in self._module.keys():
+            module_results = self.additional_update_per_module(
+                module_id, *args, **kwargs
+            )
+            results_all_modules[module_id] = module_results
+
+        return results_all_modules
+
+    @OverrideToImplementCustomLogic
+    def additional_update_per_module(
+        self, module_id: str, *args, **kwargs
+    ) -> Mapping[str, Any]:
+        """Apply additional non-gradient based updates for a single module.
+
+        Args:
+            module_id: The id of the module to update.
+            *args: Arguments to use for the update.
+            **kwargs: Keyword arguments to use for the additional update.
+
+        Returns:
+            A dictionary of results from the update
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
     def postprocess_gradients(
         self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Called after gradients have been computed.
 
-        Args:
-            gradients_dict (Mapping[str, Any]): A dictionary of gradients.
+        In some algorithms, we may want to perform some postprocessing on the
+        gradients before they are applied. This method is called after gradients
+        have been computed, and modifies them before they are applied.
 
-        Note the relative order of operations looks like this:
-            fwd_out = forward_train(batch)
-            loss = compute_loss(batch, fwd_out)
-            gradients = compute_gradients(loss)
-            ---> postprocessed_gradients = postprocess_gradients(gradients)
-            apply_gradients(postprocessed_gradients)
+        Args:
+            gradients_dict: A dictionary of gradients.
 
         Returns:
-            Mapping[str, Any]: A dictionary of gradients.
+            A dictionary of updated gradients.
         """
         return gradients_dict
-
-    def compile_results(
-        self,
-        batch: NestedDict,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Compile results from the update.
-
-        Args:
-            batch: The batch that was used for the update.
-            fwd_out: The output of the forward train pass.
-            postprocessed_loss: The loss after postprocessing.
-            postprocessed_gradients: The gradients after postprocessing.
-
-        Returns:
-            A dictionary of results.
-        """
-        # TODO (Kourosh): This method assumes that all the modules with in the
-        # marl_module are accessible via looping through it rl_modules. This may not be
-        # true for centralized critic for example. Therefore we need a better
-        # generalization of this base-class implementation.
-        loss_numpy = convert_to_numpy(postprocessed_loss)
-        mean_grads = [
-            np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
-        ]
-        ret = {
-            "loss": loss_numpy,
-            "mean_gradient": np.mean(mean_grads),
-        }
-
-        return ret
 
     def update(
         self,
@@ -457,110 +662,6 @@ class RLTrainer:
                 return results
             return reduce_fn(results)
 
-    def _update(
-        self,
-        batch: MultiAgentBatch,
-    ) -> Mapping[str, Any]:
-
-        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from the base class.
-        batch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(batch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
-        gradients = self.compute_gradients(loss)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
-        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        return convert_to_numpy(result)
-
-    @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Converts a MultiAgentBatch to a NestedDict of Tensors.
-
-        This should convert the input batch from a MultiAgentBatch format to framework
-        specific tensor format located on the correct device.
-
-        Args:
-            batch: A MultiAgentBatch.
-
-        Returns:
-            A NestedDict.
-        """
-
-    def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
-        """Apply additional non-gradient based updates to this Trainer.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        This can be called on its own, or via a call to a `TrainerRunner`
-        that is managing multiple RLTrainer instances via a call to
-        `TrainerRunner.additional_update`.
-
-        Args:
-            *args: Arguments to use for the update.
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        results_all_modules = {}
-        for module_id in self._module.keys():
-            module_results = self._additional_update_per_module(
-                module_id, *args, **kwargs
-            )
-            results_all_modules[module_id] = module_results
-
-        return results_all_modules
-
-    def _additional_update_per_module(
-        self, module_id: str, *args, **kwargs
-    ) -> Mapping[str, Any]:
-        """Apply additional non-gradient based updates for a single module.
-
-        Args:
-            module_id: The id of the module to update.
-            *args: Arguments to use for the update.
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> ParamDictType:
-        """Perform an update on self._module.
-
-        For example compute and apply gradients to self._module if
-        necessary.
-
-        Args:
-            loss: variable(s) used for optimizing self._module.
-
-        Returns:
-            A dictionary of extra information and statistics.
-        """
-
-    @abc.abstractmethod
-    def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
-        """Perform an update on self._module
-
-        Args:
-            gradients: A dictionary of gradients.
-        """
-
-    @abc.abstractmethod
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule"""
-
-    @abc.abstractmethod
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
-
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the trainer.
 
@@ -586,76 +687,6 @@ class RLTrainer:
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
 
-    def add_module(
-        self,
-        *,
-        module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
-    ) -> None:
-        """Add a module to the underlying MultiAgentRLModule and the trainer.
-
-        Args:
-            module_id: The id of the module to add.
-            module_cls: The module class to add.
-            module_kwargs: The config for the module.
-            set_optimizer_fn: A function that takes in the module and returns a list of
-                (param, optimizer) pairs. Each element in the tuple describes a
-                parameter group that share the same optimizer object, if None, the
-                default optimizer_cls will be used with all the parameters from the
-                module.
-            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
-                should be provided.
-        """
-        self.__check_if_build_called()
-        module = module_spec.build()
-
-        # construct a default set_optimizer_fn if not provided
-        if set_optimizer_fn is None:
-            if optimizer_cls is None:
-                raise ValueError(
-                    "Either set_optimizer_fn or optimizer_cls must be provided."
-                )
-
-            def set_optimizer_fn(module):
-                optimizer = self.get_optimizer_obj(module, optimizer_cls)
-                parameters = self.get_parameters(module)
-                return [(parameters, optimizer)]
-
-        for param_seq, optimizer in set_optimizer_fn(module):
-            self._optim_to_param[optimizer] = []
-            for param in param_seq:
-                param_ref = self.get_param_ref(param)
-                self._optim_to_param[optimizer].append(param_ref)
-                self._params[param_ref] = param
-                self._param_to_optim[param_ref] = optimizer
-
-        self._module.add_module(module_id, module)
-
-    def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the trainer.
-
-        Args:
-            module_id: The id of the module to remove.
-
-        """
-        self.__check_if_build_called()
-        module = self._module[module_id]
-
-        parameters = self.get_parameters(module)
-        for param in parameters:
-            param_ref = self.get_param_ref(param)
-            if param_ref in self._params:
-                del self._params[param_ref]
-            if param_ref in self._param_to_optim:
-                optimizer = self._param_to_optim[param_ref]
-                if optimizer in self._optim_to_param:
-                    del self._optim_to_param[optimizer]
-                del self._param_to_optim[param_ref]
-
-        self._module.remove_module(module_id)
-
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the trainer.
 
@@ -673,53 +704,21 @@ class RLTrainer:
         module = module.as_multi_agent()
         return module
 
-    @abc.abstractmethod
-    def get_param_ref(self, param: ParamType) -> Hashable:
-        """Returns a reference to a parameter.
+    def _update(
+        self,
+        batch: MultiAgentBatch,
+    ) -> Mapping[str, Any]:
 
-        This should be overriden in framework specific trainer. For example in torch it
-        will return the parameter itself, while in tf it returns the .ref() of the
-        variable. The purpose is to retrieve a unique reference to the parameters.
-
-        Args:
-            param: The parameter to get the reference to.
-
-        Returns:
-            A reference to the parameter.
-        """
-
-    @abc.abstractmethod
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
-        """Returns the parameters of a module.
-
-        This should be overriden in framework specific trainer. For example in torch it
-        will return .parameters(), while in tf it returns .trainable_variables.
-
-        Args:
-            module: The module to get the parameters from.
-
-        Returns:
-            The parameters of the module.
-        """
-        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to
-        # get the parameters of a module based on what the underlying framework is.
-
-    @abc.abstractmethod
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        """Returns the optimizer instance of type optimizer_cls from the module
-
-        In torch this is the optimizer object initialize with module parameters. In tf
-        this is initialized without module parameters.
-
-        Args:
-            module: The module of type RLModule to get the optimizer from.
-            optimizer_cls: The optimizer class to use.
-
-        Returns:
-            The optimizer object.
-        """
+        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
+        # NestedDict from the base class.
+        batch = self._convert_batch_type(batch)
+        fwd_out = self._module.forward_train(batch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        gradients = self.compute_gradients(loss)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        return convert_to_numpy(result)
 
     def __check_if_build_called(self):
         if self._module is None:
