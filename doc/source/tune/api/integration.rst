@@ -5,7 +5,7 @@ External library integrations for Ray Tune (tune.integration)
 
 .. currentmodule:: ray
 
-Comet (tune.integration.comet)
+Comet (air.integrations.comet)
 -------------------------------------------
 
 :ref:`See here for an example. <tune-comet-ref>`
@@ -13,7 +13,7 @@ Comet (tune.integration.comet)
 .. autosummary::
     :toctree: doc/
 
-    air.integrations.comet.CometLoggerCallback
+    ~air.integrations.comet.CometLoggerCallback
     :noindex:
 
 .. _tune-integration-keras:
@@ -24,13 +24,13 @@ Keras (tune.integration.keras)
 .. autosummary::
     :toctree: doc/
 
-    tune.integration.keras.TuneReportCallback
-    tune.integration.keras.TuneReportCheckpointCallback
+    ~tune.integration.keras.TuneReportCallback
+    ~tune.integration.keras.TuneReportCheckpointCallback
 
 
 .. _tune-integration-mlflow:
 
-MLflow (tune.integration.mlflow)
+MLflow (air.integrations.mlflow)
 --------------------------------
 
 :ref:`See here for an example. <tune-mlflow-ref>`
@@ -38,9 +38,9 @@ MLflow (tune.integration.mlflow)
 .. autosummary::
     :toctree: doc/
 
-    air.integrations.mlflow.MLflowLoggerCallback
+    ~air.integrations.mlflow.MLflowLoggerCallback
     :noindex:
-    air.integrations.mlflow.setup_mlflow
+    ~air.integrations.mlflow.setup_mlflow
 
 
 .. _tune-integration-mxnet:
@@ -51,8 +51,8 @@ MXNet (tune.integration.mxnet)
 .. autosummary::
     :toctree: doc/
 
-    tune.integration.mxnet.TuneReportCallback
-    tune.integration.mxnet.TuneCheckpointCallback
+    ~tune.integration.mxnet.TuneReportCallback
+    ~tune.integration.mxnet.TuneCheckpointCallback
 
 
 .. _tune-integration-pytorch-lightning:
@@ -63,12 +63,12 @@ PyTorch Lightning (tune.integration.pytorch_lightning)
 .. autosummary::
     :toctree: doc/
 
-    tune.integration.pytorch_lightning.TuneReportCallback
-    tune.integration.pytorch_lightning.TuneReportCheckpointCallback
+    ~tune.integration.pytorch_lightning.TuneReportCallback
+    ~tune.integration.pytorch_lightning.TuneReportCheckpointCallback
 
 .. _tune-integration-wandb:
 
-Weights and Biases (tune.integration.wandb)
+Weights and Biases (air.integrations.wandb)
 -------------------------------------------
 
 :ref:`See here for an example. <tune-wandb-ref>`
@@ -76,9 +76,9 @@ Weights and Biases (tune.integration.wandb)
 .. autosummary::
     :toctree: doc/
 
-    air.integrations.wandb.WandbLoggerCallback
+    ~air.integrations.wandb.WandbLoggerCallback
     :noindex:
-    air.integrations.wandb.setup_wandb
+    ~air.integrations.wandb.setup_wandb
 
 
 .. _tune-integration-xgboost:
@@ -89,8 +89,8 @@ XGBoost (tune.integration.xgboost)
 .. autosummary::
     :toctree: doc/
 
-    tune.integration.xgboost.TuneReportCallback
-    tune.integration.xgboost.TuneReportCheckpointCallback
+    ~tune.integration.xgboost.TuneReportCallback
+    ~tune.integration.xgboost.TuneReportCheckpointCallback
 
 
 .. _tune-integration-lightgbm:
@@ -101,5 +101,5 @@ LightGBM (tune.integration.lightgbm)
 .. autosummary::
     :toctree: doc/
 
-    tune.integration.lightgbm.TuneReportCallback
-    tune.integration.lightgbm.TuneReportCheckpointCallback
+    ~tune.integration.lightgbm.TuneReportCallback
+    ~tune.integration.lightgbm.TuneReportCheckpointCallback
