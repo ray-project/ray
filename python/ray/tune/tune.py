@@ -64,7 +64,7 @@ from ray.util.queue import Queue
 try:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 except ImportError:
-    AlgorithmConfig = None
+    AlgorithmConfig = type(None)
 
 
 logger = logging.getLogger(__name__)
