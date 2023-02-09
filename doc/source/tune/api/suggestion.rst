@@ -134,8 +134,6 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 
     bayesopt.BayesOptSearch
 
-.. _`BayesianOptimization search space specification`: https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb
-
 .. _suggest-TuneBOHB:
 
 BOHB (tune.search.bohb.TuneBOHB)
@@ -245,8 +243,6 @@ Nevergrad (tune.search.nevergrad.NevergradSearch)
 
     nevergrad.NevergradSearch
 
-.. _`Nevergrad README's Optimization section`: https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer
-
 .. _tune-optuna:
 
 Optuna (tune.search.optuna.OptunaSearch)
@@ -256,8 +252,6 @@ Optuna (tune.search.optuna.OptunaSearch)
     :toctree: doc/
 
     optuna.OptunaSearch
-
-.. _`Optuna samplers`: https://optuna.readthedocs.io/en/stable/reference/samplers.html
 
 .. _sigopt:
 
@@ -281,8 +275,6 @@ Scikit-Optimize (tune.search.skopt.SkOptSearch)
     :toctree: doc/
 
     skopt.SkOptSearch
-
-.. _`skopt Optimizer object`: https://scikit-optimize.github.io/stable/modules/generated/skopt.Optimizer.html#skopt.Optimizer
 
 .. _zoopt:
 
