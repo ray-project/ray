@@ -59,6 +59,8 @@ placement group. If you want to force Datasets to schedule tasks within the curr
 
 This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <datasets_tune>` section.
 
+.. _datasets_execution:
+
 Execution
 =========
 
