@@ -59,6 +59,8 @@ class Catalog:
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
+        # TODO (Artur): Turn model_config into model_config_dict to distinguish
+        #  between ModelConfig and a model_config dict.
         model_config: dict,
     ):
         self.observation_space = observation_space
