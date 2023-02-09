@@ -1337,7 +1337,7 @@ def init(
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 job_config.runtime_env
             )
-            job_config.set_runtime_env(runtime_env) # overwrite.  change to "merge"?
+            job_config.set_runtime_env(runtime_env)
 
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
