@@ -13,7 +13,11 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.serialization import check_if_args_kwargs_serializable
 
 from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+    convert_to_canonical_format,
+)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
@@ -159,12 +163,22 @@ class RLModule(abc.ABC):
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
         """
-        self._input_specs_train = self.input_specs_train()
-        self._output_specs_train = self.output_specs_train()
-        self._input_specs_exploration = self.input_specs_exploration()
-        self._output_specs_exploration = self.output_specs_exploration()
-        self._input_specs_inference = self.input_specs_inference()
-        self._output_specs_inference = self.output_specs_inference()
+        self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
+        self._output_specs_train = convert_to_canonical_format(
+            self.output_specs_train()
+        )
+        self._input_specs_exploration = convert_to_canonical_format(
+            self.input_specs_exploration()
+        )
+        self._output_specs_exploration = convert_to_canonical_format(
+            self.output_specs_exploration()
+        )
+        self._input_specs_inference = convert_to_canonical_format(
+            self.input_specs_inference()
+        )
+        self._output_specs_inference = convert_to_canonical_format(
+            self.output_specs_inference()
+        )
 
     @classmethod
     def from_model_config(

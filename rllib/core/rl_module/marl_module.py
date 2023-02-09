@@ -279,7 +279,7 @@ class MultiAgentRLModule(RLModule):
         """Returns a ModelSpec from the given method_name for all modules."""
         return SpecDict(
             {
-                module_id: getattr(module, method_name)()
+                module_id: getattr(module, f"_{method_name}")
                 for module_id, module in self._rl_modules.items()
             }
         )
