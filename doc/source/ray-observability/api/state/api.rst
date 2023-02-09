@@ -90,8 +90,6 @@ State APIs Schema
 State APIs Exceptions
 ---------------------
 
-.. _state-api-exceptions:
-
 .. autosummary::
    :toctree: doc/
 

@@ -553,9 +553,9 @@ def get_actor(
         :class:`ActorState <ray.experimental.state.common.ActorState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
     )
@@ -592,9 +592,9 @@ def get_placement_group(
         :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.PLACEMENT_GROUPS,
         id,
@@ -624,9 +624,9 @@ def get_node(
         :class:`NodeState <ray.experimental.state.common.NodeState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.NODES,
         id,
@@ -656,9 +656,9 @@ def get_worker(
         :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.WORKERS,
         id,
@@ -689,9 +689,9 @@ def get_task(
         from the task attempts.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.TASKS,
         id,
@@ -724,9 +724,9 @@ def get_objects(
         :class:`~ray.experimental.state.common.ObjectState`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`  if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`  if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.OBJECTS,
         id,
@@ -766,9 +766,9 @@ def list_actors(
         :class:`ActorState <ray.experimental.state.common.ActorState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.ACTORS,
         options=ListApiOptions(
@@ -813,9 +813,9 @@ def list_placement_groups(
         :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.PLACEMENT_GROUPS,
         options=ListApiOptions(
@@ -857,9 +857,9 @@ def list_nodes(
         :class:`NodeState <ray.experimental.state.common.NodeState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.NODES,
         options=ListApiOptions(
@@ -901,9 +901,9 @@ def list_jobs(
         :class:`JobState <ray.experimental.state.common.JobState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.JOBS,
         options=ListApiOptions(
@@ -945,9 +945,9 @@ def list_workers(
         :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.WORKERS,
         options=ListApiOptions(
@@ -989,9 +989,9 @@ def list_tasks(
         :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.TASKS,
         options=ListApiOptions(
@@ -1033,9 +1033,9 @@ def list_objects(
         :class:`ObjectState <ray.experimental.state.common.ObjectState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.OBJECTS,
         options=ListApiOptions(
@@ -1077,9 +1077,9 @@ def list_runtime_envs(
         :class:`RuntimeEnvState <ray.experimental.state.common.RuntimeEnvState>`.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
-            failed to query the data.
-    """
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+            if the CLI failed to query the data.
+    """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.RUNTIME_ENVS,
         options=ListApiOptions(
@@ -1163,9 +1163,9 @@ def get_log(
         A Generator of log line, None for SendType and ReturnType.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
 
     api_server_url = ray_address_to_api_server_url(address)
     media_type = "stream" if follow else "file"
@@ -1234,10 +1234,10 @@ def list_logs(
         values are list of log filenames.
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data, or ConnectionError if failed to resolve the
             ray address.
-    """
+    """  # noqa: E501
     assert (
         node_ip is not None or node_id is not None
     ), "At least one of node ip and node id is required"
@@ -1297,9 +1297,9 @@ def summarize_tasks(
         :class:`~ray.experimental.state.common.TaskSummaries`
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
@@ -1330,9 +1330,9 @@ def summarize_actors(
         :class:`~ray.experimental.state.common.ActorSummaries`
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
@@ -1362,9 +1362,9 @@ def summarize_objects(
         Dictionarified :class:`~ray.experimental.state.common.ObjectSummaries`
 
     Raises:
-        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
-    """
+    """  # noqa: E501
     return StateApiClient(address=address).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),
