@@ -31,18 +31,14 @@ LOCAL_SCALING_CONFIGS = {
 }
 
 
-class TestTrainerRunner(unittest.TestCase):
-    def setUp(self) -> None:
-        ray.init()
-
-    def tearDown(self) -> None:
-        ray.shutdown()
-
-    @staticmethod
-    def local_training_helper(fw, scaling_mode) -> None:
+# TODO(avnishn) Make this a ray task later. Currently thats not possible because the
+# task is not dying after the test is done. This is a bug with ray core.
+@ray.remote(num_gpus=1)
+class RemoteTrainingHelper:
+    def local_training_helper(self, fw, scaling_mode) -> None:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        runner = get_trainer_runner(fw, env, scaling_config)
+        runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
         local_trainer = get_rl_trainer(fw, env)
         local_trainer.build()
 
@@ -71,16 +67,26 @@ class TestTrainerRunner(unittest.TestCase):
 
         check(local_trainer.get_state(), runner.get_state())
 
+
+class TestTrainerRunner(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
     def test_trainer_runner_local(self):
         fws = ["tf", "torch"]
+
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
+
         # run the logic of this test inside of a ray actor because we want tensorflow
         # resources to be gracefully released. Tensorflow blocks the gpu resources
         # otherwise between test cases, causing a gpu oom error.
-        remote_helper_fn = ray.remote(self.local_training_helper)
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
-            ray.get(remote_helper_fn.remote(fw, scaling_mode))
+            training_helper = RemoteTrainingHelper.remote()
+            ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
 
     def test_update_multigpu(self):
         fws = ["tf", "torch"]
@@ -92,7 +98,7 @@ class TestTrainerRunner(unittest.TestCase):
             env = gym.make("CartPole-v1")
 
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
@@ -129,7 +135,7 @@ class TestTrainerRunner(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
