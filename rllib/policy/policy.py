@@ -384,7 +384,7 @@ class Policy(metaclass=ABCMeta):
         return module_class.from_model_config(
             self.observation_space,
             self.action_space,
-            model_config_dict=self.config["model"],
+            model_config=self.config["model"],
         )
 
     @DeveloperAPI

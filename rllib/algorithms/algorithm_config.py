@@ -2674,8 +2674,8 @@ class AlgorithmConfig:
             if module_spec.action_space is None:
                 module_spec.action_space = self.action_space
 
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.model
+            if module_spec.model_config is None:
+                module_spec.model_config = self.model
 
         if not self._is_frozen:
             raise ValueError(

@@ -33,19 +33,19 @@ class SingleAgentRLModuleSpec:
         module_class: ...
         observation_space: ...
         action_space: ...
-        model_config_dict: ...
+        model_config: ...
     """
 
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional["gym.Space"] = None
     action_space: Optional["gym.Space"] = None
-    model_config_dict: Optional[Dict[str, Any]] = None
+    model_config: Optional[Dict[str, Any]] = None
 
     def build(self) -> "RLModule":
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            model_config_dict=self.model_config_dict,
+            model_config=self.model_config,
         )
 
 
@@ -171,7 +171,7 @@ class RLModule(abc.ABC):
         cls,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_config_dict: Mapping[str, Any],
+        model_config: Mapping[str, Any],
     ) -> Union["RLModule", Mapping[str, Any]]:
         """Creates a RLModule instance from a model config dict and spaces.
 
@@ -194,7 +194,7 @@ class RLModule(abc.ABC):
                     cls,
                     observation_space: gym.Space,
                     action_space: gym.Space,
-                    model_config_dict: Mapping[str, Any],
+                    model_config: Mapping[str, Any],
                     return_config: bool = False,
                 ):
                     return cls(
@@ -205,14 +205,14 @@ class RLModule(abc.ABC):
             module = MyModule.from_model_config(
                 observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
                 action_space=gym.spaces.Discrete(2),
-                model_config_dict={},
+                model_config={},
             )
 
 
         Args:
             observation_space: The observation space of the env.
             action_space: The action space of the env.
-            model_config_dict: The model config dict.
+            model_config: The model config dict.
         """
         raise NotImplementedError
 

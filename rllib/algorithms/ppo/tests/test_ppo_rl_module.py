@@ -12,8 +12,8 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
-from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
@@ -23,13 +23,13 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 def get_expected_module_config(
     env: gym.Env,
-    model_config_dict: dict,
+    model_config: dict,
 ) -> PPOModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
         env: Environment for which we build the model later
-        model_config_dict: Model config dict to use for the model.
+        lstm: If True, build recurrent pi encoder
 
     Returns:
          A PPOModuleConfig containing the relevant configs to build PPORLModule
@@ -41,7 +41,7 @@ def get_expected_module_config(
     catalog = PPOCatalog(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config_dict=model_config_dict,
+        model_config=model_config,
     )
 
     return PPOModuleConfig(
@@ -96,7 +96,7 @@ def dummy_tf_ppo_loss(batch, fwd_out):
 
 def _get_ppo_module(framework, env, lstm):
     model_config = {"use_lstm": lstm}
-    config = get_expected_module_config(env, model_config_dict=model_config)
+    config = get_expected_module_config(env, model_config=model_config)
     if framework == "torch":
         module = PPOTorchRLModule(config)
     else:

@@ -30,12 +30,12 @@ class PPOCatalog(Catalog):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_config_dict: dict,
+        model_config: dict,
     ):
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
-            model_config_dict=model_config_dict,
+            model_config=model_config,
         )
         latent_dim = self.encoder_config.output_dim
 

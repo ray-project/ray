@@ -34,7 +34,7 @@ class TestCatalog(unittest.TestCase):
         ]
 
         # TODO (Artur): Add support for the commented out configs
-        model_config_dicts = [
+        model_configs = [
             {
                 "fcnet_activation": "relu",
                 "fcnet_hiddens": [256, 256, 256],
@@ -77,15 +77,15 @@ class TestCatalog(unittest.TestCase):
 
         frameworks = ["tf", "torch"]
 
-        config_combinations = [input_spaces, model_config_dicts, frameworks]
+        config_combinations = [input_spaces, model_configs, frameworks]
         for config in itertools.product(*config_combinations):
-            framework, input_space, model_config_dict = config
+            framework, input_space, model_config = config
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
-                f"and config: \n{model_config_dict}\n"
+                f"and config: \n{model_config}\n"
             )
             base_model_config = Catalog.get_base_model_config(
-                input_space=input_space, model_config_dict=model_config_dict
+                input_space=input_space, model_config=model_config
             )
             base_model_config.build(framework=framework)
 

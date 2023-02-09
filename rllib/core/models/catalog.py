@@ -50,12 +50,12 @@ class Catalog:
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_config_dict: dict,
+        model_config: dict,
     ):
         self.observation_space = observation_space
         self.action_space = action_space
         # TODO (Artur): Possibly get rid of this config merge
-        self.model_config = {**MODEL_DEFAULTS, **model_config_dict}
+        self.model_config = {**MODEL_DEFAULTS, **model_config}
         self.encoder_config = self.get_encoder_config(
             observation_space, self.model_config
         )
@@ -78,13 +78,13 @@ class Catalog:
 
     @staticmethod
     def get_encoder_config(
-        observation_space: gym.Space, model_config_dict: dict
+        observation_space: gym.Space, model_config: dict
     ) -> ModelConfig:
         """Infers the encoder config from the observation space and model config.
 
         Args:
             observation_space: The observation space to use.
-            model_config_dict: The model config to use.
+            model_config: The model config to use.
 
         Returns:
             The encoder config.
@@ -93,18 +93,18 @@ class Catalog:
             len(observation_space.shape) == 1
         ), "No multidimensional obs space supported."
 
-        activation = model_config_dict["fcnet_activation"]
-        output_activation = model_config_dict["fcnet_activation"]
+        activation = model_config["fcnet_activation"]
+        output_activation = model_config["fcnet_activation"]
         input_dim = observation_space.shape[0]
-        fcnet_hiddens = model_config_dict["fcnet_hiddens"]
+        fcnet_hiddens = model_config["fcnet_hiddens"]
 
-        if model_config_dict["use_lstm"]:
+        if model_config["use_lstm"]:
             encoder_config = LSTMEncoderConfig(
                 input_dim=input_dim,
-                hidden_dim=model_config_dict["lstm_cell_size"],
-                batch_first=not model_config_dict["_time_major"],
+                hidden_dim=model_config["lstm_cell_size"],
+                batch_first=not model_config["_time_major"],
                 num_layers=1,
-                output_dim=model_config_dict["lstm_cell_size"],
+                output_dim=model_config["lstm_cell_size"],
                 output_activation=output_activation,
             )
         else:
@@ -119,7 +119,7 @@ class Catalog:
 
     @staticmethod
     def get_base_model_config(
-        input_space: gym.Space, model_config_dict: dict
+        input_space: gym.Space, model_config: dict
     ) -> ModelConfig:
         """Returns a ModelConfig for the given input_space space.
 
@@ -131,7 +131,7 @@ class Catalog:
 
         Args:
             input_space: The input space to use.
-            model_config_dict: The model config to use.
+            model_config: The model config to use.
 
         Returns:
             The base ModelConfig.
@@ -140,7 +140,7 @@ class Catalog:
         It is either an MLPModelConfig, a CNNModelConfig or a NestedModelConfig.
         """
         # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
-        model_config = {**MODEL_DEFAULTS, **model_config_dict}
+        model_config = {**MODEL_DEFAULTS, **model_config}
         input_dim = input_space.shape[0]
 
         # input_space is a 1D Box
