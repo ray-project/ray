@@ -17,7 +17,9 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
     ServeApplicationSchema,
+    ServeDeploySchema,
     ServeStatusSchema,
+    serve_application_to_deploy_schema,
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
@@ -531,6 +533,39 @@ class TestServeApplicationSchema:
                     "name": "deep",
                 },
             ],
+        }
+
+
+class TestServeDeploySchema:
+    def test_serve_application_to_deploy_config(self):
+        app_config_dict = {
+            "import_path": "module.graph",
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                    "route_prefix": "/A",
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                    "route_prefix": "/B",
+                },
+            ],
+        }
+        app_config = ServeApplicationSchema.parse_obj(app_config_dict)
+        deploy_config = ServeDeploySchema.parse_obj(
+            serve_application_to_deploy_schema(app_config)
+        )
+
+        assert deploy_config.applications[0].name == ""
+        assert deploy_config.dict(exclude_unset=True) == {
+            "host": "1.1.1.1",
+            "port": 7470,
+            "applications": [app_config_dict],
         }
 
 
