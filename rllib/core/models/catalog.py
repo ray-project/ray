@@ -17,6 +17,33 @@ class Catalog:
     You can modify a Catalog so that it builds different Models by subclassing and
     overriding the build_* methods. Alternatively, you can customize the configs
     inside RLlib's Catalogs to customize what is being built by Rllib.
+
+    Usage example:
+
+    # Define a custom catalog
+    >>> class MyCatalog(Catalog):
+    ...     def __init__(self,
+    ...                  observation_space: gym.Space,
+    ...                  action_space: gym.Space,
+    ...                  model_config_dict: dict):
+    ...         super().__init__(observation_space, action_space, model_config_dict)
+    ...         self.my_model_config = MLPModelConfig(
+    ...             hidden_layer_dims=[64, 32],
+    ...             input_dim=self.observation_space.shape[0],
+    ...             output_dim=1
+    ...         )
+    ...
+    ...     def build_my_head(self, framework: str):
+    ...         return self.my_model_config.build(framework=framework)
+    >>>
+    # Next, you can use MyCatalog to build your RLModule:
+    >>> catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
+    >>> my_head = catalog.build_my_head("torch") # doctest: +SKIP
+    >>>
+    # You can also modify configs of RLlib's native Catalogs.
+    >>> catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
+    >>> catalog.my_model_config.output_dim = 32
+    >>> my_head = catalog.build_my_head("torch") # doctest: +SKIP
     """
 
     def __init__(

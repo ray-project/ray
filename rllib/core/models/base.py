@@ -12,14 +12,37 @@ from ray.rllib.utils.nested_dict import NestedDict
 class ModelConfig(abc.ABC):
     """Base class for model configurations.
 
+    ModelConfigs are framework-agnostic.
+    A ModelConfig is usually built by RLModules by querying it form a Catalog object.
+    It is therefore a means of configuration for RLModules.
+    However, that is not a limitation, and they can be built directly as well.
+
     Attributes:
         output_dim: The output dimension of the network.
+
+    Usage Example together with Model:
+
+    >>> class MyModel(Model):
+    ...     def __init__(self, config):
+    ...         super().__init__(config)
+    ...         self.my_param = config.my_param * 2
+    >>>
+    >>> def _forward(self, input_dict):
+    ...     return input_dict["obs"] * self.my_param
+    >>>
+    >>> class MyModelConfig(ModelConfig):
+    ...     my_parameter: int = 42
+    ...
+    ...     @classmethod
+    ...     def build(self, framework: str):
+    ...         if framework == "bork":
+    ...             return MyModel(self)
     """
 
     output_dim: int = None
 
     @abc.abstractmethod
-    def build(self, framework: str = "torch"):
+    def build(self, framework: str):
         """Builds the model.
 
         Args:
@@ -34,6 +57,26 @@ class Model(abc.ABC):
     Models are low-level neural network components that offer input- and
     output-specification, a forward method, and a get_initial_state method. Models
     are composed in RLModules.
+
+    Usage Example together with ModelConfig:
+
+    >>> class MyModel(Model):
+    ...     def __init__(self, config):
+    ...         super().__init__(config)
+    ...         self.my_param = config.my_param * 2
+    >>>
+    >>> def _forward(self, input_dict):
+    ...     return input_dict["obs"] * self.my_param
+    >>>
+    >>>
+    >>> class MyModelConfig(ModelConfig):
+    ...     my_parameter: int = 42
+    ...
+    ...     @classmethod
+    ...     def build(self, framework: str):
+    ...         if framework == "bork":
+    ...             return MyModel(self)
+
     """
 
     def __init__(self, config: ModelConfig):
@@ -50,7 +93,8 @@ class Model(abc.ABC):
     def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         """Returns the output of this model for the given input.
 
-        Implement this method to write your own Model in Rllib.
+        This method is called by the forwarding method of the respective framework
+        that is itself wrapped by RLLib in order to check model inputs and outputs.
 
         Args:
             input_dict: The input tensors.

@@ -18,10 +18,21 @@ class Encoder(Model, abc.ABC):
 
     Encoders are used to encode observations into a latent space in RLModules.
     Therefore, their input_spec contains the observation space dimensions.
-    Similarly, their output_spec usually the latent space dimensions.
-    Encoders can be recurrent, in which case they should also have state_specs.
+    Similarly, their output_spec contains the latent space dimensions.
+    Encoders can be recurrent, in which case the state should be part of input- and
+    output_specs.
+    The latents that are produced by an encoder are fed into subsequent heads.
 
-    Encoders encode observations into a latent space that serve as input to heads.
+    Abstract illustration of typical flow of tensors:
+
+          Inputs
+             |
+          Encoder
+         /       \
+    SomeHead   SomeOtherHead
+         \       /
+          Outputs
+
     Outputs of encoders are generally of shape (B, latent_dim) or (B, T, latent_dim).
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the output_spec.

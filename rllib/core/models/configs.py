@@ -4,22 +4,10 @@ import functools
 
 from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.encoder import Encoder
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 
 
-@DeveloperAPI
-def _maybe_fit_activation_fn_to_tf(activation_fn: str):
-    """Maybe fit the given activation function to reflect tf."""
-    if activation_fn == "tanh":
-        activation_fn = "Tanh"
-    elif activation_fn == "relu":
-        activation_fn = "ReLU"
-    elif activation_fn == "linear":
-        activation_fn = "linear"
-    return activation_fn
-
-
-@DeveloperAPI
+@ExperimentalAPI
 def _framework_implemented(torch: bool = True, tf2: bool = True):
     """Decorator to check if a model was implemented in a framework.
 
@@ -56,11 +44,14 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     return decorator
 
 
+@ExperimentalAPI
 @dataclass
 class MLPModelConfig(ModelConfig):
     """Configuration for a fully connected network.
 
-    Attributes:
+    See ModelConfig for usage details.
+
+    Atributes:
         input_dim: The input dimension of the network. It cannot be None.
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer (
@@ -82,17 +73,21 @@ class MLPModelConfig(ModelConfig):
         else:
             from ray.rllib.core.models.tf.mlp import TfMLPModel
 
-            self.output_activation = _maybe_fit_activation_fn_to_tf(
-                self.output_activation
-            )
-            self.hidden_layer_activation = _maybe_fit_activation_fn_to_tf(
-                self.hidden_layer_activation
-            )
+            # Activation functions in TF are lower case
+            self.output_activation = self.output_activation.lower()
+            self.hidden_layer_activation = self.hidden_layer_activation.lower()
+
             return TfMLPModel(self)
 
 
+@ExperimentalAPI
 @dataclass
 class MLPEncoderConfig(MLPModelConfig):
+    """Configuration for an MLP that acts as an encoder.
+
+    See ModelConfig for usage details.
+    """
+
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
         if framework == "torch":
@@ -102,11 +97,28 @@ class MLPEncoderConfig(MLPModelConfig):
         else:
             from ray.rllib.core.models.tf.encoder import TfMLPEncoder
 
+            # Activation functions in TF are lower case
+            self.output_activation = self.output_activation.lower()
+            self.hidden_layer_activation = self.hidden_layer_activation.lower()
+
             return TfMLPEncoder(self)
 
 
+@ExperimentalAPI
 @dataclass
 class LSTMEncoderConfig(ModelConfig):
+    """Configuration for a LSTM encoder.
+
+    See ModelConfig for usage details.
+
+    Attributes:
+        input_dim: The input dimension of the network. It cannot be None.
+        hidden_dim: The size of the hidden layer.
+        num_layers: The number of LSTM layers.
+        batch_first: Wether the input is batch first or not.
+        output_activation: The activation function to use for the output layer.
+    """
+
     input_dim: int = None
     hidden_dim: int = None
     num_layers: int = None
@@ -121,9 +133,14 @@ class LSTMEncoderConfig(ModelConfig):
             return TorchLSTMEncoder(self)
 
 
+@ExperimentalAPI
 @dataclass
 class IdentityConfig(ModelConfig):
-    """Configuration for an identity encoder."""
+    """Configuration for an IdentityEncoder
+
+    This creates a dummy encoder that does not transform the input but can be used as a
+    pass-through to heads. See ModelConfig for usage details.
+    """
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
@@ -137,9 +154,20 @@ class IdentityConfig(ModelConfig):
             return TfIdentityEncoder(self)
 
 
+@ExperimentalAPI
 @dataclass
 class ActorCriticEncoderConfig(ModelConfig):
-    """Configuration for an actor-critic encoder."""
+    """Configuration for an ActorCriticEncoder.
+
+    The base encoder functions like other encoders in RLlib. It is wrapped by the
+    ActorCriticEncoder to provides a shared encoder Model to use in RLModules that
+    provides twofold outputs: one for the actor and one for the critic. See
+    ModelConfig for usage details.
+
+    Attributes:
+        base_encoder_config: The configuration for the base encoder.
+        shared: Whether the base encoder is shared between the actor and critic.
+    """
 
     base_encoder_config: ModelConfig = None
     shared: bool = True
