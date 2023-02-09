@@ -1193,6 +1193,7 @@ class Policy(metaclass=ABCMeta):
         """
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
+
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and not fake_gpus
@@ -1200,8 +1201,14 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # If head node, take num_gpus.
-            num_gpus = self.config["num_gpus"]
+            # if we are in the new rl trainer world num_gpus is deprecated.
+            # so use num_gpus_per_worker for policy sampling
+            # we need this .get() syntax here to ensure backwards compatibility.
+            if self.config.get("_enable_rl_trainer_api", False):
+                num_gpus = self.config["num_gpus_per_worker"]
+            else:
+                # If head node, take num_gpus.
+                num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take num_gpus_per_worker
             num_gpus = self.config["num_gpus_per_worker"]

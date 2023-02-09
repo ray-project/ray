@@ -89,4 +89,9 @@ enum TagKey {
   // This is to track usage of the buggy behavior that will be fixed.
   // See https://github.com/ray-project/ray/issues/28465 for more details.
   RAY_GET_TIMEOUT_ZERO = 304;
+  // Total number of tasks created.
+  NUM_ACTOR_CREATION_TASKS = 305;
+  NUM_ACTOR_TASKS = 306;
+  NUM_NORMAL_TASKS = 307;
+  NUM_DRIVERS = 308;
 }

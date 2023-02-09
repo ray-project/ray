@@ -246,6 +246,7 @@ class AlgorithmConfig:
         self.num_trainer_workers = 0
         self.num_gpus_per_trainer_worker = 0
         self.num_cpus_per_trainer_worker = 1
+        self.local_gpu_idx = 0
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
 
@@ -883,6 +884,13 @@ class AlgorithmConfig:
             rl_module_class_path = self.get_default_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
+        # make sure the resource requirements for trainer runner is valid
+        if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
+            raise ValueError(
+                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
+                "(i.e. num_trainer_workers = 0)"
+            )
+
         # resolve rl_trainer class
         if self._enable_rl_trainer_api and self.rl_trainer_class is None:
             rl_trainer_class_path = self.get_default_rl_trainer_class()
@@ -962,6 +970,7 @@ class AlgorithmConfig:
         num_trainer_workers: Optional[int] = NotProvided,
         num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        local_gpu_idx: Optional[int] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -995,6 +1004,10 @@ class AlgorithmConfig:
                 `num_trainer_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
                 the training on head node CPU cores.
+            local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
+                index will be used for training. This is an index into the available
+                cuda devices. For example if os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+                then a local_gpu_idx of 0 will use the gpu with id 1 on the node.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
@@ -1041,6 +1054,8 @@ class AlgorithmConfig:
             self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
         if num_gpus_per_trainer_worker is not NotProvided:
             self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
+        if local_gpu_idx is not NotProvided:
+            self.local_gpu_idx = local_gpu_idx
 
         return self
 
@@ -2689,6 +2704,7 @@ class AlgorithmConfig:
                 num_trainer_workers=self.num_trainer_workers,
                 num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
                 num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
+                local_gpu_idx=self.local_gpu_idx,
             )
             .framework(eager_tracing=self.eager_tracing)
         )

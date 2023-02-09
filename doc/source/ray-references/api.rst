@@ -9,8 +9,8 @@ API References
     ../data/api/api.rst
     ../train/api.rst
     ../tune/api_docs/overview.rst
-    ../serve/package-ref.rst
+    ../serve/api/index.rst
     ../rllib/package_ref/index.rst
-    ../workflows/package-ref.rst
+    ../workflows/api/api.rst
     ../cluster/package-overview.rst
     ../ray-core/api/index.rst
