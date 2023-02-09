@@ -460,12 +460,12 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
-RAY_CONFIG(int64_t, task_events_worker_report_metrics, false)
+RAY_CONFIG(int64_t, task_events_worker_report_metrics, true)
 
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
-RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
+RAY_CONFIG(int64_t, task_events_report_interval_ms, 3000)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
@@ -474,7 +474,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_max_buffer_size, 10 * 1000)
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 1 * 1000 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
