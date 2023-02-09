@@ -264,24 +264,6 @@ the Grafana service. If this browser cannot reach Grafana the same way the Ray h
 env var `RAY_GRAFANA_IFRAME_HOST` to customize the host the browser users to attempt to reach Grafana. If this is not set,
 we use the value of `RAY_GRAFANA_HOST` by default.
 
-
-Alternate Prometheus host location
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can choose to run Prometheus on a non-default port or on a different machine. When doing so, you should
-make sure that prometheus can scrape the metrics from your ray nodes following instructions :ref:`here <multi-node-metrics>`.
-
-In addition, both Ray and Grafana needs to know how to access this prometheus instance. This can be configured
-by setting the `RAY_PROMETHEUS_HOST` env var when launching ray. The env var takes in the address to access Prometheus.
-
-
-Alternate Grafana host location
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can choose to run Grafana on a non-default port or on a different machine. If you choose to do this, the
-:ref:`Dashboard <ray-dashboard>` needs to be configured with a public address to that service so the web page
-can load the graphs. This can be done with the `RAY_GRAFANA_HOST` env var when launching ray. The env var takes
-in the address to access Grafana.
-
-
 Troubleshooting
 ---------------
 
