@@ -4,7 +4,7 @@ Exceptions
 ==========
 
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.exceptions.RayError
     ray.exceptions.RayTaskError

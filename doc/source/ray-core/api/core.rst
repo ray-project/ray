@@ -2,7 +2,7 @@ Core API
 ========
 
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.init
     ray.shutdown
@@ -12,7 +12,7 @@ Task
 ----
 
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.remote
     ray.remote_function.RemoteFunction.options
@@ -22,7 +22,7 @@ Actor
 -----
 
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.remote
     ray.actor.ActorClass.options
@@ -34,7 +34,7 @@ Object
 ------
 
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.get
     ray.wait
@@ -45,7 +45,7 @@ Object
 Runtime Context
 ---------------
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.runtime_context.get_runtime_context
     ray.runtime_context.RuntimeContext
@@ -54,7 +54,7 @@ Runtime Context
 Cross Language
 --------------
 .. autosummary::
-    :toctree: api/
+    :toctree: doc/
 
     ray.cross_language.java_function
     ray.cross_language.java_actor_class

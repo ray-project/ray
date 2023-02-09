@@ -2,7 +2,7 @@ Utility
 =======
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
    ray.util.ActorPool
    ray.util.queue.Queue
@@ -16,7 +16,7 @@ Custom Metrics
 --------------
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
    ray.util.metrics.Counter
    ray.util.metrics.Gauge
@@ -28,7 +28,7 @@ Debugging
 ---------
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
    ray.util.pdb.set_trace
    ray.util.inspect_serializability

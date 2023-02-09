@@ -20,7 +20,7 @@ Summary APIs
 ~~~~~~~~~~~~
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
     ray.experimental.state.api.summarize_actors
     ray.experimental.state.api.summarize_objects
@@ -30,7 +30,7 @@ List APIs
 ~~~~~~~~~~
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
     ray.experimental.state.api.list_actors
     ray.experimental.state.api.list_placement_groups
@@ -45,7 +45,7 @@ Get APIs
 ~~~~~~~~~
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
     ray.experimental.state.api.get_actor
     ray.experimental.state.api.get_placement_group
@@ -58,7 +58,7 @@ Log APIs
 ~~~~~~~~
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
     ray.experimental.state.api.list_logs
     ray.experimental.state.api.get_log
@@ -69,7 +69,7 @@ State APIs Schema
 -----------------
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
     ray.experimental.state.common.ActorState
     ray.experimental.state.common.TaskState
@@ -93,6 +93,6 @@ State APIs Exceptions
 .. _state-api-exceptions:
 
 .. autosummary::
-   :toctree: api/
+   :toctree: doc/
 
     ray.experimental.state.exception.RayStateApiException
