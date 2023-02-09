@@ -167,7 +167,7 @@ Performing inference on incoming batches of data can be parallelized by exportin
 
 |<img src="./images/multi_model_serve.png" width="70%" loading="lazy">|
 |:--:|
-|Deployment patterns with Ray Serve.|
+|Deployment patterns with Ray Serve. (Click image to enlarge.)|
 
 See [model serving examples](https://docs.ray.io/en/latest/ray-overview/use-cases.html#model-serving) for use cases.
 
@@ -202,6 +202,7 @@ or the
 [latest version of our contributing guide](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
 
+
 ```{image} https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 ```
 
@@ -224,4 +225,3 @@ to read about the contribution process and see what you can work on.
 ```{image} https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
 :target: https://twitter.com/raydistributed
 ```
-
