@@ -724,7 +724,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_elastic
   group: XGBoost
@@ -751,7 +751,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_non_elastic
   group: XGBoost
@@ -778,7 +778,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_tune_small
   group: XGBoost
