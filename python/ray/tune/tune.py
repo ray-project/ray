@@ -12,7 +12,6 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 import ray
 from ray.air import CheckpointConfig
 from ray.air.util.node import _force_on_current_node
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -61,6 +60,12 @@ from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
+
+try:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+except ImportError:
+    AlgorithmConfig = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -478,7 +483,7 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
-    if isinstance(config, AlgorithmConfig):
+    if config and isinstance(config, AlgorithmConfig):
         config = config.to_dict()
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
