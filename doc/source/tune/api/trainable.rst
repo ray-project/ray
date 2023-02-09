@@ -273,11 +273,17 @@ session (Function API)
     :toctree: doc/
 
     air.session.report
+    :noindex:
     air.session.get_checkpoint
+    :noindex:
     air.session.get_trial_name
+    :noindex:
     air.session.get_trial_id
+    :noindex:
     air.session.get_trial_resources
+    :noindex:
     air.session.get_trial_dir
+    :noindex:
 
 .. _tune-trainable-docstring:
 
