@@ -44,7 +44,7 @@ When a task or actor is killed by the memory monitor it will be retried with exp
 Worker killing policy
 ~~~~~~~~~~~~~~~~~~~~~
 
-The memory monitor will ensure liveness by having at least one task or actor execute for each caller. If the last task of a caller is killed then it will fail the workload. Refer to :ref:`how to address memory issues <addressing-memory-issues>` on how to adjust the workload to make it pass when this happens. Refer to the :ref:`code example below <last-task-example>` for how this works.
+The memory monitor avoids infinite loops of task retries by ensuring at least one task is able to run for each caller on each node. If it is unable to ensure this, the workload will fail with an OOM error. Note that this is only an issue for tasks, since the memory monitor will not indefinitely retry actors. If the workload fails, refer to :ref:`how to address memory issues <addressing-memory-issues>` on how to adjust the workload to make it pass. For code example, see the :ref:`last task <last-task-example>` example below.
 
 When a worker needs to be killed, the policy first prioritizes tasks that are retriable, i.e. when ``max_retries`` or ``max_restarts`` is > 0. This is done to minimize workload failure.
 
