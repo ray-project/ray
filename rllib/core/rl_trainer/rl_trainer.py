@@ -186,6 +186,12 @@ class RLTrainer:
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: ParamDictType = {}
 
+        # pick the stuff that we need from the scaling config
+        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
+
+        # if we are using gpu but we are not distributed, use this gpu for training
+        self._local_gpu_idx = trainer_scaling_config.local_gpu_idx
+
     @property
     def distributed(self) -> bool:
         return self._distributed
@@ -382,11 +388,7 @@ class RLTrainer:
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
 
-            if not self.distributed:
-                result = self._update(minibatch)
-            else:
-                result = self.do_distributed_update(minibatch)
-
+            result = self._update(minibatch)
             results.append(result)
 
         # Reduce results across all minibatches, if necessary.
@@ -615,11 +617,7 @@ class RLTrainer:
 
     def build(self) -> None:
         """Initialize the model."""
-        if self.distributed:
-            self._module = self._make_distributed_module()
-        else:
-            self._module = self._make_module()
-
+        self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
             for param in param_seq:
@@ -627,32 +625,6 @@ class RLTrainer:
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
-
-    def do_distributed_update(
-        self, batch: MultiAgentBatch, **kwargs
-    ) -> Mapping[str, Any]:
-        """Perform a distributed update on this Trainer.
-
-        Args:
-            batch: A batch of data.
-
-        Returns:
-            A dictionary of results.
-        """
-        raise NotImplementedError
-
-    def _make_distributed_module(self) -> MultiAgentRLModule:
-        """Initialize this trainer in a distributed training setting.
-
-        This method should be overriden in the framework specific trainer. It is
-        expected the the module creation is wrapped in some context manager that will
-        handle the distributed training. This is a common patterns used in torch and
-        tf.
-
-        Returns:
-            The distributed module.
-        """
-        raise NotImplementedError
 
     @abc.abstractmethod
     def get_param_ref(self, param: ParamType) -> Hashable:

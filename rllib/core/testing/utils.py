@@ -4,7 +4,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec, FrameworkHPs
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
@@ -105,8 +105,27 @@ def get_trainer_runner(
     env: "gym.Env",
     scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
+    eager_tracing: bool = False,
 ) -> TrainerRunner:
+    """Construct a trainer runner for testing.
 
+    Args:
+        framework: The framework used for training.
+        env: The environment to train on.
+        scaling_config: A config for the amount and types of resources to use for
+            training.
+        is_multi_agent: Whether to construct a multi agent rl module.
+        eager_tracing: TF Specific. Whether to use tf.function for tracing
+            optimizations.
+
+    Returns:
+        A trainer runner.
+
+    """
+    if framework == "tf":
+        trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
+    else:
+        trainer_hps = None
     rl_trainer_spec = RLTrainerSpec(
         rl_trainer_class=get_trainer_class(framework),
         module_spec=get_module_spec(
@@ -114,6 +133,7 @@ def get_trainer_runner(
         ),
         optimizer_config={"lr": 0.1},
         trainer_scaling_config=scaling_config,
+        trainer_hyperparameters=trainer_hps,
     )
     runner = TrainerRunner(rl_trainer_spec)
 

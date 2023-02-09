@@ -55,9 +55,6 @@ class TorchRLTrainer(RLTrainer):
     ):
         super().__init__(trainer_scaling_config=trainer_scaling_config, **kwargs)
 
-        # pick the stuff that we need from the scaling config
-        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
-
         self._device = None
 
     @property
@@ -91,7 +88,6 @@ class TorchRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def apply_gradients(self, gradients: ParamDictType) -> None:
-
         # make sure the parameters do not carry gradients on their own
         for optim in self._optim_to_param:
             optim.zero_grad(set_to_none=True)
@@ -110,10 +106,39 @@ class TorchRLTrainer(RLTrainer):
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
         # api in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
-            self._device = _TorchAccelerator().get_device()
+            # _TorchAccelerator().get_device() returns the 0th device if
+            # it is called from outside of a Ray Train session. Its necessary to give
+            # the user the option to run on the gpu of their choice, so we enable that
+            # option here via the local gpu id scaling config parameter.
+            if self._distributed:
+                self._device = _TorchAccelerator().get_device()
+            else:
+                assert self._local_gpu_idx < torch.cuda.device_count(), (
+                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                    " not available."
+                )
+                # this is an index into the available cuda devices. For example if
+                # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
+                # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
+                # the gpu with id 1 on the node.
+                self._device = torch.device(self._local_gpu_idx)
         else:
             self._device = torch.device("cpu")
         super().build()
+        # if the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # all the submodules are registered. Otherwise, we need to loop through
+        # each submodule and move it to the correct device.
+        # TODO (Kourosh): This can result in missing modules if the user does not
+        # register them in the MultiAgentRLModule. We should find a better way to
+        # handle this.
+        if self._distributed:
+            if isinstance(self._module, torch.nn.Module):
+                self._module = TorchDDPRLModule(self._module)
+            else:
+                for key in self._module.keys():
+                    self._module.add_module(
+                        key, TorchDDPRLModule(self._module[key]), override=True
+                    )
 
     @override(RLTrainer)
     def _make_module(self) -> MultiAgentRLModule:
@@ -122,37 +147,13 @@ class TorchRLTrainer(RLTrainer):
         return module
 
     @override(RLTrainer)
-    def _make_distributed_module(self) -> MultiAgentRLModule:
-        module = self._make_module()
-
-        # if the module is a MultiAgentRLModule and nn.Module we can simply assume
-        # all the submodules are registered. Otherwise, we need to loop through
-        # each submodule and move it to the correct device.
-        # TODO (Kourosh): This can result in missing modules if the user does not
-        # register them in the MultiAgentRLModule. We should find a better way to
-        # handle this.
-        if isinstance(module, torch.nn.Module):
-            module = TorchDDPRLModule(module)
-        else:
-            for key in module.keys():
-                module.add_module(key, TorchDDPRLModule(module[key]), override=True)
-
-        return module
-
-    @override(RLTrainer)
     def _convert_batch_type(self, batch: MultiAgentBatch):
         batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
         batch = NestedDict(batch)
         return batch
 
-    @override(RLTrainer)
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        # in torch the distributed update is no different than the normal update
-        return self._update(batch)
-
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the state of the underlying MultiAgentRLModule"""
-
         module_weights = self._module.get_state()
         if module_ids is None:
             return module_weights
