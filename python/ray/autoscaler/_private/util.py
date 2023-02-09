@@ -537,6 +537,27 @@ def parse_placement_group_resource_str(
     return (placement_group_resource_str, None, True)
 
 
+MEMORY_SUFFIXES = [
+    ("TiB", 2**40),
+    ("GiB", 2**30),
+    ("MiB", 2**20),
+    ("KiB", 2**10),
+]
+
+
+def format_memory(mem_bytes: Number) -> str:
+    """Formats memory in bytes in friendly unit. E.g. (2**30 + 1) bytes should
+    be displayed as 1GiB but 1 byte should be displayed as 1B, (as opposed to
+    rounding it to 0GiB).
+    """
+    for suffix, bytes_per_unit in MEMORY_SUFFIXES:
+        if mem_bytes >= bytes_per_unit:
+            mem_in_unit = mem_bytes / bytes_per_unit
+            return f"{mem_in_unit:.2f}{suffix}"
+
+    return f"{int(mem_bytes)}B"
+
+
 def parse_usage(usage: Usage) -> List[str]:
     # first collect resources used in placement groups
     placement_group_resource_usage = {}
@@ -574,12 +595,15 @@ def parse_usage(usage: Usage) -> List[str]:
             used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2**30
-            line = f"{(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
+            formatted_used = format_memory(used)
+            formatted_total = format_memory(total)
+            line = f"{formatted_used}/{formatted_total} {resource}"
             if used_in_pg:
+                formatted_pg_used = format_memory(pg_used)
+                formatted_pg_total = format_memory(pg_total)
                 line = line + (
-                    f" ({(pg_used * to_GiB):.2f} used of "
-                    f"{(pg_total * to_GiB):.2f} GiB " + "reserved in placement groups)"
+                    f" ({formatted_pg_used} used of "
+                    f"{formatted_pg_total} " + "reserved in placement groups)"
                 )
             usage_lines.append(line)
         else:
