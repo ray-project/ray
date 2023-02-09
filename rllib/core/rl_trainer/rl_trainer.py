@@ -266,44 +266,51 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> ParamDictType:
-        """Perform an update on self._module.
-
-        For example compute and apply gradients to self._module if
-        necessary.
+    def compute_gradients(self, loss: Mapping[str, Any]) -> ParamDictType:
+        """Computes the gradients based on the loss.
 
         Args:
-            loss: variable(s) used for optimizing self._module.
-
+            loss: The computed loss dict. It should include the key
+                `self.TOTAL_LOSS_KEY` that contains the total loss.
         Returns:
-            A dictionary of extra information and statistics.
+            The gradients in teh same format as self._params.
         """
 
     @abc.abstractmethod
     def apply_gradients(self, gradients: ParamDictType) -> None:
-        """Perform an update on self._module
+        """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients.
+            gradients: A dictionary of gradients, in the same format as self._params.
         """
 
     @abc.abstractmethod
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule"""
+        """Returns the weights of the underlying MultiAgentRLModule.
+
+        The output should be numpy-friendly for easy serialization, not framework
+        specific tensors.
+
+        Args:
+            module_ids: The ids of the modules to get the weights for. If None, all
+                modules will be returned.
+
+        Returns:
+            A dictionary that holds the weights of the modules in a numpy-friendly
+            format.
+        """
 
     @abc.abstractmethod
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
+        """Sets the weights of the underlying MultiAgentRLModule"""
 
     @abc.abstractmethod
     def get_param_ref(self, param: ParamType) -> Hashable:
-        """Returns a reference to a parameter.
+        """Returns a hashable reference to a trainable parameter.
 
-        This should be overriden in framework specific trainer. For example in torch it
-        will return the parameter itself, while in tf it returns the .ref() of the
-        variable. The purpose is to retrieve a unique reference to the parameters.
+        This should be overriden in framework specific specialization. For example in
+        torch it will return the parameter itself, while in tf it returns the .ref() of
+        the variable. The purpose is to retrieve a unique reference to the parameters.
 
         Args:
             param: The parameter to get the reference to.
@@ -314,7 +321,7 @@ class RLTrainer:
 
     @abc.abstractmethod
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
-        """Returns the parameters of a module.
+        """Returns the list of parameters of a module.
 
         This should be overriden in framework specific trainer. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
@@ -325,14 +332,12 @@ class RLTrainer:
         Returns:
             The parameters of the module.
         """
-        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to
-        # get the parameters of a module based on what the underlying framework is.
 
     @abc.abstractmethod
     def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
-        """Returns the optimizer instance of type optimizer_cls from the module
+        """Returns the optimizer instance of type optimizer_cls given the module.
 
         In torch this is the optimizer object initialize with module parameters. In tf
         this is initialized without module parameters.
@@ -402,8 +407,7 @@ class RLTrainer:
 
         Args:
             module_id: The id of the module to add.
-            module_cls: The module class to add.
-            module_kwargs: The config for the module.
+            module_spec: The module spec of the module to add.
             set_optimizer_fn: A function that takes in the module and returns a list of
                 (param, optimizer) pairs. Each element in the tuple describes a
                 parameter group that share the same optimizer object, if None, the
@@ -443,7 +447,6 @@ class RLTrainer:
 
         Args:
             module_id: The id of the module to remove.
-
         """
         self.__check_if_build_called()
         module = self._module[module_id]
@@ -556,9 +559,32 @@ class RLTrainer:
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.
 
-        This can be called on its own, or via a call to a `TrainerRunner`
-        that is managing multiple RLTrainer instances via a call to
-        `TrainerRunner.additional_update`.
+        Example:
+
+        .. code-block:: python
+
+            class DQNLearner(TorchLearner):
+
+                def additional_update_per_module(self, module_id: str, tau: float):
+                    # perform polyak averaging update
+                    main = self._module[module_id].main
+                    target = self._module[module_id].target
+                    for param, target_param in zip(
+                        main.parameters(), target.parameters()
+                    ):
+                        target_param.data.copy_(
+                            tau * param.data + (1.0 - tau) * target_param.data
+                        )
+
+        And inside a training loop:
+
+        .. code-block:: python
+
+            for _ in range(100):
+                sample = ...
+                self.learner.update(sample)
+                if self.learner.global_step % 10 == 0:
+                    self.learner.additional_update(tau=0.01)
 
         Args:
             *args: Arguments to use for the update.
@@ -582,6 +608,8 @@ class RLTrainer:
     ) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
+        See `additional_update` for more details.
+
         Args:
             module_id: The id of the module to update.
             *args: Arguments to use for the update.
@@ -596,7 +624,7 @@ class RLTrainer:
     def postprocess_gradients(
         self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        """Called after gradients have been computed.
+        """Applies potential postprocessings to the gradients.
 
         In some algorithms, we may want to perform some postprocessing on the
         gradients before they are applied. This method is called after gradients
@@ -622,8 +650,7 @@ class RLTrainer:
 
         Given a batch of episodes you can use this method to take more
         than one backward pass on the batch. The same minibatch_size and num_iters
-        will be used for all module ids (previously known as policies) in the
-        multiagent batch
+        will be used for all module ids in MultiAgentRLModule.
 
         Args:
             batch: A batch of data.
@@ -690,9 +717,11 @@ class RLTrainer:
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the trainer.
 
-        This method uses `self.module_class` and `self.module_kwargs` to construct the
+        This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
-        multi-agent RL module.
+        multi-agent RL module. Override this method if there are other things than
+        needs to happen for instantiation of the module.
+
 
         Returns:
             The constructed module.
@@ -704,10 +733,12 @@ class RLTrainer:
         module = module.as_multi_agent()
         return module
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update(
         self,
-        batch: MultiAgentBatch,
+        batch: Union[MultiAgentBatch, NestedDict],
     ) -> Mapping[str, Any]:
+        """Performs a single update given a batch of data."""
 
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.

@@ -32,6 +32,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.tf_utils import get_gpu_devices
 
 
 tf1, tf, tfv = try_import_tf()
@@ -109,13 +110,13 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
-        return module.trainable_variables
+        return list(module.trainable_variables)
 
     @override(RLTrainer)
     def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
-        lr = self.optimizer_config.get("lr", 1e-3)
+        lr = self._optimizer_config["lr"]
         return optimizer_cls(learning_rate=lr)
 
     @override(RLTrainer)
@@ -139,7 +140,7 @@ class TfRLTrainer(RLTrainer):
         batch = NestedDict(batch.policy_batches)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        return batch
+        return batch.asdict()
 
     @override(RLTrainer)
     def add_module(
@@ -190,7 +191,7 @@ class TfRLTrainer(RLTrainer):
             if self._use_gpu:
                 # mirrored strategy is typically used for multi-gpu training
                 # on a single machine, however we can use it for single-gpu
-                devices = tf.config.list_logical_devices("GPU")
+                devices = get_gpu_devices()
                 assert self._local_gpu_idx < len(devices), (
                     f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
                     " not available."
@@ -214,6 +215,9 @@ class TfRLTrainer(RLTrainer):
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = ...,
     ) -> Mapping[str, Any]:
+        # TODO (Kourosh): The update of rl_trainer is vastly differnet than the base
+        # class. So we need to unify them.
+
         if set(batch.policy_batches.keys()) != set(self._module.keys()):
             raise ValueError(
                 "Batch keys must match module keys. RLTrainer does not "
@@ -231,7 +235,7 @@ class TfRLTrainer(RLTrainer):
             # TODO (Avnish): converting to tf tensor and then from nested dict back to
             # dict will most likely hit us in perf. But let's go with this for now.
             minibatch = self._convert_batch_type(minibatch)
-            update_outs = self._update_fn(minibatch.asdict())
+            update_outs = self._update_fn(minibatch)
             loss = update_outs["loss"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]

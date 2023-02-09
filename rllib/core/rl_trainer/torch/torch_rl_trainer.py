@@ -99,7 +99,7 @@ class TorchRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule"""
+        """Returns the weights of the underlying MultiAgentRLModule"""
         module_weights = self._module.get_state()
         if module_ids is None:
             return module_weights
@@ -110,7 +110,7 @@ class TorchRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
+        """Sets the weights of the underlying MultiAgentRLModule"""
         weights = convert_to_torch_tensor(weights, device=self._device)
         return self._module.set_state(weights)
 
@@ -128,7 +128,7 @@ class TorchRLTrainer(RLTrainer):
     ) -> Optimizer:
         # TODO (Kourosh): the abstraction should take in optimizer_config as a
         # parameter as well.
-        lr = self.optimizer_config.get("lr", 1e-3)
+        lr = self._optimizer_config["lr"]
         return optimizer_cls(module.parameters(), lr=lr)
 
     @override(RLTrainer)
