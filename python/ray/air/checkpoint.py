@@ -760,12 +760,7 @@ class Checkpoint:
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
 
-    def get_preprocessor(self) -> Optional["Preprocessor"]:
-        """Return the saved preprocessor, if one exists."""
-
-        # The preprocessor will either be stored in an in-memory dict or
-        # written to storage. In either case, it will use the PREPROCESSOR_KEY key.
-
+    def _get_preprocessor(self) -> Optional["Preprocessor"]:
         # First try converting to dictionary.
         checkpoint_dict = self.to_dict()
         preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
@@ -774,6 +769,32 @@ class Checkpoint:
             # Fallback to reading from directory.
             with self.as_directory() as checkpoint_path:
                 preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+        return preprocessor
+
+    def get_preprocessor(self) -> Optional["Preprocessor"]:
+        """Return the saved preprocessor, if one exists."""
+
+        if self._override_preprocessor:
+            return self._override_preprocessor
+
+        # The preprocessor will either be stored in an in-memory dict or
+        # written to storage. In either case, it will use the PREPROCESSOR_KEY key.
+
+        # If this is a pure directory checkpoint (not a dict checkpoint saved to dir),
+        # then do not convert to dictionary as that takes a lot of time and memory.
+        if self.uri:
+            with self.as_directory() as checkpoint_path:
+                if _is_persisted_directory_checkpoint(checkpoint_path):
+                    # If this is a persisted directory checkpoint, then we load the
+                    # files from the temp directory created by the context.
+                    # That way we avoid having to download the files twice.
+                    loaded_checkpoint = self.from_directory(checkpoint_path)
+                    preprocessor = loaded_checkpoint._get_preprocessor()
+                else:
+                    preprocessor = load_preprocessor_from_dir(checkpoint_path)
+        else:
+            preprocessor = self._get_preprocessor()
 
         return preprocessor
 
@@ -858,3 +879,7 @@ def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
         open(del_lock_path, "a").close()
 
     os.makedirs(path, exist_ok=True)
+
+
+def _is_persisted_directory_checkpoint(path: str) -> bool:
+    return Path(path, _DICT_CHECKPOINT_FILE_NAME).exists()
