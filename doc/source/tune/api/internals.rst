@@ -23,23 +23,6 @@ Trial
 
 .. autoclass:: ray.tune.experiment.trial.Trial
 
-.. _tune-callbacks-docs:
-
-Callbacks
----------
-
-.. autoclass:: ray.tune.callback.Callback
-   :members:
-
-
-.. _resources-docstring:
-
-PlacementGroupFactory
----------------------
-
-.. autoclass:: ray.tune.execution.placement_groups.PlacementGroupFactory
-
-
 
 Registry
 --------

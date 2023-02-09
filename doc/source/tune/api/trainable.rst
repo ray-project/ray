@@ -305,14 +305,34 @@ Trainable (Class API)
 
 .. _tune-util-ref:
 
-Utilities
----------
+Tune Trainable Utilities
+-------------------------
+
+Tune Data Ingestion Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
 
     tune.with_parameters
+
+
+Tune Resource Assignment Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
     tune.with_resources
+    ~tune.execution.placement_groups.PlacementGroupFactory
     tune.utils.wait_for_gpu
+
+
+Tune Trainable Debugging Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
     tune.utils.diagnose_serialization
     tune.utils.validate_save_restore

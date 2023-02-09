@@ -1,4 +1,4 @@
-.. _tune-callbacks:
+.. _tune-callbacks-docs:
 
 Tune Callbacks (tune.Callback)
 ==============================
