@@ -169,6 +169,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // Maps job data keys to the index of the job in the table.
     std::unordered_map<std::string, int> job_data_key_to_index;
 
+    // print full data
+    for (auto &data : result) {
+      RAY_LOG(ERROR) << "job_table_data = " << data.second.DebugString();
+    }
+
     // Load the job table data into the reply.
     int i = 0;
     for (auto &data : result) {
@@ -183,9 +188,28 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         std::string job_submission_id = iter->second;
         std::string job_data_key = JobDataKey(job_submission_id);
         job_api_data_keys.push_back(job_data_key);
+        // if key is already in the map, it means there are duplicate jobs
+        // print debug info
+        RAY_LOG(ERROR) << "Found duplicate job with job_submission_id = "
+                       << job_submission_id;
         job_data_key_to_index[job_data_key] = i;
       }
       i++;
+    }
+
+    // debug
+    if (!(job_api_data_keys.size() == job_data_key_to_index.size())) {
+      RAY_LOG(ERROR) << "job_api_data_keys.size() != job_data_key_to_index.size()";
+      RAY_LOG(ERROR) << "job_api_data_keys.size() = " << job_api_data_keys.size();
+      RAY_LOG(ERROR) << "job_data_key_to_index.size() = " << job_data_key_to_index.size();
+      // Print the entire job_api_data_keys
+      for (auto &data : job_api_data_keys) {
+        RAY_LOG(ERROR) << "job_api_data_keys = " << data;
+      }
+      // Print the entire job_data_key_to_index
+      for (auto &data : job_data_key_to_index) {
+        RAY_LOG(ERROR) << "job_data_key_to_index = " << data.first << " " << data.second;
+      }
     }
 
     RAY_CHECK(job_api_data_keys.size() == job_data_key_to_index.size());
