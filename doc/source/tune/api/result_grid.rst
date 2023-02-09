@@ -2,8 +2,11 @@
 
 .. _result-grid-docstring:
 
+Tune Experiment Results (tune.ResultGrid)
+=========================================
+
 ResultGrid (tune.ResultGrid)
-============================
+----------------------------
 
 .. currentmodule:: ray
 
@@ -25,6 +28,7 @@ Result (air.Result)
     air.Result
 
 .. _exp-analysis-docstring:
+
 
 ExperimentAnalysis (tune.ExperimentAnalysis)
 --------------------------------------------

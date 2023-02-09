@@ -14,12 +14,12 @@ on `Github`_.
     :maxdepth: 2
 
     execution.rst
+    result_grid.rst
     trainable.rst
     search_space.rst
     suggestion.rst
     schedulers.rst
     stoppers.rst
-    result_grid.rst
     reporters.rst
     syncing.rst
     logging.rst
