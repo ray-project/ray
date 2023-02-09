@@ -32,7 +32,6 @@ def test_count_vectorizer():
 
     transformed = vectorizer.transform(ds)
     out_df = transformed.to_pandas(limit=float("inf"))
-    print(out_df)
 
     processed_col_a_a = [1, 4] * row_multiplier
     processed_col_a_c = [3, 1] * row_multiplier
