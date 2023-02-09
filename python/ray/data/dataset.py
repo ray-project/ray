@@ -2670,8 +2670,21 @@ class Dataset(Generic[T]):
                     fn=lambda x: x,
                 )
             )
+
+            logical_plan = self._logical_plan
+            if logical_plan is not None:
+                write_op = Write(
+                    logical_plan.dag,
+                    fn=lambda x: x,
+                    compute="tasks",
+                    ray_remote_args=ray_remote_args,
+                )
+                logical_plan = LogicalPlan(write_op)
+
             try:
-                self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
+                self._write_ds = Dataset(
+                    plan, self._epoch, self._lazy, logical_plan
+                ).fully_executed()
                 datasource.on_write_complete(
                     ray.get(self._write_ds._plan.execute().get_blocks())
                 )
