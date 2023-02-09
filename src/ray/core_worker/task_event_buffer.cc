@@ -210,6 +210,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (!enabled_) {
     return;
   }
+  size_t buffer_size = 0;
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
   std::vector<std::unique_ptr<TaskEvent>> to_send;
@@ -232,6 +233,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     if (buffer_.empty()) {
       return;
     }
+    buffer_size = buffer_.size();
 
     size_t num_to_send =
         std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
@@ -267,6 +269,14 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     task_event->ToRpcTaskEvents(events_by_task);
   }
   size_t data_size = data->ByteSizeLong();
+
+  if (RayConfig::instance().task_events_worker_report_metrics()) {
+    RecordMetrics(num_profile_event_to_send,
+                  num_status_event_to_send,
+                  num_profile_task_events_dropped,
+                  num_status_task_events_dropped,
+                  buffer_size);
+  }
 
   gcs::TaskInfoAccessor *task_accessor;
   {
@@ -346,6 +356,26 @@ const std::string TaskEventBufferImpl::DebugString() {
   return ss.str();
 }
 
+void TaskEventBufferImpl::RecordMetrics(size_t num_profile_events_to_send,
+                                        size_t num_status_events_to_send,
+                                        size_t num_profile_events_dropped,
+                                        size_t num_status_events_dropped,
+                                        size_t buffer_size) const {
+  // Reported events
+  ray::stats::STATS_core_worker_task_events_reported.Record(num_profile_events_to_send,
+                                                            ray::stats::kProfileEvent);
+  ray::stats::STATS_core_worker_task_events_reported.Record(num_status_events_to_send,
+                                                            ray::stats::kTaskStatusEvent);
+
+  // Dropped events
+  ray::stats::STATS_core_worker_task_events_dropped.Record(num_profile_events_dropped,
+                                                           ray::stats::kProfileEvent);
+  ray::stats::STATS_core_worker_task_events_dropped.Record(num_status_events_dropped,
+                                                           ray::stats::kTaskStatusEvent);
+
+  // Buffer size
+  ray::stats::STATS_core_worker_task_events_stored.Record(buffer_size);
+}
 }  // namespace worker
 
 }  // namespace core

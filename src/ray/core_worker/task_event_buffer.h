@@ -248,6 +248,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
+  /// Recording metrics.
+  void RecordMetrics(size_t num_profile_events_to_send,
+                     size_t num_status_events_to_send,
+                     size_t num_profile_events_dropped,
+                     size_t num_status_events_dropped,
+                     size_t buffer_size) const;
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
 
