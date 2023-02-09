@@ -2064,6 +2064,7 @@ class Algorithm(Trainable):
                 {
                     "type": "Algorithm",
                     "checkpoint_version": str(state["checkpoint_version"]),
+                    "format": "cloudpickle",
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -2609,8 +2610,15 @@ class Algorithm(Trainable):
                 f"Algorithm checkpoint (but is {checkpoint_info['type']})!"
             )
 
+        msgpack = None
+        if checkpoint_info.get("format") == "msgpack":
+            msgpack = try_import_msgpack(error=True)
+
         with open(checkpoint_info["state_file"], "rb") as f:
-            state = pickle.load(f)
+            if msgpack is not None:
+                state = msgpack.load(f)
+            else:
+                state = pickle.load(f)
 
         # New checkpoint format: Policies are in separate sub-dirs.
         # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return

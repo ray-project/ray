@@ -1,9 +1,11 @@
+import json
 import os
 from packaging import version
 import tempfile
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
+import ray
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
 
@@ -23,7 +25,7 @@ CHECKPOINT_VERSION = version.Version("1.0")
 
 
 @PublicAPI(stability="alpha")
-def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
+def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     """Returns a dict with information about a Algorithm/Policy checkpoint.
 
     Args:
@@ -129,3 +131,60 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
         )
 
     return info
+
+
+@PublicAPI(stability="beta")
+def create_python_version_independent_checkpoint(
+    checkpoint: Union[str, Checkpoint],
+    python_version_independent_checkpoint_dir: str,
+) -> None:
+    from ray.rllib.algorithms import Algorithm
+
+    # Restore the Algorithm using the python version dependent checkpoint.
+    algo = Algorithm.from_checkpoint(checkpoint)
+    state = algo.__getstate__()
+
+    # TEST
+    msgpack_able_state = state.copy()
+    del msgpack_able_state["config"]
+    del msgpack_able_state["algorithm_class"]
+    del msgpack_able_state["worker"]["policy_states"]
+    del msgpack_able_state["worker"]["policy_mapping_fn"]
+    # END:TEST
+
+    # Extract policy states from worker state (Policies get their own
+    # checkpoint sub-dirs).
+    policy_states = {}
+    if "worker" in state and "policy_states" in state["worker"]:
+        policy_states = state["worker"].pop("policy_states", {})
+
+    # Add RLlib checkpoint version.
+    state["checkpoint_version"] = CHECKPOINT_VERSION
+
+    # Write state (w/o policies) to disk.
+    checkpoint_dir = python_version_independent_checkpoint_dir
+    state_file = os.path.join(checkpoint_dir, "algorithm_state.msgpck")
+    with open(state_file, "wb") as f:
+        pickle.dump(state, f)
+
+    # Write rllib_checkpoint.json.
+    with open(os.path.join(checkpoint_dir, "rllib_checkpoint.json"), "w") as f:
+        json.dump(
+            {
+                "type": "Algorithm",
+                "checkpoint_version": str(state["checkpoint_version"]),
+                "format": "msgpack",
+                "ray_version": ray.__version__,
+                "ray_commit": ray.__commit__,
+            },
+            f,
+        )
+
+    # Write individual policies to disk, each in their own sub-directory.
+    for pid, policy_state in policy_states.items():
+        # From here on, disallow policyIDs that would not work as directory names.
+        validate_policy_id(pid, error=True)
+        policy_dir = os.path.join(checkpoint_dir, "policies", pid)
+        os.makedirs(policy_dir, exist_ok=True)
+        policy = algo.get_policy(pid)
+        policy.export_checkpoint(policy_dir, policy_state=policy_state)
