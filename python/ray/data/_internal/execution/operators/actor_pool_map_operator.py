@@ -115,7 +115,6 @@ class ActorPoolMapOperator(MapOperator):
                 break
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
-            # Submit the map task.
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
             ref = actor.submit.options(num_returns="dynamic").remote(
@@ -502,7 +501,7 @@ class _ActorPool:
             busyness = self._num_tasks_in_flight[actor]
             invalid = busyness >= self._max_tasks_in_flight
             requires_remote_fetch = self._actor_locations[actor] != preferred_loc
-            return (invalid, requires_remote_fetch, busyness)
+            return invalid, requires_remote_fetch, busyness
 
         actor = min(self._num_tasks_in_flight.keys(), key=penalty_key)
         if self._num_tasks_in_flight[actor] >= self._max_tasks_in_flight:
