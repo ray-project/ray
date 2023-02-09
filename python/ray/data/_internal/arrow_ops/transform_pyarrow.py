@@ -121,6 +121,8 @@ def unify_schemas(
     else:
         schemas_to_unify = schemas
     # Let Arrow unify the schema of non-tensor extension type columns.
+    if "int_empty" in cols_with_null_list or "float_empty" in cols_with_null_list or "bytes_empty" in cols_with_null_list:
+        raise Exception(f"===> schemas_to_unify: {schemas_to_unify}")
     return pyarrow.unify_schemas(schemas_to_unify)
 
 
