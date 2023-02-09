@@ -4553,7 +4553,7 @@
 
   run:
     timeout: 9000
-    script: python dataset/sort.py --num-partitions=5000 --partition-size=200e6
+    script: python dataset/sort.py --num-partitions=5000 --partition-size=200e6 --shuffle
     wait_for_nodes:
       num_nodes: 20
 
