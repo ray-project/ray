@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
+import uuid
 
 import numpy as np
 
@@ -326,7 +327,7 @@ class DatasetStatsSummary:
         if len(self.stages_stats) == 1:
             stage_stats_summary = self.stages_stats[0]
             stage_name = stage_stats_summary.stage_name
-            stage_uuid = self.dataset_uuid + stage_name
+            stage_uuid = stage_stats_summary.stage_uuid
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
@@ -380,6 +381,7 @@ class DatasetStatsSummary:
 
 @dataclass
 class StageStatsSummary:
+    stage_uuid: str
     stage_name: str
     # Whether the stage associated with this StageStatsSummary object is a substage
     is_substage: bool
@@ -511,6 +513,7 @@ class StageStatsSummary:
             }
 
         return StageStatsSummary(
+            stage_uuid=uuid.uuid4().hex,
             stage_name=stage_name,
             is_substage=is_substage,
             time_total_s=time_total_s,
