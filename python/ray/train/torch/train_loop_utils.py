@@ -43,7 +43,10 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="beta")
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
-    return get_accelerator(_TorchAccelerator).get_device()
+    accelerator = get_accelerator()
+    if not accelerator:
+        accelerator = _TorchAccelerator
+    return accelerator.get_device()
 
 
 # TODO: Deprecation: Hard-deprecate args in Ray 2.2.
@@ -216,6 +219,7 @@ class _TorchAccelerator(Accelerator):
         self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
         self._seed = None
+        os.environ["ACCELERATE_TORCH_DEVICE"] = str(self.get_device())
 
     def prepare_model(
         self,
@@ -430,7 +434,8 @@ class _TorchAccelerator(Accelerator):
 
         return data_loader
 
-    def get_device(self) -> torch.device:
+    @classmethod
+    def get_device(cls) -> torch.device:
         """Gets the correct torch device to use for training.
 
         Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
