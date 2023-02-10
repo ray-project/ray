@@ -136,6 +136,8 @@ These aggregations can be combined with batch mapping to transform a dataset usi
         return df
 
     ds = ds.map_batches(impute_b, batch_format="pandas")
+    # -> MapBatches(impute_b)
+    #    +- Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
 
     # Standard scaling of all feature columns.
     stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
