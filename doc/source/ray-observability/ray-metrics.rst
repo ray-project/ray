@@ -249,7 +249,11 @@ You can choose to run Prometheus on a non-default port or on a different machine
 make sure that prometheus can scrape the metrics from your ray nodes following instructions :ref:`here <multi-node-metrics>`.
 
 In addition, both Ray and Grafana needs to know how to access this prometheus instance. This can be configured
-by setting the `RAY_PROMETHEUS_HOST` env var when launching ray. The env var takes in the address to access Prometheus.
+by setting the `RAY_PROMETHEUS_HOST` env var when launching ray. The env var takes in the address to access Prometheus. More
+info can be found :ref:`here <multi-node-metrics-grafana>`. By default, we assume Prometheus is hosted at `localhost:9090`.
+
+For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, One should set the value to
+`RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
 
 
 Alternate Grafana host location
@@ -257,12 +261,16 @@ Alternate Grafana host location
 You can choose to run Grafana on a non-default port or on a different machine. If you choose to do this, the
 :ref:`Dashboard <ray-dashboard>` needs to be configured with a public address to that service so the web page
 can load the graphs. This can be done with the `RAY_GRAFANA_HOST` env var when launching ray. The env var takes
-in the address to access Grafana.
+in the address to access Grafana. More info can be found :ref:`here <multi-node-metrics-grafana>`. Instructions
+to use an existing Grafana instance can be found :ref:`here <multi-node-metrics-grafana-existing>`.
 
 For the Grafana charts to work on the Ray dashboard, the user of the dashboard's browser must be able to reach
 the Grafana service. If this browser cannot reach Grafana the same way the Ray head node can, you can use a separate
 env var `RAY_GRAFANA_IFRAME_HOST` to customize the host the browser users to attempt to reach Grafana. If this is not set,
 we use the value of `RAY_GRAFANA_HOST` by default.
+
+For example, if Grafana is hosted at is 55.66.77.88 on port 3000. One should set the value
+to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 
 Troubleshooting
 ---------------

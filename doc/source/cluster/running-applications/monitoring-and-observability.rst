@@ -201,7 +201,7 @@ Ray Cluster information. Here, we will use a Python script and the
 
 
 Grafana
-^^^^^^^^^^
+^^^^^^^
 Ray dashboard integrates with grafana to show visualizations of time-series metrics.
 
 .. image:: images/graphs.png
@@ -222,6 +222,8 @@ and `RAY_GRAFANA_IFRAME_HOST` environment variables.
 For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
 to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
 
+
+.. _multi-node-metrics-grafana-existing:
 
 Using an existing Grafana instance
 ##################################
