@@ -782,7 +782,7 @@ class Checkpoint:
                 else:
                     preprocessor = load_preprocessor_from_dir(checkpoint_path)
         else:
-            preprocessor = _get_preprocessor(loaded_checkpoint)
+            preprocessor = _get_preprocessor(self)
 
         return preprocessor
 
