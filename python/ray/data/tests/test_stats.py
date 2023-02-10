@@ -857,6 +857,36 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
+def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context):
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    ds = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
+    ds.take_all()
+    stats = canonicalize(ds.stats())
+    assert (
+        stats
+        == """Stage N read->map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: \
+{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
+
+Dataset iterator time breakdown:
+* In ray.wait(): T
+* In ray.get(): T
+* In next_batch(): T
+* In format_batch(): T
+* In user code: T
+* Total time: T
+"""
+    )
+
+
 if __name__ == "__main__":
     import sys
 
