@@ -69,14 +69,21 @@ This section covers Dataset execution modes and performance considerations.
 Lazy Execution
 ~~~~~~~~~~~~~~
 
-By default, most Datasets operations are lazy, with execution triggered via "sink"
+Lazy execution offers opportunities for improved performance and memory stability due
+to stage fusion optimizations and aggressive garbage collection of intermediate results.
+
+Dataset creation and transformation APIs are lazy, with execution only triggered via "sink"
 APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
-writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), certain
-transformations (:meth:`ds.union() <ray.data.Dataset.union>` or
-:meth:`ds.zip() <ray.data.Dataset.zip>`), or manually triggering via
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>`. Lazy execution offers opportunities
-for improved performance and memory stability due to stage fusion optimizations and
-aggressive garbage collection of intermediate results.
+writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering via
+:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>`. There are a few
+exceptions to this rule, where transformations such as :meth:`ds.union()
+<ray.data.Dataset.union>` and
+:meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution; we plan to make these
+operations lazy in the future.
+
+Check the API docs for Datasets methods to see if they
+trigger execution. Those that do trigger execution will have a ``Note`` indicating as
+much.
 
 Stage Fusion Optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~~
