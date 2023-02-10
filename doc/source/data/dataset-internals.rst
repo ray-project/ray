@@ -64,7 +64,7 @@ This should be considered for advanced use cases to improve performance predicta
 Execution
 =========
 
-This section covers Dataset execution modes and performance considerations.
+This section covers the Datasets execution model and performance considerations.
 
 Lazy Execution
 ~~~~~~~~~~~~~~
