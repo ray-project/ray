@@ -91,6 +91,7 @@ class HuggingFacePredictor(Predictor):
         checkpoint: Checkpoint,
         *,
         pipeline_cls: Optional[Type[Pipeline]] = None,
+        use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
@@ -104,6 +105,8 @@ class HuggingFacePredictor(Predictor):
             pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
                 initialization. If ``pipeline`` is None, this must contain
                 the 'task' argument. Cannot contain 'model'. Can be used
@@ -114,6 +117,9 @@ class HuggingFacePredictor(Predictor):
             raise ValueError(
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
+        if use_gpu:
+            # default to using the GPU with the first index
+            pipeline_kwargs.setdefault("device", 0)
         pipeline_cls = pipeline_cls or pipeline_factory
         preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
@@ -123,14 +129,12 @@ class HuggingFacePredictor(Predictor):
         return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,
+            use_gpu=use_gpu,
         )
 
     def _predict(
         self, data: Union[list, pd.DataFrame], **pipeline_call_kwargs
     ) -> pd.DataFrame:
-        if self.use_gpu:
-            # default to using the GPU with the first index
-            pipeline_call_kwargs.setdefault("device", 0)
         ret = self.pipeline(data, **pipeline_call_kwargs)
         # Remove unnecessary lists
         try:
@@ -180,8 +184,7 @@ class HuggingFacePredictor(Predictor):
                 data to use as features to predict on. If None, use all
                 columns.
             **pipeline_call_kwargs: additional kwargs to pass to the
-                ``pipeline`` object. If ``use_gpu`` is True, 'device'
-                will be set to 0 by default.
+                ``pipeline`` object.
 
         Examples:
             >>> import pandas as pd
