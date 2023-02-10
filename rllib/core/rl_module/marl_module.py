@@ -144,8 +144,6 @@ class MultiAgentRLModule(RLModule):
         multiagent_module = cls()
 
         for module_id, module_spec in module_configs.items():
-            # module_cls: RLModule = module_spec.pop("module_class")
-            # module = module_cls.from_model_config(**module_spec)
             module = module_spec.build()
             multiagent_module.add_module(module_id, module)
 
@@ -281,7 +279,7 @@ class MultiAgentRLModule(RLModule):
         """Returns a ModelSpec from the given method_name for all modules."""
         return SpecDict(
             {
-                module_id: getattr(module, method_name)()
+                module_id: getattr(module, f"_{method_name}")
                 for module_id, module in self._rl_modules.items()
             }
         )

@@ -1,9 +1,8 @@
 import gymnasium as gym
-from typing import Any, Mapping, Union
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -32,27 +31,27 @@ class DiscreteBCTorchModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -75,8 +74,9 @@ class DiscreteBCTorchModule(TorchRLModule):
         cls,
         observation_space: "gym.Space",
         action_space: "gym.Space",
+        *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "DiscreteBCTorchModule":
 
         config = {
             "input_dim": observation_space.shape[0],
@@ -85,11 +85,3 @@ class DiscreteBCTorchModule(TorchRLModule):
         }
 
         return cls(**config)
-
-    def _default_inputs(self) -> dict:
-        return {
-            "obs": TorchTensorSpec("b, do", do=self.input_dim),
-        }
-
-    def _default_outputs(self) -> dict:
-        return {"action_dist": torch.distributions.Categorical}
