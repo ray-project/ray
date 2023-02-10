@@ -34,6 +34,10 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
                               rpc::DrainAndKillNodeReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetSchedulingStatus(rpc::GetSchedulingStatusRequest request,
+                                 rpc::GetSchedulingStatusReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
 };

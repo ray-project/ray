@@ -41,5 +41,12 @@ void GcsMonitorServer::HandleDrainAndKillNode(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+
+  void GcsMonitorServer::HandleGetSchedulingStatus(rpc::GetSchedulingStatusRequest request,
+                                                   rpc::GetSchedulingStatusReply *reply,
+                                                   rpc::SendReplyCallback send_reply_callback) {
+
+}
+
 }  // namespace gcs
 }  // namespace ray

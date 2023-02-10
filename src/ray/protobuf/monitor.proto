@@ -113,5 +113,5 @@ service MonitorGcsService {
   // need to be retried if the head node fails.
   rpc DrainAndKillNode(DrainAndKillNodeRequest) returns (DrainAndKillNodeReply);
 
-  // rpc GetSchedulingStatus(GetSchedulingStatusRequest) returns (GetSchedulingStatusReply);
+  rpc GetSchedulingStatus(GetSchedulingStatusRequest) returns (GetSchedulingStatusReply);
 }
