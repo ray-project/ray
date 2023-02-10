@@ -360,7 +360,11 @@ message DeleteSpilledObjectsRequest {
 
 message DeleteSpilledObjectsReply {}
 
-message ExitRequest {}
+message ExitRequest {
+  /// Whether to force exit the worker, regardless of whether the core worker
+  /// owns object.
+  bool force_exit = 1;
+}
 
 message ExitReply {
   /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
