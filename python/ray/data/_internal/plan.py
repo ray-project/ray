@@ -182,7 +182,14 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = capitalize(stage.name)
+                # The stage representation should be in "<stage-name>(...)" format,
+                # e.g. "MapBatches(my_udf)".
+                #
+                # TODO(chengsu): create a class to represent stage name to make it less
+                # fragile to parse.
+                stage_str = stage.name.split("(")
+                stage_str[0] = capitalize(stage_str[0])
+                stage_name = "(".join(stage_str)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
