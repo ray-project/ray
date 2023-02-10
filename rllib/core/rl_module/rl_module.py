@@ -20,34 +20,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 from ray.rllib.utils.typing import SampleBatchType
 
-
 ModuleID = str
-
-
-@ExperimentalAPI
-@dataclass
-class SingleAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
-
-    Args:
-        module_class: ...
-        observation_space: ...
-        action_space: ...
-        model_config: ...
-    """
-
-    module_class: Optional[Type["RLModule"]] = None
-    observation_space: Optional["gym.Space"] = None
-    action_space: Optional["gym.Space"] = None
-    model_config: Optional[Dict[str, Any]] = None
-
-    def build(self) -> "RLModule":
-        return self.module_class.from_model_config(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            model_config=self.model_config,
-        )
-
 
 @ExperimentalAPI
 @dataclass
