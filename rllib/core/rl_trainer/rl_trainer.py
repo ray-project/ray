@@ -681,10 +681,13 @@ class RLTrainer:
                 "RLTrainer and before calling any methods on it."
             )
 
+    def apply(self, func, *_args, **_kwargs):
+        return func(self, *_args, **_kwargs)
+
 
 @dataclass
 class RLTrainerSpec:
-    """The spec for construcitng RLTrainer actors.
+    """The spec for constructing RLTrainer actors.
 
     Args:
         rl_trainer_class: The RLTrainer class to use.
