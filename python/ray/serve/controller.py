@@ -42,6 +42,8 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     serve_application_to_deploy_schema,
+    prepend_app_name_to_deployment_names,
+    remove_app_name_from_deployment_names,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -319,6 +321,7 @@ class ServeController:
             self.deploy_apps(
                 ServeDeploySchema.parse_obj({"applications": applications}),
                 deployment_time,
+                False,
             )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -441,6 +444,7 @@ class ServeController:
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
+        user_provided: bool = True,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 
@@ -461,6 +465,11 @@ class ServeController:
 
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
+
+            user_provided: whether the config is provided by user (otherwise it is
+                restored from a checkpoint). If it is provided by user, we need to
+                prepend the app name to each deployment name. If not, it should already
+                be prepended.
         """
         # We should still support single-app mode, i.e. ServeApplicationSchema.
         # Eventually, after migration is complete, we should deprecate such usage.
@@ -480,6 +489,10 @@ class ServeController:
         new_config_checkpoint = {}
 
         for app_config in config.applications:
+            # Prepend app name to each deployment name
+            if user_provided:
+                app_config = prepend_app_name_to_deployment_names(app_config)
+
             app_config_dict = app_config.dict(exclude_unset=True)
 
             # Compare new config options with old ones, set versions of new deployments
@@ -645,7 +658,9 @@ class ServeController:
                 return ServeApplicationSchema.get_empty_schema_dict()
             config, _ = config_checkpoints_dict[name]
 
-            return config
+            return remove_app_name_from_deployment_names(
+                ServeApplicationSchema.parse_obj(config)
+            ).dict(exclude_unset=True)
 
     def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""
@@ -783,7 +798,7 @@ def run_graph(
 
         # Import and build the graph
         graph = import_attr(import_path)
-        app = build(graph)
+        app = build(graph, name)
 
         # Override options for each deployment
         for options in deployment_override_options:

@@ -31,7 +31,7 @@ from ray.serve._private.constants import (
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
 )
 from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -354,6 +354,38 @@ class TestDeployApp:
     def get_test_config(self) -> Dict:
         return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
 
+    def get_test_deploy_config(self) -> Dict:
+        return {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                    "deployments": [
+                        {
+                            "name": "Adder",
+                            "user_config": {
+                                "increment": 3,
+                            },
+                        },
+                        {
+                            "name": "Multiplier",
+                            "user_config": {
+                                "factor": 4,
+                            },
+                        },
+                    ],
+                },
+            ],
+        }
+
     def test_deploy_app_basic(self, client: ServeControllerClient):
 
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
@@ -366,6 +398,28 @@ class TestDeployApp:
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
             == "9 pizzas please!"
+        )
+
+    def test_deploy_multi_app(self, client: ServeControllerClient):
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "5 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).json()
+            == "12 pizzas please!"
         )
 
     def test_deploy_app_with_overriden_config(self, client: ServeControllerClient):
@@ -423,6 +477,47 @@ class TestDeployApp:
             == "1 pizzas please!"
         )
 
+    def test_deploy_multi_app_update_config(self, client: ServeControllerClient):
+        config = self.get_test_deploy_config()
+        client.deploy_apps(ServeDeploySchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "5 pizzas please!"
+        )
+
+        config["applications"][0]["deployments"] = [
+            {
+                "name": "Adder",
+                "user_config": {
+                    "increment": -1,
+                },
+            },
+        ]
+
+        config["applications"][1]["deployments"] = [
+            {
+                "name": "Adder",
+                "user_config": {
+                    "increment": 10,
+                },
+            },
+        ]
+
+        client.deploy_apps(ServeDeploySchema.parse_obj(config))
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "1 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "12 pizzas please!"
+        )
+
     def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_apps(config)
@@ -478,6 +573,85 @@ class TestDeployApp:
         updated_actors = list_actors(filters=[("state", "=", "ALIVE")])
         assert len(updated_actors) == len(actors) + 3
 
+    def test_deploy_multi_app_update_num_replicas(self, client: ServeControllerClient):
+        config = self.get_test_deploy_config()
+        client.deploy_apps(ServeDeploySchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "5 pizzas please!"
+        )
+
+        actors = list_actors(filters=[("state", "=", "ALIVE")])
+
+        # app1
+        config["applications"][0]["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 2,  # +1
+                "user_config": {
+                    "increment": 0,
+                },
+                "ray_actor_options": {"num_cpus": 0.1},
+            },
+            {
+                "name": "Multiplier",
+                "num_replicas": 3,  # +2
+                "user_config": {
+                    "factor": 0,
+                },
+                "ray_actor_options": {"num_cpus": 0.1},
+            },
+        ]
+
+        # app2
+        config["applications"][1]["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 3,  # +2
+                "user_config": {
+                    "increment": 100,
+                },
+                "ray_actor_options": {"num_cpus": 0.1},
+            },
+            {
+                "name": "Multiplier",
+                "num_replicas": 4,  # +3
+                "user_config": {
+                    "factor": 0,
+                },
+                "ray_actor_options": {"num_cpus": 0.1},
+            },
+        ]
+
+        client.deploy_apps(ServeDeploySchema.parse_obj(config))
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "2 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "102 pizzas please!"
+        )
+
+        wait_for_condition(
+            lambda: client.get_serve_status("app1").app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: client.get_serve_status("app2").app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+
+        updated_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        assert len(updated_actors) == len(actors) + 8
+
     def test_deploy_app_update_timestamp(self, client: ServeControllerClient):
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
@@ -503,6 +677,53 @@ class TestDeployApp:
             > first_deploy_time
         )
         assert client.get_serve_status().app_status.status in {
+            ApplicationStatus.DEPLOYING,
+            ApplicationStatus.RUNNING,
+        }
+
+    def test_deploy_multi_app_update_timestamp(self, client: ServeControllerClient):
+        assert client.get_serve_status("app1").app_status.deployment_timestamp == 0
+        assert client.get_serve_status("app2").app_status.deployment_timestamp == 0
+
+        config = self.get_test_deploy_config()
+        client.deploy_apps(ServeDeploySchema.parse_obj(config))
+
+        first_deploy_time_app1 = client.get_serve_status(
+            "app1"
+        ).app_status.deployment_timestamp
+        first_deploy_time_app2 = client.get_serve_status(
+            "app2"
+        ).app_status.deployment_timestamp
+
+        assert first_deploy_time_app1 > 0 and first_deploy_time_app2 > 0
+        time.sleep(0.1)
+
+        # app1
+        config["applications"][0]["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 2,
+            },
+        ]
+        # app2
+        config["applications"][1]["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 3,
+            },
+        ]
+        client.deploy_apps(ServeDeploySchema.parse_obj(config))
+
+        assert (
+            client.get_serve_status("app1").app_status.deployment_timestamp
+            > first_deploy_time_app1
+            and client.get_serve_status("app2").app_status.deployment_timestamp
+            > first_deploy_time_app2
+        )
+        assert {
+            client.get_serve_status("app1").app_status.status,
+            client.get_serve_status("app2").app_status.status,
+        } <= {
             ApplicationStatus.DEPLOYING,
             ApplicationStatus.RUNNING,
         }
@@ -534,6 +755,52 @@ class TestDeployApp:
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "4 pizzas please!"
+        )
+
+    def test_deploy_multi_app_overwrite_apps(self, client: ServeControllerClient):
+        """Check that overwriting multiple applications works as expected."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = ServeDeploySchema.parse_obj(
+            {
+                "host": "127.0.0.1",
+                "port": 8000,
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": world_import_path,
+                    },
+                    {
+                        "name": "app2",
+                        "route_prefix": "/app2",
+                        "import_path": pizza_import_path,
+                    },
+                ],
+            }
+        )
+        client.deploy_apps(test_config)
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Switch the two application import paths
+        test_config.applications[0].import_path = pizza_import_path
+        test_config.applications[1].import_path = world_import_path
+        client.deploy_apps(test_config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
         )
 
     def test_deploy_app_runtime_env(self, client: ServeControllerClient):

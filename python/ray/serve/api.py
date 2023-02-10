@@ -495,9 +495,6 @@ def run(
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
-        if name:
-            for deployment in deployments:
-                deployment._name = f"{name}_{deployment._name}"
         ingress = target.ingress
     # Each DAG should always provide a valid Driver ClassNode
     elif isinstance(target, ClassNode):
@@ -564,7 +561,7 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: Union[ClassNode, FunctionNode]) -> Application:
+def build(target: Union[ClassNode, FunctionNode], name: str) -> Application:
     """Builds a Serve application into a static application.
 
     Takes in a ClassNode or FunctionNode and converts it to a
@@ -595,7 +592,7 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return Application(pipeline_build(target))
+    return Application(pipeline_build(target, name))
 
 
 @PublicAPI(stability="alpha")

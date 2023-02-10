@@ -243,6 +243,8 @@ class DeploymentSchema(
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
+        # TODO(cindy): eventually we should set the default app name to a non-empty
+        # string and forbid empty app names.
         default="",
         description=(
             "Application name, the name should be unique within the serve instance"
@@ -442,6 +444,38 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         """
 
         return {"applications": []}
+
+
+@DeveloperAPI
+def prepend_app_name_to_deployment_names(
+    app_schema: ServeApplicationSchema,
+) -> ServeApplicationSchema:
+    config_dict = app_schema.dict(exclude_unset=True)
+
+    if len(app_schema.deployments) > 0 and not app_schema.name == "":
+        for idx, deployment in enumerate(config_dict["deployments"]):
+            deployment["name"] = app_schema.name + "_" + deployment["name"]
+            config_dict["deployments"][idx] = deployment
+
+    return ServeApplicationSchema.parse_obj(config_dict)
+
+
+def remove_app_name_from_deployment_names(
+    app_schema: ServeApplicationSchema,
+) -> ServeApplicationSchema:
+    config_dict = app_schema.dict(exclude_unset=True)
+
+    if len(app_schema.deployments) > 0 and not app_schema.name == "":
+        for idx, deployment in enumerate(config_dict["deployments"]):
+            prefix = app_schema.name + "_"
+            # This method should not be called on any config other than one
+            # processed internally & returned by prepend_app_name_to_deployment_names
+            assert deployment["name"].startswith(prefix)
+
+            deployment["name"] = deployment["name"][len(prefix) :]
+            config_dict["deployments"][idx] = deployment
+
+    return ServeApplicationSchema.parse_obj(config_dict)
 
 
 @DeveloperAPI
