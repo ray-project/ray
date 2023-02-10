@@ -39,7 +39,7 @@ def train_loop_per_worker():
 
     for epoch in range(num_epochs):
         for batches in dataset_shard.iter_torch_batches(
-            batch_size=32, dtypes=torch.float, device=train.torch.get_device()
+            batch_size=32, dtypes=torch.float
         ):
             inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
             output = model(inputs)
