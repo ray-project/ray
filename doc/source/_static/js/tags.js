@@ -5,29 +5,44 @@ window.addEventListener('load', () => {
 
     $("div.tag").css("margin-bottom", "10px");
 
+    const pageUrl = window.location.href
+    const res = pageUrl.split("/");
+
+    let jsonUrl;
+    // In production, the JSON file is relative to /en/version/ of the root.
+    if (res[2] === "docs.ray.io") {
+        jsonUrl = "https://docs.ray.io/en/" +  res[4] + "/_static/tag-mapping.json";
+    } else {
+        jsonUrl = "/_static/tag-mapping.json";
+    }
+
     // Fetch the mapping of panel IDs to their respective tags from a static
     // JSON file.
-    fetch('/_static/tag-mapping.json')
+    fetch(jsonUrl)
       .then(response => response.json())
       .then(panelTagMap => {
 
           for (const panelId in panelTagMap) {
-              let element = document.getElementsByClassName(panelId)[0];
+              try { // panel might not be in _this_ gallery
+                  let element = document.getElementsByClassName(panelId)[0];
 
-              // For each panel, attach data tags to the 4-th parent of the panel,
-              // which is the "div" element that we can later toggle.
-              // Sphinx Panels is too inflexible to allow us to attach data tags
-              // directly to the container.
-              for (let i = 0; i < 4; i++) {
-                  if (element.parentNode) {
-                      element = element.parentElement;
-                      element.setAttribute('data-tags', panelTagMap[panelId]);
-                  }
-                  else {
-                      console.log(panelId + ' has no parent element,' +
-                          'please check if the panel has been tagged correctly.');
+                  // For each panel, attach data tags to the 4-th parent of the panel,
+                  // which is the "div" element that we can later toggle.
+                  // Sphinx Panels is too inflexible to allow us to attach data tags
+                  // directly to the container.
+                  for (let i = 0; i < 4; i++) {
+                      if (element.parentNode) {
+                          element = element.parentElement;
+                          element.setAttribute('data-tags', panelTagMap[panelId]);
+                      }
+                      else {
+                          console.log(panelId + ' has no parent element,' +
+                              'please check if the panel has been tagged correctly.');
+                      }
                   }
               }
+              // simply skip panels not in this gallery
+              catch(err) {}
           }
 
           const allButton = document.getElementById('allButton')

@@ -41,12 +41,11 @@ class StatsmodelPredictor(Predictor):
         cls,
         checkpoint: Checkpoint,
         filename: str,
-        preprocessor: Optional[Preprocessor] = None,
     ) -> Predictor:
         with checkpoint.as_directory() as directory:
             path = os.path.join(directory, filename)
             results = OLSResults.load(path)
-        return cls(results, preprocessor)
+        return cls(results, checkpoint.get_preprocessor())
 # __statsmodelpredictor_from_checkpoint_end__
 
 

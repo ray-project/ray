@@ -8,6 +8,7 @@ from ray import tune, logger
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.tune import _check_mixin
 
 
 @pytest.fixture
@@ -377,6 +378,24 @@ def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
 
     # Actors may be re-used in a different order as the staged_trials set is unsorted
     assert sorted([t.last_result["num_resets"] for t in trials]) == [0, 0, 0, 1, 1, 1]
+
+
+def test_detect_reuse_mixins():
+    from ray.tune.integration.mlflow import mlflow_mixin
+
+    assert not _check_mixin("PPO")
+
+    def train(config):
+        pass
+
+    assert not _check_mixin(train)
+    assert _check_mixin(mlflow_mixin(train))
+
+    class MyTrainable(Trainable):
+        pass
+
+    assert not _check_mixin(MyTrainable)
+    assert _check_mixin(mlflow_mixin(MyTrainable))
 
 
 if __name__ == "__main__":

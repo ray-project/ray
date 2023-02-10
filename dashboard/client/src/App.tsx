@@ -4,10 +4,12 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import ActorDetailPage from "./pages/actor/ActorDetail";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import JobList, { NewIAJobsPage } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
+import { JobDetailActorsPage } from "./pages/job/JobDetailActorPage";
 import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
 import { JobDetailLayout } from "./pages/job/JobDetailLayout";
 import { DEFAULT_VALUE, MainNavContext } from "./pages/layout/mainNavContext";
@@ -17,6 +19,8 @@ import { NewIALogsPage } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { NewIAClusterPage } from "./pages/node";
+import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
+import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
 import { getNodeList } from "./service/node";
@@ -50,6 +54,14 @@ type GlobalContextType = {
    */
   grafanaHost: string | undefined;
   /**
+   * The uid of the default dashboard that powers the Metrics page.
+   */
+  grafanaDefaultDashboardUid: string | undefined;
+  /**
+   * Whether prometheus is runing or not
+   */
+  prometheusHealth: boolean | undefined;
+  /**
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
@@ -60,6 +72,8 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   ipLogMap: {},
   namespaceMap: {},
   grafanaHost: undefined,
+  grafanaDefaultDashboardUid: undefined,
+  prometheusHealth: undefined,
   sessionName: undefined,
 });
 
@@ -76,6 +90,8 @@ const App = () => {
     ipLogMap: {},
     namespaceMap: {},
     grafanaHost: undefined,
+    grafanaDefaultDashboardUid: undefined,
+    prometheusHealth: undefined,
     sessionName: undefined,
   });
   const getTheme = (name: string) => {
@@ -116,11 +132,18 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const { grafanaHost, sessionName } = await getMetricsInfo();
+      const {
+        grafanaHost,
+        sessionName,
+        prometheusHealth,
+        grafanaDefaultDashboardUid,
+      } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         grafanaHost,
+        grafanaDefaultDashboardUid,
         sessionName,
+        prometheusHealth,
       }));
     };
     doEffect();
@@ -135,7 +158,7 @@ const App = () => {
             {/* Dummy MainNavContext so we can re-use existing pages in new layout */}
             <MainNavContext.Provider value={DEFAULT_VALUE}>
               <Routes>
-                <Route element={<Navigate replace to="/node" />} path="/" />
+                <Route element={<Navigate replace to="/new" />} path="/" />
                 <Route
                   element={<BasicLayout setTheme={setTheme} theme={theme} />}
                 >
@@ -161,6 +184,7 @@ const App = () => {
                   />
                   <Route element={<NodeDetail />} path="/node/:id" />
                   <Route element={<JobDetailChartsPage />} path="/job/:id" />
+                  <Route element={<ActorDetailPage />} path="/actors/:id" />
                   <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
                   <Route element={<Loading />} path="/loading" />
                 </Route>
@@ -169,8 +193,28 @@ const App = () => {
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
                   <Route element={<NewIAClusterPage />} path="cluster">
-                    <Route element={<Nodes newIA />} path="" />
-                    <Route element={<NodeDetailPage />} path="nodes/:id" />
+                    <Route element={<ClusterLayout />} path="">
+                      <Route
+                        element={
+                          <SideTabPage tabId="info">
+                            <ClusterDetailInfoPage />
+                          </SideTabPage>
+                        }
+                        path="info"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="table">
+                            <Nodes newIA />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                      <Route
+                        element={<NodeDetailPage newIA />}
+                        path="nodes/:id"
+                      />
+                    </Route>
                   </Route>
                   <Route element={<NewIAJobsPage />} path="jobs">
                     <Route element={<JobList newIA />} path="" />
@@ -186,13 +230,25 @@ const App = () => {
                       <Route
                         element={
                           <SideTabPage tabId="charts">
-                            <JobDetailChartsPage />
+                            <JobDetailChartsPage newIA />
                           </SideTabPage>
                         }
                         path=""
                       />
+                      <Route
+                        element={
+                          <SideTabPage tabId="actors">
+                            <JobDetailActorsPage />
+                          </SideTabPage>
+                        }
+                        path="actors"
+                      />
+                      <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
                   </Route>
+                  <Route element={<Actors newIA />} path="actors" />
+                  <Route element={<ActorDetailPage />} path="actors/:id" />
+                  <Route element={<Metrics newIA />} path="metrics" />
                   <Route element={<NewIALogsPage />} path="logs">
                     {/* TODO(aguo): Refactor Logs component to use optional query
                         params since react-router 6 doesn't support optional path params... */}

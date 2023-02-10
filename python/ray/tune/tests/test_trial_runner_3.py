@@ -19,10 +19,13 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
+from ray.tune.search.sample import sample_from
+from ray.tune.search.variant_generator import grid_search
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -32,6 +35,7 @@ from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
+from ray.tune.tests.test_callbacks import StatefulCallback
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -75,7 +79,7 @@ class TrialRunnerTest3(unittest.TestCase):
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
-        def on_step_end(self):
+        def on_step_end(self, search_ended: bool = False):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             self.post_step = 1 + cnt
 
@@ -401,6 +405,92 @@ class TrialRunnerTest3(unittest.TestCase):
         evaluated = [t.evaluated_params["test_variable"] for t in runner2.get_trials()]
         count = Counter(evaluated)
         assert all(v <= 3 for v in count.values())
+
+    def testCallbackSaveRestore(self):
+        """Check that experiment state save + restore handles stateful callbacks."""
+        ray.init(num_cpus=2)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            callbacks=[StatefulCallback()],
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+        runner.add_trial(Trial("__fake", stub=True))
+        for i in range(3):
+            runner._callbacks.on_trial_result(
+                iteration=i, trials=None, trial=None, result=None
+            )
+        runner.checkpoint(force=True)
+        callback = StatefulCallback()
+        runner2 = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            callbacks=[callback],
+        )
+        assert callback.counter == 0
+        runner2.resume()
+        assert callback.counter == 3
+
+    def testSearcherCorrectReferencesAfterRestore(self):
+        class FakeDataset:
+            def __init__(self, name):
+                self.name = name
+
+        ray.init(num_cpus=8)
+
+        config = {
+            "param1": {
+                "param2": grid_search(
+                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+                ),
+            },
+            "param4": sample_from(lambda: 1),
+            "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
+        }
+        resolvers = create_resolvers_map()
+        config = inject_placeholders(config, resolvers)
+
+        def create_searcher():
+            search_alg = BasicVariantGenerator()
+            experiment_spec = {
+                "run": "__fake",
+                "stop": {"training_iteration": 2},
+                "config": config,
+            }
+            experiments = [Experiment.from_json("test", experiment_spec)]
+            search_alg.add_configurations(experiments)
+            return search_alg
+
+        searcher = create_searcher()
+
+        restored_config = {
+            "param1": {
+                "param2": grid_search(
+                    [FakeDataset("4"), FakeDataset("5"), FakeDataset("6")]
+                ),
+            },
+            "param4": sample_from(lambda: 8),
+            "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
+        }
+        replaced_resolvers = create_resolvers_map()
+        restored_config = inject_placeholders(restored_config, replaced_resolvers)
+
+        runner = TrialRunner(
+            search_alg=searcher,
+            # Use the new ref map to construct the TrailRunner.
+            placeholder_resolvers=replaced_resolvers,
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=-1,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+
+        for _ in range(3):
+            runner.step()
+
+        assert len(runner.get_trials()) == 3, [t.config for t in runner.get_trials()]
+        for t in runner.get_trials():
+            # Make sure that all the trials carry updated config values.
+            assert t.config["param1"]["param2"].name in ["4", "5", "6"]
+            assert t.config["param4"] == 8
+            assert t.config["param5"].name in ["4", "5", "6"]
 
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
@@ -905,7 +995,6 @@ class TrialRunnerTest3(unittest.TestCase):
             sync_config=SyncConfig(
                 upload_dir="fake", syncer=CustomSyncer(), sync_period=0
             ),
-            remote_checkpoint_dir="fake",
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -951,7 +1040,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -1019,7 +1107,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1047,7 +1134,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
         )
 
         with freeze_time() as frozen:

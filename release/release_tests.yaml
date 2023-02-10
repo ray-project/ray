@@ -327,6 +327,8 @@
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
     type: job
 
+    wait_for_nodes:
+        num_nodes: 4
 
   alert: default
 
@@ -722,7 +724,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_elastic
   group: XGBoost
@@ -749,7 +751,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_non_elastic
   group: XGBoost
@@ -776,7 +778,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_tune_small
   group: XGBoost
@@ -1785,7 +1787,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1815,7 +1817,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -2060,7 +2062,7 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: serve_failure
@@ -2663,7 +2665,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2686,7 +2688,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2708,7 +2710,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2732,7 +2734,7 @@
 #    test_suite: rllib_tests
 
 #  frequency: nightly
-#  team: rl
+#  team: rllib
 #  env: staging
 
 #  cluster:
@@ -2755,8 +2757,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2779,7 +2784,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2801,7 +2806,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2822,8 +2827,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2845,7 +2853,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2867,7 +2875,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2889,8 +2897,11 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   cluster:
     cluster_env: app_config.yaml
@@ -2910,8 +2921,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2933,7 +2947,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2956,7 +2970,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2979,7 +2993,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3001,8 +3015,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3025,7 +3042,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3048,7 +3065,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3071,7 +3088,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3094,7 +3111,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3116,8 +3133,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3139,8 +3159,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3163,7 +3186,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3172,7 +3195,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
 
 
   alert: default
@@ -3185,8 +3208,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3195,7 +3221,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
 
 
   alert: default
@@ -3209,7 +3235,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3232,7 +3258,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3254,7 +3280,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3276,8 +3302,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3300,7 +3329,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3323,7 +3352,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3346,7 +3375,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3368,7 +3397,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3391,7 +3420,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3414,7 +3443,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3481,27 +3510,6 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
     type: sdk_command
-
-- name: shuffle_1tb_5000_partitions
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_1tb_5000_partitions
-    test_suite: nightly_tests
-
-  frequency: nightly-3x
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
-
-  run:
-    timeout: 9000
-    script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
-    wait_for_nodes:
-      num_nodes: 20
-
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
@@ -3718,7 +3726,7 @@
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 14400
     wait_for_nodes:
       num_nodes: 101
 
@@ -3848,6 +3856,22 @@
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
 
+- name: tune_air_oom
+  group: core-daily-test
+  working_dir: air_tests
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
+    cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
+
+  run:
+    timeout: 3600
+    script: bash oom/tune_air_oom.sh
+
+
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
   working_dir: nightly_tests
@@ -3870,26 +3894,50 @@
       num_nodes: 32
 
 
-- name: many_nodes_actor_test
+- name: many_nodes_actor_test_on_v2
   group: core-daily-test
-  working_dir: nightly_tests
+  working_dir: benchmarks
   legacy:
     test_name: many_nodes_actor_test
-    test_suite: nightly_tests
+    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
+  env: staging
   cluster:
-    cluster_env: many_nodes_tests/app_config.yaml
-    cluster_compute: many_nodes_tests/compute_config.yaml
+    cluster_env: distributed/many_nodes_tests/app_config.yaml
+    cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
-    timeout: 7200
-    script: python many_nodes_tests/actor_test.py
+    timeout: 3600
+    # 2cpus per node x 1000 nodes / 0.2 cpus per actor = 10k
+    # 2cpus per node x 2000 nodes / 0.2 cpus per actor = 20k
+    script: python distributed/many_nodes_tests/actor_test.py --no-wait --cpus-per-actor=0.2 --total-actors 10000 20000
+    type: job
     wait_for_nodes:
-      num_nodes: 251
+      num_nodes: 500
 
-
+#- name: many_nodes_multi_master_test
+#  group: core-daily-test
+#  working_dir: nightly_tests
+#  legacy:
+#    test_name: many_nodes_multi_master_test
+#    test_suite: nightly_tests
+#
+#  frequency: nightly-3x
+#  team: core
+#  cluster:
+#    cluster_env: many_nodes_tests/app_config.yaml
+#    cluster_compute: many_nodes_tests/compute_config.yaml
+#
+#  run:
+#    timeout: 7200
+#    script: python many_nodes_tests/multi_master_test.py
+#    wait_for_nodes:
+#      num_nodes: 251
+#
+#    type: sdk_command
+#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
@@ -4181,7 +4229,7 @@
 ###############
 
 - name: inference
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: inference
@@ -4201,7 +4249,7 @@
 
 
 - name: shuffle_data_loader
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: shuffle_data_loader
@@ -4218,7 +4266,7 @@
     script: python dataset_shuffle_data_loader.py
 
 - name: parquet_metadata_resolution
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: parquet_metadata_resolution
@@ -4227,18 +4275,17 @@
   frequency: nightly
   team: data
   cluster:
-    cluster_env: pipelined_training_app.yaml
-    cluster_compute: pipelined_training_compute.yaml
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    timeout: 1200
+    # Expect the test to finish around 40 seconds.
+    timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
-    wait_for_nodes:
-      num_nodes: 15
 
 
 - name: dataset_random_access
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   stable: false
 
@@ -4256,7 +4303,7 @@
 
 
 - name: pipelined_data_ingest_benchmark
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4273,7 +4320,7 @@
 
 
 - name: aggregate_benchmark
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4288,7 +4335,7 @@
 
 
 - name: read_parquet_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4303,10 +4350,9 @@
     script: python read_parquet_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: read_images_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4321,7 +4367,7 @@
 
 
 - name: read_tfrecords_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4338,7 +4384,7 @@
     type: sdk_command
 
 - name: map_batches_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4354,8 +4400,25 @@
 
     type: sdk_command
 
+- name: iter_tensor_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py
+
+    type: sdk_command
+
 - name: iter_batches_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4372,7 +4435,7 @@
     type: sdk_command
 
 - name: pipelined_training_50_gb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_training_50_gb
@@ -4392,7 +4455,7 @@
 
 
 - name: pipelined_ingestion_1500_gb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_ingestion_1500_gb
@@ -4413,47 +4476,8 @@
       num_nodes: 21
 
 
-- name: datasets_preprocess_ingest
-  group: core-dataset-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_preprocess_ingest
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: ray_sgd_training_compute_no_gpu.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
-      --large-dataset --debug
-
-    wait_for_nodes:
-      num_nodes: 17
-
-
-- name: datasets_ingest_400G
-  group: core-dataset-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_ingest_400G
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: dataset_ingest_400G_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
-
 - name: dataset_shuffle_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_random_shuffle_1tb
@@ -4472,7 +4496,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_sort_1tb
@@ -4491,7 +4515,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_1tb
@@ -4510,7 +4534,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_push_based_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_sort_1tb
@@ -4529,7 +4553,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
@@ -4594,14 +4618,14 @@
 
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_no_spilling
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
@@ -4616,14 +4640,14 @@
 
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_spilling
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -4638,14 +4662,14 @@
 
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_pipelined_ingestion_1500_gb_15_windows
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
@@ -4660,7 +4684,7 @@
 
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
@@ -4669,7 +4693,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4682,14 +4706,14 @@
       num_nodes: 20
 
 - name: chaos_dataset_shuffle_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_sort_1tb
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4702,7 +4726,7 @@
       num_nodes: 20
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_random_shuffle_1tb
@@ -4711,7 +4735,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
@@ -4725,7 +4749,7 @@
       num_nodes: 20
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
@@ -4734,7 +4758,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml

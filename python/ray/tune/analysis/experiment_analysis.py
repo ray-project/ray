@@ -30,10 +30,7 @@ from ray.tune.result import (
     TRAINING_ITERATION,
 )
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import (
-    _find_newest_experiment_checkpoint,
-    _load_trial_from_checkpoint,
-)
+from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -143,13 +140,10 @@ class ExperimentAnalysis:
 
             if "checkpoints" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
+
             self._checkpoints_and_paths += [
-                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
-                for cp in experiment_state["checkpoints"]
+                (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
             ]
-            self._checkpoints_and_paths = sorted(
-                self._checkpoints_and_paths, key=lambda tup: tup[0]["trial_id"]
-            )
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
         # Case 1: Dir specified, find latest checkpoint.
@@ -798,12 +792,10 @@ class ExperimentAnalysis:
                 "out of sync, as checkpointing is periodic."
             )
             self.trials = []
-            _trial_paths = []
-            for checkpoint, path in self._checkpoints_and_paths:
+            for trial_json_state, path in self._checkpoints_and_paths:
                 try:
-                    trial = _load_trial_from_checkpoint(
-                        checkpoint, stub=True, new_local_dir=str(path)
-                    )
+                    trial = Trial.from_json_state(trial_json_state, stub=True)
+                    trial.local_dir = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
@@ -814,7 +806,9 @@ class ExperimentAnalysis:
                     )
                     continue
                 self.trials.append(trial)
-                _trial_paths.append(str(trial.logdir))
+
+            self.trials.sort(key=lambda trial: trial.trial_id)
+            _trial_paths = [str(trial.logdir) for trial in self.trials]
 
         if not _trial_paths:
             raise TuneError("No trials found.")
@@ -882,7 +876,3 @@ class ExperimentAnalysis:
 
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
-
-
-def _decode_checkpoint_from_experiment_state(cp: Union[str, dict]) -> dict:
-    return json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp

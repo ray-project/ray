@@ -119,6 +119,7 @@ class TaskSpecBuilder {
       const Language &language,
       const ray::FunctionDescriptor &function_descriptor,
       const JobID &job_id,
+      std::optional<rpc::JobConfig> job_config,
       const TaskID &parent_task_id,
       uint64_t parent_counter,
       const TaskID &caller_id,
@@ -129,6 +130,7 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
       int64_t depth,
+      const TaskID &submitter_task_id,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -136,8 +138,12 @@ class TaskSpecBuilder {
     message_->set_language(language);
     *message_->mutable_function_descriptor() = function_descriptor->GetMessage();
     message_->set_job_id(job_id.Binary());
+    if (job_config.has_value()) {
+      message_->mutable_job_config()->CopyFrom(job_config.value());
+    }
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
+    message_->set_submitter_task_id(submitter_task_id.Binary());
     message_->set_parent_counter(parent_counter);
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
@@ -178,12 +184,14 @@ class TaskSpecBuilder {
                                      const JobID &job_id,
                                      const TaskID &parent_task_id,
                                      const TaskID &caller_id,
-                                     const rpc::Address &caller_address) {
+                                     const rpc::Address &caller_address,
+                                     const TaskID &submitter_task_id) {
     message_->set_type(TaskType::DRIVER_TASK);
     message_->set_language(language);
     message_->set_job_id(job_id.Binary());
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
+    message_->set_submitter_task_id(submitter_task_id.Binary());
     message_->set_parent_counter(0);
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
@@ -253,15 +261,12 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
                                     const ObjectID &actor_creation_dummy_object_id,
-                                    const ObjectID &previous_actor_task_dummy_object_id,
                                     uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
-    actor_spec->set_previous_actor_task_dummy_object_id(
-        previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
     return *this;
   }

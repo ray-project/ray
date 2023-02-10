@@ -18,6 +18,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -29,7 +30,8 @@ class GcsTaskManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "task_events_max_num_task_in_gcs": 1000
+  "task_events_max_num_task_in_gcs": 1000,
+  "gcs_mark_task_failed_on_job_done_delay_ms": 100
 }
   )");
   }
@@ -60,18 +62,38 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
   }
 
+  void SyncAddTaskEvent(
+      const std::vector<TaskID> &tasks,
+      const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
+      const TaskID &parent_task_id = TaskID::Nil(),
+      int job_id = 0) {
+    auto events = GenTaskEvents(tasks,
+                                /* attempt_number */ 0,
+                                /* job_id */ job_id,
+                                /* profile event */ absl::nullopt,
+                                GenStateUpdate(status_timestamps),
+                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
   rpc::AddTaskEventDataReply SyncAddTaskEventData(const rpc::TaskEventData &events_data) {
     rpc::AddTaskEventDataRequest request;
     rpc::AddTaskEventDataReply reply;
     std::promise<bool> promise;
 
     request.mutable_data()->CopyFrom(events_data);
-    task_manager->HandleAddTaskEventData(
-        request,
-        &reply,
-        [&promise](Status, std::function<void()>, std::function<void()>) {
-          promise.set_value(true);
-        });
+    // Dispatch so that it runs in GcsTaskManager's io service.
+    task_manager->GetIoContext().dispatch(
+        [this, &promise, &request, &reply]() {
+          task_manager->HandleAddTaskEventData(
+              request,
+              &reply,
+              [&promise](Status, std::function<void()>, std::function<void()>) {
+                promise.set_value(true);
+              });
+        },
+        "SyncAddTaskEventData");
 
     promise.get_future().get();
 
@@ -82,7 +104,8 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
                                             absl::optional<JobID> job_id = absl::nullopt,
-                                            int64_t limit = -1) {
+                                            int64_t limit = -1,
+                                            bool exclude_driver = true) {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
@@ -101,12 +124,17 @@ class GcsTaskManagerTest : public ::testing::Test {
       request.set_limit(limit);
     }
 
-    task_manager->HandleGetTaskEvents(
-        request,
-        &reply,
-        [&promise](Status, std::function<void()>, std::function<void()>) {
-          promise.set_value(true);
-        });
+    request.set_exclude_driver(exclude_driver);
+    task_manager->GetIoContext().dispatch(
+        [this, &promise, &request, &reply]() {
+          task_manager->HandleGetTaskEvents(
+              request,
+              &reply,
+              [&promise](Status, std::function<void()>, std::function<void()>) {
+                promise.set_value(true);
+              });
+        },
+        "SyncGetTaskEvents");
 
     promise.get_future().get();
 
@@ -114,16 +142,28 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
-  static rpc::TaskInfoEntry GenTaskInfo(JobID job_id) {
+  static rpc::TaskInfoEntry GenTaskInfo(
+      JobID job_id,
+      TaskID parent_task_id = TaskID::Nil(),
+      rpc::TaskType task_type = rpc::TaskType::NORMAL_TASK) {
     rpc::TaskInfoEntry task_info;
     task_info.set_job_id(job_id.Binary());
+    task_info.set_parent_task_id(parent_task_id.Binary());
+    task_info.set_type(task_type);
     return task_info;
   }
 
+  static rpc::TaskStateUpdate GenStateUpdate(
+      std::vector<std::pair<rpc::TaskStatus, int64_t>> status_timestamps) {
+    rpc::TaskStateUpdate state_update;
+    for (auto status_ts : status_timestamps) {
+      FillTaskStatusUpdateTime(status_ts.first, status_ts.second, &state_update);
+    }
+    return state_update;
+  }
+
   static rpc::TaskStateUpdate GenStateUpdate() {
-    rpc::TaskStateUpdate status_update;
-    status_update.set_running_ts(1);
-    return status_update;
+    return GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}});
   }
 
   static rpc::ProfileEvents GenProfileEvents(const std::string &name,
@@ -162,6 +202,8 @@ class GcsTaskManagerTest : public ::testing::Test {
 
       if (task_info.has_value()) {
         events.mutable_task_info()->CopyFrom(*task_info);
+      } else {
+        events.mutable_task_info()->CopyFrom(GenTaskInfo(JobID::FromInt(job_id)));
       }
 
       result.push_back(events);
@@ -214,12 +256,11 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
 
   // Assert on actual data.
   {
-    absl::MutexLock lock(&task_manager->mutex_);
     EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_task_events);
-    EXPECT_EQ(task_manager->total_num_task_events_reported_, num_task_events);
-    EXPECT_EQ(task_manager->total_num_profile_task_events_dropped_,
+    EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_task_events);
+    EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_dropped);
-    EXPECT_EQ(task_manager->total_num_status_task_events_dropped_,
+    EXPECT_EQ(task_manager->GetTotalNumStatusTaskEventsDropped(),
               num_status_events_dropped);
   }
 }
@@ -240,7 +281,6 @@ TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
 
   // Assert on actual data
   {
-    absl::MutexLock lock(&task_manager->mutex_);
     EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), 1);
     // Assert on events
     auto task_events = task_manager->task_event_storage_->task_events_[0];
@@ -431,6 +471,222 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
                      reply_job2.mutable_events_by_task());
 }
 
+TEST_F(GcsTaskManagerTest, TestFailingParentFailChildren) {
+  // This tests that a failed parent task should automatically fail its children tasks.
+  auto task_ids = GenTaskIDs(3);
+  auto parent = task_ids[0];
+  auto child1 = task_ids[1];
+  auto child2 = task_ids[2];
+
+  // Parent task running
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
+
+  // Child tasks running
+  SyncAddTaskEvent({child1, child2}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
+
+  // Parent task failed
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::FAILED, 3}});
+
+  // Get all children task events should be failed
+  {
+    auto reply = SyncGetTaskEvents({child1, child2});
+    EXPECT_EQ(reply.events_by_task_size(), 2);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
+    }
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildren) {
+  // Test that a new task event from child should fail the grand children if it finds out
+  // a failed parent.
+  auto task_ids = GenTaskIDs(4);
+  auto parent = task_ids[0];
+  auto child = task_ids[1];
+  auto grand_child1 = task_ids[2];
+  auto grand_child2 = task_ids[3];
+
+  // Parent task running
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
+
+  // Grandchild tasks running
+  SyncAddTaskEvent({grand_child1, grand_child2}, {{rpc::TaskStatus::RUNNING, 3}}, child);
+
+  // Parent task failed
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::FAILED, 4}});
+
+  // Get grand child should still be running since the parent-grand-child relationship is
+  // not recorded yet.
+  {
+    auto reply = SyncGetTaskEvents({grand_child1, grand_child2});
+    EXPECT_EQ(reply.events_by_task_size(), 2);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+    }
+  }
+
+  // Child task reported running.
+  SyncAddTaskEvent({child}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
+
+  // Both child and grand-child should report failure since their ancestor fail.
+  // i.e. Child task should mark grandchildren failed.
+  {
+    auto reply = SyncGetTaskEvents({grand_child1, grand_child2, child});
+    EXPECT_EQ(reply.events_by_task_size(), 3);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 4);
+    }
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
+  auto tasks_running_job1 = GenTaskIDs(10);
+  auto tasks_finished_job1 = GenTaskIDs(10);
+  auto tasks_failed_job1 = GenTaskIDs(10);
+
+  auto tasks_running_job2 = GenTaskIDs(5);
+
+  SyncAddTaskEvent(tasks_running_job1, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 1);
+  SyncAddTaskEvent(
+      tasks_finished_job1, {{rpc::TaskStatus::FINISHED, 2}}, TaskID::Nil(), 1);
+  SyncAddTaskEvent(tasks_failed_job1, {{rpc::TaskStatus::FAILED, 3}}, TaskID::Nil(), 1);
+
+  SyncAddTaskEvent(tasks_running_job2, {{rpc::TaskStatus::RUNNING, 4}}, TaskID::Nil(), 2);
+
+  task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
+
+  // Wait for longer than the default timer
+  boost::asio::io_service io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  timer.wait();
+
+  // Running tasks from job1 failed at 5
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_running_job1.begin(),
+                                      tasks_running_job1.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), /* 5 ms to ns */ 5 * 1000 * 1000);
+    }
+  }
+
+  // Finished tasks from job1 remain finished
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_finished_job1.begin(),
+                                      tasks_finished_job1.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().finished_ts(), 2);
+      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+    }
+  }
+
+  // Failed tasks from job1 failed timestamp not overriden
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_failed_job1.begin(), tasks_failed_job1.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
+    }
+  }
+
+  // Tasks from job2 should not be affected.
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_running_job2.begin(),
+                                      tasks_running_job2.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 5);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+      EXPECT_FALSE(task_event.state_updates().has_finished_ts());
+    }
+  }
+}
+
+TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
+  size_t num_limit = 100;  // synced with test config
+  size_t num_total = 1000;
+
+  std::vector<TaskID> task_ids = GenTaskIDs(200);
+  std::vector<int64_t> attempt_numbers{0, 1, 2, 3, 4};
+  std::vector<int> job_ids{1, 2, 3};
+
+  // 10 random parent task ids
+  std::vector<TaskID> parent_task_ids = GenTaskIDs(10);
+  // 50 task ids from the task ids to form chain.
+  parent_task_ids.insert(parent_task_ids.end(), task_ids.begin(), task_ids.begin() + 50);
+
+  // Helper data structures to keep track of child->parent to ensure no cycle.
+  absl::flat_hash_map<TaskID, TaskID> child_to_parent;
+
+  // Add task attempts from different jobs, different task id, with different parent task
+  // id
+  for (size_t i = 0; i < num_total; i++) {
+    auto task_id = task_ids[i % task_ids.size()];
+    auto parent_task_id = parent_task_ids[i % parent_task_ids.size()];
+    if (child_to_parent[parent_task_id] == task_id) {
+      // Just use another random one.
+      parent_task_id = GenTaskIDs(1)[0];
+    }
+
+    child_to_parent[task_id] = parent_task_id;
+    auto job_id = job_ids[i % job_ids.size()];
+    auto attempt_number = attempt_numbers[i % attempt_numbers.size()];
+    auto events = GenTaskEvents({task_id},
+                                /* attempt_number */ attempt_number,
+                                job_id,
+                                GenProfileEvents("event", 1, 1),
+                                GenStateUpdate(),
+                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
+  {
+    EXPECT_EQ(task_manager->task_event_storage_->stats_counter_.Get(kTotalNumNormalTask),
+              task_ids.size());
+  }
+
+  // Evict all of them with tasks with single attempt, no parent, same job.
+  {
+    auto task_ids = GenTaskIDs(num_limit);
+    auto parent_task_id = TaskID::Nil();
+    auto job_id = 0;
+    auto attempt_number = 0;
+    for (size_t i = 0; i < num_limit; i++) {
+      auto events = GenTaskEvents({task_ids[i]},
+                                  /* attempt_number */ attempt_number,
+                                  job_id,
+                                  GenProfileEvents("event", 1, 1),
+                                  GenStateUpdate(),
+                                  GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+      auto events_data = Mocker::GenTaskEventsData(events);
+      SyncAddTaskEventData(events_data);
+    }
+  }
+  // Assert on the indexes and the storage
+  {
+    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->stats_counter_.Get(kTotalNumNormalTask),
+              task_ids.size() + num_limit);
+    // No task has parent.
+    EXPECT_EQ(task_manager->task_event_storage_->parent_to_children_task_index_.size(),
+              0);
+
+    // Only in memory entries.
+    EXPECT_EQ(task_manager->task_event_storage_->task_to_task_attempt_index_.size(),
+              num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->job_to_task_attempt_index_.size(), 1);
+    EXPECT_EQ(task_manager->task_event_storage_->task_attempt_index_.size(), num_limit);
+  }
+}
+
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
   size_t num_limit = 100;  // synced with test config
 
@@ -475,9 +731,8 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
 
   // Assert on actual data.
   {
-    absl::MutexLock lock(&task_manager->mutex_);
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
-    EXPECT_EQ(task_manager->total_num_task_events_reported_, num_batch1 + num_batch2);
+    EXPECT_EQ(task_manager->GetNumTaskEventsStored(), num_limit);
+    EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_batch1 + num_batch2);
 
     std::sort(expected_events.begin(), expected_events.end(), SortByTaskAttempt);
     auto actual_events = task_manager->task_event_storage_->task_events_;
@@ -489,10 +744,87 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     }
 
     // Assert on drop counts.
-    EXPECT_EQ(task_manager->total_num_status_task_events_dropped_,
+    EXPECT_EQ(task_manager->GetTotalNumStatusTaskEventsDropped(),
               num_status_events_to_drop + num_status_events_dropped_on_worker);
-    EXPECT_EQ(task_manager->total_num_profile_task_events_dropped_,
+    EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_to_drop + num_profile_events_dropped_on_worker);
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithDriver) {
+  // Add task events
+  auto task_ids = GenTaskIDs(1);
+  auto driver_task = task_ids[0];
+
+  // Add Driver
+  {
+    auto events = GenTaskEvents(
+        {driver_task},
+        /* attempt_number */ 0,
+        /* job_id */ 0,
+        /* profile event */ absl::nullopt,
+        /* status_update*/ absl::nullopt,
+        GenTaskInfo(
+            /* job_id */ JobID::FromInt(0), TaskID::Nil(), rpc::TaskType::DRIVER_TASK));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
+  // Should get the event when including driver
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {},
+                                   /* job_id */ absl::nullopt,
+                                   /* limit */ -1,
+                                   /* exclude_driver*/ false);
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+  }
+
+  // Default exclude driver
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {},
+                                   /* job_id */ absl::nullopt,
+                                   /* limit */ -1);
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+  }
+}
+
+TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitReturnRecentTasksWhenGetAll) {
+  // Keep adding tasks and make sure even with eviction, the returned tasks are
+  // the mo
+  size_t num_to_insert = 200;
+  size_t num_query = 10;
+  size_t inserted = 0;
+
+  auto task_ids = GenTaskIDs(num_to_insert);
+
+  for (size_t i = 0; i < num_to_insert; ++i) {
+    // Add a task event
+    {
+      inserted++;
+      auto events = GenTaskEvents({task_ids[i]},
+                                  /* attempt_number */ 0,
+                                  /* job_id */ 0,
+                                  /* profile event */ absl::nullopt,
+                                  GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}));
+      auto events_data = Mocker::GenTaskEventsData(events);
+      SyncAddTaskEventData(events_data);
+    }
+
+    if (inserted < num_query || inserted % num_query != 0) {
+      continue;
+    }
+
+    // Expect returned tasks with limit are the most recently added ones.
+    {
+      absl::flat_hash_set<TaskID> query_ids(task_ids.begin() + (inserted - num_query),
+                                            task_ids.begin() + inserted);
+      auto reply = SyncGetTaskEvents(
+          /* task_ids */ {}, /* job_id */ absl::nullopt, /* limit */ num_query);
+      for (const auto &task_event : reply.events_by_task()) {
+        EXPECT_EQ(query_ids.count(TaskID::FromBinary(task_event.task_id())), 1)
+            << TaskID::FromBinary(task_event.task_id()).Hex() << "not there, at " << i;
+      }
+    }
   }
 }
 

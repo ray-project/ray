@@ -433,7 +433,11 @@ def wait_for_node(
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for node to startup.")
+    raise TimeoutError(
+        f"Timed out after {timeout} seconds while waiting for node to startup. "
+        f"Did not find socket name {node_plasma_store_socket_name} in the list "
+        "of object store socket names."
+    )
 
 
 def get_node_to_connect_for_driver(gcs_address, node_ip_address):
@@ -1129,6 +1133,7 @@ def start_api_server(
             # TODO(sang): Modules like job or state APIs should be
             # loaded although dashboard is disabled. Fix it.
             command.append("--modules-to-load=UsageStatsHead")
+            command.append("--disable-frontend")
 
         process_info = start_ray_process(
             command,
@@ -1225,7 +1230,7 @@ def start_api_server(
                 # Is it reachable?
                 raise Exception("Failed to start a dashboard.")
 
-        if minimal:
+        if minimal or not include_dashboard:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
