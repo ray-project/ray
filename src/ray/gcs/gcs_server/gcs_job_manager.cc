@@ -191,8 +191,12 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_api_data_keys.push_back(job_data_key);
         // if key is already in the map, it means there are duplicate jobs
         // print debug info
-        RAY_LOG(ERROR) << "Found duplicate job with job_submission_id = "
-                       << job_submission_id;
+        if(job_data_key_to_index.find(job_data_key) != job_data_key_to_index.end()) {
+          RAY_LOG(ERROR) << "job_data_key_to_index[job_data_key] != i";
+          RAY_LOG(ERROR) << "job_data_key_to_index[job_data_key] = " << job_data_key_to_index[job_data_key];
+          RAY_LOG(ERROR) << "i = " << i;
+          RAY_LOG(ERROR) << "job_data_key = " << job_data_key;
+        }
         job_data_key_to_index[job_data_key] = i;
       }
       i++;
