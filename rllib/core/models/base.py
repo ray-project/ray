@@ -149,8 +149,8 @@ class Encoder(Model, abc.ABC):
     Therefore, their input_spec contains the observation space dimensions.
     Similarly, their output_spec contains the latent space dimensions.
     Encoders can be recurrent, in which case the state should be part of input- and
-    output_specs.
-    The latents that are produced by an encoder are fed into subsequent heads.
+    output_specs. The latents that are produced by an encoder are fed into subsequent
+    heads.
 
     Abstract illustration of typical flow of tensors:
 
@@ -166,8 +166,9 @@ class Encoder(Model, abc.ABC):
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the output_spec.
 
-    .. testcode::
+    Usage Example together with a ModelConfig:
 
+    .. testcode::
 
         import numpy as np
 
@@ -222,8 +223,8 @@ class Encoder(Model, abc.ABC):
         The input dict contains at minimum the observation and the state of the encoder.
         The output dict contains at minimum the latent and the state of the encoder.
         These values have the keys `SampleBatch.OBS` and `STATE_IN` in the inputs, and
-        `STATE_OUT` and `ENCODER_OUT` and outputs dicts to establish an agreement
-        between the encoder and RLModules.
+        `STATE_OUT` and `ENCODER_OUT` and outputs to establish an agreement
+        between the encoder and RLModules. For stateless encoders, states can be None.
 
         Args:
             input_dict: The input tensors.
