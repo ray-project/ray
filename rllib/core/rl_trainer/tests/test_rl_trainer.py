@@ -94,7 +94,7 @@ class TestRLTrainer(unittest.TestCase):
         params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
         n_steps = 100
         expected = [
-            param - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
+            param - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
