@@ -131,7 +131,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   io_thread_ = std::thread([this]() {
 #ifdef __linux__
     // Decrease the thread priority to allow worker threads to run.
-    // Skipping it for mac since niceness is applied to all threads on mac.
+    // Skipping it for non-linux since niceness is applied to all threads on a process.
     int new_nice = std::min(
         RayConfig::instance().worker_niceness() + kTaskEventBufferAdditionalNice, 19);
     new_nice = nice(new_nice);
