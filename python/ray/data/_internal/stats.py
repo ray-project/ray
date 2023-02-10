@@ -297,16 +297,6 @@ class DatasetStats:
             self.extra_metrics,
         )
 
-    def close(self) -> None:
-        """Should be called when execution finished, to close out the end time.
-
-        This is mainly useful for streaming execution mode.
-        """
-        if not self.time_total_s and self.start_time:
-            self.time_total_s = time.perf_counter() - self.start_time
-        for p in self.parents:
-            p.close()
-
 
 @DeveloperAPI
 @dataclass

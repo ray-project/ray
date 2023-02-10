@@ -4,6 +4,7 @@ import os
 from typing import Iterator, Optional
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -86,9 +87,14 @@ class StreamingExecutor(Executor, threading.Thread):
                 item = self._output_node.get_output_blocking()
         finally:
             # Freeze the stats and save it.
-            stats = self._get_intermediate_stats()
-            stats.close()
-            self._final_stats = stats
+            self._final_stats = self._generate_stats(final=True)
+            stats_summary_string = self._final_stats.to_summary().to_string(
+                include_parent=False
+            )
+            context = DatasetContext.get_current()
+            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                stats_summary_string,
+            )
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
@@ -124,14 +130,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._final_stats:
             return self._final_stats
         else:
-            return self._get_intermediate_stats()
+            return self._generate_stats()
 
-    def _get_intermediate_stats(self):
+    def _generate_stats(self, final: bool = False):
         stats = self._initial_stats
         for op in self._topology:
             if not isinstance(op, InputDataBuffer):
                 builder = stats.child_builder(op.name)
-                stats = builder.build_multistage(op.get_stats(), stage_finished=False)
+                stats = builder.build_multistage(op.get_stats(), stage_finished=final)
                 stats.extra_metrics = op.get_metrics()
         return stats
 
