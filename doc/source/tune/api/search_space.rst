@@ -3,11 +3,6 @@
 Tune Search Space API
 =====================
 
-.. _tune-sample-docs:
-
-Random Distributions API
-------------------------
-
 This section covers the functions you can use to define your search spaces.
 
 .. caution::
@@ -19,7 +14,7 @@ This section covers the functions you can use to define your search spaces.
 .. tip::
 
     Avoid passing large objects as values in the search space, as that will incur a performance overhead.
-    Use :ref:`tune-with-parameters` to pass large objects in or load them inside your trainable
+    Use :func:`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable
     from disk (making sure that all nodes have access to the files) or cloud storage.
     See :ref:`tune-bottlenecks` for more information.
 
@@ -83,70 +78,35 @@ For a high-level overview, see this example:
         "grid": tune.grid_search([32, 64, 128])
     }
 
-tune.uniform
-~~~~~~~~~~~~
+.. currentmodule:: ray
 
-.. autofunction:: ray.tune.uniform
+Random Distributions API
+------------------------
 
-tune.quniform
-~~~~~~~~~~~~~
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.tune.quniform
+    tune.uniform
+    tune.quniform
+    tune.loguniform
+    tune.qloguniform
+    tune.randn
+    tune.qrandn
+    tune.randint
+    tune.qrandint
+    tune.lograndint
+    tune.qlograndint
+    tune.choice
 
-tune.loguniform
-~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.loguniform
+Grid Search and Custom Function APIs
+------------------------------------
 
-tune.qloguniform
-~~~~~~~~~~~~~~~~
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.tune.qloguniform
-
-tune.randn
-~~~~~~~~~~
-
-.. autofunction:: ray.tune.randn
-
-tune.qrandn
-~~~~~~~~~~~
-
-.. autofunction:: ray.tune.qrandn
-
-tune.randint
-~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.randint
-
-tune.qrandint
-~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.qrandint
-
-tune.lograndint
-~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.lograndint
-
-tune.qlograndint
-~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.qlograndint
-
-tune.choice
-~~~~~~~~~~~
-
-.. autofunction:: ray.tune.choice
-
-tune.sample_from
-~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.sample_from
-
-Grid Search API
----------------
-
-.. autofunction:: ray.tune.grid_search
+    tune.grid_search
+    tune.sample_from
 
 References
 ----------

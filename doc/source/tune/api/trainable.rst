@@ -240,7 +240,7 @@ Trainables can themselves be distributed. If your trainable function / class cre
 that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
-then you should use :ref:`tune-with-resources` like this:
+then you should use :func:`tune.with_resources <ray.tune.with_resources>` like this:
 
 .. code-block:: python
    :emphasize-lines: 4-10
@@ -267,56 +267,72 @@ It is also possible to specify memory (``"memory"``, in bytes) and custom resour
 session (Function API)
 ----------------------
 
-.. autofunction:: ray.air.session.report
-    :noindex:
+.. currentmodule:: ray
 
-.. autofunction:: ray.air.session.get_checkpoint
-    :noindex:
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.air.session.get_trial_name
+    air.session.report
     :noindex:
-
-.. autofunction:: ray.air.session.get_trial_id
+    air.session.get_checkpoint
     :noindex:
-
-.. autofunction:: ray.air.session.get_trial_resources
+    air.session.get_trial_name
     :noindex:
-
-.. autofunction:: ray.air.session.get_trial_dir
+    air.session.get_trial_id
+    :noindex:
+    air.session.get_trial_resources
+    :noindex:
+    air.session.get_trial_dir
     :noindex:
 
 .. _tune-trainable-docstring:
 
-tune.Trainable (Class API)
---------------------------
+Trainable (Class API)
+---------------------
 
-.. autoclass:: ray.tune.Trainable
-    :member-order: groupwise
-    :private-members:
-    :members:
+.. autosummary::
+    :toctree: doc/
+
+    tune.Trainable
+    tune.Trainable.setup
+    tune.Trainable.save_checkpoint
+    tune.Trainable.load_checkpoint
+    tune.Trainable.step
+    tune.Trainable.reset_config
+    tune.Trainable.cleanup
+    tune.Trainable.default_resource_request
+
 
 .. _tune-util-ref:
 
-Utilities
----------
+Tune Trainable Utilities
+-------------------------
 
-.. autofunction:: ray.tune.utils.wait_for_gpu
+Tune Data Ingestion Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.utils.diagnose_serialization
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.tune.utils.validate_save_restore
+    tune.with_parameters
 
 
-.. _tune-with-parameters:
+Tune Resource Assignment Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-tune.with_parameters
---------------------
+.. autosummary::
+    :toctree: doc/
 
-.. autofunction:: ray.tune.with_parameters
+    tune.with_resources
+    ~tune.execution.placement_groups.PlacementGroupFactory
+    tune.utils.wait_for_gpu
 
-.. _tune-with-resources:
 
-tune.with_resources
---------------------
+Tune Trainable Debugging Utilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.with_resources
+.. autosummary::
+    :toctree: doc/
+
+    tune.utils.diagnose_serialization
+    tune.utils.validate_save_restore

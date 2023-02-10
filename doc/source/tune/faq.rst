@@ -341,7 +341,7 @@ are efficiently stored and retrieved on your cluster machines.
 
 :func:`tune.with_parameters() <ray.tune.with_parameters>`
 also works with class trainables. Please see
-:ref:`here for further details <tune-with-parameters>` and examples.
+:func:`tune.with_parameters() <ray.tune.with_parameters>` for more details and examples.
 
 
 How can I reproduce experiments?

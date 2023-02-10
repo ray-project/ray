@@ -12,66 +12,87 @@ You can utilize these search algorithms as follows:
 .. code-block:: python
 
     from ray import tune
-    from ray.tune.search.hyperopt import HyperOptSearch
-    tuner = tune.Tuner(my_function, tune_config=tune.TuneConfig(search_alg=HyperOptSearch(...)))
+    from ray.air import session
+    from ray.tune.search.optuna import OptunaSearch
+
+    def train_fn(config):
+        # This objective function is just for demonstration purposes
+        session.report({"loss": config["param"]})
+
+    tuner = tune.Tuner(
+        train_fn,
+        tune_config=tune.TuneConfig(
+            search_alg=OptunaSearch(),
+            num_samples=100,
+            metric="loss",
+            mode="min",
+        ),
+        param_space={"param": tune.uniform(0, 1)},
+    )
     results = tuner.fit()
 
 
-Saving and Restoring Tune Runs
-------------------------------
+Saving and Restoring Tune Search Algorithms
+-------------------------------------------
 
 .. TODO: what to do about this section? It doesn't really belong here and is not worth its own guide.
 .. TODO: at least check that this pseudo-code runs.
 
 Certain search algorithms have ``save/restore`` implemented,
-allowing reuse of learnings across multiple tuning runs.
+allowing reuse of searchers that are fitted on the results of multiple tuning runs.
 
 .. code-block:: python
 
     search_alg = HyperOptSearch()
 
     tuner_1 = tune.Tuner(
-        trainable,
-        tune_config=tune.TuneConfig(search_alg=search_alg))
+        train_fn,
+        tune_config=tune.TuneConfig(search_alg=search_alg)
+    )
     results_1 = tuner_1.fit()
 
     search_alg.save("./my-checkpoint.pkl")
 
-    # Restore the saved state onto another search algorithm
+    # Restore the saved state onto another search algorithm,
+    # in a new tuning script
 
     search_alg2 = HyperOptSearch()
     search_alg2.restore("./my-checkpoint.pkl")
 
     tuner_2 = tune.Tuner(
-        trainable,
-        tune_config=tune.TuneConfig(search_alg=search_alg2))
+        train_fn,
+        tune_config=tune.TuneConfig(search_alg=search_alg2)
+    )
     results_2 = tuner_2.fit()
 
-Tune automatically saves its state inside the current experiment folder ("Result Dir") during tuning.
+Tune automatically saves searcher state inside the current experiment folder during tuning.
+See ``Result logdir: ...`` in the output logs for this location.
 
 Note that if you have two Tune runs with the same experiment folder,
 the previous state checkpoint will be overwritten. You can
 avoid this by making sure ``air.RunConfig(name=...)`` is set to a unique
-identifier.
+identifier:
 
 .. code-block:: python
 
     search_alg = HyperOptSearch()
     tuner_1 = tune.Tuner(
-        cost,
+        train_fn,
         tune_config=tune.TuneConfig(
             num_samples=5,
-            search_alg=search_alg),
+            search_alg=search_alg,
+        ),
         run_config=air.RunConfig(
-            verbose=0,
             name="my-experiment-1",
-            local_dir="~/my_results"
-        ))
+            local_dir="~/my_results",
+        )
+    )
     results = tuner_1.fit()
 
     search_alg2 = HyperOptSearch()
     search_alg2.restore_from_dir(
-      os.path.join("~/my_results", "my-experiment-1"))
+      os.path.join("~/my_results", "my-experiment-1")
+    )
 
 .. _tune-basicvariant:
 
@@ -86,25 +107,32 @@ The :class:`BasicVariantGenerator <ray.tune.search.basic_variant.BasicVariantGen
 default if no search algorithm is passed to
 :func:`Tuner <ray.tune.Tuner>`.
 
-.. autoclass:: ray.tune.search.basic_variant.BasicVariantGenerator
+.. currentmodule:: ray.tune.search
+
+.. autosummary::
+    :toctree: doc/
+
+    basic_variant.BasicVariantGenerator
 
 .. _tune-ax:
 
 Ax (tune.search.ax.AxSearch)
 ----------------------------
 
-.. autoclass:: ray.tune.search.ax.AxSearch
+.. autosummary::
+    :toctree: doc/
+
+    ax.AxSearch
 
 .. _bayesopt:
 
 Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 -----------------------------------------------------------
 
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.search.bayesopt.BayesOptSearch
-  :members: save, restore
-
-.. _`BayesianOptimization search space specification`: https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb
+    bayesopt.BayesOptSearch
 
 .. _suggest-TuneBOHB:
 
@@ -125,7 +153,10 @@ In order to use this search algorithm, you will need to install ``HpBandSter`` a
 
 See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
-.. autoclass:: ray.tune.search.bohb.TuneBOHB
+.. autosummary::
+    :toctree: doc/
+
+    bohb.TuneBOHB
 
 .. _BlendSearch:
 
@@ -144,7 +175,10 @@ In order to use this search algorithm, you will need to install ``flaml``:
 
 See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
 
-.. autoclass:: ray.tune.search.flaml.BlendSearch
+.. autosummary::
+    :toctree: doc/
+
+    flaml.BlendSearch
 
 .. _CFO:
 
@@ -164,50 +198,60 @@ In order to use this search algorithm, you will need to install ``flaml``:
 See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in
 FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
 
-.. autoclass:: ray.tune.search.flaml.CFO
+.. autosummary::
+    :toctree: doc/
+
+    flaml.CFO
 
 .. _Dragonfly:
 
 Dragonfly (tune.search.dragonfly.DragonflySearch)
 -------------------------------------------------
 
-.. autoclass:: ray.tune.search.dragonfly.DragonflySearch
-  :members: save, restore
+.. autosummary::
+    :toctree: doc/
+
+    dragonfly.DragonflySearch
 
 .. _tune-hebo:
 
 HEBO (tune.search.hebo.HEBOSearch)
 ----------------------------------
 
-.. autoclass:: ray.tune.search.hebo.HEBOSearch
-  :members: save, restore
+.. autosummary::
+    :toctree: doc/
+
+    hebo.HEBOSearch
 
 .. _tune-hyperopt:
 
 HyperOpt (tune.search.hyperopt.HyperOptSearch)
 ----------------------------------------------
 
-.. autoclass:: ray.tune.search.hyperopt.HyperOptSearch
-  :members: save, restore
+.. autosummary::
+    :toctree: doc/
+
+    hyperopt.HyperOptSearch
 
 .. _nevergrad:
 
 Nevergrad (tune.search.nevergrad.NevergradSearch)
 -------------------------------------------------
 
-.. autoclass:: ray.tune.search.nevergrad.NevergradSearch
-  :members: save, restore
+.. autosummary::
+    :toctree: doc/
 
-.. _`Nevergrad README's Optimization section`: https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer
+    nevergrad.NevergradSearch
 
 .. _tune-optuna:
 
 Optuna (tune.search.optuna.OptunaSearch)
 ----------------------------------------
 
-.. autoclass:: ray.tune.search.optuna.OptunaSearch
+.. autosummary::
+    :toctree: doc/
 
-.. _`Optuna samplers`: https://optuna.readthedocs.io/en/stable/reference/samplers.html
+    optuna.OptunaSearch
 
 .. _sigopt:
 
@@ -217,25 +261,30 @@ SigOpt (tune.search.sigopt.SigOptSearch)
 You will need to use the `SigOpt experiment and space specification <https://docs.sigopt.com/ai-module-api-references/experiments>`__
 to specify your search space.
 
-.. autoclass:: ray.tune.search.sigopt.SigOptSearch
+.. autosummary::
+    :toctree: doc/
+
+    sigopt.SigOptSearch
 
 .. _skopt:
 
 Scikit-Optimize (tune.search.skopt.SkOptSearch)
 -----------------------------------------------
 
-.. autoclass:: ray.tune.search.skopt.SkOptSearch
-  :members: save, restore
+.. autosummary::
+    :toctree: doc/
 
-.. _`skopt Optimizer object`: https://scikit-optimize.github.io/stable/modules/generated/skopt.Optimizer.html#skopt.Optimizer
+    skopt.SkOptSearch
 
 .. _zoopt:
 
 ZOOpt (tune.search.zoopt.ZOOptSearch)
 -------------------------------------
 
-.. autoclass:: ray.tune.search.zoopt.ZOOptSearch
-  :members: save, restore
+.. autosummary::
+    :toctree: doc/
+
+    zoopt.ZOOptSearch
 
 .. _repeater:
 
@@ -255,7 +304,10 @@ will run ``repeat`` trials of the configuration. It will then average the
 .. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
     Early termination can negatively affect the average reported metric.
 
-.. autoclass:: ray.tune.search.Repeater
+.. autosummary::
+    :toctree: doc/
+
+    Repeater
 
 .. _limiter:
 
@@ -265,7 +317,10 @@ ConcurrencyLimiter (tune.search.ConcurrencyLimiter)
 Use ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency when using a search algorithm.
 This is useful when a given optimization algorithm does not parallelize very well (like a naive Bayesian Optimization).
 
-.. autoclass:: ray.tune.search.ConcurrencyLimiter
+.. autosummary::
+    :toctree: doc/
+
+    ConcurrencyLimiter
 
 .. _byo-algo:
 
@@ -274,11 +329,15 @@ Custom Search Algorithms (tune.search.Searcher)
 
 If you are interested in implementing or contributing a new Search Algorithm, provide the following interface:
 
-.. autoclass:: ray.tune.search.Searcher
-    :members:
-    :private-members:
-    :show-inheritance:
+.. autosummary::
+    :toctree: doc/
 
+    Searcher
+    Searcher.suggest
+    Searcher.save
+    Searcher.restore
+    Searcher.on_trial_result
+    Searcher.on_trial_complete
 
 If contributing, make sure to add test cases and an entry in the function described below.
 
@@ -290,4 +349,7 @@ There is also a shim function that constructs the search algorithm based on the 
 This can be useful if the search algorithm you want to use changes often
 (e.g., specifying the search algorithm via a CLI option or config file).
 
-.. automethod:: ray.tune.create_searcher
+.. autosummary::
+    :toctree: doc/
+
+    create_searcher

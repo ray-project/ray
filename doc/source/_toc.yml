@@ -282,7 +282,7 @@ parts:
               - file: tune/examples/exercises
                 title: "Exercises"
           - file: tune/faq
-          - file: tune/api_docs/overview.rst
+          - file: tune/api/api.rst
 
       - file: serve/index
         title: Ray Serve

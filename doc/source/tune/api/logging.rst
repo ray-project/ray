@@ -31,40 +31,54 @@ relevant ones (like accuracy, loss, etc.).
 .. image:: ../images/ray-tune-viskit.png
 
 
-TBXLogger
----------
+.. currentmodule:: ray
 
-.. autoclass:: ray.tune.logger.TBXLoggerCallback
+Tune Built-in Loggers
+---------------------
 
-JsonLogger
-----------
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.logger.JsonLoggerCallback
+    tune.logger.JsonLoggerCallback
+    tune.logger.CSVLoggerCallback
+    tune.logger.TBXLoggerCallback
 
-CSVLogger
----------
 
-.. autoclass:: ray.tune.logger.CSVLoggerCallback
-
-MLFlowLogger
-------------
+MLFlow Integration: MLFlowLoggerCallback
+----------------------------------------
 
 Tune also provides a logger for `MLflow <https://mlflow.org>`_.
 You can install MLflow via ``pip install mlflow``.
 You can see the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
-WandbLogger
------------
+.. autosummary::
+    :toctree: doc/
+
+    air.integrations.mlflow.MLflowLoggerCallback
+
+Wandb Integration: WandbLoggerCallback
+--------------------------------------
 
 Tune also provides a logger for `Weights & Biases <https://www.wandb.ai/>`_.
 You can install Wandb via ``pip install wandb``.
-You can see the :doc:`tutorial here </tune/examples/tune-wandb>`
+You can see the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
+.. autosummary::
+    :toctree: doc/
+
+    air.integrations.wandb.WandbLoggerCallback
 
 .. _logger-interface:
 
-LoggerCallback
---------------
+LoggerCallback Interface
+------------------------
 
-.. autoclass:: ray.tune.logger.LoggerCallback
-    :members: log_trial_start, log_trial_restore, log_trial_save, log_trial_result, log_trial_end
+.. autosummary::
+    :toctree: doc/
+
+    tune.logger.LoggerCallback
+    tune.logger.LoggerCallback.log_trial_start
+    tune.logger.LoggerCallback.log_trial_restore
+    tune.logger.LoggerCallback.log_trial_save
+    tune.logger.LoggerCallback.log_trial_result
+    tune.logger.LoggerCallback.log_trial_end

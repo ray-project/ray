@@ -159,6 +159,7 @@ Training Session
 
 .. automodule:: ray.air.session
     :members:
+    :noindex:
 
 Trainer Configs
 ###############
@@ -364,26 +365,8 @@ Reinforcement Learning (RLlib)
 
 .. _air-builtin-callbacks:
 
-Monitoring Integrations
+Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Comet
-#####
-
-.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
-
-Keras
-#####
-
-.. autoclass:: ray.air.integrations.keras.Callback
-    :members:
-
-MLflow
-######
-
-.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
-
-Weights and Biases
-##################
-
-.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback
+See :doc:`this API reference </tune/api/integration>` for AIR integrations with other libraries
+such as Weights and Biases, MLFlow, Keras, and more.

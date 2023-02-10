@@ -8,7 +8,9 @@ Tune Scikit-Learn API  (tune.sklearn)
 TuneGridSearchCV
 ----------------
 
-.. autoclass:: ray.tune.sklearn.TuneGridSearchCV
+.. currentmodule:: ray.tune.sklearn
+
+.. autoclass:: TuneGridSearchCV
 	:members:
 
 .. _tunesearchcv-docs:
@@ -16,5 +18,5 @@ TuneGridSearchCV
 TuneSearchCV
 ------------
 
-.. autoclass:: ray.tune.sklearn.TuneSearchCV
+.. autoclass:: TuneSearchCV
 	:members:
