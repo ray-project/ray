@@ -1317,9 +1317,9 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t num_available_cpus) {
   // Code path of task that needs a dedicated worker.
   RAY_LOG(DEBUG) << "PrestartWorkers, num_available_cpus " << num_available_cpus
-                 << " backlog_size " << backlog_size
-                 << " task spec " << task_spec.DebugString()
-                 << " has runtime env " << task_spec.HasRuntimeEnv();
+                 << " backlog_size " << backlog_size << " task spec "
+                 << task_spec.DebugString() << " has runtime env "
+                 << task_spec.HasRuntimeEnv();
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.

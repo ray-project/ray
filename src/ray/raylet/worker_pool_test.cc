@@ -1495,7 +1495,7 @@ TEST_F(WorkerPoolTest, TestJobFinishedForceKillIdleWorker) {
 
 TEST_F(WorkerPoolTest, WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled) {
   rpc::JobConfig job_config;
-  
+
   /// Add worker to the pool whose job will stay alive.
   auto job_id_alive = JobID::FromInt(11111);
   RegisterDriver(Language::PYTHON, job_id_alive, job_config);
@@ -1514,7 +1514,7 @@ TEST_F(WorkerPoolTest, WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettin
 
   /// Add worker to the pool whose job will be killed.
   auto job_id_dead = JobID::FromInt(22222);
-  RegisterDriver(Language::PYTHON, job_id_dead, job_config);  
+  RegisterDriver(Language::PYTHON, job_id_dead, job_config);
   std::shared_ptr<WorkerInterface> worker_to_kill;
   {
     PopWorkerStatus status;
