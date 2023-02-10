@@ -9,8 +9,8 @@ Ray AIR API
 .. toctree::
     :maxdepth: 2
 
-    Preprocessor (Ray Data)<preprocessor.rst>
-    Dataset Ingest (Ray Data)<dataset-ingest.rst>
+    Preprocessor (Ray Data + Ray Train)<preprocessor.rst>
+    Dataset Ingest (Ray Data + Ray Train)<dataset-ingest.rst>
     Trainers (Ray Train)<../../train/api/api>
     Tuner (Ray Tune)<../../tune/api_docs/execution>
     Results (Ray Train + Ray Tune)<../../tune/api_docs/result_grid>
