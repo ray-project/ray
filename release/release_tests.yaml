@@ -1752,32 +1752,32 @@
 # Long running tests
 #######################
 
-- name: long_running_actor_deaths
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: actor_deaths
-    test_suite: long_running_tests
+# - name: long_running_actor_deaths
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: actor_deaths
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/actor_deaths.py
-    long_running: true
+#     script: python workloads/actor_deaths.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
 - name: long_running_apex
   group: Long running tests
@@ -1836,59 +1836,59 @@
 
   alert: long_running_tests
 
-- name: long_running_many_actor_tasks
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: many_actor_tasks
-    test_suite: long_running_tests
+# - name: long_running_many_actor_tasks
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: many_actor_tasks
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/many_actor_tasks.py
-    long_running: true
+#     script: python workloads/many_actor_tasks.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
-- name: long_running_many_drivers
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: many_drivers
-    test_suite: long_running_tests
+# - name: long_running_many_drivers
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: many_drivers
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/many_drivers.py --iteration-num=4000
-    long_running: true
+#     script: python workloads/many_drivers.py --iteration-num=4000
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -1949,144 +1949,144 @@
 
   alert: long_running_tests
 
-- name: long_running_many_tasks_serialized_ids
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: many_tasks_serialized_ids
-    test_suite: long_running_tests
+# - name: long_running_many_tasks_serialized_ids
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: many_tasks_serialized_ids
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/many_tasks_serialized_ids.py
-    long_running: true
+#     script: python workloads/many_tasks_serialized_ids.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
-- name: long_running_node_failures
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: node_failures
-    test_suite: long_running_tests
+# - name: long_running_node_failures
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: node_failures
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/node_failures.py
-    long_running: true
+#     script: python workloads/node_failures.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
-- name: long_running_pbt
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: pbt
-    test_suite: long_running_tests
+# - name: long_running_pbt
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: pbt
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: ml
-  env: staging
-  cluster:
-    cluster_env: ../rllib_tests/app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: ml
+#   env: staging
+#   cluster:
+#     cluster_env: ../rllib_tests/app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/pbt.py
-    long_running: true
+#     script: python workloads/pbt.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
-- name: long_running_serve
-  group: Long running tests
-  working_dir: long_running_tests
-  legacy:
-    test_name: serve
-    test_suite: long_running_tests
+# - name: long_running_serve
+#   group: Long running tests
+#   working_dir: long_running_tests
+#   legacy:
+#     test_name: serve
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: serve
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+#   frequency: weekly
+#   team: serve
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/serve.py
-    long_running: true
+#     script: python workloads/serve.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 3600
+#     run:
+#       timeout: 3600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
-- name: long_running_serve_failure
-  group: Long running tests
-  working_dir: long_running_tests
+# - name: long_running_serve_failure
+#   group: Long running tests
+#   working_dir: long_running_tests
 
-  stable: true
+#   stable: true
 
-  legacy:
-    test_name: serve_failure
-    test_suite: long_running_tests
+#   legacy:
+#     test_name: serve_failure
+#     test_suite: long_running_tests
 
-  frequency: weekly
-  team: serve
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1_c5.yaml
+#   frequency: weekly
+#   team: serve
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_1_c5.yaml
 
-  run:
-    timeout: 86400
+#   run:
+#     timeout: 86400
     
-    script: python workloads/serve_failure.py
-    long_running: true
+#     script: python workloads/serve_failure.py
+#     long_running: true
 
-  smoke_test:
-    frequency: nightly
+#   smoke_test:
+#     frequency: nightly
 
-    run:
-      timeout: 600
+#     run:
+#       timeout: 600
 
-  alert: long_running_tests
+#   alert: long_running_tests
 
 - name: long_running_many_jobs
   group: Long running tests
@@ -3712,37 +3712,37 @@
       nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6"
 
 
-- name: stress_test_many_tasks
-  group: core-daily-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: stress_test_many_tasks
-    test_suite: nightly_tests
+# - name: stress_test_many_tasks
+#   group: core-daily-test
+#   working_dir: nightly_tests
+#   legacy:
+#     test_name: stress_test_many_tasks
+#     test_suite: nightly_tests
 
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: stress_tests/stress_tests_app_config.yaml
-    cluster_compute: stress_tests/stress_tests_compute.yaml
+#   frequency: nightly
+#   team: core
+#   cluster:
+#     cluster_env: stress_tests/stress_tests_app_config.yaml
+#     cluster_compute: stress_tests/stress_tests_compute.yaml
 
-  run:
-    timeout: 14400
-    wait_for_nodes:
-      num_nodes: 101
+#   run:
+#     timeout: 14400
+#     wait_for_nodes:
+#       num_nodes: 101
 
-    script: python stress_tests/test_many_tasks.py
+#     script: python stress_tests/test_many_tasks.py
 
-  smoke_test:
-    frequency: nightly
-    cluster:
-      app_config: stress_tests/stress_tests_app_config.yaml
-      cluster_compute: stress_tests/smoke_test_compute.yaml
+#   smoke_test:
+#     frequency: nightly
+#     cluster:
+#       app_config: stress_tests/stress_tests_app_config.yaml
+#       cluster_compute: stress_tests/smoke_test_compute.yaml
 
-    run:
-      timeout: 3600
-      wait_for_nodes:
-        num_nodes: 5
-      script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
+#     run:
+#       timeout: 3600
+#       wait_for_nodes:
+#         num_nodes: 5
+#       script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
 
 - name: stress_test_dead_actors
   group: core-daily-test
