@@ -1,5 +1,5 @@
-Core API
-========
+Ray Core API
+============
 
 .. autosummary::
     :toctree: doc/
@@ -8,8 +8,8 @@ Core API
     ray.shutdown
     ray.is_initialized
 
-Task
-----
+Tasks
+-----
 
 .. autosummary::
     :toctree: doc/
@@ -18,8 +18,8 @@ Task
     ray.remote_function.RemoteFunction.options
     ray.cancel
 
-Actor
------
+Actors
+------
 
 .. autosummary::
     :toctree: doc/
@@ -30,8 +30,8 @@ Actor
     ray.get_actor
     ray.kill
 
-Object
-------
+Objects
+-------
 
 .. autosummary::
     :toctree: doc/

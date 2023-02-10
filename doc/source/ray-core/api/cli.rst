@@ -1,5 +1,5 @@
-Core CLI
-========
+Ray Core CLI
+============
 
 .. _ray-cli:
 
