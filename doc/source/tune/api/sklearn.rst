@@ -10,27 +10,13 @@ TuneGridSearchCV
 
 .. currentmodule:: ray.tune.sklearn
 
-.. autosummary::
-	:toctree: doc/
-
-	TuneGridSearchCV
-	TuneGridSearchCV.fit
-	TuneGridSearchCV.score
-	TuneGridSearchCV.score_samples
-	TuneGridSearchCV.get_params
-	TuneGridSearchCV.set_params
+.. autoclass:: TuneGridSearchCV
+	:members:
 
 .. _tunesearchcv-docs:
 
 TuneSearchCV
 ------------
 
-.. autosummary::
-	:toctree: doc/
-
-	TuneSearchCV
-	TuneSearchCV.fit
-	TuneSearchCV.score
-	TuneSearchCV.score_samples
-	TuneSearchCV.get_params
-	TuneSearchCV.set_params
+.. autoclass:: TuneSearchCV
+	:members:
