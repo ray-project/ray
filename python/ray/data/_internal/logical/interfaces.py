@@ -1,4 +1,4 @@
-from typing import List, Dict, TYPE_CHECKING
+from typing import Dict, Iterator, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -27,6 +27,12 @@ class Operator:
             self, "_input_dependencies"
         ), "Operator.__init__() was not called."
         return self._input_dependencies
+
+    def post_order_iter(self) -> Iterator["Operator"]:
+        """Depth-first traversal of this operator and its input dependencies."""
+        for op in self.input_dependencies:
+            yield from op.post_order_iter()
+        yield self
 
     def __repr__(self) -> str:
         if self.input_dependencies:

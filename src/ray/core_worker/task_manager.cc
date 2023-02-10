@@ -103,7 +103,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
-  RecordTaskStatusEvent(spec.AttemptNumber(), spec, rpc::TaskStatus::PENDING_ARGS_AVAIL);
+  RecordTaskStatusEvent(spec.AttemptNumber(),
+                        spec,
+                        rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                        /* include_task_info */ true);
 
   return returned_refs;
 }
@@ -815,7 +818,8 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   // the new task attempt, we pass the the attempt number explicitly.
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
                         task_entry.spec,
-                        rpc::TaskStatus::PENDING_ARGS_AVAIL);
+                        rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                        /* include_task_info */ true);
 }
 
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
@@ -835,49 +839,6 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
 void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
   task_entry.SetStatus(status);
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber(), task_entry.spec, status);
-}
-
-rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
-    const TaskSpecification &task_spec) const {
-  rpc::TaskInfoEntry task_info;
-  rpc::TaskType type;
-  if (task_spec.IsNormalTask()) {
-    type = rpc::TaskType::NORMAL_TASK;
-  } else if (task_spec.IsDriverTask()) {
-    type = rpc::TaskType::DRIVER_TASK;
-  } else if (task_spec.IsActorCreationTask()) {
-    type = rpc::TaskType::ACTOR_CREATION_TASK;
-    task_info.set_actor_id(task_spec.ActorCreationId().Binary());
-  } else {
-    RAY_CHECK(task_spec.IsActorTask());
-    type = rpc::TaskType::ACTOR_TASK;
-    task_info.set_actor_id(task_spec.ActorId().Binary());
-  }
-  task_info.set_type(type);
-  task_info.set_name(task_spec.GetName());
-  task_info.set_language(task_spec.GetLanguage());
-  task_info.set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
-  // NOTE(rickyx): we will have scheduling states recorded in the events list.
-  task_info.set_scheduling_state(rpc::TaskStatus::NIL);
-  task_info.set_job_id(task_spec.JobId().Binary());
-
-  task_info.set_task_id(task_spec.TaskId().Binary());
-  // NOTE: we set the parent task id of a task to be submitter's task id, where
-  // the submitter depends on the owner coreworker's:
-  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
-  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
-  // creation task id.
-  task_info.set_parent_task_id(task_spec.SubmitterTaskId().Binary());
-  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
-  task_info.mutable_required_resources()->insert(resources_map.begin(),
-                                                 resources_map.end());
-  task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
-  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
-  if (!pg_id.IsNil()) {
-    task_info.set_placement_group_id(pg_id.Binary());
-  }
-
-  return task_info;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -940,30 +901,16 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
   if (!task_event_buffer_.Enabled()) {
     return;
   }
-  // Make task event
-  rpc::TaskEvents task_event;
-  task_event.set_task_id(spec.TaskId().Binary());
-  task_event.set_job_id(spec.JobId().Binary());
-  task_event.set_attempt_number(attempt_number);
-  auto state_updates = task_event.mutable_state_updates();
-  if (include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    // Initialize a new TaskInfoEntry
-    auto task_info = MakeTaskInfoEntry(spec);
-    task_event.mutable_task_info()->Swap(&task_info);
-  }
+  auto task_event = std::make_unique<worker::TaskStatusEvent>(
+      spec.TaskId(),
+      spec.JobId(),
+      attempt_number,
+      status,
+      /* timestamp */ absl::GetCurrentTimeNanos(),
+      include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
+      node_id,
+      worker_id);
 
-  if (node_id.has_value()) {
-    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-        << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
-    state_updates->set_node_id(node_id->Binary());
-  }
-  if (worker_id.has_value()) {
-    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-        << "Worker ID should be included when task status changes to "
-           "SUBMITTED_TO_WORKER.";
-    state_updates->set_worker_id(worker_id->Binary());
-  }
-  gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 

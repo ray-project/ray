@@ -349,6 +349,31 @@ def test_window_randomize_fusion(ray_start_regular_shared):
     assert "read->randomize_block_order->MapBatches(dummy_map)" in stats, stats
 
 
+def test_write_fusion(ray_start_regular_shared, tmp_path):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_fuse_shuffle_stages = True
+
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+    assert "read->MapBatches(<lambda>)->write" in stats, stats
+
+    ds = (
+        ray.data.range(100)
+        .map_batches(lambda x: x)
+        .random_shuffle()
+        .map_batches(lambda x: x)
+    )
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+    assert "read->MapBatches(<lambda>)" in stats, stats
+    assert "random_shuffle" in stats, stats
+    assert "MapBatches(<lambda>)->write" in stats, stats
+
+
 def test_optimize_fuse(ray_start_regular_shared):
     context = DatasetContext.get_current()
 

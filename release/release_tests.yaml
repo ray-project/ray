@@ -724,7 +724,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_elastic
   group: XGBoost
@@ -751,7 +751,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_non_elastic
   group: XGBoost
@@ -778,7 +778,7 @@
     type: job
 
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_tune_small
   group: XGBoost
@@ -3467,30 +3467,6 @@
 
   alert: default
 
-- name: rllib_learning_tests_leela_chess_zero
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml  
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=leela_chess_zero
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
 ########################
 # Core Nightly Tests
 ########################
@@ -3750,7 +3726,7 @@
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 14400
     wait_for_nodes:
       num_nodes: 101
 
