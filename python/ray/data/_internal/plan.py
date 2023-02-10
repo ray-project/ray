@@ -492,7 +492,8 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor.get_stats()
+        self._snapshot_stats = executor.get_stats()
+        return block_iter, self._snapshot_stats
 
     def execute(
         self,
@@ -601,11 +602,13 @@ class ExecutionPlan:
 
     def stats(self) -> DatasetStats:
         """Return stats for this plan, forcing execution if needed."""
-        self.execute()
+        if not self._snapshot_stats:
+            self.execute()
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
-        self.execute()
+        if not self._snapshot_stats:
+            self.execute()
         return self._snapshot_stats.to_summary()
 
     def _should_clear_input_blocks(

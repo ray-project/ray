@@ -124,6 +124,7 @@ def build_streaming_topology(
     """
 
     topology: Topology = {}
+    stats = DatasetStats(stages={}, parent=None)
 
     # DFS walk to wire up operator states.
     def setup_state(op: PhysicalOperator) -> OpState:
@@ -152,9 +153,10 @@ def build_streaming_topology(
         if not isinstance(op_state.op, InputDataBuffer):
             op_state.initialize_progress_bar(i)
             i += 1
+            builder = stats.child_builder(op_state.op.name)
+            stats = builder.build_multistage(op_state.op.get_stats())
 
-    # TODO: fill out stats.
-    return topology, DatasetStats(stages={}, parent=None)
+    return topology, stats
 
 
 def process_completed_tasks(topology: Topology) -> None:
