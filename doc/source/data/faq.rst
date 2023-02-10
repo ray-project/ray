@@ -134,11 +134,6 @@ TensorFlow datasets
   `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__
   for distributed data loading and prevents code from being seamlessly scaled to larger
   clusters.
-* **Lazy execution:** Datasets executed operations eagerly by default, while TensorFlow
-  datasets are lazy by default. The formter provides easier iterative development and
-  debuggability, and when needing the optimizations that become available with lazy execution,
-  Ray Datasets has a lazy execution mode that you can turn on when productionizing your
-  integration.
 * **Generic distributed data processing:** Datasets is more general: it can handle
   generic distributed operations, including global per-epoch shuffling,
   which would otherwise have to be implemented by stitching together two separate
