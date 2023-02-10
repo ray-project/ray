@@ -470,7 +470,7 @@ class Dataset(Generic[T]):
             >>> ds
             MapBatches(map_fn)
             +- MapBatches(map_fn)
-                +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
+                +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
