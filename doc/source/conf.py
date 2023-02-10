@@ -104,10 +104,6 @@ sphinx_tabs_disable_tab_closing = True
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
 
-# It's a known bug (https://github.com/sphinx-doc/sphinx/issues/9884)
-# that autosummary will generate warning for inherited instance attribute.
-autosummary_mock_imports = ["ray.experimental.state.common"]
-
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
