@@ -128,7 +128,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1264,7 +1264,7 @@ def from_pandas_refs(
                 run_by_consumer=False,
             ),
             0,
-            False,
+            True,
         )
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
@@ -1279,7 +1279,7 @@ def from_pandas_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1338,7 +1338,7 @@ def from_numpy_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1390,7 +1390,7 @@ def from_arrow_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 

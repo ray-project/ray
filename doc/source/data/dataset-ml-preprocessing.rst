@@ -89,8 +89,7 @@ Other preprocessing operations require global operations, such as groupbys and g
         for x in range(10)])
 
     # Group by the A column and calculate the per-group mean for B and C columns.
-    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"])
-    agg_ds.fully_executed()
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).fully_executed()
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
