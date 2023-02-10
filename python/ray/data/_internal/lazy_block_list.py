@@ -687,6 +687,7 @@ def _execute_read_task_split(
             input_files=input_files,
             exec_stats=block_exec_stats.build(),
         )
+        print("===> execute read task split block:", block)
         yield block
         blocks_metadata.append(metadata)
         block_exec_stats = BlockExecStats.builder()
