@@ -53,7 +53,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
         action_space: gym.Space,
         *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "PPORLModuleBase":
         free_log_std = model_config["free_log_std"]
         assert not free_log_std, "free_log_std not supported yet."
 

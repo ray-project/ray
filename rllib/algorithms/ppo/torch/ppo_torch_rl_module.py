@@ -3,7 +3,7 @@ from typing import Mapping, Any
 import tree
 
 from ray.rllib.algorithms.ppo.ppo_rl_module_base import PPORLModuleBase
-from ray.rllib.core.models.encoder import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
+from ray.rllib.core.models.base import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.core.models.torch.encoder import TorchActorCriticEncoder
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
