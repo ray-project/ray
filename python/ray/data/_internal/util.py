@@ -286,6 +286,9 @@ def _insert_doc_at_pattern(
             skip_matches_left -= 1
             if skip_matches_left <= 0:
                 break
+            elif not insert_after:
+                # Move past the found pattern, since we're skipping it.
+                tail = tail[i - offset + len(pattern) :]
             i = tail.find(pattern)
         else:
             raise ValueError(
@@ -293,12 +296,11 @@ def _insert_doc_at_pattern(
                 f"{doc}"
             )
     # Get indentation of the to-be-inserted text.
-    before_lines = list(filter(bool, reversed(head.splitlines())))
     after_lines = list(filter(bool, tail.splitlines()))
-    if insert_after and len(after_lines) > 0:
+    if len(after_lines) > 0:
         lines = after_lines
     else:
-        lines = before_lines
+        lines = list(filter(bool, reversed(head.splitlines())))
     # Should always have at least one non-empty line in the docstring.
     assert len(lines) > 0
     indent = " " * (len(lines[0]) - len(lines[0].lstrip()))
