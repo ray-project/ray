@@ -1,13 +1,11 @@
 import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
-from typing import Any, Mapping, Union
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -36,27 +34,27 @@ class DiscreteBCTFModule(TfRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -91,8 +89,9 @@ class DiscreteBCTFModule(TfRLModule):
         cls,
         observation_space: "gym.Space",
         action_space: "gym.Space",
+        *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "DiscreteBCTFModule":
 
         config = {
             "input_dim": observation_space.shape[0],
@@ -101,10 +100,3 @@ class DiscreteBCTFModule(TfRLModule):
         }
 
         return cls(**config)
-
-    def _default_inputs(self) -> SpecDict:
-        obs_dim = self._input_dim
-        return {"obs": TFTensorSpecs("b, do", do=obs_dim)}
-
-    def _default_outputs(self) -> SpecDict:
-        return {"action_dist": tfp.distributions.Distribution}
