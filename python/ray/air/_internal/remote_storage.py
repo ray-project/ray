@@ -252,8 +252,6 @@ def upload_to_uri(
             f"Hint: {fs_hint(uri)}"
         )
 
-    _ensure_directory(bucket_path)
-
     if not exclude:
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
         return
@@ -284,7 +282,6 @@ def _upload_to_uri_with_exclude(
             full_source_path = os.path.normpath(os.path.join(local_path, candidate))
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
-            _ensure_directory(str(Path(full_target_path).parent))
             _pyarrow_fs_copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
