@@ -2,7 +2,9 @@ format: jb-book
 root: index
 parts:
   - caption: Ray
-    chapters:
+    chapters: 
+      - file: index
+        title: "Overview"
       - file: ray-overview/index
         title: "Getting Started"
       - file: ray-overview/installation

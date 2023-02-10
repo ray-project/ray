@@ -1,12 +1,7 @@
 ```{include} /_includes/overview/announcement.md
 ```
 
-# Welcome to the Ray documentation
-Today's ML workloads are increasingly compute-intensive. While convenient, single-node development environments such as your laptop cannot scale to meet these demands.
-
-With Ray, you can seamlessly scale Python code from a laptop to a cluster. Ray is designed to be general-purpose, so it performantly runs any kind of workload. If your application is in Python, you can scale it with Ray, without any additional infrastructure.
-
-## What is Ray?
+# Ray documentation
 
 Ray is a unified framework for scaling AI and Python applications. It provides the compute layer to scale applications without a distributed systems expert. Ray automatically handles these key processes:
 
@@ -86,14 +81,21 @@ Ray's unified compute framework comprises of four layers:
 1. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
 1. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
 
-## Ray Core and Ray AIR
+## Ray AIR and Ray Core
 
-Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
+Ray consists of a toolkit of libraries (Ray AIR) and a core distributed runtime for
 simplifying ML compute:
 
 <img src="images/what-is-ray-padded.svg" alt="what-is-ray">
 
 &nbsp;
+
+[Ray AIR](ray-air/getting-started) is focuses on distributed individual and end-to-end machine learning workflows. Each of the five native libraries that Ray AIR wraps distributes a specific ML task:
+- [Datasets](data/dataset): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
+- [Serve](serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
+- [RLlib](rllib/index): Scalable distributed reinforcement learning workloads that integrate with the other Ray AIR libraries.
+- [Train](train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
+- [Tune](tune/index): Scalable hyperparameter tuning to optimize model performance.
 
 [Ray Core](ray-core/walkthrough) is the foundation that Ray's ML libraries (Ray AIR) and third-party integrations (Ray ecosystem) are built on. This library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud or Kubernetes.
 
@@ -102,13 +104,6 @@ Ray gives you flexibility with easy-to-use primitives in native Python code for 
 - [Tasks](ray-core/tasks): Stateless Python functions executed in the cluster.
 - [Actors](ray-core/actors): Stateful Python classes (worker processes) created in the cluster.
 - [Objects](ray-core/objects): Immutable values accessible across the cluster; cached in Ray's distributed [shared-memory](https://en.wikipedia.org/wiki/Shared_memory) object store.
-
-[Ray AIR](ray-air/getting-started) is built on top of Ray Core and focuses on distributed individual and end-to-end machine learning workflows. Each of the five native libraries that Ray AIR wraps distributes a specific ML task:
-- [Datasets](data/dataset): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
-- [Serve](serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
-- [RLlib](rllib/index): Scalable distributed reinforcement learning workloads that integrate with the other Ray AIR libraries.
-- [Train](train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
-- [Tune](tune/index): Scalable hyperparameter tuning to optimize model performance.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-overview/ray-libraries).
@@ -206,7 +201,7 @@ to read about the contribution process and see what you can work on.
 ```{image} https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 ```
 
-```{image} https://readthedocs.org/projects/ray/badge/?version=master
+```{image} hy/badge/?version=masterttps://readthedocs.org/projects/ra
 :target: http://docs.ray.io/en/master/?badge=master
 ```
 
