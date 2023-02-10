@@ -1,5 +1,5 @@
-Ray Core API
-============
+Core API
+========
 
 .. autosummary::
     :toctree: doc/
