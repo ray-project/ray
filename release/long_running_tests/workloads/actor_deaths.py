@@ -1,4 +1,5 @@
 # This workload tests repeatedly killing actors and submitting tasks to them.
+import os
 import numpy as np
 import sys
 import time
@@ -41,6 +42,10 @@ for i in range(num_nodes):
         redis_max_memory=redis_max_memory,
         dashboard_host="0.0.0.0",
     )
+
+if "RAY_ADDRESS" in os.environ:
+    del os.environ["RAY_ADDRESS"]
+
 ray.init(address=cluster.address)
 monitor_actor = monitor_memory_usage()
 
