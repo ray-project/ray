@@ -3,8 +3,6 @@
 Tune Search Space API
 =====================
 
-.. _tune-sample-docs:
-
 This section covers the functions you can use to define your search spaces.
 
 .. caution::

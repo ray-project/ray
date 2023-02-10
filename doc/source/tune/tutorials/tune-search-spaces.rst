@@ -16,7 +16,7 @@ Thereby, you can either use the ``tune.grid_search`` primitive to use grid searc
     results = tuner.fit()
 
 
-Or you can use one of the random sampling primitives to specify distributions (:ref:`tune-sample-docs`):
+Or you can use one of the random sampling primitives to specify distributions (:doc:`/tune/api/search_space`):
 
 .. code-block:: python
 

@@ -81,10 +81,10 @@ how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
 
 Tune offers various functions to define search spaces and sampling methods.
-:ref:`You can find the documentation of these search space definitions here <tune-sample-docs>`.
+:ref:`You can find the documentation of these search space definitions here <tune-search-space>`.
 
 Here's an example covering all search space functions. Again,
-:ref:`here is the full explanation of all these functions <tune-sample-docs>`.
+:ref:`here is the full explanation of all these functions <tune-search-space>`.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
