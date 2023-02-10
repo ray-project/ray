@@ -1085,7 +1085,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         searcher = HyperOptSearch(metric="a", mode="max")
         analysis = tune.run(
-            _mock_objective, config=config, search_alg=searcher, num_samples=10
+            _mock_objective,
+            config=config,
+            search_alg=searcher,
+            num_samples=10,
         )
 
         for trial in analysis.trials:

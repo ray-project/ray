@@ -241,7 +241,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
             })}
           >
             <Button
-              href={grafanaHost}
+              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}`}
               target="_blank"
               rel="noopener noreferrer"
               endIcon={<RiExternalLinkLine />}

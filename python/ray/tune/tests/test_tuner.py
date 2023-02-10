@@ -343,8 +343,12 @@ def test_tuner_api_kwargs(shutdown_only, params_expected):
 
     caught_kwargs = {}
 
+    class MockExperimentAnalysis:
+        trials = []
+
     def catch_kwargs(**kwargs):
         caught_kwargs.update(kwargs)
+        return MockExperimentAnalysis()
 
     with patch("ray.tune.impl.tuner_internal.run", catch_kwargs):
         tuner.fit()
