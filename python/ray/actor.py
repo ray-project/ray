@@ -762,7 +762,6 @@ class ActorClass:
 
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = 1000 if is_asyncio else 1
-
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
 
@@ -1377,12 +1376,6 @@ def exit_actor():
     """
     worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
-        # Intentionally disconnect the core worker from the raylet so the
-        # raylet won't push an error message to the driver.
-        ray._private.worker.disconnect()
-        # Disconnect global state from GCS.
-        ray._private.state.state.disconnect()
-
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
         # raise a custom error to the main thread to tell it to exit.
