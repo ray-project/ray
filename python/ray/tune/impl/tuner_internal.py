@@ -461,7 +461,7 @@ class TunerInternal:
     def fit(self) -> ResultGrid:
         trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
-        param_space = copy.deepcopy(self._param_space)
+        param_space = copy.deepcopy(self.param_space)
         if not self._is_restored:
             analysis = self._fit_internal(trainable, param_space)
         else:
