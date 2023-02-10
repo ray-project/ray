@@ -117,7 +117,6 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
 void OpenCensusProtoExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData>> &data) {
-  RAY_LOG(INFO) << "SANG-TODO Export";
   // Start converting opencensus data into their protobuf format.
   // The format can be found here
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
@@ -129,10 +128,6 @@ void OpenCensusProtoExporter::ExportViewData(
     auto &view_descriptor = datum.first;
     auto &view_data = datum.second;
     auto &measure_descriptor = view_descriptor.measure_descriptor();
-
-    if (measure_descriptor.name() == "tasks") {
-      RAY_LOG(INFO) << "SANG-TODO Export task metrics";
-    }
 
     // Create one metric `Point` in protobuf.
     auto request_point_proto = request_proto.add_metrics();
@@ -155,7 +150,6 @@ void OpenCensusProtoExporter::ExportViewData(
       metric_timeseries_proto->mutable_start_timestamp()->set_seconds(start_time);
 
       for (const auto &value : tag_values) {
-        RAY_LOG(INFO) << "SANG-TODO Export task metrics, tag value " << value;
         metric_timeseries_proto->add_label_values()->set_value(value);
       };
 
@@ -170,7 +164,6 @@ void OpenCensusProtoExporter::ExportViewData(
       for (const auto &row : view_data.double_data()) {
         auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
         point_proto->set_double_value(row.second);
-        RAY_LOG(INFO) << "SANG-TODO Export task metrics, value " << row.second;
       }
       break;
     case opencensus::stats::ViewData::Type::kInt64:

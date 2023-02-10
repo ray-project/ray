@@ -64,11 +64,8 @@ class ScopedTaskMetricSetter {
                          rpc::TaskStatus status)
       : status_(status), ctr_(ctr) {
     auto task_spec = ctx.GetCurrentTask();
-    RAY_LOG(INFO) << "SANG-TODO Created a scoped metric setter";
     if (task_spec != nullptr) {
       task_name_ = task_spec->GetName();
-      RAY_LOG(INFO) << "SANG-TODO Created a scoped metric setter. "
-                    << task_spec->GetName();
       is_retry_ = task_spec->IsRetry();
     } else {
       task_name_ = "Unknown task";
@@ -1253,14 +1250,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  RAY_LOG(INFO) << "SANG-TODO Get called";
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
     // We track the state change only from workers.
     state = std::make_unique<ScopedTaskMetricSetter>(
         worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   }
-  RAY_LOG(INFO) << "SANG-TODO Created a scoped state";
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;

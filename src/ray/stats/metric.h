@@ -348,10 +348,6 @@ class Stats {
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
-    if (measure_->GetDescriptor().name() == "tasks") {
-      RAY_LOG(INFO) << "SANG-TODO Metrics " << measure_->GetDescriptor().name()
-                    << " has recorded. Value: " << val << " tag val: " << tag_val;
-    }
     opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
   }
 

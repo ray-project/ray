@@ -99,8 +99,6 @@ class TaskCounter {
                    {"JobId", job_id_},
                    {"Source", "executor"}});
               // Record sub-state for get.
-              RAY_LOG(INFO) << "SANG-TODO Get called, " << func_name
-                            << ", count: " << num_in_get;
               ray::stats::STATS_tasks.Record(
                   num_in_get,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
@@ -191,7 +189,6 @@ class TaskCounter {
                        bool is_retry) {
     absl::MutexLock l(&mu_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-      RAY_LOG(INFO) << "SANG-TODO SetMetricStatus RUNNING IN RAY GET inc, " << func_name;
       running_in_get_counter_.Increment({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
       running_in_wait_counter_.Increment({func_name, is_retry});
@@ -208,7 +205,6 @@ class TaskCounter {
                          bool is_retry) {
     absl::MutexLock l(&mu_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-      RAY_LOG(INFO) << "SANG-TODO SetMetricStatus RUNNING IN RAY GET dec, " << func_name;
       running_in_get_counter_.Decrement({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
       running_in_wait_counter_.Decrement({func_name, is_retry});
