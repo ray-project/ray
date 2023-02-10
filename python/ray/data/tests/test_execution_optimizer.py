@@ -521,7 +521,7 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
 def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
-    assert "DoRead->MapRows" in ds._write_ds.stats()
+    assert "DoRead->Write" in ds._write_ds.stats()
 
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):

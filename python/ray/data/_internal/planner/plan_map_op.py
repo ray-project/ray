@@ -44,7 +44,7 @@ def _plan_map_op(op: AbstractMap, input_physical_dag: PhysicalOperator) -> MapOp
     elif isinstance(op, Filter):
         transform_fn = generate_filter_fn()
     elif isinstance(op, Write):
-        transform_fn = generate_write_fn(op._datasource)
+        transform_fn = generate_write_fn(op._datasource, **op._write_args)
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 

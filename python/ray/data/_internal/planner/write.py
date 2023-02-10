@@ -6,7 +6,7 @@ from ray.data.datasource import Datasource
 
 
 def generate_write_fn(
-    datasource: Datasource,
+    datasource: Datasource, **write_args
 ) -> Callable[[Iterator[Block], TaskContext, RowUDF], Iterator[Block]]:
     # If the write op succeeds, the resulting Dataset is a list of
     # WriteResult (one element per write task). Otherwise, an error will

@@ -128,6 +128,7 @@ class Write(AbstractMap):
         input_op: LogicalOperator,
         datasource: Datasource,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        **write_args,
     ):
         super().__init__(
             "Write",
@@ -136,6 +137,7 @@ class Write(AbstractMap):
             ray_remote_args=ray_remote_args,
         )
         self._datasource = datasource
+        self._write_args = write_args
 
 
 class Filter(AbstractMap):

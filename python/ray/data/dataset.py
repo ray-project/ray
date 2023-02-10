@@ -2659,7 +2659,7 @@ class Dataset(Generic[T]):
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    generate_write_fn(datasource),
+                    generate_write_fn(datasource, **write_args),
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
@@ -2672,6 +2672,7 @@ class Dataset(Generic[T]):
                     logical_plan.dag,
                     datasource,
                     ray_remote_args=ray_remote_args,
+                    **write_args,
                 )
                 logical_plan = LogicalPlan(write_op)
 
