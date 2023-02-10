@@ -271,7 +271,7 @@ class TestCheckSpecs(unittest.TestCase):
         self.assertIsInstance(output, SpecialOutputType)
         self.assertRaises(ValueError, lambda: module.forward_fail(torch.rand(2, 3)))
 
-    def testconvert_to_canonical_format(self):
+    def test_convert_to_canonical_format(self):
 
         # Case: input is a list of strs
         self.assertDictEqual(
