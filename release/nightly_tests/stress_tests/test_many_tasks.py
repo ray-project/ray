@@ -104,6 +104,7 @@ def stage3(total_num_remote_cpus, smoke=False):
     ray.get([actor.ready.remote() for actor in actors])
     stage_3_creation_time = time.time() - start_time
     logger.info("Finished stage 3 actor creation in %s seconds.", stage_3_creation_time)
+
     num_tasks = 1000
 
     if smoke:
