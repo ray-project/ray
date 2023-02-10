@@ -234,6 +234,35 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
 
   // Make sure the GCS didn't hang or crash.
   all_job_info_promise3.get_future().get();
+
+  // Add another job with the *same* submission ID. This can happen if the entrypoint
+  // script calls ray.init() multiple times.
+  auto job_id2 = JobID::FromInt(2);
+  auto add_job_request2 =
+      Mocker::GenAddJobRequest(job_id2, "namespace_100", submission_id);
+  std::promise<bool> promise4;
+  gcs_job_manager.HandleAddJob(
+      *add_job_request2,
+      &empty_reply,
+      [&promise4](Status, std::function<void()>, std::function<void()>) {
+        promise4.set_value(true);
+      });
+  promise4.get_future().get();
+
+  // Get all job info again.
+  rpc::GetAllJobInfoRequest all_job_info_request4;
+  rpc::GetAllJobInfoReply all_job_info_reply4;
+  std::promise<bool> all_job_info_promise4;
+
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request4,
+      &all_job_info_reply4,
+      [&all_job_info_promise4](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise4.set_value(true);
+      });
+  all_job_info_promise4.get_future().get();
+
+  ASSERT_EQ(all_job_info_reply4.job_info_list().size(), 101);
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
