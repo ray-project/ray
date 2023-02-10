@@ -129,19 +129,6 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   enabled_ = true;
 
   io_thread_ = std::thread([this]() {
-#ifdef __linux__
-    // Decrease the thread priority to allow worker threads to run.
-    // Skipping it for non-linux since niceness is applied to all threads on a process.
-    int new_nice = std::min(
-        RayConfig::instance().worker_niceness() + kTaskEventBufferAdditionalNice, 19);
-    new_nice = nice(new_nice);
-    if (new_nice == -1) {
-      RAY_LOG(WARNING) << "Failed to set nice(" << new_nice
-                       << ") for task event buffer io thread: " << strerror(errno);
-    } else {
-      RAY_LOG(INFO) << "Current task event io thread's nice = " << new_nice;
-    }
-#endif
 
 #ifndef _WIN32
     // Block SIGINT and SIGTERM so they will be handled by the main thread.
