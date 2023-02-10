@@ -77,6 +77,7 @@ const res = (version === "latest" || version === "master") ? version : "latest";
 
 home.href = "https://docs.ray.io/en/" + res + "/index.html";
 home.textContent = "Ray Docs Home";
+
 home.style = firstLink.style;
 home.style.color = "#5a5a5a";
 firstLink.appendChild(home);
