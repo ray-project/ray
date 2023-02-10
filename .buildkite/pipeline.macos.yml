@@ -86,7 +86,7 @@ steps:
     - *prelude_commands
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
-    - RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1 ./java/test.sh
+    - ./java/test.sh
     - ./ci/ci.sh test_cpp
     - *epilogue_commands
 
