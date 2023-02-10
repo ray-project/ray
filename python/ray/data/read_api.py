@@ -77,13 +77,6 @@ logger = logging.getLogger(__name__)
 def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
-
     Examples:
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
@@ -1152,13 +1145,6 @@ def read_binary_files(
 def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
-
     Args:
         df: A Dask DataFrame.
 
@@ -1193,13 +1179,6 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
-
     Args:
         df: A MARS dataframe, which must be executed by MARS-on-Ray.
 
@@ -1214,13 +1193,6 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
 @PublicAPI
 def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Args:
         df: A Modin dataframe, which must be using the Ray backend.
@@ -1239,13 +1211,6 @@ def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Args:
         dfs: A Pandas dataframe or a list of Pandas dataframes.
@@ -1266,13 +1231,6 @@ def from_pandas_refs(
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Args:
         dfs: A Ray object references to pandas dataframe, or a list of
@@ -1329,13 +1287,6 @@ def from_pandas_refs(
 def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of NumPy ndarrays.
 
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
-
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
 
@@ -1353,13 +1304,6 @@ def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of NumPy ndarray futures.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
@@ -1404,13 +1348,6 @@ def from_arrow(
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
-
     Args:
         tables: An Arrow table, or a list of Arrow tables,
                 or its streaming format in bytes.
@@ -1433,13 +1370,6 @@ def from_arrow_refs(
     ]
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Args:
         tables: A Ray object reference to Arrow table, or list of Ray object
@@ -1470,13 +1400,6 @@ def from_spark(
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
-
     Args:
         spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
@@ -1501,13 +1424,6 @@ def from_huggingface(
     This function is not parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
     to memory-mapped).
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Args:
         dataset: A Hugging Face ``Dataset``, or ``DatasetDict``.
@@ -1549,13 +1465,6 @@ def from_tf(
     .. note::
         This function isn't paralellized. It loads the entire dataset into the head
         node's memory before moving the data to the distributed object store.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Examples:
         >>> import ray
@@ -1609,13 +1518,6 @@ def from_torch(
     .. note::
         This function isn't paralellized. It loads the entire dataset into the head
         node's memory before moving the data to the distributed object store.
-
-    .. note::
-        This dataset will be an eagerly computed dataset, where all subsequent
-        transformations will execute eagerly rather than lazily. If you want these
-        transformations to be lazy in order to benefit from better performance and
-        memory stability, convert it to a lazy dataset via
-        :meth:`ds = ds.lazy() <ray.data.Dataset.lazy>` first.
 
     Examples:
         >>> import ray
