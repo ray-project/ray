@@ -30,6 +30,7 @@ class Actor(object):
     def ready(self):
         pass
 
+
 # Stage 0: Submit a bunch of small tasks with large returns.
 def stage0(smoke=False):
     num_tasks = 1000
