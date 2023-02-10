@@ -2102,7 +2102,7 @@ class Dataset(Generic[T]):
             self._lazy,
         )
 
-    @ConsumptionAPI
+    @ConsumptionAPI(pattern="Time complexity:")
     def take(self, limit: int = 20) -> List[T]:
         """Return up to ``limit`` records from the dataset.
 
@@ -2125,7 +2125,7 @@ class Dataset(Generic[T]):
                 break
         return output
 
-    @ConsumptionAPI
+    @ConsumptionAPI(pattern="Time complexity:")
     def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
@@ -2152,7 +2152,7 @@ class Dataset(Generic[T]):
                 )
         return output
 
-    @ConsumptionAPI
+    @ConsumptionAPI(pattern="Time complexity:")
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of records from the dataset.
 
@@ -2164,7 +2164,11 @@ class Dataset(Generic[T]):
         for row in self.take(limit):
             print(row)
 
-    @ConsumptionAPI(if_more_than_read=True, datasource_metadata="row count")
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="row count",
+        pattern="Time complexity:",
+    )
     def count(self) -> int:
         """Count the number of records in the dataset.
 
@@ -2194,6 +2198,7 @@ class Dataset(Generic[T]):
         if_more_than_read=True,
         datasource_metadata="schema",
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
+        pattern="Time complexity:",
     )
     def schema(
         self, fetch_if_missing: bool = True
@@ -2230,7 +2235,7 @@ class Dataset(Generic[T]):
         """
         return self._plan.initial_num_blocks()
 
-    @ConsumptionAPI(if_more_than_read=True)
+    @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -2245,7 +2250,7 @@ class Dataset(Generic[T]):
             return None
         return sum(m.size_bytes for m in metadata)
 
-    @ConsumptionAPI(if_more_than_read=True)
+    @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -3019,7 +3024,7 @@ class Dataset(Generic[T]):
         ):
             yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
 
-    @ConsumptionAPI
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_torch(
         self,
         *,

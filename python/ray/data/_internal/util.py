@@ -296,7 +296,7 @@ def _insert_doc_at_pattern(
         lines = before_lines
     # Should always have at least one non-empty line in the docstring.
     assert len(lines) > 0
-    indent = " " * (len(lines[1]) - len(lines[1].lstrip()))
+    indent = " " * (len(lines[0]) - len(lines[0].lstrip()))
     # Handle directive.
     message = message.strip("\n")
     if directive is not None:
