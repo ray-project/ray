@@ -41,7 +41,7 @@ Ray Datasets Glossary
     Block format
         The way :term:`blocks <Block>` are represented.
 
-        :term:`Blocks` are represented as Arrow tables, pandas DataFrames, and Python lists.
+        Blocks are represented as Arrow tables, pandas DataFrames, and Python lists.
         To determine the block format, call :meth:`~ray.data.Dataset.dataset_format`.
 
     Data Shuffling
