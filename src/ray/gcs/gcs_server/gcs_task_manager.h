@@ -76,6 +76,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
           } else {
             RAY_LOG(INFO) << "Current gcs task event thread's nice = " << new_nice;
           }
+          errno = old_errno;
 #endif
           SetThreadName("gcs.task_events");
           // Keep io_service_ alive.
