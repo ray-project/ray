@@ -275,7 +275,12 @@ def _insert_doc_at_pattern(
         i = tail.find(pattern)
         skip_matches_left = skip_matches
         while i != -1:
-            offset = i + len(pattern) if insert_after else i
+            if insert_after:
+                # Set offset to the first character after the pattern.
+                offset = i + len(pattern)
+            else:
+                # Set offset to the first character in the matched line.
+                offset = tail[:i].rfind("\n") + 1
             head = tail[:offset]
             tail = tail[offset:]
             skip_matches_left -= 1
@@ -300,7 +305,7 @@ def _insert_doc_at_pattern(
     # Handle directive.
     message = message.strip("\n")
     if directive is not None:
-        base = f"{indent}.. {directive}\n"
+        base = f"{indent}.. {directive}::\n"
         message = message.replace("\n", "\n" + indent + " " * 4)
         message = base + indent + " " * 4 + message
     else:
