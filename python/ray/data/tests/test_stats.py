@@ -130,6 +130,8 @@ Stage N map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
@@ -138,8 +140,6 @@ Dataset iterator time breakdown:
 * In format_batch(): T
 * In user code: T
 * Total time: T
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
 """
         )
     else:

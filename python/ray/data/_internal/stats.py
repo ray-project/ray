@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
-import uuid
 
 import numpy as np
 
@@ -211,7 +210,7 @@ class DatasetStats:
         # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
-        self.time_total_s: Optional[float] = None
+        self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
@@ -334,7 +333,7 @@ class DatasetStatsSummary:
         if len(self.stages_stats) == 1:
             stage_stats_summary = self.stages_stats[0]
             stage_name = stage_stats_summary.stage_name
-            stage_uuid = stage_stats_summary.stage_uuid
+            stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
@@ -388,7 +387,6 @@ class DatasetStatsSummary:
 
 @dataclass
 class StageStatsSummary:
-    stage_uuid: str
     stage_name: str
     # Whether the stage associated with this StageStatsSummary object is a substage
     is_substage: bool
@@ -415,7 +413,7 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: Optional[float],
+        time_total_s: float,
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -520,7 +518,6 @@ class StageStatsSummary:
             }
 
         return StageStatsSummary(
-            stage_uuid=uuid.uuid4().hex,
             stage_name=stage_name,
             is_substage=is_substage,
             time_total_s=time_total_s,
