@@ -786,6 +786,7 @@ def start(
                     else "",
                 )
 
+            cli_logger.newline()
             cli_logger.print("To see the status of the cluster, use")
             cli_logger.print("  {}".format(cf.bold("ray status")))
             dashboard_url = node.address_info["webui_url"]
