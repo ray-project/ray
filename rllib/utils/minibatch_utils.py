@@ -1,3 +1,5 @@
+import math
+
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -89,3 +91,32 @@ class MiniBatchDummyIterator(MiniBatchIteratorBase):
 
     def __iter__(self):
         yield self._batch
+
+
+@DeveloperAPI
+class ShardBatchIterator:
+    """Iterator for sharding batch into num_shards batches.
+
+    Args:
+        batch: The input multi-agent batch.
+        num_shards: The number of shards to split the batch into.
+
+    Yields:
+        A MultiAgentBatch of size len(batch) / num_shards.
+    """
+
+    def __init__(self, batch: MultiAgentBatch, num_shards: int):
+        self._batch = batch
+        self._num_shards = num_shards
+
+    def __iter__(self):
+        for i in range(self._num_shards):
+            batch_to_send = {}
+            for pid, sub_batch in self._batch.policy_batches.items():
+                batch_size = math.ceil(len(sub_batch) / self._num_shards)
+                start = batch_size * i
+                end = min(start + batch_size, len(sub_batch))
+                batch_to_send[pid] = sub_batch[int(start) : int(end)]
+            # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
+            new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
+            yield new_batch

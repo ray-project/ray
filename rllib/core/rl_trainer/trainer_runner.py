@@ -1,10 +1,8 @@
-import math
+from collections import deque
 from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
 
 import ray
 
-from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -17,6 +15,10 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.minibatch_utils import ShardBatchIterator
+from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 
 if TYPE_CHECKING:
@@ -47,24 +49,23 @@ class TrainerRunner:
         .get_state() -> returns the state of the RLModule and RLOptimizer from
                         all of the RLTrainers.
         .set_state() -> sets the state of all the RLTrainers.
+        .get_weights() -> returns the weights of the RLModule from the RLTrainer(s).
+        .set_weights() -> sets the weights of the RLModule in the RLTrainer(s).
         .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
                          this TrainerRunner.
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
                             by this TrainerRunner.
-
-    TODO(avnishn):
-        1. Add trainer runner with async operations
-        2. Use fault tolerant actor manager to handle failures
-        3. Add from_xxx constructor pattern. For example
-           add a `from_policy_map(self.local_worker().policy_map, cfg)`
-           constructor to make it easier to create a TrainerRunner from a
-           rollout worker.
-
+    Args:
+        rl_trainer_spec: The specification for constructing RLTrainers.
+        max_queue_len: The maximum number of batches to queue up if doing non-blocking
+            updates (e.g. `self.update(batch, block=False)`). If the queue is full it
+            will evict the oldest batch first.
     """
 
     def __init__(
         self,
         rl_trainer_spec: RLTrainerSpec,
+        max_queue_len: int = 20,
     ):
         scaling_config = rl_trainer_spec.trainer_scaling_config
         rl_trainer_class = rl_trainer_spec.rl_trainer_class
@@ -74,10 +75,16 @@ class TrainerRunner:
         self._is_local = scaling_config.num_workers == 0
         self._trainer = None
         self._workers = None
+        # if a user calls self.shutdown() on their own then this flag is set to true.
+        # When del is called the backend executor isn't shutdown twice if this flag is
+        # true. the backend executor would otherwise log a warning to the console from
+        # ray train
+        self._is_shut_down = False
 
         if self._is_local:
             self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
             self._trainer.build()
+            self._worker_manager = None
         else:
             backend_config = _get_backend_config(rl_trainer_class)
             backend_executor = BackendExecutor(
@@ -98,6 +105,13 @@ class TrainerRunner:
 
             # run the neural network building code on remote workers
             ray.get([w.build.remote() for w in self._workers])
+            # use only 1 max in flight request per worker since training workers have to
+            # be synchronously executed.
+            self._worker_manager = FaultTolerantActorManager(
+                self._workers,
+                max_remote_requests_in_flight_per_actor=1,
+            )
+            self._in_queue = deque(maxlen=max_queue_len)
 
     @property
     def is_local(self) -> bool:
@@ -110,6 +124,7 @@ class TrainerRunner:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        block: bool = True,
     ) -> List[Mapping[str, Any]]:
         """Do one gradient based update to the RLTrainer(s).
 
@@ -125,11 +140,17 @@ class TrainerRunner:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
+            block: Whether to block until the update is complete.
 
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
         if self.is_local:
+            if not block:
+                raise ValueError(
+                    "Cannot run update in non-blocking mode when running in local "
+                    "mode with num_workers=0."
+                )
             results = [
                 self._trainer.update(
                     batch,
@@ -144,10 +165,11 @@ class TrainerRunner:
                 minibatch_size=minibatch_size,
                 num_iters=num_iters,
                 reduce_fn=reduce_fn,
+                block=block,
             )
 
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        if reduce_fn is None:
+        if reduce_fn is None or not results:
             return results
         return reduce_fn(results)
 
@@ -158,6 +180,7 @@ class TrainerRunner:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        block: bool = True,
     ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
 
@@ -172,28 +195,51 @@ class TrainerRunner:
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
-        refs = []
-        global_size = len(self._workers)
-        for i, worker in enumerate(self._workers):
-            batch_to_send = {}
-            for pid, sub_batch in batch.policy_batches.items():
-                batch_size = math.ceil(len(sub_batch) / global_size)
-                start = batch_size * i
-                end = min(start + batch_size, len(sub_batch))
-                batch_to_send[pid] = sub_batch[int(start) : int(end)]
-            # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
-            new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
-            refs.append(
-                worker.update.remote(
-                    new_batch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
-                )
-            )
 
-        results = ray.get(refs)
-        return results
+        if block:
+            results = self._worker_manager.foreach_actor(
+                [
+                    lambda w: w.update(
+                        b,
+                        minibatch_size=minibatch_size,
+                        num_iters=num_iters,
+                        reduce_fn=reduce_fn,
+                    )
+                    for b in ShardBatchIterator(batch, len(self._workers))
+                ]
+            )
+        else:
+            if batch is not None:
+                self._in_queue.append(batch)
+            results = self._worker_manager.fetch_ready_async_reqs()
+            if self._worker_manager_ready() and self._in_queue:
+                batch = self._in_queue.popleft()
+                self._worker_manager.foreach_actor_async(
+                    [
+                        lambda w: w.update(
+                            b,
+                            minibatch_size=minibatch_size,
+                            num_iters=num_iters,
+                            reduce_fn=reduce_fn,
+                        )
+                        for b in ShardBatchIterator(batch, len(self._workers))
+                    ]
+                )
+
+        return self._get_results(results)
+
+    def _worker_manager_ready(self):
+        return self._worker_manager.num_outstanding_async_reqs() == 0
+
+    def _get_results(self, results):
+        processed_results = []
+        for result in results:
+            result_or_error = result.get()
+            if result.ok:
+                processed_results.append(result_or_error)
+            else:
+                raise result_or_error
+        return processed_results
 
     def additional_update(
         self,
@@ -219,13 +265,13 @@ class TrainerRunner:
         if self.is_local:
             results = [self._trainer.additional_update(**kwargs)]
         else:
-            refs = []
-            for worker in self._workers:
-                refs.append(worker.additional_update.remote(**kwargs))
-            results = ray.get(refs)
-        if reduce_fn is None:
-            return results
-        return reduce_fn(results)
+            results = self._worker_manager.foreach_actor(
+                [lambda w: w.additional_update(**kwargs) for worker in self._workers]
+            )
+            results = self._get_results(results)
+            if reduce_fn is None:
+                return results
+            return reduce_fn(results)
 
     def add_module(
         self,
@@ -256,16 +302,15 @@ class TrainerRunner:
                 optimizer_cls=optimizer_cls,
             )
         else:
-            refs = []
-            for worker in self._workers:
-                ref = worker.add_module.remote(
+            results = self._worker_manager.foreach_actor(
+                lambda w: w.add_module(
                     module_id=module_id,
                     module_spec=module_spec,
                     set_optimizer_fn=set_optimizer_fn,
                     optimizer_cls=optimizer_cls,
                 )
-                refs.append(ref)
-            ray.get(refs)
+            )
+            return self._get_results(results)
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the RLTrainers maintained by this TrainerRunner.
@@ -289,14 +334,18 @@ class TrainerRunner:
         if self.is_local:
             self._trainer.set_weights(weights)
         else:
-            ray.get([worker.set_weights.remote(weights) for worker in self._workers])
+            self._worker_manager.foreach_actor(lambda w: w.set_weights(weights))
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
             weights = self._trainer.get_weights(module_ids)
         else:
-            worker = next(iter(self._workers))
-            weights = ray.get(worker.get_weights.remote(module_ids))
+            worker = self._worker_manager.healthy_actor_ids()[0]
+            assert len(self._workers) == self._worker_manager.num_healthy_actors()
+            weights = self._worker_manager.foreach_actor(
+                lambda w: w.get_weights(module_ids), remote_actor_ids=[worker]
+            )
+            weights = self._get_results(weights)[0]
 
         return convert_to_numpy(weights)
 
@@ -308,8 +357,12 @@ class TrainerRunner:
         if self.is_local:
             return self._trainer.get_state()
         else:
-            worker = next(iter(self._workers))
-            return ray.get(worker.get_state.remote())
+            worker = self._worker_manager.healthy_actor_ids()[0]
+            assert len(self._workers) == self._worker_manager.num_healthy_actors()
+            results = self._worker_manager.foreach_actor(
+                lambda w: w.get_state(), remote_actor_ids=[worker]
+            )
+            return self._get_results(results)[0]
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
         """Sets the states of the RLTrainers.
@@ -321,15 +374,14 @@ class TrainerRunner:
         if self.is_local:
             self._trainer.set_state(state)
         else:
-            refs = []
-            for worker in self._workers:
-                refs.append(worker.set_state.remote(state))
-            ray.get(refs)
+            self._worker_manager.foreach_actor(lambda w: w.set_state(state))
 
     def shutdown(self):
         """Shuts down the TrainerRunner."""
         if not self._is_local:
             self._backend_executor.shutdown()
+            self._is_shut_down = True
 
     def __del__(self):
-        self.shutdown()
+        if not self._is_shut_down:
+            self.shutdown()
