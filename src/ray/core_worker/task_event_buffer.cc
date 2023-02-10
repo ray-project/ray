@@ -213,8 +213,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t buffer_size = 0;
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
-  std::vector<std::unique_ptr<TaskEvent>> to_send;
-  to_send.reserve(RayConfig::instance().task_events_send_batch_size());
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> to_send;
+  to_send.set_capacity(RayConfig::instance().task_events_max_buffer_size());
+  // to_send.reserve(RayConfig::instance().task_events_send_batch_size());
 
   {
     absl::MutexLock lock(&mutex_);
@@ -235,13 +236,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     }
     buffer_size = buffer_.size();
 
-    size_t num_to_send =
-        std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
-                 static_cast<size_t>(buffer_.size()));
-    to_send.insert(to_send.end(),
-                   std::make_move_iterator(buffer_.begin()),
-                   std::make_move_iterator(buffer_.begin() + num_to_send));
-    buffer_.erase(buffer_.begin(), buffer_.begin() + num_to_send);
+    std::swap(to_send, buffer_);
 
     // Send and reset the counters
     num_profile_task_events_dropped = num_profile_task_events_dropped_;
