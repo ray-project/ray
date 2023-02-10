@@ -18,6 +18,7 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_trainer.rl_trainer import (
+    FrameworkHPs,
     RLTrainer,
     ParamOptimizerPairs,
     Optimizer,
@@ -25,7 +26,6 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamDictType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -44,28 +44,28 @@ logger = logging.getLogger(__name__)
 
 
 class TorchRLTrainer(RLTrainer):
-
     framework: str = "torch"
 
     def __init__(
         self,
         *,
-        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
         **kwargs,
     ):
-        super().__init__(trainer_scaling_config=trainer_scaling_config, **kwargs)
+        super().__init__(**kwargs)
 
+        # will be set during build
         self._device = None
-
-    @property
-    @override(RLTrainer)
-    def module(self) -> MultiAgentRLModule:
-        return self._module
 
     @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
+        """Configures the optimizers for the Learner.
+
+        By default it sets up a single Adam optimizer for each sub-module in module
+        accessible via `moduel.keys()`.
+        """
         # TODO (Kourosh): convert optimizer_config to dataclass later.
-        lr = self.optimizer_config["lr"]
+        lr = self._optimizer_config["lr"]
         return [
             (
                 self.get_parameters(self._module[key]),
@@ -101,59 +101,8 @@ class TorchRLTrainer(RLTrainer):
             optim.step()
 
     @override(RLTrainer)
-    def build(self) -> None:
-        # TODO (Kourosh): How do we handle model parallism?
-        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
-        # api in ray.train but allow for session to be None without any errors raised.
-        if self._use_gpu:
-            # _TorchAccelerator().get_device() returns the 0th device if
-            # it is called from outside of a Ray Train session. Its necessary to give
-            # the user the option to run on the gpu of their choice, so we enable that
-            # option here via the local gpu id scaling config parameter.
-            if self._distributed:
-                self._device = _TorchAccelerator().get_device()
-            else:
-                assert self._local_gpu_idx < torch.cuda.device_count(), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
-                )
-                # this is an index into the available cuda devices. For example if
-                # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
-                # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
-                # the gpu with id 1 on the node.
-                self._device = torch.device(self._local_gpu_idx)
-        else:
-            self._device = torch.device("cpu")
-        super().build()
-        # if the module is a MultiAgentRLModule and nn.Module we can simply assume
-        # all the submodules are registered. Otherwise, we need to loop through
-        # each submodule and move it to the correct device.
-        # TODO (Kourosh): This can result in missing modules if the user does not
-        # register them in the MultiAgentRLModule. We should find a better way to
-        # handle this.
-        if self._distributed:
-            if isinstance(self._module, torch.nn.Module):
-                self._module = TorchDDPRLModule(self._module)
-            else:
-                for key in self._module.keys():
-                    self._module.add_module(
-                        key, TorchDDPRLModule(self._module[key]), override=True
-                    )
-
-    @override(RLTrainer)
-    def _make_module(self) -> MultiAgentRLModule:
-        module = super()._make_module()
-        self._map_module_to_device(module)
-        return module
-
-    @override(RLTrainer)
-    def _convert_batch_type(self, batch: MultiAgentBatch):
-        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
-        batch = NestedDict(batch)
-        return batch
-
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule"""
+        """Returns the weights of the underlying MultiAgentRLModule"""
         module_weights = self._module.get_state()
         if module_ids is None:
             return module_weights
@@ -162,8 +111,9 @@ class TorchRLTrainer(RLTrainer):
             {k: v for k, v in module_weights.items() if k in module_ids}
         )
 
+    @override(RLTrainer)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
+        """Sets the weights of the underlying MultiAgentRLModule"""
         weights = convert_to_torch_tensor(weights, device=self._device)
         return self._module.set_state(weights)
 
@@ -181,8 +131,14 @@ class TorchRLTrainer(RLTrainer):
     ) -> Optimizer:
         # TODO (Kourosh): the abstraction should take in optimizer_config as a
         # parameter as well.
-        lr = self.optimizer_config.get("lr", 1e-3)
+        lr = self._optimizer_config["lr"]
         return optimizer_cls(module.parameters(), lr=lr)
+
+    @override(RLTrainer)
+    def _convert_batch_type(self, batch: MultiAgentBatch):
+        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+        batch = NestedDict(batch)
+        return batch
 
     @override(RLTrainer)
     def add_module(
@@ -206,6 +162,61 @@ class TorchRLTrainer(RLTrainer):
             self._module.add_module(
                 module_id, TorchDDPRLModule(self._module[module_id]), override=True
             )
+
+    @override(RLTrainer)
+    def build(self) -> None:
+        """Builds the TorchLearner.
+
+        This method is specific to TorchLearner. Before running super() it will
+        initialzed the device properly based on use_gpu and distributed flags, so that
+        _make_module() can place the created module on the correct device. After
+        running super() it will wrap the module in a TorchDDPRLModule if distributed is
+        set.
+        """
+        # TODO (Kourosh): How do we handle model parallism?
+        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
+        # api in ray.train but allow for session to be None without any errors raised.
+        if self._use_gpu:
+            # _TorchAccelerator().get_device() returns the 0th device if
+            # it is called from outside of a Ray Train session. Its necessary to give
+            # the user the option to run on the gpu of their choice, so we enable that
+            # option here via the local gpu id scaling config parameter.
+            if self._distributed:
+                self._device = _TorchAccelerator().get_device()
+            else:
+                assert self._local_gpu_idx < torch.cuda.device_count(), (
+                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                    " not available."
+                )
+                # this is an index into the available cuda devices. For example if
+                # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
+                # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
+                # the gpu with id 1 on the node.
+                self._device = torch.device(self._local_gpu_idx)
+        else:
+            self._device = torch.device("cpu")
+
+        super().build()
+        # if the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # all the submodules are registered. Otherwise, we need to loop through
+        # each submodule and move it to the correct device.
+        # TODO (Kourosh): This can result in missing modules if the user does not
+        # register them in the MultiAgentRLModule. We should find a better way to
+        # handle this.
+        if self._distributed:
+            if isinstance(self._module, torch.nn.Module):
+                self._module = TorchDDPRLModule(self._module)
+            else:
+                for key in self._module.keys():
+                    self._module.add_module(
+                        key, TorchDDPRLModule(self._module[key]), override=True
+                    )
+
+    @override(RLTrainer)
+    def _make_module(self) -> MultiAgentRLModule:
+        module = super()._make_module()
+        self._map_module_to_device(module)
+        return module
 
     def _map_module_to_device(self, module: MultiAgentRLModule) -> None:
         """Moves the module to the correct device."""

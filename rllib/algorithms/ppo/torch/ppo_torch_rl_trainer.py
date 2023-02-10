@@ -29,24 +29,24 @@ class PPOTorchRLTrainer(TorchRLTrainer):
 
         # TODO (Kourosh): Move these failures to config.validate() or support them.
         self.entropy_coeff_scheduler = None
-        if self.config.entropy_coeff_schedule:
+        if self.hps.entropy_coeff_schedule:
             raise ValueError("entropy_coeff_schedule is not supported in RLTrainer yet")
 
         # TODO (Kourosh): Create a way on the base class for users to define arbitrary
         # schedulers for learning rates.
         self.lr_scheduler = None
-        if self.config.lr_schedule:
+        if self.hps.lr_schedule:
             raise ValueError("lr_schedule is not supported in RLTrainer yet")
 
         # TODO (Kourosh): We can still use mix-ins in the new design. Do we want that?
         # Most likely not. I rather be specific about everything. kl_coeff is a
         # none-gradient based update which we can define here and add as update with
         # additional_update() method.
-        self.kl_coeff = self.config.kl_coeff
-        self.kl_target = self.config.kl_target
+        self.kl_coeff = self.hps.kl_coeff
+        self.kl_target = self.hps.kl_target
 
     @override(TorchRLTrainer)
-    def _compute_loss_per_module(
+    def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
@@ -66,7 +66,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
-        if self.config.kl_coeff > 0.0:
+        if self.hps.kl_coeff > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = torch.mean(action_kl)
             if mean_kl_loss.isinf():
@@ -89,16 +89,14 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         surrogate_loss = torch.min(
             batch[Postprocessing.ADVANTAGES] * logp_ratio,
             batch[Postprocessing.ADVANTAGES]
-            * torch.clamp(
-                logp_ratio, 1 - self.config.clip_param, 1 + self.config.clip_param
-            ),
+            * torch.clamp(logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param),
         )
 
         # Compute a value function loss.
-        if self.config.use_critic:
+        if self.hps.use_critic:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
-            vf_loss_clipped = torch.clamp(vf_loss, 0, self.config.vf_clip_param)
+            vf_loss_clipped = torch.clamp(vf_loss, 0, self.hps.vf_clip_param)
             mean_vf_loss = torch.mean(vf_loss_clipped)
         # Ignore the value function.
         else:
@@ -107,14 +105,14 @@ class PPOTorchRLTrainer(TorchRLTrainer):
 
         total_loss = torch.mean(
             -surrogate_loss
-            + self.config.vf_loss_coeff * vf_loss_clipped
-            - self.config.entropy_coeff * curr_entropy
+            + self.hps.vf_loss_coeff * vf_loss_clipped
+            - self.hps.entropy_coeff * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
-        if self.config.kl_coeff > 0.0:
-            total_loss += self.config.kl_coeff * mean_kl_loss
+        if self.hps.kl_coeff > 0.0:
+            total_loss += self.hps.kl_coeff * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
@@ -128,7 +126,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         }
 
     @override(TorchRLTrainer)
-    def _additional_update_per_module(
+    def additional_update_per_module(
         self, module_id: str, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:
 

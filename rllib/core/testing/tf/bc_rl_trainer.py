@@ -9,7 +9,7 @@ from ray.rllib.utils.typing import TensorType
 
 
 class BCTfRLTrainer(TfRLTrainer, BaseTestingTrainer):
-    def _compute_loss_per_module(
+    def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> Mapping[str, Any]:
 
