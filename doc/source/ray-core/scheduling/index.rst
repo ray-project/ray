@@ -38,12 +38,17 @@ Currently the supported strategies are the followings.
 ~~~~~~~~~
 
 ``"DEFAULT"`` is the default strategy used by Ray.
-With the current implementation, Ray calculates a score for each node based on the node's logical resource utilization.
-If the utilization is below a threshold (controlled by env var ``RAY_scheduler_spread_threshold``, default is 0.5), the score is 0. Otherwise, the score is the resource utilization itself (score 1 means the node is fully utilized).
-Ray randomly picks a node from the top k nodes with the lowest scores as the best node for scheduling.
+Ray schedules tasks or actors onto a group of the top k nodes.
+Specially, the nodes are sorted to first favor those that already have tasks or actors scheduled (for locality),
+then to favor those that have low resource utilization (for load balancing).
+Within the top k group, nodes are chosen randomly to further improve load-balancing and mitigate delays from cold-start in large clusters.
+
+Implementation-wise, Ray calculates a score for each node in a cluster based on the utilization of its logical resources.
+If the utilization is below a threshold (controlled by env var ``RAY_scheduler_spread_threshold``, default is 0.5), the score is 0,
+otherwise it is the resource utilization itself (score 1 means the node is fully utilized).
+Ray selects the best node for scheduling by randomly picking from the top k nodes with the lowest scores.
 The value of ``k`` equals to the max of (# nodes in the cluster * ``RAY_scheduler_top_k_fraction`` env var) and ``RAY_scheduler_top_k_absolute`` env var.
 By default, it's 20% of the total number of nodes.
-This strategy balances locality and load balancing.
 
 Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
