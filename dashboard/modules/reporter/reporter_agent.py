@@ -351,16 +351,6 @@ class ReporterAgent(
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):
-        from datetime import datetime
-
-        now = datetime.now()
-
-        current_time = now.strftime("%H:%M:%S")
-        logger.info(current_time)
-        for m in request.metrics:
-            if m.metric_descriptor.name == "tasks":
-                logger.info(WorkerID(request.worker_id))
-                logger.info(len(m.timeseries))
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:
             return reporter_pb2.ReportOCMetricsReply()

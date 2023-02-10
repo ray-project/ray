@@ -1063,13 +1063,6 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
         Dict from metric name to a list of samples for the metrics
     """
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    from datetime import datetime
-
-    now = datetime.now()
-
-    current_time = now.strftime("%H:%M:%S")
-    print("Current Time =", current_time)
-    print(current_time, " Fetch metrics from", metrics_page)
     return fetch_prometheus_metrics([metrics_page])
 
 
