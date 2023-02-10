@@ -1,10 +1,10 @@
 import json
+import logging
 import os
+from pathlib import Path
 import shutil
 import time
 import unittest
-from pathlib import Path
-import logging
 
 import pytest
 
@@ -481,14 +481,18 @@ def test_tuner_restore_latest_available_checkpoint(
     assert result.metrics["iterations_since_restore"] == 5
 
 
-@pytest.mark.parametrize("retry_num", [0, 1])
+@pytest.mark.parametrize("retry_num", [0, 2])
 def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
-    """Test retrying restore on a trial level."""
+    """Test retrying restore on a trial level by setting `TUNE_RESTORE_RETRY_NUM`."""
 
     class MockTrainable(Trainable):
+        """A trainable that can generate one failure during training and
+        another `config["retry_num_to_fail"]` times during restoring."""
+
         def setup(self, config):
             self.idx = 0
             self.tag_file_path = config["tag_file_path"]
+            self.retry_num_to_fail = config.get("retry_num_to_fail", 2)
             self._is_restored = False
 
         def step(self):
@@ -510,10 +514,14 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
 
         def load_checkpoint(self, checkpoint_path):
             self._is_restored = True
-            if not os.path.exists(self.tag_file_path):
-                Path(self.tag_file_path).touch()
-                raise RuntimeError("===== Failing first restore =====")
-            # The following restore should pass!
+            with open(self.tag_file_path, "r") as f:
+                retried_num = json.loads(f.read())["retried_num"]
+
+            with open(self.tag_file_path, "w") as f:
+                f.write(json.dumps({"retried_num": retried_num + 1}))
+
+            if retried_num < self.retry_num_to_fail:
+                raise RuntimeError(f"===== Failing restore #{retried_num + 1} =====")
             with open(checkpoint_path) as f:
                 self.idx = json.loads(f.read())["idx"]
 
@@ -522,6 +530,9 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
         os.environ, {"TUNE_RESTORE_RETRY_NUM": str(retry_num)}
     ):
         tag_file = os.path.join(tmpdir, "tag")
+        # set up tag file
+        with open(tag_file, "w") as f:
+            f.write(json.dumps({"retried_num": 0}))
         tuner = Tuner(
             MockTrainable,
             run_config=RunConfig(
@@ -535,7 +546,7 @@ def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
         )
         results = tuner.fit()
         [result] = list(results)
-        if retry_num == 1:
+        if retry_num > 0:
             assert result.metrics["score"] == 5
         else:
             assert result.metrics["score"] == 2
