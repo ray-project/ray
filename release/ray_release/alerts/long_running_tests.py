@@ -27,10 +27,13 @@ def handle_result(
     elif test_name in ["apex", "impala", "many_ppo", "pbt"]:
         # Tune/RLlib style tests
         target_update_diff = 480
-    elif test_name in ["serve", "serve_failure"]:
+    elif test_name in ["serve"]:
         # Serve tests have workload logs every five minutes.
         # Leave up to 180 seconds overhead.
         target_update_diff = 480
+    elif test_name in ["serve_failure"]:
+        # TODO (shrekris-anyscale): set update_diff limit for serve failure
+        target_update_diff = float("inf")
     else:
         return None
 

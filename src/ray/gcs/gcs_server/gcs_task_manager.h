@@ -18,6 +18,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -96,6 +97,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Record metrics.
   void RecordMetrics() LOCKS_EXCLUDED(mutex_);
+
+  /// Set telemetry client.
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) LOCKS_EXCLUDED(mutex_);
 
   /// A storage component that stores the task events.
   ///
@@ -255,6 +259,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
 
+    /// Total number of tasks by types, including ones have been evicted/finished.
+    absl::flat_hash_map<rpc::TaskType, size_t> num_tasks_by_type_;
+
     /// TODO(rickyx): Refactor this into LRI(least recently inserted) buffer:
     /// https://github.com/ray-project/ray/issues/31158
     /// Current task events stored.
@@ -311,6 +318,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Timer for delay functions.
   boost::asio::deadline_timer timer_;
+
+  UsageStatsClient *usage_stats_client_ GUARDED_BY(mutex_) = nullptr;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
