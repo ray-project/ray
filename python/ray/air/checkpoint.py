@@ -760,18 +760,6 @@ class Checkpoint:
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
 
-    def _get_preprocessor(self) -> Optional["Preprocessor"]:
-        # First try converting to dictionary.
-        checkpoint_dict = self.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-
-        if preprocessor is None:
-            # Fallback to reading from directory.
-            with self.as_directory() as checkpoint_path:
-                preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-        return preprocessor
-
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""
 
@@ -790,11 +778,11 @@ class Checkpoint:
                     # files from the temp directory created by the context.
                     # That way we avoid having to download the files twice.
                     loaded_checkpoint = self.from_directory(checkpoint_path)
-                    preprocessor = loaded_checkpoint._get_preprocessor()
+                    preprocessor = _get_preprocessor(loaded_checkpoint)
                 else:
                     preprocessor = load_preprocessor_from_dir(checkpoint_path)
         else:
-            preprocessor = self._get_preprocessor()
+            preprocessor = _get_preprocessor(loaded_checkpoint)
 
         return preprocessor
 
@@ -883,3 +871,16 @@ def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
 
 def _is_persisted_directory_checkpoint(path: str) -> bool:
     return Path(path, _DICT_CHECKPOINT_FILE_NAME).exists()
+
+
+def _get_preprocessor(checkpoint: "Checkpoint") -> Optional["Preprocessor"]:
+    # First try converting to dictionary.
+    checkpoint_dict = checkpoint.to_dict()
+    preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+
+    if preprocessor is None:
+        # Fallback to reading from directory.
+        with checkpoint.as_directory() as checkpoint_path:
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return preprocessor
