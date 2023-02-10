@@ -270,15 +270,15 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
-            >>> ds.map(lambda x: x * 2).fully_executed()
+            >>> ds.map(lambda x: x * 2)
             Map
             +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.map(lambda record: {"v2": record["value"] * 2}).fully_executed()
+            >>> ds.map(lambda record: {"v2": record["value"] * 2})
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema={v2: int64})
+            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -454,10 +454,10 @@ class Dataset(Generic[T]):
             >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
             ...     batch["age_in_dog_years"] = 7 * batch["age"]
             ...     return batch
-            >>> ds = ds.map_batches(map_fn).fully_executed()
+            >>> ds = ds.map_batches(map_fn)
             >>> ds
             MapBatches(map_fn)
-            +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
+            +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
             Your ``fn`` can return a different type than the input type. To learn more
             about supported output types, read
@@ -466,11 +466,11 @@ class Dataset(Generic[T]):
             >>> from typing import List
             >>> def map_fn(batch: pd.DataFrame) -> List[int]:
             ...     return list(batch["age_in_dog_years"])
-            >>> ds = ds.map_batches(map_fn).fully_executed()
+            >>> ds = ds.map_batches(map_fn)
             >>> ds
             MapBatches(map_fn)
             +- MapBatches(map_fn)
-                +- Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
+                +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -779,10 +779,10 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
             ...      for i in range(10)])
             >>> # Select only "col1" and "col2" columns.
-            >>> ds = ds.select_columns(cols=["col1", "col2"]).fully_executed()
+            >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
+            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64, col3: int64})
 
 
         Time complexity: O(dataset size / parallelism)
@@ -1590,15 +1590,15 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count().fully_executed()
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
             Aggregate
-            +- Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
+            +- Dataset(num_blocks=..., num_rows=3, schema=<class 'int'>)
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count().fully_executed()
+            ...     "A").count()
             Aggregate
-            +- Dataset(num_blocks=..., num_rows=3, schema={A: int64, count(): int64})
+            +- Dataset(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
