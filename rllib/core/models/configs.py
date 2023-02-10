@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
-from typing import List, Callable
+from typing import List, Callable, Dict
+from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
 
-from ray.rllib.core.models.base import ModelConfig, Model
-from ray.rllib.core.models.encoder import Encoder
+import gymnasium as gym
+
+from ray.rllib.core.models.base import ModelConfig, Model, Encoder
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 
@@ -117,6 +119,15 @@ class LSTMEncoderConfig(ModelConfig):
         num_layers: The number of LSTM layers.
         batch_first: Wether the input is batch first or not.
         output_activation: The activation function to use for the output layer.
+        observation_space: The observation space of the environment.
+        action_space: The action space of the environment.
+        view_requirements_dict: The view requirements to use if anything else than
+        observation_space or action_space is to be encoded. This signifies an
+        anvanced use case.
+        get_tokenizer_config: A callable that returns a ModelConfig for to build
+        tokenizers for observations, actions and other spaces that might be present
+        in the view_requirements_dict.
+
     """
 
     input_dim: int = None
@@ -124,6 +135,10 @@ class LSTMEncoderConfig(ModelConfig):
     num_layers: int = None
     batch_first: bool = True
     output_activation: str = "linear"
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    view_requirements_dict: ViewRequirementsDict = None
+    get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:

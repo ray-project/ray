@@ -4,7 +4,7 @@ import tree
 
 from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.encoder import (
-    Encoder,
+    EncoderBase,
     STATE_IN,
     STATE_OUT,
     ENCODER_OUT,
@@ -20,10 +20,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
-class TorchMLPEncoder(TorchModel, Encoder):
+class TorchMLPEncoder(TorchModel, EncoderBase):
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
+        EncoderBase.__init__(self, config)
 
         # Create the neural networks
         self.net = TorchMLP(
@@ -58,7 +58,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
         }
 
 
-class TorchLSTMEncoder(TorchModel, Encoder):
+class TorchLSTMEncoder(TorchModel, EncoderBase):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
@@ -138,7 +138,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         }
 
 
-class TorchIdentityEncoder(TorchModel, Encoder):
+class TorchIdentityEncoder(TorchModel, EncoderBase):
     """An encoder that does nothing but passing on inputs.
 
     We use this so that we avoid having many if/else statements in the RLModule.
@@ -146,7 +146,7 @@ class TorchIdentityEncoder(TorchModel, Encoder):
 
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
+        EncoderBase.__init__(self, config)
 
         self.input_spec = SpecDict(
             # Use the output dim as input dim because identity.
@@ -169,7 +169,7 @@ class TorchIdentityEncoder(TorchModel, Encoder):
         return {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
 
 
-class TorchActorCriticEncoder(TorchModel, Encoder):
+class TorchActorCriticEncoder(TorchModel, EncoderBase):
     """An encoder that potentially holds two encoders.
 
     This is a special case of encoder that potentially holds two encoders:
@@ -180,7 +180,7 @@ class TorchActorCriticEncoder(TorchModel, Encoder):
 
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
+        EncoderBase.__init__(self, config)
 
         if self.config.shared:
             self.encoder = self.config.base_encoder_config.build(framework="torch")

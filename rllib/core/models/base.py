@@ -2,9 +2,21 @@ import abc
 from dataclasses import dataclass
 from typing import List, Union
 
+from ray.rllib import SampleBatch
+from ray.rllib.models.specs.specs_dict import SpecDict
+
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
+
+
+# Top level keys that unify model i/o.
+STATE_IN: str = "state_in"
+STATE_OUT: str = "state_out"
+ENCODER_OUT: str = "encoder_out"
+# For Actor-Critic algorithms, these signify data related to the actor and critic
+ACTOR: str = "actor"
+CRITIC: str = "critic"
 
 
 @ExperimentalAPI
@@ -119,6 +131,99 @@ class Model(abc.ABC):
 
         This method is called by the forwarding method of the respective framework
         that is itself wrapped by RLLib in order to check model inputs and outputs.
+
+        Args:
+            input_dict: The input tensors.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            NestedDict: The output tensors.
+        """
+        raise NotImplementedError
+
+
+class Encoder(Model, abc.ABC):
+    """The framework-agnostic base class for all encoders RLlib produces.
+
+    Encoders are used to encode observations into a latent space in RLModules.
+    Therefore, their input_spec contains the observation space dimensions.
+    Similarly, their output_spec contains the latent space dimensions.
+    Encoders can be recurrent, in which case the state should be part of input- and
+    output_specs.
+    The latents that are produced by an encoder are fed into subsequent heads.
+
+    Abstract illustration of typical flow of tensors:
+
+    Inputs
+    |
+    Encoder
+    |      \
+    Head1  Head2
+    |      /
+    Outputs
+
+    Outputs of encoders are generally of shape (B, latent_dim) or (B, T, latent_dim).
+    That is, for time-series data, we encode into the latent space for each time step.
+    This should be reflected in the output_spec.
+
+    .. testcode::
+
+
+        import numpy as np
+
+        class NumpyEncoder(Encoder):
+            def __init__(self, config):
+                super().__init__(config)
+                self.factor = config.factor
+
+            @check_input_specs("input_spec")
+            @check_output_specs("output_spec")
+            def __call__(self, *args, **kwargs):
+                # This is a dummy method to do checked forward passes.
+                #
+                return self._forward(*args, **kwargs)
+
+            def _forward(self, input_dict, **kwargs):
+                obs = input_dict[SampleBatch.OBS]
+                return {
+                    ENCODER_OUT: np.array(obs) * self.factor,
+                    STATE_OUT: np.array(input_dict[STATE_IN]) * self.factor,
+                }
+
+        @dataclass
+        class NumpyEncoderConfig(ModelConfig):
+            factor: int = None
+
+            def build(self, framework: str):
+                return NumpyEncoder(self)
+
+        config = NumpyEncoderConfig(factor=2)
+        encoder = NumpyEncoder(config)
+        print(encoder({SampleBatch.OBS: 1, STATE_IN: 2}))
+
+    .. testoutput::
+
+        {'encoder_out': 2, 'state_out': 4}
+
+    """
+
+    def __init__(self, config: ModelConfig):
+        super().__init__(config)
+        self.input_spec = SpecDict({SampleBatch.OBS: None, STATE_IN: None})
+        self.output_spec = [ENCODER_OUT, STATE_OUT]
+
+    @abc.abstractmethod
+    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+        """Returns the latent of the encoder for the given inputs.
+
+        This method is called by the forwarding method of the respective framework
+        that is itself wrapped by RLLib in order to check model inputs and outputs.
+
+        The input dict contains at minimum the observation and the state of the encoder.
+        The output dict contains at minimum the latent and the state of the encoder.
+        These values have the keys `SampleBatch.OBS` and `STATE_IN` in the inputs, and
+        `STATE_OUT` and `ENCODER_OUT` and outputs dicts to establish an agreement
+        between the encoder and RLModules.
 
         Args:
             input_dict: The input tensors.

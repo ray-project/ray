@@ -19,6 +19,7 @@ import ray
 import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+import rllib.core.models.base
 from ray import cloudpickle
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
@@ -605,7 +606,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             with disable_client_hook():
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
                     result = self._schedule_function(task, arglist, kwargs, context)
-                elif task.type == ray_client_pb2.ClientTask.ACTOR:
+                elif task.type == rllib.core.models.base.ACTOR:
                     result = self._schedule_actor(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.METHOD:
                     result = self._schedule_method(task, arglist, kwargs, context)
