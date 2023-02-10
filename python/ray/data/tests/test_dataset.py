@@ -1563,6 +1563,16 @@ def test_dataset_repr(ray_start_regular_shared):
         "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     )
 
+    def my_dummy_fn(x):
+        return x
+
+    ds = ray.data.range(10, parallelism=10)
+    ds = ds.map_batches(my_dummy_fn)
+    assert repr(ds) == (
+        "MapBatches(my_dummy_fn)\n"
+        "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+
 
 @pytest.mark.parametrize("lazy", [False, True])
 def test_limit(ray_start_regular_shared, lazy):

@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
 if sys.version_info >= (3, 8):
@@ -247,9 +248,13 @@ class DatasetIterator(abc.ABC):
             "iter_torch_batches(), or to_tf()."
         )
 
-    @abc.abstractmethod
-    def _with_backward_compat(self) -> "DatasetIterator":
+    def _to_train_iterator(self) -> "TrainDatasetIterator":
         """
-        Provide backwards compatibility for AIR users.
+        Convert this DatasetIterator to one that is specific
+        to Ray Train Trainers.
+
+        The Train-specific iterator has training specific logic,
+        for example, automatically moving batches to GPU when GPU training
+        is enabled.
         """
         raise NotImplementedError
