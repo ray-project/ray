@@ -53,6 +53,3 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
-
-/// Added niceness for thread in TaskEventBuffer
-constexpr int kTaskEventBufferAdditionalNice = 5;
