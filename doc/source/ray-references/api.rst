@@ -8,7 +8,7 @@ API References
     ../ray-air/package-ref.rst
     ../data/api/api.rst
     ../train/api.rst
-    ../tune/api_docs/overview.rst
+    ../tune/api/api.rst
     ../serve/api/index.rst
     ../rllib/package_ref/index.rst
     ../workflows/api/api.rst
