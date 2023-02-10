@@ -28,7 +28,7 @@ Concepts
 
 - **Packages**. External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client <ray-client-ref>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or use `ray attach` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**. A :ref:`Ray job <cluster-clients-and-jobs>` is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
 
@@ -110,7 +110,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`, or using :ref:`Ray Client <ray-client-ref>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
@@ -138,16 +138,6 @@ You can specify a runtime environment for your whole job, whether running a scri
     If using the Ray Jobs API (either the Python SDK or the CLI), specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit``, not in the ``ray.init()`` call in the entrypoint script (in this example, ``my_ray_script.py``). 
     
     This ensures the runtime environment is installed on the cluster before the entrypoint script is run.
-
-..
-  TODO(architkulkarni): run Ray Client doc example in CI
-
-.. code-block:: python
-
-    # Option 4: Connecting to remote cluster using Ray Client
-    ray.init("ray://<head-node-ip>:10001", runtime_env=runtime_env)
-
-This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.
 
 .. note::
 
