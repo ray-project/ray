@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Union
-import warnings
 
 import numpy as np
 
