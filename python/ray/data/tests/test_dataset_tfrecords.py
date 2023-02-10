@@ -40,7 +40,7 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     assert dict(df.dtypes) == {
         "int64": np.int64,
         "int64_list": object,
-        "float": np.float,
+        "float": np.float_,
         "float_list": object,
         "bytes": object,
         "bytes_list": object,
@@ -221,7 +221,7 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
 
     # Expect RuntimeError raised when reading JSON as TFRecord file.
     with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
-        ray.data.read_tfrecords(file_path)
+        ray.data.read_tfrecords(file_path).schema()
 
 
 if __name__ == "__main__":

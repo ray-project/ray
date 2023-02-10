@@ -22,7 +22,6 @@ This will print out some statistics on the shuffle execution such as:
 
     Shuffled 9536 MiB in 16.579771757125854 seconds
 """
-
 import time
 from typing import Any, Callable, Iterable, List, Tuple, Union
 

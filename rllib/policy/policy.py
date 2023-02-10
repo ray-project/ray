@@ -405,6 +405,24 @@ class Policy(metaclass=ABCMeta):
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
 
+    def get_connector_metrics(self) -> Dict:
+        """Get metrics on timing from connectors."""
+        return {
+            "agent_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+            "action_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+        }
+
+    def reset_connectors(self, env_id) -> None:
+        """Reset action- and agent-connectors for this policy."""
+        self.agent_connectors.reset(env_id=env_id)
+        self.action_connectors.reset(env_id=env_id)
+
     @DeveloperAPI
     def compute_single_action(
         self,
@@ -517,7 +535,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
@@ -970,14 +988,14 @@ class Policy(metaclass=ABCMeta):
             self.agent_connectors = restore_connectors_for_policy(
                 self, connector_configs["agent"]
             )
-            logger.info("restoring agent connectors:")
-            logger.info(self.agent_connectors.__str__(indentation=4))
+            logger.debug("restoring agent connectors:")
+            logger.debug(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
             self.action_connectors = restore_connectors_for_policy(
                 self, connector_configs["action"]
             )
-            logger.info("restoring action connectors:")
-            logger.info(self.action_connectors.__str__(indentation=4))
+            logger.debug("restoring action connectors:")
+            logger.debug(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1175,6 +1193,7 @@ class Policy(metaclass=ABCMeta):
         """
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
+
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and not fake_gpus
@@ -1182,8 +1201,14 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # If head node, take num_gpus.
-            num_gpus = self.config["num_gpus"]
+            # if we are in the new rl trainer world num_gpus is deprecated.
+            # so use num_gpus_per_worker for policy sampling
+            # we need this .get() syntax here to ensure backwards compatibility.
+            if self.config.get("_enable_rl_trainer_api", False):
+                num_gpus = self.config["num_gpus_per_worker"]
+            else:
+                # If head node, take num_gpus.
+                num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take num_gpus_per_worker
             num_gpus = self.config["num_gpus_per_worker"]

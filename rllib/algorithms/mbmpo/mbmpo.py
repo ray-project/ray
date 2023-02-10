@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class MBMPOConfig(AlgorithmConfig):
-    """Defines a configuration class from which an MBMPO Algorithm can be built.
+    r"""Defines a configuration class from which an MBMPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig

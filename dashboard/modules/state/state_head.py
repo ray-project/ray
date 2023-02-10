@@ -1,9 +1,11 @@
 import asyncio
 import logging
 from dataclasses import asdict
-from typing import Callable, Optional
+from datetime import datetime
+from typing import Callable, List, Tuple, Optional
 
 import aiohttp.web
+from aiohttp.web import Response
 from abc import ABC, abstractmethod
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -22,6 +24,8 @@ from ray.experimental.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
+    PredicateType,
+    SupportedFilterType,
     SummaryApiOptions,
     SummaryApiResponse,
     DEFAULT_RPC_TIMEOUT,
@@ -161,6 +165,18 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             result=None,
         )
 
+    def _get_filters_from_req(
+        self, req: aiohttp.web.Request
+    ) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
+        filter_keys = req.query.getall("filter_keys", [])
+        filter_predicates = req.query.getall("filter_predicates", [])
+        filter_values = req.query.getall("filter_values", [])
+        assert len(filter_keys) == len(filter_values)
+        filters = []
+        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
+            filters.append((key, predicate, val))
+        return filters
+
     def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
         limit = int(
@@ -176,22 +192,27 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             )
 
         timeout = int(req.query.get("timeout", 30))
-        filter_keys = req.query.getall("filter_keys", [])
-        filter_predicates = req.query.getall("filter_predicates", [])
-        filter_values = req.query.getall("filter_values", [])
-        assert len(filter_keys) == len(filter_values)
-        filters = []
-        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
-            filters.append((key, predicate, val))
+        filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
+        exclude_driver = convert_string_to_type(
+            req.query.get("exclude_driver", True), bool
+        )
 
         return ListApiOptions(
-            limit=limit, timeout=timeout, filters=filters, detail=detail
+            limit=limit,
+            timeout=timeout,
+            filters=filters,
+            detail=detail,
+            exclude_driver=exclude_driver,
         )
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
-        return SummaryApiOptions(timeout=timeout)
+        filters = self._get_filters_from_req(req)
+        summary_by = req.query.get("summary_by", None)
+        return SummaryApiOptions(
+            timeout=timeout, filters=filters, summary_by=summary_by
+        )
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
@@ -445,6 +466,23 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS, "1")
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
+
+    @routes.get("/api/v0/tasks/timeline")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def tasks_timeline(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        job_id = req.query.get("job_id")
+        download = req.query.get("download")
+        result = await self._state_api.generate_task_timeline(job_id)
+        if download == "1":
+            # Support download if specified.
+            now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            content_disposition = (
+                f'attachment; filename="timeline-{job_id}-{now_str}.json"'
+            )
+            headers = {"Content-Disposition": content_disposition}
+        else:
+            headers = None
+        return Response(text=result, content_type="application/json", headers=headers)
 
     @routes.get("/api/v0/delay/{delay_s}")
     async def delayed_response(self, req: aiohttp.web.Request):

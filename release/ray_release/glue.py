@@ -2,7 +2,7 @@ import os
 import time
 from typing import Optional, List
 
-from ray_release.alerts.handle import handle_result
+from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
@@ -64,15 +64,16 @@ file_manager_str_to_file_manager = {
 }
 
 command_runner_to_file_manager = {
-    SDKRunner: SessionControllerFileManager,
+    SDKRunner: JobFileManager,  # Use job file manager per default
     ClientRunner: RemoteTaskFileManager,
-    JobFileManager: JobFileManager,
+    JobRunner: JobFileManager,
 }
 
-uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
+
+DEFAULT_RUN_TYPE = "sdk_command"
 
 
-def _get_extra_tags() -> dict:
+def _get_extra_tags_from_env() -> dict:
     env_vars = (
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
@@ -98,6 +99,8 @@ def run_release_test(
 
     validate_test(test)
 
+    logger.info(f"Test config: {test}")
+
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
     result.smoke_test = smoke_test
@@ -119,7 +122,7 @@ def run_release_test(
 
     start_time = time.monotonic()
 
-    run_type = test["run"].get("type", "sdk_command")
+    run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -141,8 +144,14 @@ def run_release_test(
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
+    logger.info(f"Got command runner cls: {command_runner_cls}")
+    logger.info(f"Got file manager cls: {file_manager_cls}")
+
     # Extra tags to be set on resources on cloud provider's side
-    extra_tags = _get_extra_tags()
+    extra_tags = _get_extra_tags_from_env()
+    # We don't need other attributes as they can be derived from the name
+    extra_tags["test_name"] = str(test["name"])
+    extra_tags["test_smoke_test"] = str(result.smoke_test)
     result.extra_tags = extra_tags
 
     # Instantiate managers and command runner
@@ -158,6 +167,8 @@ def run_release_test(
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
 
     pipeline_exception = None
+    # non critical for some tests. So separate it from the general one.
+    fetch_result_exception = None
     try:
         # Load configs
         cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
@@ -312,9 +323,9 @@ def run_release_test(
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
-            logger.error("Could not fetch results for test command")
-            logger.exception(e)
+            logger.exception(f"Could not fetch results for test command: {e}")
             command_results = {}
+            fetch_result_exception = e
 
         # Postprocess result:
         if "last_update" in command_results:
@@ -348,7 +359,7 @@ def run_release_test(
     try:
         last_logs = command_runner.get_last_logs()
     except Exception as e:
-        logger.error(f"Error fetching logs: {e}")
+        logger.exception(f"Error fetching logs: {e}")
         last_logs = "No logs could be retrieved."
 
     result.last_logs = last_logs
@@ -358,7 +369,7 @@ def run_release_test(
         try:
             cluster_manager.terminate_cluster(wait=False)
         except Exception as e:
-            logger.error(f"Could not terminate cluster: {e}")
+            logger.exception(f"Could not terminate cluster: {e}")
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken
@@ -367,12 +378,15 @@ def run_release_test(
     os.chdir(old_wd)
 
     if not pipeline_exception:
-        buildkite_group(":mag: Interpreting results")
-        # Only handle results if we didn't run into issues earlier
-        try:
-            handle_result(test, result)
-        except Exception as e:
-            pipeline_exception = e
+        if require_result(test) and fetch_result_exception:
+            pipeline_exception = fetch_result_exception
+        else:
+            buildkite_group(":mag: Interpreting results")
+            # Only handle results if we didn't run into issues earlier
+            try:
+                handle_result(test, result)
+            except Exception as e:
+                pipeline_exception = e
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
@@ -389,7 +403,7 @@ def run_release_test(
         try:
             reporter.report_result(test, result)
         except Exception as e:
-            logger.error(f"Error reporting results via {type(reporter)}: {e}")
+            logger.exception(f"Error reporting results via {type(reporter)}: {e}")
 
     if pipeline_exception:
         raise pipeline_exception

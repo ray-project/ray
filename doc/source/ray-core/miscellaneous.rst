@@ -246,42 +246,11 @@ To run a large cluster, several parameters need to be tuned in Ray.
 Resource broadcasting
 *********************
 
-.. note::
-  There is an ongoing `work <https://github.com/ray-project/ray/issues/30631>`_ changing the
-  algorithm to pull-based which doesn't require tuning these parameters.
-
-
-Another functionality GCS provided is to ensure each worker node has a view of
-available resources of each other in the Ray cluster. Each raylet is going to
-push its local available resource to GCS and GCS will broadcast it to all the
-raylet periodically. The time complexity is O(N^2). In a large Ray cluster, this
-is going to be an issue, since most of the time is spent on broadcasting the
-resources. There are several settings we can use to tune this:
-
-- ``RAY_resource_broadcast_batch_size`` The maximum number of nodes in a single
-  request sent by GCS, by default 512.
-- ``RAY_raylet_report_resources_period_milliseconds`` The interval between two
-  resources report in raylet, 100ms by default.
-
-Be aware that this is a trade-off between scheduling performance and GCS loads.
-Decreasing the resource broadcasting frequency might make scheduling slower.
-
-gRPC threads for GCS
-********************
-
-.. note::
-   There is an ongoing `PR <https://github.com/ray-project/ray/pull/30131>`_
-   setting it to vCPUs/4 by default. It's not necessary to set this up in ray 2.3+.
-
-
-By default, only one gRPC thread is used for server and client polling from the
-completion queue. This might become the bottleneck if QPS is too high.
-
-- ``RAY_gcs_server_rpc_server_thread_num`` Control the number of threads in GCS
-  polling from the server completion queue, by default, 1.
-- ``RAY_gcs_server_rpc_client_thread_num`` Control the number of threads in GCS
-  polling from the client completion queue, by default, 1.
-
+In Ray 2.3+, lightweight resource broadcasting is supported as an experimental feature.
+Turning it on can significantly reduce GCS load and thus
+improve its overall stability and scalability. To turn it on, this OS environment
+should be set: ``RAY_use_ray_syncer=true``. This feature will be turned on by
+default in 2.4+.
 
 Benchmark
 ~~~~~~~~~
@@ -302,14 +271,12 @@ The OS setup:
 
 The Ray setup:
 
-- ``RAY_gcs_server_rpc_client_thread_num=3``
-- ``RAY_gcs_server_rpc_server_thread_num=3``
+- ``RAY_use_ray_syncer=true``
 - ``RAY_event_stats=false``
-- ``RAY_gcs_resource_report_poll_period_ms=1000``
 
 Test workload:
 
-- Test script: `code <https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py>`_
+- Test script: `code <https://github.com/ray-project/ray/blob/master/release/benchmarks/distributed/many_nodes_tests/actor_test.py>`_
 
 
 
@@ -321,10 +288,6 @@ Test workload:
      - Actor ready time
      - Total time
    * - 20k (10 actors / node)
-     - 5.8s
-     - 146.1s
-     - 151.9s
-   * - 80k (40 actors / node)
-     - 21.1s
-     - 583.9s
-     - 605s
+     - 14.5s
+     - 136.1s
+     - 150.7s

@@ -62,6 +62,7 @@ It is installed dynamically on the cluster at runtime and cached for future use 
 
 Runtime environments can be used on top of the prepared environment from :ref:`the Ray Cluster launcher <using-the-cluster-launcher>` if it was used.
 For example, you can use the Cluster launcher to install a base set of packages, and then use runtime environments to install additional packages.
+In contrast with the base cluster environment, a runtime environment will only be active for Ray processes.  (For example, if using a runtime environment specifying a ``pip`` package ``my_pkg``, the statement ``import my_pkg`` will fail if called outside of a Ray task, actor, or job.)
 
 Runtime environments also allow you to set dependencies per-task, per-actor, and per-job on a long-running Ray cluster.
 
@@ -464,8 +465,6 @@ Where are the environments cached?
 
 Any local files downloaded by the environments are cached at ``/tmp/ray/session_latest/runtime_resources``.
 
-
-
 How long does it take to install or to load from cache?
 """""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -483,6 +482,11 @@ What is the relationship between runtime environments and Docker?
 They can be used independently or together.  
 A container image can be specified in the :ref:`Cluster Launcher <vm-cluster-quick-start>` for large or static dependencies, and runtime environments can be specified per-job or per-task/actor for more dynamic use cases.
 The runtime environment will inherit packages, files, and environment variables from the container image.
+
+My ``runtime_env`` was installed, but when I log into the node I can't import the packages.
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The runtime environment is only active for the Ray worker processes; it does not install any packages "globally" on the node.
 
 .. _remote-uris:
 
@@ -572,7 +576,8 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
-
+Note that the ``smart_open``, ``boto3``, and ``google-cloud-storage`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
+The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------

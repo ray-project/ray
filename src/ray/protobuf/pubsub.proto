@@ -21,7 +21,6 @@ import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/dependency.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/logging.proto";
-import "src/ray/protobuf/reporter.proto";
 
 /// Each channel is prefixed by the name of its components.
 /// For example, for pubsub channels that are used by core workers,

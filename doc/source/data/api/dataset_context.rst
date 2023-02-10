@@ -3,5 +3,20 @@
 DatasetContext API
 ==================
 
-.. autoclass:: ray.data.context.DatasetContext
-    :members:
+.. currentmodule:: ray.data
+
+Constructor
+-----------
+
+.. autosummary::
+   :toctree: doc/
+
+   context.DatasetContext
+
+Get DatasetContext
+------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   context.DatasetContext.get_current

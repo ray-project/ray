@@ -40,6 +40,14 @@ py_test(
 )
 
 py_test(
+    name = "test_callbacks",
+    size = "small",
+    srcs = ["tests/test_callbacks.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
@@ -145,35 +153,11 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_comet",
-    size = "small",
-    srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_wandb",
-    size = "small",
-    srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_mlflow",
-    size = "small",
-    srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
 )
 
 py_test(
@@ -254,6 +238,14 @@ py_test(
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
+)
+
+py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(

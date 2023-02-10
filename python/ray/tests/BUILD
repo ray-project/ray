@@ -163,6 +163,7 @@ py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_concurrency_group.py",
@@ -202,6 +203,14 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+  files = [
+    "test_monitor_service.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test_module_list(
   files = [
@@ -265,6 +274,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_state_api.py",
+    "test_state_api_2.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
     "test_reconstruction_stress.py",
@@ -525,6 +535,7 @@ py_test_module_list(
     "spark/test_GPU.py",
     "spark/test_multicores_per_task.py",
     "spark/test_utils.py",
+    "spark/test_databricks_hook.py",
   ],
   size = "large",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],

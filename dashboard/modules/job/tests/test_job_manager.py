@@ -774,7 +774,10 @@ class TestTailLogs:
             job_manager.stop_job(job_id)
 
             async for lines in job_manager.tail_job_logs(job_id):
-                assert all(s == "Waiting..." for s in lines.strip().split("\n"))
+                assert all(
+                    s == "Waiting..." or s == "Terminated"
+                    for s in lines.strip().split("\n")
+                )
                 print(lines, end="")
 
             await async_wait_for_condition_async_predicate(
@@ -816,7 +819,11 @@ while True:
 
 
 @pytest.mark.asyncio
-async def test_stop_job_timeout(job_manager):
+@pytest.mark.parametrize(
+    "use_env_var,stop_timeout",
+    [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
+)
+async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
     """
     Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
     """
@@ -826,14 +833,19 @@ import signal
 import time
 def handler(*args):
     print('SIGTERM signal handled!');
-    pass
 signal.signal(signal.SIGTERM, handler)
 
 while True:
     print('Waiting...')
     time.sleep(1)\"
 """
-    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+    if use_env_var:
+        job_id = await job_manager.submit_job(
+            entrypoint=entrypoint,
+            runtime_env={"env_vars": {"RAY_JOB_STOP_WAIT_TIME_S": str(stop_timeout)}},
+        )
+    else:
+        job_id = await job_manager.submit_job(entrypoint=entrypoint)
 
     await async_wait_for_condition(
         lambda: "Waiting..." in job_manager.get_job_logs(job_id)
@@ -841,14 +853,23 @@ while True:
 
     assert job_manager.stop_job(job_id) is True
 
+    with pytest.raises(RuntimeError):
+        await async_wait_for_condition_async_predicate(
+            check_job_stopped,
+            job_manager=job_manager,
+            job_id=job_id,
+            timeout=stop_timeout - 1,
+        )
+
     await async_wait_for_condition(
         lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
     )
+
     await async_wait_for_condition_async_predicate(
         check_job_stopped,
         job_manager=job_manager,
         job_id=job_id,
-        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S + 10,
+        timeout=10,
     )
 
 
