@@ -80,7 +80,7 @@ Pandas operations to the block columns within the UDF.
 Group-bys and aggregations
 ==========================
 
-Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations. Just like other transformations, grouped/global aggregations are executed *eagerly* and block until the aggregation has been computed.
+Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations. Grouped aggregations are executed lazily. Global aggregations are executed *eagerly* and block until the aggregation has been computed.
 
 .. code-block:: python
 
