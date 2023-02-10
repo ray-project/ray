@@ -103,12 +103,13 @@ sphinx_tabs_disable_tab_closing = True
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
 # This is used to suppress warnings about explicit "toctree" directives.
-suppress_warnings = ["etoc.toctree"]
+suppress_warnings = ["etoc.toctree", "autosummary"]
 
 # It's a known bug (https://github.com/sphinx-doc/sphinx/issues/9884)
 # that autosummary will generate warning for inherited instance attribute.
-warnings.filterwarnings(action="ignore", message=".*autosummary: failed to import.*")
-warnings.filterwarnings(action="ignore", message=".*autosummary: \[autosummary\] failed to import.*")
+warnings.filterwarnings(action="ignore", message=".*autosummary.*")
+warnings.filterwarnings(action="ignore", message="import")
+warnings.filterwarnings(action="ignore", message=".*import.*")
 
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
