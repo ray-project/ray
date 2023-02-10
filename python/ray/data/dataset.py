@@ -270,13 +270,13 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
-            >>> ds.map(lambda x: x * 2)
+            >>> ds.map(lambda x: x * 2).fully_executed()
             Map
             +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.map(lambda record: {"v2": record["value"] * 2})
+            >>> ds.map(lambda record: {"v2": record["value"] * 2}).fully_executed()
             Map
             +- Dataset(num_blocks=..., num_rows=1000, schema={v2: int64})
             >>> # Define a callable class that persists state across
@@ -454,7 +454,7 @@ class Dataset(Generic[T]):
             >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
             ...     batch["age_in_dog_years"] = 7 * batch["age"]
             ...     return batch
-            >>> ds = ds.map_batches(map_fn)
+            >>> ds = ds.map_batches(map_fn).fully_executed()
             >>> ds
             MapBatches(map_fn)
             +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
@@ -466,11 +466,11 @@ class Dataset(Generic[T]):
             >>> from typing import List
             >>> def map_fn(batch: pd.DataFrame) -> List[int]:
             ...     return list(batch["age_in_dog_years"])
-            >>> ds = ds.map_batches(map_fn)
+            >>> ds = ds.map_batches(map_fn).fully_executed()
             >>> ds
             MapBatches(map_fn)
             +- MapBatches(map_fn)
-              +- Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
+                +- Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -519,7 +519,12 @@ class Dataset(Generic[T]):
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to process. If set to greater than 0, a separate thread will be used
-                to fetch the specified amount of formatted batches from blocks. This improves performance for non-CPU bound UDFs, allowing batch fetching compute and formatting to be overlapped with the UDF. Defaults to 0 (no prefetching enabled.) Increasing the number of batches to prefetch can result in higher throughput, at the expense of requiring more heap memory to buffer the batches.
+                to fetch the specified amount of formatted batches from blocks. This
+                improves performance for non-CPU bound UDFs, allowing batch fetching
+                compute and formatting to be overlapped with the UDF. Defaults to 0 (no
+                prefetching enabled.) Increasing the number of batches to prefetch can
+                result in higher throughput, at the expense of requiring more heap
+                memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -774,10 +779,10 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
             ...      for i in range(10)])
             >>> # Select only "col1" and "col2" columns.
-            >>> ds = ds.select_columns(cols=["col1", "col2"])
+            >>> ds = ds.select_columns(cols=["col1", "col2"]).fully_executed()
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(num_blocks=..., num_rows=10, schema={col1: int64, col2: int64})
+            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
 
 
         Time complexity: O(dataset size / parallelism)
@@ -789,7 +794,7 @@ class Dataset(Generic[T]):
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
-        """
+        """  # noqa: E501
         return self.map_batches(
             lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
             zero_copy_batch=True,
@@ -1585,13 +1590,13 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count().fully_executed()
             Aggregate
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count()
+            ...     "A").count().fully_executed()
             Aggregate
             +- Dataset(num_blocks=..., num_rows=3, schema={A: int64, count(): int64})
 
