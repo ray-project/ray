@@ -66,12 +66,24 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
         task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
             RayConfig::instance().task_events_max_num_task_in_gcs(), stats_counter_)),
         io_service_thread_(std::make_unique<std::thread>([this] {
-          SetThreadName("task_events");
+#ifdef __linux__
+          auto new_nice = nice(19);
+          auto old_errno = errno;
+          errno = 0;
+          if (new_nice == -1 && errno != 0) {
+            RAY_LOG(WARNING) << "Failed to set nice(" << new_nice
+                             << ") for gcs task events: " << strerror(errno);
+          } else {
+            RAY_LOG(INFO) << "Current gcs task event thread's nice = " << new_nice;
+          }
+#endif
+          SetThreadName("gcs.task_events");
           // Keep io_service_ alive.
           boost::asio::io_service::work io_service_work_(io_service_);
           io_service_.run();
         })),
-        timer_(io_service_) {}
+        timer_(io_service_) {
+  }
 
   /// Handles a AddTaskEventData request.
   ///
