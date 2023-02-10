@@ -94,7 +94,7 @@ class TestRLTrainer(unittest.TestCase):
         n_steps = 100
         expected = [
             convert_to_numpy(param)
-            - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
+            - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
