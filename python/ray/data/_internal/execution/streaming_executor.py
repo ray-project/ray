@@ -1,10 +1,10 @@
-import logging
 import threading
 import os
 from typing import Iterator, Optional
 
 import ray
 from ray.data.context import DatasetContext
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -23,7 +23,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
@@ -62,7 +62,7 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         self._initial_stats = initial_stats
         if not isinstance(dag, InputDataBuffer):
-            logger.info("Executing DAG %s", dag)
+            logger.get_logger().info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology and start the runner thread.
@@ -154,7 +154,7 @@ class StreamingExecutor(Executor, threading.Thread):
         """
 
         if DEBUG_TRACE_SCHEDULING:
-            logger.info("Scheduling loop step...")
+            logger.get_logger().info("Scheduling loop step...")
 
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
@@ -276,7 +276,7 @@ def _debug_dump_topology(topology: Topology) -> None:
     Args:
         topology: The topology to debug.
     """
-    logger.info("vvv scheduling trace vvv")
+    logger.get_logger().info("vvv scheduling trace vvv")
     for i, (op, state) in enumerate(topology.items()):
-        logger.info(f"{i}: {state.summary_str()}")
-    logger.info("^^^ scheduling trace ^^^")
+        logger.get_logger().info(f"{i}: {state.summary_str()}")
+    logger.get_logger().info("^^^ scheduling trace ^^^")
