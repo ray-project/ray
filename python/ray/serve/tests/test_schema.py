@@ -21,6 +21,8 @@ from ray.serve.schema import (
     ServeStatusSchema,
     serve_application_to_deploy_schema,
     serve_status_to_schema,
+    prepend_app_name_to_deployment_names,
+    remove_app_name_from_deployment_names,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
@@ -535,6 +537,95 @@ class TestServeApplicationSchema:
             ],
         }
 
+    def test_prepend_app_name_to_deployment_names(self):
+        config_dict = {
+            "name": "app1",
+            "route_prefix": "/app1",
+            "import_path": "module.graph",
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+        transformed_config_dict = {
+            "name": "app1",
+            "route_prefix": "/app1",
+            "import_path": "module.graph",
+            "deployments": [
+                {
+                    "name": "app1_alice",
+                    "num_replicas": 2,
+                },
+                {
+                    "name": "app1_bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+        config = ServeApplicationSchema.parse_obj(config_dict)
+        assert prepend_app_name_to_deployment_names(
+            config
+        ) == ServeApplicationSchema.parse_obj(transformed_config_dict)
+
+    def test_remove_app_name_from_deployment_names(self):
+        config_dict = {
+            "name": "app1",
+            "route_prefix": "/app1",
+            "import_path": "module.graph",
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+
+        # Applying prepend_app_name_to_deployment_names then
+        # remove_app_name_from_deployment_names should give original config
+        config = ServeApplicationSchema.parse_obj(config_dict)
+        assert (
+            remove_app_name_from_deployment_names(
+                prepend_app_name_to_deployment_names(config)
+            )
+            == config
+        )
+
+        malformed_config_dict = {
+            "name": "app1",
+            "route_prefix": "/app1",
+            "import_path": "module.graph",
+            "deployments": [
+                {
+                    "name": "app1_alice",
+                    "num_replicas": 2,
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+
+        # If the deployment names don't have app name as a prefix, should raise error
+        with pytest.raises(AssertionError):
+            remove_app_name_from_deployment_names(
+                ServeApplicationSchema.parse_obj(malformed_config_dict)
+            )
+        with pytest.raises(AssertionError):
+            remove_app_name_from_deployment_names(
+                ServeApplicationSchema.parse_obj(config_dict)
+            )
+
 
 class TestServeDeploySchema:
     def test_serve_application_to_deploy_config(self):
@@ -552,7 +643,6 @@ class TestServeDeploySchema:
                 {
                     "name": "bob",
                     "num_replicas": 3,
-                    "route_prefix": "/B",
                 },
             ],
         }
