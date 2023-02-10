@@ -72,19 +72,7 @@ Ray Train Built-in Trainers
     ~mosaic.MosaicTrainer
     ~rl.RLTrainer
 
-Ray Train Built-in Predictors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~xgboost.XGBoostPredictor
-    ~lightgbm.LightGBMPredictor
-    ~tensorflow.TensorflowPredictor
-    ~torch.TorchPredictor
-    ~huggingface.HuggingFacePredictor
-    ~sklearn.SklearnPredictor
-    ~rl.RLPredictor
+.. _train-framework-specific-ckpts:
 
 Ray Train Framework-specific Checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -92,10 +80,10 @@ Ray Train Framework-specific Checkpoints
 .. autosummary::
     :toctree: doc/
 
-    ~xgboost.XGBoostCheckpoint
-    ~lightgbm.LightGBMCheckpoint
     ~tensorflow.TensorflowCheckpoint
     ~torch.TorchCheckpoint
+    ~xgboost.XGBoostCheckpoint
+    ~lightgbm.LightGBMCheckpoint
     ~huggingface.HuggingFaceCheckpoint
     ~sklearn.SklearnCheckpoint
     ~rl.RLCheckpoint

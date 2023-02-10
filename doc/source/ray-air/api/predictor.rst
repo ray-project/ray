@@ -70,3 +70,17 @@ Batch Prediction API
 
     batch_predictor.BatchPredictor.predict
     batch_predictor.BatchPredictor.predict_pipelined
+
+
+Built-in Predictors for Library Integrations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+
+    ~xgboost.XGBoostPredictor
+    ~lightgbm.LightGBMPredictor
+    ~tensorflow.TensorflowPredictor
+    ~torch.TorchPredictor
+    ~huggingface.HuggingFacePredictor
+    ~sklearn.SklearnPredictor
+    ~rl.RLPredictor

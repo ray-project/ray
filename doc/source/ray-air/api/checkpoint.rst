@@ -3,6 +3,11 @@
 Ray AIR Checkpoint
 ==================
 
+.. seealso::
+
+    See :ref:`this API reference section <train-framework-specific-ckpts>` for
+    framework-specific checkpoints used with AIR's library integrations.
+
 Constructor Options
 -------------------
 
