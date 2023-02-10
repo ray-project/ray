@@ -62,7 +62,9 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
-    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
+    def build_multistage(
+        self, stages: StatsDict, stage_finished: bool = True
+    ) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
             if len(stages) > 1:
@@ -77,7 +79,11 @@ class _DatasetStatsBuilder:
             parent=self.parent,
             base_name=self.stage_name,
         )
-        stats.time_total_s = time.perf_counter() - self.start_time
+        stats.start_time = self.start_time
+        if stage_finished:
+            stats.time_total_s = time.perf_counter() - self.start_time
+        else:
+            stats.time_total_s = None
         return stats
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
@@ -85,6 +91,7 @@ class _DatasetStatsBuilder:
             stages={self.stage_name: final_blocks.get_metadata()},
             parent=self.parent,
         )
+        stats.start_time = self.start_time
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
@@ -198,7 +205,7 @@ class DatasetStats:
         self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
-        self.parents: List["DatasetStats"] = parent
+        self.parents: List["DatasetStats"] = parent or []
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -206,7 +213,8 @@ class DatasetStats:
         # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
-        self.time_total_s: float = 0
+        self.start_time: Optional[float] = None
+        self.time_total_s: Optional[float] = None
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
@@ -260,6 +268,7 @@ class DatasetStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
+                    self.start_time,
                     self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
@@ -287,6 +296,16 @@ class DatasetStats:
             self.base_name,
             self.extra_metrics,
         )
+
+    def close(self) -> None:
+        """Should be called when execution finished, to close out the end time.
+
+        This is mainly useful for streaming execution mode.
+        """
+        if not self.time_total_s and self.start_time:
+            self.time_total_s = time.perf_counter() - self.start_time
+        for p in self.parents:
+            p.close()
 
 
 @DeveloperAPI
@@ -352,11 +371,11 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
-        out += str(self.iter_stats)
         if self.extra_metrics:
             indent = "\t" if stage_stats_summary.is_substage else ""
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+        out += str(self.iter_stats)
         return out
 
     def get_total_wall_time(self) -> float:
@@ -408,7 +427,8 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: float,
+        start_time: float,
+        time_total_s: Optional[float],
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -430,6 +450,8 @@ class StageStatsSummary:
                 len(exec_stats), len(block_metas)
             )
         else:
+            if not time_total_s:
+                time_total_s = time.perf_counter() - start_time
             rounded_total = round(time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.

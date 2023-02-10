@@ -37,10 +37,8 @@ class StreamingExecutor(Executor, threading.Thread):
     """
 
     def __init__(self, options: ExecutionOptions):
-        # TODO: implement stats recording. We might want to mutate a single stats
-        # object as data is streamed through (similar to how iterating over the output
-        # data updates the stats object in legacy code).
-        self._stats: Optional[DatasetStats] = None
+        self._initial_stats: Optional[DatasetStats] = None
+        self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
         self._output_info: Optional[ProgressBar] = None
 
@@ -61,12 +59,13 @@ class StreamingExecutor(Executor, threading.Thread):
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+        self._initial_stats = initial_stats
         if not isinstance(dag, InputDataBuffer):
             logger.info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology, self._stats = build_streaming_topology(dag, self._options)
+        self._topology = build_streaming_topology(dag, self._options)
         self._output_info = ProgressBar(
             "Output", dag.num_outputs_total() or 1, len(self._topology)
         )
@@ -86,6 +85,10 @@ class StreamingExecutor(Executor, threading.Thread):
                     yield item
                 item = self._output_node.get_output_blocking()
         finally:
+            # Freeze the stats and save it.
+            stats = self._get_intermediate_stats()
+            stats.close()
+            self._final_stats = stats
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
@@ -118,8 +121,19 @@ class StreamingExecutor(Executor, threading.Thread):
 
         The stats object will be updated as streaming execution progresses.
         """
-        assert self._stats, self._stats
-        return self._stats
+        if self._final_stats:
+            return self._final_stats
+        else:
+            return self._get_intermediate_stats()
+
+    def _get_intermediate_stats(self):
+        stats = self._initial_stats
+        for op in self._topology:
+            if not isinstance(op, InputDataBuffer):
+                builder = stats.child_builder(op.name)
+                stats = builder.build_multistage(op.get_stats(), stage_finished=False)
+                stats.extra_metrics = op.get_metrics()
+        return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
         """Run one step of the scheduling loop.
