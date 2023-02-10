@@ -61,11 +61,6 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
-try:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-except ImportError:
-    AlgorithmConfig = type(None)
-
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +183,7 @@ def run(
     mode: Optional[str] = None,
     stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
-    config: Optional[Union[Dict[str, Any], AlgorithmConfig]] = None,
+    config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
     ] = None,
@@ -483,8 +478,13 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
+    try:
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    except ImportError:
+        AlgorithmConfig = type(None)
     if config and isinstance(config, AlgorithmConfig):
         config = config.to_dict()
+
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
 
