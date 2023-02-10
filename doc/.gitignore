@@ -6,6 +6,10 @@ source/_static/thumbs
 # Ignore generated gallery txt files
 eco-gallery.txt
 
+# Ignore CSS linter
+node_modules/
+package-lock.json
+
 # Ignore generated API files
 source/data/api/doc/
 source/cluster/running-applications/job-submission/doc/
