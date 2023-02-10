@@ -31,7 +31,7 @@
      that autosummary will generate warning for inherited instance attribute.
      We remove them for now.
    #}
-   {%- if item not in inherited_members %}
+   {%- if item in inherited_members %}
       {{ name }}.{{ item }}
    {%- endif -%}
    {%- endfor %}
