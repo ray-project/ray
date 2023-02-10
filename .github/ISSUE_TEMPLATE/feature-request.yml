@@ -1,7 +1,7 @@
 name: Ray feature request
 description: Suggest an idea for Ray project
 title: "[<Ray component: Core|RLlib|etc...>] "
-labels: [enhancement]
+labels: [enhancement, triage]
 body:
   - type: markdown
     attributes:
