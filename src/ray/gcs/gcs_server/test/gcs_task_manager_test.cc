@@ -608,7 +608,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
   size_t num_total = 1000;
 
   std::vector<TaskID> task_ids = GenTaskIDs(200);
-  std::vector<int64_t> attempt_numbers{0, 1, 2, 3, 4, 5};
+  std::vector<int64_t> attempt_numbers{0, 1, 2, 3, 4};
   std::vector<int> job_ids{1, 2, 3};
 
   // 10 random parent task ids
@@ -642,6 +642,13 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
     SyncAddTaskEventData(events_data);
   }
 
+  {
+    absl::MutexLock lock(&task_manager->mutex_);
+    EXPECT_EQ(
+        task_manager->task_event_storage_->num_tasks_by_type_[rpc::TaskType::NORMAL_TASK],
+        task_ids.size());
+  }
+
   // Evict all of them with tasks with single attempt, no parent, same job.
   {
     auto task_ids = GenTaskIDs(num_limit);
@@ -663,6 +670,9 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
   {
     absl::MutexLock lock(&task_manager->mutex_);
     EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
+    EXPECT_EQ(
+        task_manager->task_event_storage_->num_tasks_by_type_[rpc::TaskType::NORMAL_TASK],
+        task_ids.size() + num_limit);
     // No task has parent.
     EXPECT_EQ(task_manager->task_event_storage_->parent_to_children_task_index_.size(),
               0);

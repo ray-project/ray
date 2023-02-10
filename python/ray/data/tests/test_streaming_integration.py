@@ -38,7 +38,7 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
 
 
 def test_pipelined_execution(ray_start_10_cpus_shared):
-    executor = StreamingExecutor(ExecutionOptions())
+    executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
