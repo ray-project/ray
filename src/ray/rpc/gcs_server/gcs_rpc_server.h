@@ -228,8 +228,8 @@ class MonitorGcsServiceHandler {
                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetSchedulingStatus(GetSchedulingStatusRequest request,
-                                      GetSchedulingStatusReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
+                                         GetSchedulingStatusReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `MonitorServer`.
