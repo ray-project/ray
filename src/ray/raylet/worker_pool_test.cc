@@ -1531,15 +1531,6 @@ TEST_F(WorkerPoolTest, WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettin
   }
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 2);
 
-  // /// Execute some task with the worker.
-  // auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id_dead);
-  // worker = worker_pool_->PopWorkerSync(task_spec, false);
-  // ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
-
-  // /// Return the worker.
-  // worker_pool_->PushWorker(worker);
-  // ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
-
   auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker_to_kill->WorkerId());
   auto mock_rpc_client = mock_rpc_client_it->second;
 
