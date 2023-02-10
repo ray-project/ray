@@ -381,7 +381,7 @@ is set to too large of a value for your dataset), the number of parallel tasks
 may be less than expected.
 
 If your ``Dataset`` blocks are smaller than your ``batch_size`` and you want to increase
-`:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
 ``batch_size`` to prevent this block bundling. If you think that your ``Dataset`` blocks
 are too small, try decreasing ``parallelism`` during the read to create larger blocks.
 
