@@ -388,16 +388,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     // Add the driver task info.
     if (task_event_buffer_->Enabled()) {
-      rpc::TaskEvents task_event;
       const auto spec = builder.Build();
-      auto task_info = task_manager_->MakeTaskInfoEntry(spec);
-      task_event.set_task_id(task_id.Binary());
-      task_event.set_job_id(spec.JobId().Binary());
-      task_event.set_attempt_number(0);
-      task_event.mutable_task_info()->Swap(&task_info);
-      gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::RUNNING,
-                                    absl::GetCurrentTimeNanos(),
-                                    task_event.mutable_state_updates());
+      auto task_event = std::make_unique<worker::TaskStatusEvent>(
+          task_id,
+          spec.JobId(),
+          /* attempt_number */ 0,
+          rpc::TaskStatus::RUNNING,
+          /* timestamp */ absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(spec));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -683,14 +681,12 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
-    // Mark Driver as finished.
-    rpc::TaskEvents task_event;
-    task_event.set_task_id(worker_context_.GetCurrentTaskID().Binary());
-    task_event.set_job_id(worker_context_.GetCurrentJobID().Binary());
-    task_event.set_attempt_number(0);
-    gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::FINISHED,
-                                  absl::GetCurrentTimeNanos(),
-                                  task_event.mutable_state_updates());
+    auto task_event = std::make_unique<worker::TaskStatusEvent>(
+        worker_context_.GetCurrentTaskID(),
+        worker_context_.GetCurrentJobID(),
+        /* attempt_number */ 0,
+        rpc::TaskStatus::FINISHED,
+        /* timestamp */ absl::GetCurrentTimeNanos());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -2212,22 +2208,53 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
+  std::vector<std::pair<TaskID, Status>> recursive_cancellation_status;
   bool recursive_success = true;
   for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
-    if (child_spec.has_value()) {
+    if (!child_spec.has_value()) {
+      recursive_success = false;
+      recursive_cancellation_status.push_back(
+          std::make_pair(child_id,
+                         Status::UnknownError(
+                             "Recursive task cancellation failed--check warning logs.")));
+    } else if (child_spec->IsActorTask()) {
+      recursive_success = false;
+      recursive_cancellation_status.push_back(std::make_pair(
+          child_id,
+          Status::Invalid(
+              "Actor task cancellation is not supported. The task won't be cancelled.")));
+    } else {
       auto result =
           direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
-      recursive_success = recursive_success && result.ok();
-    } else {
-      recursive_success = false;
+      recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     }
   }
+
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError(
-        "Recursive task cancellation failed--check warning logs.");
+    auto kMaxFailedTaskSampleSize = 10;
+    std::ostringstream ostr;
+    ostr << "Failed to cancel all the children tasks of " << task_id << " recursively.\n"
+         << "Here are up to " << kMaxFailedTaskSampleSize
+         << " samples tasks that failed to be canceled\n";
+    auto success = 0;
+    auto failures = 0;
+    for (const auto &[child_id, status] : recursive_cancellation_status) {
+      if (status.ok()) {
+        success += 1;
+      } else {
+        // Only record up to sample sizes.
+        if (failures < kMaxFailedTaskSampleSize) {
+          ostr << "\t" << child_id << ", " << status.ToString() << "\n";
+        }
+        failures += 1;
+      }
+    }
+    ostr << "Total Recursive cancelation success: " << success
+         << ", failures: " << failures;
+    return Status::UnknownError(ostr.str());
   }
 }
 
@@ -3326,8 +3353,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
     if (!recursive_cancel.ok()) {
-      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
-                     << " due to reason: " << recursive_cancel.ToString();
+      RAY_LOG(ERROR) << recursive_cancel.ToString();
     }
   }
 
