@@ -188,6 +188,9 @@ class TaskCounter {
                        rpc::TaskStatus status,
                        bool is_retry) {
     absl::MutexLock l(&mu_);
+    // Add a no-op increment to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Increment({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -195,15 +198,15 @@ class TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
-    // Add a no-op increment to counter_ so that
-    // it will invoke a callback upon RecordMetrics.
-    counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
   }
 
   void UnsetMetricStatus(const std::string &func_name,
                          rpc::TaskStatus status,
                          bool is_retry) {
     absl::MutexLock l(&mu_);
+    // Add a no-op decrement to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Decrement({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -211,9 +214,6 @@ class TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
-    // Add a no-op decrement to counter_ so that
-    // it will invoke a callback upon RecordMetrics.
-    counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
   }
 
   std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {
