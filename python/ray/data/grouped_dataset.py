@@ -138,8 +138,6 @@ class GroupedDataset(Generic[T]):
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
 
-        This is a blocking operation.
-
         Examples:
 
             .. testcode::
@@ -263,8 +261,6 @@ class GroupedDataset(Generic[T]):
 
         In general, prefer to use aggregate() instead of map_groups().
 
-        This is a blocking operation.
-
         Examples:
             >>> # Return a single record per group (list of multiple records in,
             >>> # list of a single record out).
@@ -374,8 +370,6 @@ class GroupedDataset(Generic[T]):
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
@@ -395,8 +389,6 @@ class GroupedDataset(Generic[T]):
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
         r"""Compute grouped sum aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -457,8 +449,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped min aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
@@ -518,8 +508,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped max aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
@@ -578,8 +566,6 @@ class GroupedDataset(Generic[T]):
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
         """Compute grouped mean aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -643,8 +629,6 @@ class GroupedDataset(Generic[T]):
         ignore_nulls: bool = True,
     ) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray

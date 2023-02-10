@@ -64,6 +64,7 @@ from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
     _is_tensor_schema,
+    ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
@@ -188,6 +189,9 @@ class Dataset(Generic[T]):
     outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
     produces values (not Dataset) as output (e.g. :py:meth:`.iter_batches()`).
 
+    Dataset transformations are lazy, with execution of the transformations being
+    triggered by downstream consumption.
+
     Datasets supports parallel processing at scale: transformations such as
     :py:meth:`.map_batches()`, aggregations such as
     :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
@@ -263,8 +267,8 @@ class Dataset(Generic[T]):
     ) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
 
-        This is a blocking operation. Note that mapping individual records
-        can be quite slow. Consider using `.map_batches()` for performance.
+        Note that mapping individual records can be quite slow. Consider using
+        `.map_batches()` for performance.
 
         Examples:
             >>> import ray
@@ -722,8 +726,6 @@ class Dataset(Generic[T]):
     ) -> "Dataset[U]":
         """Drop one or more columns from the dataset.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ds = ray.data.range_table(100)
@@ -801,8 +803,8 @@ class Dataset(Generic[T]):
     ) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
 
-        This is a blocking operation. Consider using ``.map_batches()`` for
-        better performance (the batch size can be altered in map_batches).
+        Consider using ``.map_batches()`` for better performance (the batch size can be
+        altered in map_batches).
 
         Examples:
             >>> import ray
@@ -879,8 +881,8 @@ class Dataset(Generic[T]):
     ) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
 
-        This is a blocking operation. Consider using ``.map_batches()`` for
-        better performance (you can implement filter by dropping records).
+        Consider using ``.map_batches()`` for better performance (you can implement
+        filter by dropping records).
 
         Examples:
             >>> import ray
@@ -940,8 +942,8 @@ class Dataset(Generic[T]):
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
-        This is a blocking operation. After repartitioning, all blocks in the
-        returned dataset will have approximately the same number of rows.
+        After repartitioning, all blocks in the returned dataset will have approximately
+        the same number of rows.
 
         Examples:
             >>> import ray
@@ -984,8 +986,6 @@ class Dataset(Generic[T]):
         **ray_remote_args,
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
-
-        This is a blocking operation similar to repartition().
 
         Examples:
             >>> import ray
@@ -1113,6 +1113,7 @@ class Dataset(Generic[T]):
 
         return self.map_batches(process_batch)
 
+    @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
@@ -1316,6 +1317,7 @@ class Dataset(Generic[T]):
             for block_split in per_split_block_lists
         ]
 
+    @ConsumptionAPI
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
 
@@ -1373,6 +1375,7 @@ class Dataset(Generic[T]):
             )
         return splits
 
+    @ConsumptionAPI
     def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
         """Split the dataset using proportions.
 
@@ -1439,6 +1442,7 @@ class Dataset(Generic[T]):
 
         return self.split_at_indices(split_indices)
 
+    @ConsumptionAPI
     def train_test_split(
         self,
         test_size: Union[int, float],
@@ -1496,14 +1500,16 @@ class Dataset(Generic[T]):
                 )
             return dataset.split_at_indices([dataset_length - test_size])
 
+    @ConsumptionAPI(pattern="Args:")
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
         The order of the blocks in the datasets is preserved, as is the
         relative ordering between the datasets passed in the argument list.
 
-        NOTE: Unioned datasets are not lineage-serializable, i.e. they can not be used
-        as a tunable hyperparameter in Ray Tune.
+        .. note::
+            Unioned datasets are not lineage-serializable, i.e. they can not be used as
+            a tunable hyperparameter in Ray Tune.
 
         Args:
             other: List of datasets to combine with this one. The datasets
@@ -1575,8 +1581,6 @@ class Dataset(Generic[T]):
     def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name.
 
-        This is a lazy operation.
-
         Examples:
             >>> import ray
             >>> # Group by a key function and aggregate.
@@ -1607,10 +1611,9 @@ class Dataset(Generic[T]):
 
         return GroupedDataset(self, key)
 
+    @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> U:
         """Aggregate the entire dataset as one group.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -1638,12 +1641,11 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    @ConsumptionAPI
     def sum(
         self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute sum over entire dataset.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -1701,12 +1703,11 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @ConsumptionAPI
     def min(
         self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute minimum over entire dataset.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -1764,12 +1765,11 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @ConsumptionAPI
     def max(
         self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute maximum over entire dataset.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -1827,12 +1827,11 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @ConsumptionAPI
     def mean(
         self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute mean over entire dataset.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -1890,6 +1889,7 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @ConsumptionAPI
     def std(
         self,
         on: Optional[Union[KeyFn, List[KeyFn]]] = None,
@@ -1897,8 +1897,6 @@ class Dataset(Generic[T]):
         ignore_nulls: bool = True,
     ) -> U:
         """Compute standard deviation over entire dataset.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -1915,13 +1913,13 @@ class Dataset(Generic[T]):
             ...     for i in range(100)]).std(["A", "B"])
             {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
-        NOTE: This uses Welford's online method for an accumulator-style
-        computation of the standard deviation. This method was chosen due to
-        it's numerical stability, and it being computable in a single pass.
-        This may give different (but more accurate) results than NumPy, Pandas,
-        and sklearn, which use a less numerically stable two-pass algorithm.
-        See
-        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+        .. note:: This uses Welford's online method for an accumulator-style computation
+            of the standard deviation. This method was chosen due to it's numerical
+            stability, and it being computable in a single pass. This may give different
+            (but more accurate) results than NumPy, Pandas, and sklearn, which use a
+            less numerically stable two-pass algorithm.
+            See
+            https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
             on: The data subset on which to compute the std.
@@ -1975,8 +1973,6 @@ class Dataset(Generic[T]):
         #  How do I create something "simple" here?
         """Sort the dataset by the specified key column or key function.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> # Sort using the entire record as the key.
@@ -2021,13 +2017,14 @@ class Dataset(Generic[T]):
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
 
-        The datasets must have identical num rows, block types, and block sizes
-        (e.g., one was produced from a ``.map()`` of another). For Arrow
+        The datasets must have identical num rows, block types, and block sizes,
+        e.g. one was produced from a :meth:`~.map` of another. For Arrow
         blocks, the schema will be concatenated, and any duplicate column
         names disambiguated with _1, _2, etc. suffixes.
 
-        NOTE: Zipped datasets are not lineage-serializable, i.e. they can not be used
-        as a tunable hyperparameter in Ray Tune.
+        .. note::
+            Zipped datasets are not lineage-serializable, i.e. they can not be used as a
+            tunable hyperparameter in Ray Tune.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2048,6 +2045,7 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(ZipStage(other))
         return Dataset(plan, self._epoch, self._lazy)
 
+    @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset[T]":
         """Truncate the dataset to the first ``limit`` records.
 
@@ -2104,6 +2102,7 @@ class Dataset(Generic[T]):
             self._lazy,
         )
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def take(self, limit: int = 20) -> List[T]:
         """Return up to ``limit`` records from the dataset.
 
@@ -2126,6 +2125,7 @@ class Dataset(Generic[T]):
                 break
         return output
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
@@ -2152,6 +2152,7 @@ class Dataset(Generic[T]):
                 )
         return output
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of records from the dataset.
 
@@ -2163,6 +2164,11 @@ class Dataset(Generic[T]):
         for row in self.take(limit):
             print(row)
 
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="row count",
+        pattern="Time complexity:",
+    )
     def count(self) -> int:
         """Count the number of records in the dataset.
 
@@ -2188,6 +2194,12 @@ class Dataset(Generic[T]):
             )
         )
 
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        extra_condition="or if ``fetch_if_missing=True`` (the default)",
+        pattern="Time complexity:",
+    )
     def schema(
         self, fetch_if_missing: bool = True
     ) -> Union[type, "pyarrow.lib.Schema"]:
@@ -2223,6 +2235,7 @@ class Dataset(Generic[T]):
         """
         return self._plan.initial_num_blocks()
 
+    @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -2237,6 +2250,7 @@ class Dataset(Generic[T]):
             return None
         return sum(m.size_bytes for m in metadata)
 
+    @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -2253,6 +2267,7 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
+    @ConsumptionAPI
     def write_parquet(
         self,
         path: str,
@@ -2315,6 +2330,7 @@ class Dataset(Generic[T]):
             **arrow_parquet_args,
         )
 
+    @ConsumptionAPI
     def write_json(
         self,
         path: str,
@@ -2378,6 +2394,7 @@ class Dataset(Generic[T]):
             **pandas_json_args,
         )
 
+    @ConsumptionAPI
     def write_csv(
         self,
         path: str,
@@ -2438,6 +2455,7 @@ class Dataset(Generic[T]):
             **arrow_csv_args,
         )
 
+    @ConsumptionAPI
     def write_tfrecords(
         self,
         path: str,
@@ -2502,6 +2520,7 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
+    @ConsumptionAPI
     def write_numpy(
         self,
         path: str,
@@ -2557,6 +2576,7 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
+    @ConsumptionAPI
     def write_mongo(
         self,
         uri: str,
@@ -2615,6 +2635,7 @@ class Dataset(Generic[T]):
             collection=collection,
         )
 
+    @ConsumptionAPI
     def write_datasource(
         self,
         datasource: Datasource[T],
@@ -2719,6 +2740,11 @@ class Dataset(Generic[T]):
             finally:
                 progress.close()
 
+    @ConsumptionAPI(
+        delegate=(
+            "Calling any of the consumption methods on the returned ``DatasetIterator``"
+        )
+    )
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that
         can be used to repeatedly iterate over the dataset.
@@ -2736,6 +2762,7 @@ class Dataset(Generic[T]):
         """
         return BulkDatasetIterator(self)
 
+    @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.
 
@@ -2785,6 +2812,7 @@ class Dataset(Generic[T]):
             for row in batch.iter_rows():
                 yield row
 
+    @ConsumptionAPI
     def iter_batches(
         self,
         *,
@@ -2850,6 +2878,7 @@ class Dataset(Generic[T]):
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
 
+    @ConsumptionAPI
     def iter_torch_batches(
         self,
         *,
@@ -2924,6 +2953,7 @@ class Dataset(Generic[T]):
                 device=device,
             )
 
+    @ConsumptionAPI
     def iter_tf_batches(
         self,
         *,
@@ -2994,6 +3024,7 @@ class Dataset(Generic[T]):
         ):
             yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_torch(
         self,
         *,
@@ -3183,6 +3214,7 @@ class Dataset(Generic[T]):
 
         return TorchIterableDataset(make_generator)
 
+    @ConsumptionAPI
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -3353,6 +3385,7 @@ class Dataset(Generic[T]):
         )
         return dataset.with_options(options)
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_dask(
         self,
         meta: Union[
@@ -3455,6 +3488,7 @@ class Dataset(Generic[T]):
         )
         return ddf
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_mars(self) -> "mars.DataFrame":
         """Convert this dataset into a MARS dataframe.
 
@@ -3484,6 +3518,7 @@ class Dataset(Generic[T]):
         op = DataFrameReadRayDataset(refs=refs)
         return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
@@ -3509,6 +3544,7 @@ class Dataset(Generic[T]):
         pd_objs = self.to_pandas_refs()
         return from_partitions(pd_objs, axis=0)
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
@@ -3523,6 +3559,7 @@ class Dataset(Generic[T]):
             spark, self.schema(), self.get_internal_block_refs()
         )
 
+    @ConsumptionAPI(pattern="Time complexity:")
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
@@ -3556,6 +3593,7 @@ class Dataset(Generic[T]):
         block = output.build()
         return _block_to_df(block)
 
+    @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
@@ -3601,6 +3639,7 @@ class Dataset(Generic[T]):
             for block in self.get_internal_block_refs()
         ]
 
+    @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
@@ -3623,6 +3662,7 @@ class Dataset(Generic[T]):
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
 
+    @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
         self,
         key: str,
@@ -3652,6 +3692,7 @@ class Dataset(Generic[T]):
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
+    @ConsumptionAPI
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
 
@@ -3948,11 +3989,12 @@ class Dataset(Generic[T]):
     def is_fully_executed(self) -> bool:
         """Returns whether this Dataset has been fully executed.
 
-        This will return False if this Dataset is lazy and if the output of its final
-        stage hasn't been computed yet.
+        This will return False if the output of its final stage hasn't been computed
+        yet.
         """
         return self._plan.has_computed_output()
 
+    @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         return self._get_stats_summary().to_string()
@@ -3960,6 +4002,7 @@ class Dataset(Generic[T]):
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats_summary()
 
+    @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
@@ -3977,6 +4020,9 @@ class Dataset(Generic[T]):
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
 
+        Datasets are lazy by default, so this is only useful for datasets created from
+        :func:`ray.data.from_items() <ray.data.read_api.from_items>`, which is eager.
+
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
@@ -3985,9 +4031,6 @@ class Dataset(Generic[T]):
         ds = Dataset(self._plan, self._epoch, lazy=True)
         ds._set_uuid(self._get_uuid())
         return ds
-
-    def experimental_lazy(self) -> "Dataset[T]":
-        raise DeprecationWarning("Use self.lazy().")
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
@@ -4013,8 +4056,9 @@ class Dataset(Generic[T]):
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized bytes
         returned from this method into a Dataset.
 
-        NOTE: Unioned and zipped datasets, produced by :py:meth`Dataset.union` and
-        :py:meth:`Dataset.zip`, are not lineage-serializable.
+        .. note::
+            Unioned and zipped datasets, produced by :py:meth`Dataset.union` and
+            :py:meth:`Dataset.zip`, are not lineage-serializable.
 
         Returns:
             Serialized bytes containing the lineage of this dataset.
@@ -4099,6 +4143,7 @@ class Dataset(Generic[T]):
         )
         return l_ds, r_ds
 
+    @ConsumptionAPI(if_more_than_read=True, datasource_metadata="schema")
     def default_batch_format(self) -> Type:
         """Return this dataset's default batch format.
 
@@ -4106,7 +4151,7 @@ class Dataset(Generic[T]):
         about batch formats, read
         :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
 
-        Example:
+        Examples:
 
             If your dataset represents a list of Python objects, then the default batch
             format is ``list``.
@@ -4183,6 +4228,12 @@ class Dataset(Generic[T]):
             return False
         return _is_tensor_schema(schema.names)
 
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        pattern="for the first block.",
+        insert_after=True,
+    )
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
         are: "arrow", "pandas" and "simple".
