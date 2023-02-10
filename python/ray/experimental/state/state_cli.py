@@ -174,7 +174,11 @@ def output_with_format(
         return get_table_output(state_data, schema)
     if format == AvailableFormat.YAML:
         augmented_state_data = [
-            [{"task_id": state["task_id"] if "task_id" in state else None}, state]
+            {
+                ("task_id: " + state["task_id"])
+                if "task_id" in state
+                else "No task_id found": state
+            }
             for state in state_data
         ]
         return yaml.dump(augmented_state_data, indent=4, explicit_start=True)
