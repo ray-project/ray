@@ -1063,6 +1063,7 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
         Dict from metric name to a list of samples for the metrics
     """
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metrics([metrics_page])
 
 
