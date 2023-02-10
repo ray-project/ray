@@ -1,3 +1,4 @@
+import copy
 import datetime
 import logging
 import os
@@ -10,10 +11,12 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -54,7 +57,6 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
@@ -94,6 +96,17 @@ def _check_default_resources_override(
     return hasattr(trainable_cls, "default_resource_request") and (
         trainable_cls.default_resource_request.__code__
         != Trainable.default_resource_request.__code__
+    )
+
+
+def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
+        # Default to True
+        return True
+
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
     )
 
 
@@ -536,7 +549,13 @@ def run(
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
+            and not (
+                # Mixins do not work with reuse_actors as the mixin setup will only
+                # be invoked once
+                _check_mixin(trainable)
+            )
         )
+        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -546,6 +565,20 @@ def run(
             "Consider boosting PBT performance by enabling `reuse_actors` as "
             "well as implementing `reset_config` for Trainable."
         )
+
+    # Before experiments are created, we first clean up the passed in
+    # Config dictionary by replacing all the non-primitive config values
+    # with placeholders. This serves two purposes:
+    # 1. we can replace and "fix" these objects if a Trial is restored.
+    # 2. the config dictionary will then be compatible with all supported
+    #   search algorithms, since a lot of them do not support non-primitive
+    #   config values.
+    placeholder_resolvers = create_resolvers_map()
+    config = inject_placeholders(
+        # Make a deep copy here to avoid modifying the original config dict.
+        copy.deepcopy(config),
+        placeholder_resolvers,
+    )
 
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -694,6 +727,7 @@ def run(
     )
     runner = TrialRunner(
         search_alg=search_alg,
+        placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         experiment_dir_name=experiments[0].dir_name,

@@ -53,7 +53,10 @@ rpc::Address GetRandomWorkerAddr() {
 
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
-  MOCK_METHOD(void, AddTaskEvent, (rpc::TaskEvents task_events), (override));
+  MOCK_METHOD(void,
+              AddTaskEvent,
+              (std::unique_ptr<worker::TaskEvent> task_event),
+              (override));
 
   MOCK_METHOD(void, FlushEvents, (bool forced), (override));
 
@@ -62,6 +65,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(void, Stop, (), (override));
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
+
+  MOCK_METHOD(const std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {

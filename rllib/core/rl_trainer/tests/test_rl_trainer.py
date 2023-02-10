@@ -6,21 +6,17 @@ import numpy as np
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, FrameworkHPs
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 
-def get_trainer(distributed=False) -> RLTrainer:
+def get_trainer() -> RLTrainer:
     env = gym.make("CartPole-v1")
 
-    # TODO: Another way to make RLTrainer would be to construct the module first
-    # and then apply trainer to it. We should also allow that. In fact if we figure
-    # out the serialization of RLModules we can simply pass the module the trainer
-    # and internally it will serialize and deserialize the module for distributed
-    # construction.
     trainer = BCTfRLTrainer(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTFModule,
@@ -29,7 +25,8 @@ def get_trainer(distributed=False) -> RLTrainer:
             model_config={"hidden_dim": 32},
         ),
         optimizer_config={"lr": 1e-3},
-        distributed=distributed,
+        trainer_scaling_config=TrainerScalingConfig(),
+        framework_hyperparameters=FrameworkHPs(eager_tracing=True),
     )
 
     trainer.build()
@@ -97,7 +94,7 @@ class TestRLTrainer(unittest.TestCase):
         params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
         n_steps = 100
         expected = [
-            param - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
+            param - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):

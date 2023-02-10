@@ -408,11 +408,13 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
-  ASSERT_TRUE(num_abort_calls_.empty());
+  // Abort create obj1 before try to restore it.
+  ASSERT_EQ(num_abort_calls_[obj1], num_restore_spilled_object_calls_);
+  ASSERT_EQ(num_abort_calls_.size(), 1);
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
-  ASSERT_EQ(num_abort_calls_[obj1], 1);
+  ASSERT_EQ(num_abort_calls_[obj1], num_restore_spilled_object_calls_ + 1);
 
   AssertNoLeaks();
 }
@@ -453,11 +455,13 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
-  ASSERT_TRUE(num_abort_calls_.empty());
+  // Abort create obj1 before try to restore it.
+  ASSERT_EQ(num_abort_calls_[obj1], num_restore_spilled_object_calls_);
+  ASSERT_EQ(num_abort_calls_.size(), 1);
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
-  ASSERT_EQ(num_abort_calls_[obj1], 1);
+  ASSERT_EQ(num_abort_calls_[obj1], num_restore_spilled_object_calls_ + 1);
 
   AssertNoLeaks();
 }
@@ -507,11 +511,13 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
-  ASSERT_TRUE(num_abort_calls_.empty());
+  // Abort create obj1 before try to restore it.
+  ASSERT_EQ(num_abort_calls_[obj1], num_restore_spilled_object_calls_);
+  ASSERT_EQ(num_abort_calls_.size(), 1);
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
-  ASSERT_EQ(num_abort_calls_[obj1], 1);
+  ASSERT_EQ(num_abort_calls_[obj1], num_restore_spilled_object_calls_ + 1);
 
   AssertNoLeaks();
 }

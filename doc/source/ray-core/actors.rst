@@ -323,12 +323,22 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
 Scheduling
 ----------
+
 For each actor, Ray will choose a node to run it
 and the scheduling decision is based on a few factors like
 :ref:`the actor's resource requirements <ray-scheduling-resources>`
 and :ref:`the specified scheduling strategy <ray-scheduling-strategies>`.
 See :ref:`Ray scheduling <ray-scheduling>` for more details.
 
+Fault Tolerance
+---------------
+
+By default, Ray actors won't be :ref:`restarted <fault-tolerance-actors>` and
+actor tasks won't be retried when actors crash unexpectedly.
+You can change this behavior by setting
+``max_restarts`` and ``max_task_retries`` options
+in :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
+See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
 FAQ: Actors, Workers and Resources
 ----------------------------------
@@ -361,7 +371,6 @@ More about Ray Actors
     actors/async_api.rst
     actors/concurrency_group_api.rst
     actors/actor-utils.rst
-    actors/fault-tolerance.rst
     actors/out-of-band-communication.rst
     actors/task-orders.rst
     actors/patterns/index.rst
