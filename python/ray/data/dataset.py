@@ -42,11 +42,13 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapRows,
     MapBatches,
+    Write,
 )
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
+from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
@@ -2654,17 +2656,10 @@ class Dataset(Generic[T]):
             )
 
         if hasattr(datasource, "write"):
-            # If the write operator succeeds, the resulting Dataset is a list of
-            # WriteResult (one element per write task). Otherwise, an error will
-            # be raised. The Datasource can handle execution outcomes with the
-            # on_write_complete() and on_write_failed().
-            def transform(blocks: Iterable[Block], ctx, fn) -> Iterable[Block]:
-                return [[datasource.write(blocks, ctx, **write_args)]]
-
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    transform,
+                    generate_write_fn(datasource),
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
@@ -2675,8 +2670,7 @@ class Dataset(Generic[T]):
             if logical_plan is not None:
                 write_op = Write(
                     logical_plan.dag,
-                    fn=lambda x: x,
-                    compute="tasks",
+                    datasource,
                     ray_remote_args=ray_remote_args,
                 )
                 logical_plan = LogicalPlan(write_op)
