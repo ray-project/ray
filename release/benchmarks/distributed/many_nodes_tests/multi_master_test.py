@@ -9,7 +9,7 @@ import psutil
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
     num_masters = 100
-    num_slaves_per_master = total_actors / num_masters - 1
+    num_slaves_per_master = int(total_actors / num_masters) - 1
 
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
