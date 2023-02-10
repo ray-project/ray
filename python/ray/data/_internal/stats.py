@@ -57,14 +57,17 @@ class _DatasetStatsBuilder:
     called with the final blocks of the new dataset, the time delta is
     saved as part of the stats."""
 
-    def __init__(self, stage_name: str, parent: "DatasetStats"):
+    def __init__(
+        self,
+        stage_name: str,
+        parent: "DatasetStats",
+        override_start_time: Optional[float],
+    ):
         self.stage_name = stage_name
         self.parent = parent
-        self.start_time = time.perf_counter()
+        self.start_time = override_start_time or time.perf_counter()
 
-    def build_multistage(
-        self, stages: StatsDict, stage_finished: bool = True
-    ) -> "DatasetStats":
+    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
             if len(stages) > 1:
@@ -79,11 +82,7 @@ class _DatasetStatsBuilder:
             parent=self.parent,
             base_name=self.stage_name,
         )
-        stats.start_time = self.start_time
-        if stage_finished:
-            stats.time_total_s = time.perf_counter() - self.start_time
-        else:
-            stats.time_total_s = None
+        stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
@@ -91,7 +90,6 @@ class _DatasetStatsBuilder:
             stages={self.stage_name: final_blocks.get_metadata()},
             parent=self.parent,
         )
-        stats.start_time = self.start_time
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
@@ -213,7 +211,6 @@ class DatasetStats:
         # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
-        self.start_time: Optional[float] = None
         self.time_total_s: Optional[float] = None
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
@@ -231,9 +228,11 @@ class DatasetStats:
     def stats_actor(self):
         return _get_or_create_stats_actor()
 
-    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+    def child_builder(
+        self, name: str, override_start_time: Optional[float] = None
+    ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
-        return _DatasetStatsBuilder(name, self)
+        return _DatasetStatsBuilder(name, self, override_start_time)
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
@@ -268,7 +267,6 @@ class DatasetStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
-                    self.start_time,
                     self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
@@ -417,7 +415,6 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        start_time: float,
         time_total_s: Optional[float],
         stage_name: str,
         is_substage: bool,
@@ -440,8 +437,6 @@ class StageStatsSummary:
                 len(exec_stats), len(block_metas)
             )
         else:
-            if not time_total_s:
-                time_total_s = time.perf_counter() - start_time
             rounded_total = round(time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.

@@ -1,4 +1,5 @@
 import threading
+import time
 import os
 from typing import Iterator, Optional
 
@@ -38,6 +39,7 @@ class StreamingExecutor(Executor, threading.Thread):
     """
 
     def __init__(self, options: ExecutionOptions):
+        self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
@@ -61,6 +63,7 @@ class StreamingExecutor(Executor, threading.Thread):
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
         self._initial_stats = initial_stats
+        self._start_time = time.perf_counter()
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
@@ -87,7 +90,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 item = self._output_node.get_output_blocking()
         finally:
             # Freeze the stats and save it.
-            self._final_stats = self._generate_stats(final=True)
+            self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
@@ -132,13 +135,15 @@ class StreamingExecutor(Executor, threading.Thread):
         else:
             return self._generate_stats()
 
-    def _generate_stats(self, final: bool = False):
+    def _generate_stats(self) -> DatasetStats:
+        """Create a new stats object reflecting execution status so far."""
         stats = self._initial_stats
         for op in self._topology:
-            if not isinstance(op, InputDataBuffer):
-                builder = stats.child_builder(op.name)
-                stats = builder.build_multistage(op.get_stats(), stage_finished=final)
-                stats.extra_metrics = op.get_metrics()
+            if isinstance(op, InputDataBuffer):
+                continue
+            builder = stats.child_builder(op.name, override_start_time=self._start_time)
+            stats = builder.build_multistage(op.get_stats())
+            stats.extra_metrics = op.get_metrics()
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:

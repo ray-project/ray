@@ -609,9 +609,7 @@ class ExecutionPlan:
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
-        if not self._snapshot_stats:
-            self.execute()
-        return self._snapshot_stats.to_summary()
+        return self.stats().to_summary()
 
     def _should_clear_input_blocks(
         self,
