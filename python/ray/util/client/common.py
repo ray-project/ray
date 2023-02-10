@@ -14,7 +14,6 @@ import grpc
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-import rllib.core.models.base
 from ray._private.inspect_util import (
     is_class_method,
     is_cython,
@@ -407,7 +406,7 @@ class ClientActorClass(ClientStub):
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()
         task = ray_client_pb2.ClientTask()
-        task.type = rllib.core.models.base.ACTOR
+        task.type = ray_client_pb2.ClientTask.ACTOR
         task.name = self._name
         task.payload_id = self._ref.id
         set_task_options(task, self._options, "baseline_options")
