@@ -1,5 +1,7 @@
 import pytest
+from typing import Dict
 
+import numpy as np
 import tensorflow as tf
 import torch
 
@@ -50,6 +52,17 @@ def test_torch_conversion(ray_start_regular_shared):
     for batch in it.iter_torch_batches():
         assert isinstance(batch["value"], torch.Tensor)
         assert batch["value"].tolist() == list(range(5))
+
+
+def test_torch_conversion_collate_fn(ray_start_regular_shared):
+    def collate_fn(batch: Dict[str, np.ndarray]):
+        return torch.as_tensor(batch["value"] + 5)
+
+    ds = ray.data.range_table(5)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches(collate_fn=collate_fn):
+        assert isinstance(batch, torch.Tensor)
+        assert batch.tolist() == list(range(5, 10))
 
 
 if __name__ == "__main__":

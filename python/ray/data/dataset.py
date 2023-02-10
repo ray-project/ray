@@ -2792,6 +2792,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
         drop_last: bool = False,
+        batch_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[DataBatch]:
@@ -2818,6 +2819,7 @@ class Dataset(Generic[T]):
                 to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
+            batch_fn: A function to apply to each data batch before returning it.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
@@ -2844,6 +2846,7 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            batch_fn=batch_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -2857,6 +2860,9 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], "TorchTensorBatchType"]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2892,6 +2898,12 @@ class Dataset(Generic[T]):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
+            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch
+            Potential use cases include collating along a dimension other than the
+            first, padding sequences of various lengths, or generally handling batches
+            of different length tensors. If not provided, the default collate function
+            is used which simply converts the batch of numpy arrays to a batch of
+            PyTorch tensors. This API is still experimental and is subject to change.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2910,19 +2922,31 @@ class Dataset(Generic[T]):
             convert_ndarray_batch_to_torch_tensor_batch,
         )
 
-        for batch in self.iter_batches(
+        def batch_fn(
+            batch: Union[np.ndarray, Dict[str, np.ndarray]]
+        ) -> "TorchTensorBatchType":
+            if collate_fn:
+                batch = collate_fn(batch)
+
+                def tensor_creator_fn(ndarray, dtype, device):
+                    return ndarray.to(dtype=dtype, device=device)
+
+            else:
+                tensor_creator_fn = None
+
+            return convert_ndarray_batch_to_torch_tensor_batch(
+                batch, dtypes=dtypes, device=device, tensor_creator_fn=tensor_creator_fn
+            )
+
+        yield from self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format="numpy",
             drop_last=drop_last,
+            batch_fn=batch_fn,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_torch_tensor_batch(
-                batch,
-                dtypes=dtypes,
-                device=device,
-            )
+        )
 
     def iter_tf_batches(
         self,
