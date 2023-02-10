@@ -203,8 +203,7 @@ You can install and use Ray C++ API as follows.
 M1 Mac (Apple Silicon) Support
 ------------------------------
 
-Ray has experimental support for machines running Apple Silicon (such as M1 macs).
-Multi-node clusters are untested. To get started with local Ray development:
+Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
 
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
 
@@ -237,8 +236,7 @@ Multi-node clusters are untested. To get started with local Ray development:
 Windows Support
 ---------------
 
-Windows support is currently in beta, and multi-node Ray clusters are untested.
-Please submit any issues you encounter on
+Windows support is currently in beta. Please submit any issues you encounter on
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
