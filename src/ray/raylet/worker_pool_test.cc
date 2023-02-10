@@ -1493,6 +1493,74 @@ TEST_F(WorkerPoolTest, TestJobFinishedForceKillIdleWorker) {
   mock_rpc_client->ExitReplySucceed();
 }
 
+TEST_F(WorkerPoolTest, WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled) {
+  rpc::JobConfig job_config;
+  
+  /// Add worker to the pool whose job will stay alive.
+  auto job_id_alive = JobID::FromInt(11111);
+  RegisterDriver(Language::PYTHON, job_id_alive, job_config);
+  {
+    PopWorkerStatus status;
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, job_id_alive, &status);
+    auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id_alive);
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    worker_pool_->PushWorker(worker);
+  }
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  /// Add worker to the pool whose job will be killed.
+  auto job_id_dead = JobID::FromInt(22222);
+  RegisterDriver(Language::PYTHON, job_id_dead, job_config);  
+  std::shared_ptr<WorkerInterface> worker_to_kill;
+  {
+    PopWorkerStatus status;
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, job_id_dead, &status);
+    auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id_dead);
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    worker_pool_->PushWorker(worker);
+
+    worker_to_kill = worker;
+  }
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 2);
+
+  // /// Execute some task with the worker.
+  // auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id_dead);
+  // worker = worker_pool_->PopWorkerSync(task_spec, false);
+  // ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  // /// Return the worker.
+  // worker_pool_->PushWorker(worker);
+  // ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker_to_kill->WorkerId());
+  auto mock_rpc_client = mock_rpc_client_it->second;
+
+  worker_pool_->SetCurrentTimeMs(2000);
+
+  // Won't kill the workers since neither job has finished.
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 0);
+
+  // Finish the job of the second worker.
+  worker_pool_->HandleJobFinished(job_id_dead);
+
+  // The pool should try to force kill the second worker whose job is dead,
+  // and keep the first worker whose job is alive.
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+
+  mock_rpc_client->ExitReplySucceed();
+}
+
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
