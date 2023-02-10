@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 import os
 import sys
-import warnings
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
@@ -103,14 +102,11 @@ sphinx_tabs_disable_tab_closing = True
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
 # This is used to suppress warnings about explicit "toctree" directives.
-suppress_warnings = ["etoc.toctree", "autosummary", "autodoc", "autodoc.import_object"]
+suppress_warnings = ["etoc.toctree"]
 
 # It's a known bug (https://github.com/sphinx-doc/sphinx/issues/9884)
 # that autosummary will generate warning for inherited instance attribute.
-autosummary_mock_imports = ["ray.experimental.state.common.JobState.entrypoint"]
-warnings.filterwarnings(action="ignore", message=".*autosummary.*")
-warnings.filterwarnings(action="ignore", message="import")
-warnings.filterwarnings(action="ignore", message=".*import.*")
+autosummary_mock_imports = ["ray.experimental.state.common"]
 
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
