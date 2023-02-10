@@ -169,6 +169,10 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     )
     import pyarrow as pa
 
+    print("===> concat start blocks:", )
+    for b in blocks:
+        print("===> block schema:", b.schema)
+
     if not blocks:
         # Short-circuit on empty list of blocks.
         return blocks
@@ -194,6 +198,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         cols = []
         for col_name in schema.names:
             col_chunked_arrays = []
+            print(f"===> col_name {col_name} in schema {schema}")
             for block in blocks:
                 col_chunked_arrays.append(block.column(col_name))
             if isinstance(
@@ -241,6 +246,9 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                                     [pa.nulls(c.length(), type=scalar_type)]
                                 )
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
+            print("===> concat end of for loop blocks:", )
+            for b in blocks:
+                print("===> block schema:", b.schema)
             cols.append(col)
 
         # If the result contains pyarrow schemas, unify them
