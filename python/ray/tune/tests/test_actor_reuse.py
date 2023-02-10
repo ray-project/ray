@@ -10,7 +10,6 @@ from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune import _check_mixin
-from ray.tune.tests.test_syncer import temp_data_dirs
 
 
 @pytest.fixture
@@ -411,13 +410,13 @@ def test_detect_reuse_mixins():
     assert _check_mixin(mlflow_mixin(MyTrainable))
 
 
-def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, temp_data_dirs, tmp_path):
+def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
     """Check that the trainable has its remote directory set to the right
     location, when new trials get swapped in on actor reuse.
     Each trial runs for 2 iterations, with checkpoint_freq=1, so each remote
     trial dir should have 2 checkpoints.
     """
-    _, tmp_target = temp_data_dirs
+    tmp_target = str(tmp_path / "upload_dir")
     exp_name = "remote_trial_dir_update_on_actor_reuse"
 
     def get_remote_trial_dir(trial_id: int):
