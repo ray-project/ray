@@ -109,25 +109,13 @@ class PPOTorchRLModule(TorchRLModule):
         *,
         model_config: Mapping[str, Any],
     ) -> "PPOTorchRLModule":
-
         # TODO: use the new catalog to perform this logic and construct the final config
 
         activation = model_config["fcnet_activation"]
-        if activation == "tanh":
-            activation = "Tanh"
-        elif activation == "relu":
-            activation = "relu"
-        elif activation == "linear":
-            activation = "linear"
-        else:
-            raise ValueError(f"Unsupported activation: {activation}")
 
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
         free_log_std = model_config["free_log_std"]
-        assert (
-            model_config.get("vf_share_layers") is False
-        ), "`vf_share_layers=False` is no longer supported."
 
         if model_config["use_lstm"]:
             base_encoder_config = LSTMEncoderConfig(
