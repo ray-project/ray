@@ -5,12 +5,12 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.experimental.encoder import STATE_OUT
-from ray.rllib.models.experimental.configs import MLPConfig, MLPEncoderConfig
-from ray.rllib.models.experimental.configs import (
+from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.models.configs import MLPModelConfig, MLPEncoderConfig
+from ray.rllib.core.models.configs import (
     LSTMEncoderConfig,
 )
-from ray.rllib.models.experimental.torch.encoder import (
+from ray.rllib.core.models.torch.encoder import (
     ENCODER_OUT,
 )
 from ray.rllib.models.specs.specs_dict import SpecDict
@@ -59,9 +59,9 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
             only has an effect is using the default fully connected net.
     """
 
-    encoder_config: MLPConfig = None
-    pi_config: MLPConfig = None
-    vf_config: MLPConfig = None
+    encoder_config: MLPModelConfig = None
+    pi_config: MLPModelConfig = None
+    vf_config: MLPModelConfig = None
     free_log_std: bool = False
 
 
@@ -110,7 +110,7 @@ class PPOTorchRLModule(TorchRLModule):
         if activation == "tanh":
             activation = "Tanh"
         elif activation == "relu":
-            activation = "ReLU"
+            activation = "relu"
         elif activation == "linear":
             activation = "linear"
         else:
@@ -139,15 +139,15 @@ class PPOTorchRLModule(TorchRLModule):
                 output_dim=fcnet_hiddens[-1],
             )
 
-        pi_config = MLPConfig(
+        pi_config = MLPModelConfig(
             input_dim=encoder_config.output_dim,
             hidden_layer_dims=[32],
-            hidden_layer_activation="ReLU",
+            hidden_layer_activation="relu",
         )
-        vf_config = MLPConfig(
+        vf_config = MLPModelConfig(
             input_dim=encoder_config.output_dim,
             hidden_layer_dims=[32, 1],
-            hidden_layer_activation="ReLU",
+            hidden_layer_activation="relu",
         )
 
         assert isinstance(

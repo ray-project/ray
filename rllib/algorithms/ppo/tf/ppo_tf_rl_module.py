@@ -5,10 +5,10 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.experimental.configs import MLPConfig, IdentityConfig
-from ray.rllib.models.experimental.encoder import STATE_OUT
-from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
-from ray.rllib.models.experimental.tf.primitives import TfMLP
+from ray.rllib.core.models.configs import MLPModelConfig, IdentityConfig
+from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.models.tf.primitives import TfMLP
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -162,7 +162,7 @@ class PPOTfRLModule(TfRLModule):
         if activation == "tanh":
             activation = "Tanh"
         elif activation == "relu":
-            activation = "ReLU"
+            activation = "relu"
         elif activation == "linear":
             activation = "linear"
         else:
@@ -174,7 +174,7 @@ class PPOTfRLModule(TfRLModule):
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
         if vf_share_layers:
-            encoder_config = MLPConfig(
+            encoder_config = MLPModelConfig(
                 input_dim=obs_dim,
                 hidden_layer_dims=fcnet_hiddens,
                 hidden_layer_activation=activation,
@@ -193,8 +193,8 @@ class PPOTfRLModule(TfRLModule):
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPOModule only supports Discrete and Box action space.",
         )
-        pi_config = MLPConfig()
-        vf_config = MLPConfig()
+        pi_config = MLPModelConfig()
+        vf_config = MLPModelConfig()
         encoder_config.input_dim = observation_space.shape[0]
         pi_config.input_dim = encoder_config.output_dim
         pi_config.hidden_layer_dims = fcnet_hiddens

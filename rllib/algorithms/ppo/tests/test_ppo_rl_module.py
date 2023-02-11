@@ -16,12 +16,12 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
-from ray.rllib.models.experimental.configs import (
-    MLPConfig,
+from ray.rllib.core.models.configs import (
+    MLPModelConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
 )
-from ray.rllib.models.experimental.torch.encoder import (
+from ray.rllib.core.models.torch.encoder import (
     STATE_IN,
     STATE_OUT,
 )
@@ -59,19 +59,19 @@ def get_expected_model_config(
         encoder_config = MLPEncoderConfig(
             input_dim=obs_dim,
             hidden_layer_dims=[32],
-            hidden_layer_activation="ReLU",
+            hidden_layer_activation="relu",
             output_dim=32,
         )
 
-    pi_config = MLPConfig(
+    pi_config = MLPModelConfig(
         input_dim=32,
         hidden_layer_dims=[32],
-        hidden_layer_activation="ReLU",
+        hidden_layer_activation="relu",
     )
-    vf_config = MLPConfig(
+    vf_config = MLPModelConfig(
         input_dim=32,
         hidden_layer_dims=[32],
-        hidden_layer_activation="ReLU",
+        hidden_layer_activation="relu",
     )
 
     if isinstance(env.action_space, gym.spaces.Discrete):
