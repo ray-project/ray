@@ -27,11 +27,12 @@ using namespace testing;
 
 namespace ray {
 
-  NodeResources constructNodeResources(absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> available,absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> total) {
-    NodeResources resources;
-    return resources;
-  }
-
+NodeResources constructNodeResources(
+    absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> available,
+    absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> total) {
+  NodeResources resources;
+  return resources;
+}
 
 class GcsMonitorServerTest : public ::testing::Test {
  public:
@@ -50,8 +51,9 @@ TEST_F(GcsMonitorServerTest, TestRayVersion) {
   rpc::GetRayVersionRequest request;
   rpc::GetRayVersionReply reply;
   bool replied = false;
-  auto send_reply_callback =
-    [&replied](ray::Status status, std::function<void()> f1, std::function<void()> f2) { replied = true; };
+  auto send_reply_callback = [&replied](ray::Status status,
+                                        std::function<void()> f1,
+                                        std::function<void()> f2) { replied = true; };
 
   monitor_server_.HandleGetRayVersion(request, &reply, send_reply_callback);
 
@@ -63,8 +65,9 @@ TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   rpc::DrainAndKillNodeRequest request;
   rpc::DrainAndKillNodeReply reply;
   bool replied = false;
-  auto send_reply_callback =
-    [&replied](ray::Status status, std::function<void()> f1, std::function<void()> f2) { replied = true; };
+  auto send_reply_callback = [&replied](ray::Status status,
+                                        std::function<void()> f1,
+                                        std::function<void()> f2) { replied = true; };
 
   *request.add_node_ids() = NodeID::FromRandom().Binary();
   *request.add_node_ids() = NodeID::FromRandom().Binary();
@@ -80,27 +83,30 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   rpc::GetSchedulingStatusRequest request;
   rpc::GetSchedulingStatusReply reply;
   bool replied = false;
-  auto send_reply_callback =
-    [&replied](ray::Status status, std::function<void()> f1, std::function<void()> f2) { replied = true; };
+  auto send_reply_callback = [&replied](ray::Status status,
+                                        std::function<void()> f1,
+                                        std::function<void()> f2) { replied = true; };
 
-  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> gcs_node_manager_nodes;
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
+      gcs_node_manager_nodes;
 
-  // const absl::flat_hash_map<ray::NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>, absl::hash_internal::Hash<ray::NodeID>, std::equal_to<ray::NodeID>> 
+  // const absl::flat_hash_map<ray::NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>,
+  // absl::hash_internal::Hash<ray::NodeID>, std::equal_to<ray::NodeID>>
   //   return gcs_node_manager_nodes;
 
-       ON_CALL(*mock_node_manager_, GetAllAliveNodes()).WillByDefault(ReturnRef(gcs_node_manager_nodes));
+  ON_CALL(*mock_node_manager_, GetAllAliveNodes())
+      .WillByDefault(ReturnRef(gcs_node_manager_nodes));
 
   NodeID id_1 = NodeID::FromRandom();
-  cluster_resource_manager_.AddOrUpdateNode(scheduling::NodeID(id_1.Binary()), {{"CPU", 8}, {"custom", 1}}, {{"CPU", 8}, {"custom", 1}});
+  cluster_resource_manager_.AddOrUpdateNode(scheduling::NodeID(id_1.Binary()),
+                                            {{"CPU", 8}, {"custom", 1}},
+                                            {{"CPU", 8}, {"custom", 1}});
 
   // NodeID id_2 = NodeID::FromRandom();
 
+  monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
 
-
-
-    monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
-
-    ASSERT_TRUE(replied);
+  ASSERT_TRUE(replied);
 }
 
 }  // namespace ray

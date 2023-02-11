@@ -30,7 +30,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-  class GcsMonitorServerTest;
+class GcsMonitorServerTest;
 namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
