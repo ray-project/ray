@@ -96,7 +96,7 @@ class DiscreteBCTFModule(TfRLModule):
 
         config = {
             "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config["hidden_dim"],
+            "hidden_dim": model_config["fcnet_hiddens"][0],
             "output_dim": action_space.n,
         }
 
@@ -143,7 +143,6 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
     def _common_forward(self, batch):
         obs = batch["obs"]
-        breakpoint()
         global_enc = self.encoder(obs["global"])
         policy_in = tf.concat([global_enc, obs["local"]], axis=-1)
         action_logits = self.policy_head(policy_in)
@@ -157,7 +156,7 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
         # module
         module_spec = next(iter(self.module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["hidden_dim"]
+        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
         shared_encoder = tf.keras.Sequential(
             [
                 tf.keras.Input(shape=(global_dim,)),
