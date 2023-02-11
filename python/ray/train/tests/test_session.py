@@ -379,10 +379,6 @@ def test_get_accelerator_constructs_default_accelerator(session):
     assert isinstance(get_accelerator(FakeAccelerator), FakeAccelerator)
 
 
-def test_get_accelerator_none_as_default(session):
-    assert get_accelerator() is None
-
-
 def test_get_accelerator_raises_error_outside_session():
     with pytest.raises(SessionMisuseError):
         get_accelerator(FakeAccelerator)

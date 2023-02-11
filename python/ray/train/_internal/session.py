@@ -381,9 +381,7 @@ def _raise_accelerator_session_misuse():
     )
 
 
-def get_accelerator(
-    default_accelerator_cls: Optional[Type[Accelerator]],
-) -> Optional[Accelerator]:
+def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     """The accelerator for this training session.
 
     If an accelerator has not been set, then this method will construct an
@@ -395,7 +393,7 @@ def get_accelerator(
     session = get_session()
     if session is None:
         _raise_accelerator_session_misuse()
-    if default_accelerator_cls and session.accelerator is None:
+    if session.accelerator is None:
         session.accelerator = default_accelerator_cls()
     return session.accelerator
 
