@@ -2130,15 +2130,7 @@ class Dataset(Generic[T]):
         self._shutdown_current_executor()
         return output
 
-<<<<<<< Updated upstream
     @ConsumptionAPI(pattern="Time complexity:")
-=======
-    def _shutdown_current_executor(self):
-        if self._current_executor:
-            self._current_executor.shutdown()
-            self._current_executor = None
-
->>>>>>> Stashed changes
     def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
@@ -4459,6 +4451,18 @@ class Dataset(Generic[T]):
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."
             )
+
+    def _shutdown_current_executor(self):
+        """Cleanly shutdown the current executor.
+
+        The streaming executor runs in a separate generator / thread, so it is
+        possible the shutdown logic runs even after a call to retrieve rows from the
+        dataset has finished. Explicit shutdown avoids this, which can clobber console
+        output (https://github.com/ray-project/ray/issues/32414).
+        """
+        if self._current_executor:
+            self._current_executor.shutdown()
+            self._current_executor = None
 
 
 def _get_size_bytes(block: Block) -> int:
