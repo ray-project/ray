@@ -30,12 +30,14 @@ def test_batch_block_refs():
     ) as mock_prefetch, mock.patch(
         "ray.data._internal.block_batching.batch_blocks"
     ) as mock_batch_blocks:
+        mock_collate = mock.MagicMock()
         block_iter = block_generator(2, 2)
-        batch_iter = batch_block_refs(block_iter)
+        batch_iter = batch_block_refs(block_iter, collate_fn=mock_collate)
         for _ in batch_iter:
             pass
         assert mock_prefetch.call_count == 1
         assert mock_batch_blocks.call_count == 1
+        assert mock_collate.call_count == 1
 
 
 def test_batch_blocks():
@@ -44,10 +46,12 @@ def test_batch_blocks():
     ) as mock_batch, mock.patch(
         "ray.data._internal.block_batching._format_batches"
     ) as mock_format:
+        mock_collate = mock.MagicMock()
         block_iter = block_generator(2, 2)
-        batch_iter = batch_blocks(block_iter)
+        batch_iter = batch_blocks(block_iter, collate_fn=mock_collate)
         for _ in batch_iter:
             pass
+        assert mock_collate.call_count == 1
         assert mock_batch.call_count == 1
         assert mock_format.call_count == 1
 
