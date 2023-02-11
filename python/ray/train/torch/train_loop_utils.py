@@ -42,11 +42,60 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="beta")
 def get_device() -> torch.device:
-    """Gets the correct torch device to use for training."""
-    accelerator = get_accelerator()
-    if not accelerator:
-        accelerator = _TorchAccelerator
-    return accelerator.get_device()
+    """Gets the correct torch device to use for training.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+    Example:
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+        >>> # ray.get_gpu_ids() == [3]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_device() == torch.device("cuda:0")
+
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
+        >>> # ray.get_gpu_ids() == [4]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_device() == torch.device("cuda:4")
+
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+        >>> # ray.get_gpu_ids() == [4,5]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_device() == torch.device("cuda:4")
+    """
+    if torch.cuda.is_available():
+        # GPU IDs are assigned by Ray after you specify "use_gpu"
+        # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+        # We should always convert to strings.
+        gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+
+        if len(gpu_ids) > 0:
+            # By default, there should only be one GPU ID if `use_gpu=True`.
+            # If there are multiple GPUs, use the first one.
+            # If using fractional GPUs, these IDs are not guaranteed
+            # to be unique across different processes.
+            gpu_id = gpu_ids[0]
+
+            cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+            if cuda_visible_str and cuda_visible_str != "NoDevFiles":
+                cuda_visible_list = cuda_visible_str.split(",")
+                device_id = cuda_visible_list.index(gpu_id)
+            else:
+                raise RuntimeError(
+                    "CUDA_VISIBLE_DEVICES set incorrectly. "
+                    f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                    "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                    " variable? If not, please help file an issue on Github."
+                )
+        else:
+            # If called on the driver or outside of Ray Train, return the
+            # 0th device.
+            device_id = 0
+        device = torch.device(f"cuda:{device_id}")
+    else:
+        device = torch.device("cpu")
+
+    return device
 
 
 # TODO: Deprecation: Hard-deprecate args in Ray 2.2.
@@ -219,7 +268,6 @@ class _TorchAccelerator(Accelerator):
         self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
         self._seed = None
-        os.environ["ACCELERATE_TORCH_DEVICE"] = str(self.get_device())
 
     def prepare_model(
         self,
@@ -433,63 +481,6 @@ class _TorchAccelerator(Accelerator):
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
-
-    @classmethod
-    def get_device(cls) -> torch.device:
-        """Gets the correct torch device to use for training.
-
-        Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-        superset of the `ray.get_gpu_ids()`.
-
-        Example:
-            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
-            >>> # ray.get_gpu_ids() == [3]
-            >>> # torch.cuda.is_available() == True
-            >>> # get_device() == torch.device("cuda:0")
-
-            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
-            >>> # ray.get_gpu_ids() == [4]
-            >>> # torch.cuda.is_available() == True
-            >>> # get_device() == torch.device("cuda:4")
-
-            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-            >>> # ray.get_gpu_ids() == [4,5]
-            >>> # torch.cuda.is_available() == True
-            >>> # get_device() == torch.device("cuda:4")
-        """
-        if torch.cuda.is_available():
-            # GPU IDs are assigned by Ray after you specify "use_gpu"
-            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
-            # We should always convert to strings.
-            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
-
-            if len(gpu_ids) > 0:
-                # By default, there should only be one GPU ID if `use_gpu=True`.
-                # If there are multiple GPUs, use the first one.
-                # If using fractional GPUs, these IDs are not guaranteed
-                # to be unique across different processes.
-                gpu_id = gpu_ids[0]
-
-                cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-                if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                    cuda_visible_list = cuda_visible_str.split(",")
-                    device_id = cuda_visible_list.index(gpu_id)
-                else:
-                    raise RuntimeError(
-                        "CUDA_VISIBLE_DEVICES set incorrectly. "
-                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                        " variable? If not, please help file an issue on Github."
-                    )
-            else:
-                # If called on the driver or outside of Ray Train, return the
-                # 0th device.
-                device_id = 0
-            device = torch.device(f"cuda:{device_id}")
-        else:
-            device = torch.device("cpu")
-
-        return device
 
     def prepare_optimizer(self, optimizer: Optimizer) -> Optimizer:
         """Wraps optimizer to support automatic mixed precision.
