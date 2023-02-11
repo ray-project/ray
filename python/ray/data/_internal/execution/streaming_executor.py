@@ -137,7 +137,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
-        stats = self._initial_stats
+        stats = self._initial_stats or DatasetStats(stages={}, parent=None)
         for op in self._topology:
             if isinstance(op, InputDataBuffer):
                 continue
