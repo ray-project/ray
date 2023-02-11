@@ -22,4 +22,4 @@ Ray AIR Configurations
 .. autosummary::
 
     tune.TuneConfig
-    tune.SyncConfig
+    tune.syncer.SyncConfig

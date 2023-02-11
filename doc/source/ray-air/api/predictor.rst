@@ -76,7 +76,7 @@ Built-in Predictors for Library Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
-    :toctree:
+    :toctree: doc/
 
     ~xgboost.XGBoostPredictor
     ~lightgbm.LightGBMPredictor
