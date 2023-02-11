@@ -429,7 +429,6 @@ class Trainable:
 
     def get_state(self):
         return {
-            "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "experiment_id": self._experiment_id,
             "iteration": self._iteration,
             "timesteps_total": self._timesteps_total,
@@ -775,18 +774,6 @@ class Trainable:
             to_load = os.path.join(checkpoint_dir, relative_checkpoint_path)
 
         # Set metadata
-        if "remote_checkpoint_dir" in metadata:
-            # TODO(ml-team): Remove this backwards compatibility codepath in 2.6
-            self.remote_checkpoint_dir = metadata["remote_checkpoint_dir"]
-        else:
-            logger.warning(
-                "Generally, checkpoints created using older Ray versions that are "
-                "more than 2 minor releases apart from the current version "
-                f"({ray.__version__}) are incompatible for resuming training. "
-                "Restoring training using this checkpoint (which is from version "
-                f"{metadata.get('ray_version')}) will not be supported in "
-                "Ray 2.6 onwards."
-            )
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
