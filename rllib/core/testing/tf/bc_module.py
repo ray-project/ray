@@ -33,17 +33,6 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
 
-    @override(RLModule)
-    def input_specs_exploration(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecType:
-        return ["obs"]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
@@ -120,24 +109,19 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
             ]
         )
 
-    def input_specs_inference(self):
-        return self._common_input_spec()
-
-    def input_specs_exploration(self):
-        return self._common_input_spec()
-
-    def input_specs_train(self):
-        return self._common_input_spec()
-
-    def _common_input_spec(self):
+    @override(RLModule)
+    def _default_input_specs(self):
         return [("obs", "global"), ("obs", "local")]
 
+    @override(RLModule)
     def _forward_inference(self, batch):
         return self._common_forward(batch)
 
+    @override(RLModule)
     def _forward_exploration(self, batch):
         return self._common_forward(batch)
 
+    @override(RLModule)
     def _forward_train(self, batch):
         return self._common_forward(batch)
 
