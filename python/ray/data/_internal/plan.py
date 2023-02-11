@@ -37,6 +37,7 @@ from ray.data.context import DatasetContext
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data._internal.execution.interfaces import Executor
 
 
 # Scheduling strategy can be inherited from prev stage if not specified.
@@ -458,7 +459,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
+    ) -> Tuple[Iterator[ObjectRef[Block]], "Executor"]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -470,7 +471,7 @@ class ExecutionPlan:
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
-            Tuple of iterator over output blocks and Dataset stats.
+            Tuple of iterator over output blocks and the executor.
         """
 
         ctx = DatasetContext.get_current()
@@ -499,7 +500,7 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor.get_stats()
+        return block_iter, executor
 
     def execute(
         self,

@@ -146,6 +146,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data._internal.execution.interfaces import Executor
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -253,6 +254,9 @@ class Dataset(Generic[T]):
 
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
+
+        # Handle to currently running executor for this Dataset.
+        self._current_executor: Optional["Executor"] = None
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
@@ -2123,9 +2127,18 @@ class Dataset(Generic[T]):
             output.append(row)
             if len(output) >= limit:
                 break
+        self._shutdown_current_executor()
         return output
 
+<<<<<<< Updated upstream
     @ConsumptionAPI(pattern="Time complexity:")
+=======
+    def _shutdown_current_executor(self):
+        if self._current_executor:
+            self._current_executor.shutdown()
+            self._current_executor = None
+
+>>>>>>> Stashed changes
     def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Return all of the records in the dataset.
 
@@ -2150,6 +2163,7 @@ class Dataset(Generic[T]):
                         limit
                     )
                 )
+        self._shutdown_current_executor()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -2862,7 +2876,9 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator, stats = self._plan.execute_to_iterator()
+        block_iterator, executor = self._plan.execute_to_iterator()
+        stats = executor.get_stats()
+        self._current_executor = executor
         time_start = time.perf_counter()
 
         yield from batch_block_refs(
