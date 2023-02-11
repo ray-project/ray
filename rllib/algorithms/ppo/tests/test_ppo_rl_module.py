@@ -17,19 +17,16 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
 from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
     MLPModelConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
-)
-from ray.rllib.core.models.torch.encoder import (
-    STATE_IN,
-    STATE_OUT,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
-def get_expected_model_config(
+def get_expected_module_config(
     env: gym.Env,
     lstm: bool,
 ) -> PPOModuleConfig:
@@ -48,7 +45,7 @@ def get_expected_model_config(
     obs_dim = env.observation_space.shape[0]
 
     if lstm:
-        encoder_config = LSTMEncoderConfig(
+        base_encoder_config = LSTMEncoderConfig(
             input_dim=obs_dim,
             hidden_dim=32,
             batch_first=True,
@@ -56,12 +53,14 @@ def get_expected_model_config(
             output_dim=32,
         )
     else:
-        encoder_config = MLPEncoderConfig(
+        base_encoder_config = MLPEncoderConfig(
             input_dim=obs_dim,
             hidden_layer_dims=[32],
             hidden_layer_activation="relu",
             output_dim=32,
         )
+
+    encoder_config = ActorCriticEncoderConfig(base_encoder_config=base_encoder_config)
 
     pi_config = MLPModelConfig(
         input_dim=32,
@@ -131,6 +130,26 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
+def _get_ppo_module(framework, env, lstm):
+    model_config = {"use_lstm": lstm}
+    config = get_expected_module_config(env, model_config=model_config)
+    if framework == "torch":
+        module = PPOTorchRLModule(config)
+    else:
+        module = PPOTfRLModule(config)
+    return module
+
+
+def _get_input_batch_from_obs(framework, obs):
+    if framework == "torch":
+        batch = {
+            SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+        }
+    else:
+        batch = {SampleBatch.OBS: tf.convert_to_tensor([obs])}
+    return batch
+
+
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -141,7 +160,7 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def get_ppo_module(self, framework, env, lstm):
-        config = get_expected_model_config(env, lstm)
+        config = get_expected_module_config(env, lstm)
         if framework == "torch":
             module = PPOTorchRLModule(config)
         else:
@@ -177,13 +196,13 @@ class TestPPO(unittest.TestCase):
 
             batch = self.get_input_batch_from_obs(fw, obs)
 
-            if lstm:
-                state_in = module.get_initial_state()
-                state_in = tree.map_structure(
-                    lambda x: x[None], convert_to_torch_tensor(state_in)
-                )
-                batch[STATE_IN] = state_in
-                batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
+            # TODO (Artur): Un-uncomment once Policy supports RNN
+            # state_in = module._get_initial_state()
+            # state_in = tree.map_structure(
+            #     lambda x: x[None], convert_to_torch_tensor(state_in)
+            # )
+            # batch[STATE_IN] = state_in
+            batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
             if fwd_fn == "forward_exploration":
                 module.forward_exploration(batch)
@@ -210,19 +229,20 @@ class TestPPO(unittest.TestCase):
             batches = []
             obs, _ = env.reset()
             tstep = 0
-            if lstm:
-                state_in = module.get_initial_state()
-                state_in = tree.map_structure(
-                    lambda x: x[None], convert_to_torch_tensor(state_in)
-                )
-                initial_state = state_in
+
+            # TODO (Artur): Un-uncomment once Policy supports RNN
+            # state_in = module._get_initial_state()
+            # state_in = tree.map_structure(
+            #     lambda x: x[None], convert_to_torch_tensor(state_in)
+            # )
+            # initial_state = state_in
+
             while tstep < 10:
-                if lstm:
-                    input_batch = self.get_input_batch_from_obs(fw, obs)
-                    input_batch[STATE_IN] = state_in
-                    input_batch[SampleBatch.SEQ_LENS] = np.array([1])
-                else:
-                    input_batch = self.get_input_batch_from_obs(fw, obs)
+                input_batch = _get_input_batch_from_obs(fw, obs)
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # input_batch[STATE_IN] = state_in
+                # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
+
                 fwd_out = module.forward_exploration(input_batch)
                 action = convert_to_numpy(fwd_out["action_dist"].sample()[0])
                 new_obs, reward, terminated, truncated, _ = env.step(action)
@@ -234,9 +254,10 @@ class TestPPO(unittest.TestCase):
                     SampleBatch.TERMINATEDS: np.array(terminated),
                     SampleBatch.TRUNCATEDS: np.array(truncated),
                 }
-                if lstm:
-                    assert STATE_OUT in fwd_out
-                    state_in = fwd_out[STATE_OUT]
+
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # assert STATE_OUT in fwd_out
+                # state_in = fwd_out[STATE_OUT]
                 batches.append(output_batch)
                 obs = new_obs
                 tstep += 1
@@ -248,9 +269,9 @@ class TestPPO(unittest.TestCase):
                 fwd_in = {
                     k: convert_to_torch_tensor(np.array(v)) for k, v in batch.items()
                 }
-                if lstm:
-                    fwd_in[STATE_IN] = initial_state
-                    fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # fwd_in[STATE_IN] = initial_state
+                # fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
 
                 # forward train
                 # before training make sure module is on the right device
@@ -268,6 +289,9 @@ class TestPPO(unittest.TestCase):
                 batch = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
                 )
+                # TODO (Artur): Un-uncomment once Policy supports RNN
+                # fwd_in[STATE_IN] = initial_state
+                # fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
                 with tf.GradientTape() as tape:
                     fwd_out = module.forward_train(batch)
                     loss = dummy_tf_ppo_loss(batch, fwd_out)

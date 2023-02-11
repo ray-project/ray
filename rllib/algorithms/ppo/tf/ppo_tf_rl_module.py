@@ -1,14 +1,16 @@
-from typing import Mapping, Any, List
+from typing import Mapping, Any
 
 import gymnasium as gym
+import tree
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.configs import MLPModelConfig, IdentityConfig
-from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
-from ray.rllib.core.models.tf.primitives import TfMLP
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -24,85 +26,128 @@ class PPOTfRLModule(TfRLModule):
     def __init__(self, config: RLModuleConfig):
         super().__init__()
         self.config = config
-        self.setup()
 
-    def setup(self) -> None:
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
+        assert self.config.encoder_config, "shared encoder config must be " "provided."
+
+        self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
+        self.config.pi_config.input_dim = (
+            self.config.encoder_config.base_encoder_config.output_dim
+        )
+        self.config.vf_config.input_dim = (
+            self.config.encoder_config.base_encoder_config.output_dim
+        )
+
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            self.config.pi_config.output_dim = self.config.action_space.n
+        else:
+            self.config.pi_config.output_dim = self.config.action_space.shape[0] * 2
+        self.config.vf_config.output_dim = 1
+
+        # TODO(Artur): Unify to tf and torch setup with Catalog
         self.encoder = self.config.encoder_config.build(framework="tf")
-
-        self.pi = TfMLP(
-            input_dim=self.config.encoder_config.output_dim,
-            output_dim=self.config.pi_config.output_dim,
-            hidden_layer_dims=self.config.pi_config.hidden_layer_dims,
-            hidden_layer_activation=self.config.pi_config.hidden_layer_activation,
-        )
-
-        self.vf = TfMLP(
-            input_dim=self.config.encoder_config.output_dim,
-            output_dim=1,
-            hidden_layer_dims=self.config.vf_config.hidden_layer_dims,
-            hidden_layer_activation=self.config.vf_config.hidden_layer_activation,
-        )
+        self.pi = self.config.pi_config.build(framework="tf")
+        self.vf = self.config.vf_config.build(framework="tf")
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
             gym.spaces.Discrete,
         )
 
-    @override(TfRLModule)
-    def input_specs_train(self) -> List[str]:
-        return [SampleBatch.OBS, SampleBatch.ACTIONS]
+    @override(RLModule)
+    def input_specs_train(self) -> SpecDict:
+        if self._is_discrete:
+            action_spec = TFTensorSpecs("b")
+        else:
+            action_dim = self.config.action_space.shape[0]
+            action_spec = TFTensorSpecs("b, h", h=action_dim)
 
-    @override(TfRLModule)
-    def output_specs_train(self) -> List[str]:
-        return [
-            SampleBatch.ACTION_DIST,
-            SampleBatch.VF_PREDS,
-        ]
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        spec_dict = self.input_specs_exploration()
 
-    @override(TfRLModule)
-    def _forward_train(self, batch: NestedDict):
+        spec_dict.update({SampleBatch.ACTIONS: action_spec})
+        if SampleBatch.OBS in spec_dict:
+            spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
+        spec = SpecDict(spec_dict)
+        return spec
+
+    @override(RLModule)
+    def output_specs_train(self) -> SpecDict:
+        spec = SpecDict(
+            {
+                SampleBatch.ACTION_DIST: Categorical
+                if self._is_discrete
+                else DiagGaussian,
+                SampleBatch.ACTION_LOGP: TFTensorSpecs("b", dtype=tf.float32),
+                SampleBatch.VF_PREDS: TFTensorSpecs("b", dtype=tf.float32),
+                "entropy": TFTensorSpecs("b", dtype=tf.float32),
+            }
+        )
+        return spec
+
+    @override(RLModule)
+    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        encoder_out = self.encoder(batch)
-        if STATE_OUT in encoder_out:
-            output[STATE_OUT] = encoder_out[STATE_OUT]
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
 
-        # Actions
-        action_logits = self.pi(encoder_out[ENCODER_OUT])
+        # Shared encoder
+        encoder_outs = self.encoder(batch)
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
+        # Value head
+        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
+
+        # Policy head
+        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        action_logits = pi_out
         if self._is_discrete:
             action_dist = Categorical(action_logits)
         else:
             action_dist = DiagGaussian(
                 action_logits, None, action_space=self.config.action_space
             )
-
-        vf = self.vf(encoder_out[ENCODER_OUT])
+        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
+        entropy = action_dist.entropy()
         output[SampleBatch.ACTION_DIST] = action_dist
-        output[SampleBatch.VF_PREDS] = tf.squeeze(vf, axis=-1)
+        output[SampleBatch.ACTION_LOGP] = logp
+        output["entropy"] = entropy
 
         return output
 
-    @override(TfRLModule)
-    def input_specs_inference(self) -> List[str]:
-        return [SampleBatch.OBS]
+    @override(RLModule)
+    def input_specs_inference(self) -> SpecDict:
+        return self.input_specs_exploration()
 
-    @override(TfRLModule)
-    def output_specs_inference(self) -> List[str]:
-        return [SampleBatch.ACTION_DIST]
+    @override(RLModule)
+    def output_specs_inference(self) -> SpecDict:
+        return SpecDict({SampleBatch.ACTION_DIST: Deterministic})
 
-    @override(TfRLModule)
-    def _forward_inference(self, batch) -> Mapping[str, Any]:
+    @override(RLModule)
+    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        encoder_out = self.encoder(batch)
-        if STATE_OUT in encoder_out:
-            output[STATE_OUT] = encoder_out[STATE_OUT]
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
 
-        action_logits = self.pi(encoder_out[ENCODER_OUT])
+        encoder_outs = self.encoder(batch)
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
+        # Actions
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         if self._is_discrete:
             action = tf.math.argmax(action_logits, axis=-1)
         else:
@@ -113,28 +158,46 @@ class PPOTfRLModule(TfRLModule):
 
         return output
 
-    @override(TfRLModule)
-    def input_specs_exploration(self) -> List[str]:
-        return self.input_specs_inference()
+    @override(RLModule)
+    def input_specs_exploration(self):
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        return SpecDict()
 
-    @override(TfRLModule)
-    def output_specs_exploration(self) -> List[str]:
+    @override(RLModule)
+    def output_specs_exploration(self) -> SpecDict:
         return [
             SampleBatch.ACTION_DIST,
             SampleBatch.VF_PREDS,
             SampleBatch.ACTION_DIST_INPUTS,
         ]
 
-    @override(TfRLModule)
+    @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+        """PPO forward pass during exploration.
+        Besides the action distribution, this method also returns the parameters of the
+        policy distribution to be used for computing KL divergence between the old
+        policy and the new policy during training.
+        """
         output = {}
-        encoder_out = self.encoder(batch)
-        if STATE_OUT in encoder_out:
-            output[STATE_OUT] = encoder_out[STATE_OUT]
+        # TODO (Artur): Remove this once Policy supports RNN
+        batch[STATE_IN] = tree.map_structure(
+            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
+            self.encoder.get_initial_state(),
+        )
+        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
 
-        action_logits = self.pi(encoder_out[ENCODER_OUT])
-        vf = self.vf(encoder_out[ENCODER_OUT])
+        # Shared encoder
+        encoder_outs = self.encoder(batch)
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
 
+        # Value head
+        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
+
+        # Policy head
+        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        action_logits = pi_out
         if self._is_discrete:
             action_dist = Categorical(action_logits)
         else:
@@ -142,9 +205,8 @@ class PPOTfRLModule(TfRLModule):
                 action_logits, None, action_space=self.config.action_space
             )
 
-        output[SampleBatch.ACTION_DIST] = action_dist
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.VF_PREDS] = tf.squeeze(vf, axis=-1)
+        output[SampleBatch.ACTION_DIST] = action_dist
 
         return output
 
