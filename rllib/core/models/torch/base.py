@@ -3,8 +3,12 @@ from typing import Union
 
 from ray.rllib.core.models.base import Model, ModelConfig
 from ray.rllib.core.models.torch.primitives import nn
-from ray.rllib.models.specs.checker import is_input_decorated, is_output_decorated, \
-    check_input_specs, check_output_specs
+from ray.rllib.models.specs.checker import (
+    is_input_decorated,
+    is_output_decorated,
+    check_input_specs,
+    check_output_specs,
+)
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
@@ -62,8 +66,9 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     @check_input_specs("input_spec", cache=True)
     @check_output_specs("output_spec", cache=True)
-    def forward(self, inputs: Union[NestedDict, TensorType], **kwargs) -> Union[
-        NestedDict, TensorType]:
+    def forward(
+        self, inputs: Union[NestedDict, TensorType], **kwargs
+    ) -> Union[NestedDict, TensorType]:
         """Returns the output of this model for the given input.
 
         This method only makes sure that we have a spec-checked _forward() method.

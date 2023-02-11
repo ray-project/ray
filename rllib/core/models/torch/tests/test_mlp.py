@@ -2,7 +2,6 @@ import unittest
 import itertools
 
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.core.models.torch.mlp import TorchMLPModel
 from ray.rllib.core.models.configs import MLPModelConfig
 
 torch, nn = try_import_torch()
@@ -11,58 +10,49 @@ torch, nn = try_import_torch()
 class TestTorchModels(unittest.TestCase):
     def test_torch_mlp(self):
 
-        inputs_dims = [
-            1,
-            2,
-            1000
-        ]
+        inputs_dims = [1, 2, 1000]
 
-        hidden_layer_dimss = [
-            [],
-            [1],
-            [64, 64],
-            [1000, 1000, 1000, 1000]
-        ]
+        hidden_layer_dimss = [[], [1], [64, 64], [1000, 1000, 1000, 1000]]
 
-        hidden_layer_activations = [
-            None,
-            "linear",
-            "relu",
-            "tanh",
-            "elu",
-            "swish"
-        ]
+        hidden_layer_activations = [None, "linear", "relu", "tanh", "elu", "swish"]
 
         output_dims = inputs_dims
 
         output_activations = hidden_layer_activations
 
         for permutation in itertools.product(
-                inputs_dims,
-                hidden_layer_dimss,
-                hidden_layer_activations,
-                output_activations,
-                output_dims
-            ):
-            inputs_dim, hidden_layer_dims, hidden_layer_activation, \
-            output_activation, output_dims = permutation
+            inputs_dims,
+            hidden_layer_dimss,
+            hidden_layer_activations,
+            output_activations,
+            output_dims,
+        ):
+            (
+                inputs_dim,
+                hidden_layer_dims,
+                hidden_layer_activation,
+                output_activation,
+                output_dims,
+            ) = permutation
 
-            print(f"Testing ...\n"
+            print(
+                f"Testing ...\n"
                 f"inputs_dim: {inputs_dim}\n"
                 f"hidden_layer_dims: {hidden_layer_dims}\n"
                 f"hidden_layer_activation: {hidden_layer_activation}\n"
                 f"output_activation: {output_activation}\n"
-                f"output_dims: {output_dims}\n")
+                f"output_dims: {output_dims}\n"
+            )
 
             config = MLPModelConfig(
                 input_dim=inputs_dim,
                 hidden_layer_dims=hidden_layer_dims,
                 output_dim=output_dims,
                 hidden_layer_activation=hidden_layer_activation,
-                output_activation=output_activation
+                output_activation=output_activation,
             )
 
-            model = TorchMLPModel(config)
+            model = config.build(framework="torch")
 
             inputs = torch.randn(1, inputs_dim)
 
