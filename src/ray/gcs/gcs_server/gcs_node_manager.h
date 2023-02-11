@@ -96,7 +96,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
+  virtual const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
       const {
     return alive_nodes_;
   }

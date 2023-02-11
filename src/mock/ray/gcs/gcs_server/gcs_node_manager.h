@@ -43,6 +43,7 @@ class MockGcsNodeManager : public GcsNodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void, DrainNode, (const NodeID &node_id), (override));
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &), GetAllAliveNodes, (), (const override));
 };
 
 }  // namespace gcs

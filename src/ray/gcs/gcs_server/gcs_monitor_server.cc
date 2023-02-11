@@ -19,8 +19,8 @@
 namespace ray {
 namespace gcs {
 
-GcsMonitorServer::GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager)
-    : gcs_node_manager_(gcs_node_manager) {}
+  GcsMonitorServer::GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager, ClusterResourceManager &cluster_resource_manager)
+    : gcs_node_manager_(gcs_node_manager), cluster_resource_manager_(cluster_resource_manager) {}
 
 void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
                                            rpc::GetRayVersionReply *reply,
@@ -44,7 +44,14 @@ void GcsMonitorServer::HandleDrainAndKillNode(
 void GcsMonitorServer::HandleGetSchedulingStatus(
     rpc::GetSchedulingStatusRequest request,
     rpc::GetSchedulingStatusReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {}
+    rpc::SendReplyCallback send_reply_callback) {
+  const absl::flat_hash_map<scheduling::NodeID, Node> scheduling_nodes = cluster_resource_manager_.GetResourceView();
+
+  if (scheduling_nodes.size() == 0) {
+    // TODO Delete
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+}
 
 }  // namespace gcs
 }  // namespace ray

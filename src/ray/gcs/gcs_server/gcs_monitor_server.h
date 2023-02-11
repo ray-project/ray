@@ -24,7 +24,7 @@ namespace gcs {
 /// GCS and `monitor.py`
 class GcsMonitorServer : public rpc::MonitorServiceHandler {
  public:
-  explicit GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager);
+  explicit GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager, ClusterResourceManager &cluster_resource_manager);
 
   void HandleGetRayVersion(rpc::GetRayVersionRequest request,
                            rpc::GetRayVersionReply *reply,
@@ -40,6 +40,7 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
 
  private:
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  ClusterResourceManager &cluster_resource_manager_;
 };
 }  // namespace gcs
 }  // namespace ray

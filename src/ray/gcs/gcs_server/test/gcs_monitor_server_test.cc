@@ -26,33 +26,45 @@
 using namespace testing;
 
 namespace ray {
+
+  NodeResources constructNodeResources(absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> available,absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> total) {
+    NodeResources resources;
+    return resources;
+  }
+
+
 class GcsMonitorServerTest : public ::testing::Test {
  public:
   GcsMonitorServerTest()
       : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
-        monitor_server_(mock_node_manager_) {}
+        cluster_resource_manager_(),
+        monitor_server_(mock_node_manager_, cluster_resource_manager_) {}
 
  protected:
   std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
+  ClusterResourceManager cluster_resource_manager_;
   gcs::GcsMonitorServer monitor_server_;
 };
 
 TEST_F(GcsMonitorServerTest, TestRayVersion) {
   rpc::GetRayVersionRequest request;
   rpc::GetRayVersionReply reply;
+  bool replied = false;
   auto send_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    [&replied](ray::Status status, std::function<void()> f1, std::function<void()> f2) { replied = true; };
 
   monitor_server_.HandleGetRayVersion(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.version(), kRayVersion);
+  ASSERT_TRUE(replied);
 }
 
 TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   rpc::DrainAndKillNodeRequest request;
   rpc::DrainAndKillNodeReply reply;
+  bool replied = false;
   auto send_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    [&replied](ray::Status status, std::function<void()> f1, std::function<void()> f2) { replied = true; };
 
   *request.add_node_ids() = NodeID::FromRandom().Binary();
   *request.add_node_ids() = NodeID::FromRandom().Binary();
@@ -61,6 +73,34 @@ TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   monitor_server_.HandleDrainAndKillNode(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.drained_nodes().size(), 2);
+  ASSERT_TRUE(replied);
+}
+
+TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
+  rpc::GetSchedulingStatusRequest request;
+  rpc::GetSchedulingStatusReply reply;
+  bool replied = false;
+  auto send_reply_callback =
+    [&replied](ray::Status status, std::function<void()> f1, std::function<void()> f2) { replied = true; };
+
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> gcs_node_manager_nodes;
+
+  // const absl::flat_hash_map<ray::NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>, absl::hash_internal::Hash<ray::NodeID>, std::equal_to<ray::NodeID>> 
+  //   return gcs_node_manager_nodes;
+
+       ON_CALL(*mock_node_manager_, GetAllAliveNodes()).WillByDefault(ReturnRef(gcs_node_manager_nodes));
+
+  NodeID id_1 = NodeID::FromRandom();
+  cluster_resource_manager_.AddOrUpdateNode(scheduling::NodeID(id_1.Binary()), {{"CPU", 8}, {"custom", 1}}, {{"CPU", 8}, {"custom", 1}});
+
+  // NodeID id_2 = NodeID::FromRandom();
+
+
+
+
+    monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
+
+    ASSERT_TRUE(replied);
 }
 
 }  // namespace ray
