@@ -233,7 +233,7 @@ def test_transform_failure(shutdown_only):
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ds.map(mapper)
+        ds.map(mapper).fully_executed()
 
 
 def test_dataset_lineage_serialization(shutdown_only):
@@ -2791,13 +2791,11 @@ def test_map_batches_block_bundling_auto(
     assert ds.num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
-    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size)
-    ds1.fully_executed()
+    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
     assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
 
     # Blocks should not be bundled up when batch_size is not specified.
-    ds2 = ds.map_batches(lambda x: x)
-    ds2.fully_executed()
+    ds2 = ds.map_batches(lambda x: x).fully_executed()
     assert ds2.num_blocks() == num_blocks
 
 
@@ -2823,7 +2821,7 @@ def test_map_batches_block_bundling_skewed_manual(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
 
     # Blocks should be bundled up to the batch size.
     assert ds.num_blocks() == expected_num_blocks
@@ -2849,7 +2847,7 @@ def test_map_batches_block_bundling_skewed_auto(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
     curr = 0
     num_out_blocks = 0
     for block_size in block_sizes:
@@ -4005,38 +4003,38 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs, "C": [2 * x for x in xs]})
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean(5)
+        ray.data.from_pandas(df).groupby("A").mean(5).fully_executed()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean([5])
+        ray.data.from_pandas(df).groupby("A").mean([5]).fully_executed()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean([])
+        ray.data.from_pandas(df).groupby("A").mean([]).fully_executed()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean("D")
+        ray.data.from_pandas(df).groupby("A").mean("D").fully_executed()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean(["B", "D"])
+        ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).fully_executed()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A")
+        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").fully_executed()
 
     # Test bad on for global aggregation
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean(5)
+        ray.data.from_pandas(df).mean(5).fully_executed()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean([5])
+        ray.data.from_pandas(df).mean([5]).fully_executed()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean([])
+        ray.data.from_pandas(df).mean([]).fully_executed()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean("D")
+        ray.data.from_pandas(df).mean("D").fully_executed()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean(["B", "D"])
+        ray.data.from_pandas(df).mean(["B", "D"]).fully_executed()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).mean("A")
+        ray.data.from_items(xs).mean("A").fully_executed()
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -4285,7 +4283,7 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 
     # The UDF returns None, which is invalid.
     with pytest.raises(TypeError):
-        grouped.map_groups(lambda x: None if x == [1] else x)
+        grouped.map_groups(lambda x: None if x == [1] else x).fully_executed()
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
@@ -5406,6 +5404,7 @@ def test_polars_lazy_import(shutdown_only):
             ray.data.from_pandas(dfs)
             .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
             .sort(key="a")
+            .fully_executed()
         )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
