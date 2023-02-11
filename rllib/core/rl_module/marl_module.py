@@ -28,7 +28,7 @@ class MultiAgentRLModuleSpec:
     """
 
     module_class: Optional[Type["MultiAgentRLModule"]] = None
-    module_specs: Optional[Dict["ModuleID", SingleAgentRLModuleSpec]] = None
+    module_specs: Optional[Dict[ModuleID, SingleAgentRLModuleSpec]] = None
 
     def build(self) -> "MultiAgentRLModule":
         return self.module_class.from_multi_agent_config({"modules": self.module_specs})
