@@ -74,7 +74,7 @@ class PPOTorchRLModule(TorchRLModule):
 
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
-        assert self.config.encoder_config, "shared encoder config must be " "provided."
+        assert self.config.encoder_config, "shared encoder config must be provided."
 
         self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
         self.config.pi_config.input_dim = (

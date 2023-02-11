@@ -9,7 +9,7 @@ from ray.rllib.core.models.configs import (
     MLPModelConfig,
     MLPEncoderConfig,
     ActorCriticEncoderConfig,
-    LSTMEncoderConfig
+    LSTMEncoderConfig,
 )
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
@@ -35,7 +35,7 @@ class PPOTfRLModule(TfRLModule):
 
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
-        assert self.config.encoder_config, "shared encoder config must be " "provided."
+        assert self.config.encoder_config, "shared encoder config must be provided."
 
         self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
         self.config.pi_config.input_dim = (
