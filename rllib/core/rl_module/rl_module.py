@@ -19,9 +19,8 @@ from ray.rllib.models.specs.checker import (
     convert_to_canonical_format,
 )
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
-
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -265,15 +264,19 @@ class RLModule(abc.ABC):
 
     def input_specs_inference(self) -> SpecType:
         """Returns the input specs of the forward_inference method."""
-        return {}
+        return self._default_input_specs()
 
     def input_specs_exploration(self) -> SpecType:
         """Returns the input specs of the forward_exploration method."""
-        return {}
+        return self._default_input_specs()
 
     def input_specs_train(self) -> SpecType:
         """Returns the input specs of the forward_train method."""
-        return {}
+        return self._default_input_specs()
+
+    def _default_input_specs(self) -> SpecType:
+        """Returns the default input specs."""
+        return [SampleBatch.OBS]
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
