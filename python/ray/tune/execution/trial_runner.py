@@ -197,27 +197,6 @@ class TrialRunner:
         self._experiment_dir_name = experiment_dir_name
 
         self._stopper = stopper or NoopStopper()
-        self._resumed = False
-
-        resume_config = self._checkpoint_manager.resume(resume_type=resume)
-
-        if resume_config:
-            try:
-                self.resume(
-                    resume_unfinished=resume_config.resume_unfinished,
-                    resume_errored=resume_config.resume_errored,
-                    restart_errored=resume_config.restart_errored,
-                )
-                self._resumed = True
-            except Exception as e:
-                if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
-                    logger.error(str(e))
-                logger.exception("Runner restore failed.")
-                if self._fail_fast:
-                    raise
-                logger.info("Restarting experiment.")
-        else:
-            logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
         self._last_checkpoint_time = -float("inf")
@@ -237,6 +216,27 @@ class TrialRunner:
         self._checkpoint_period = checkpoint_period
         self._trial_checkpoint_config = trial_checkpoint_config or CheckpointConfig()
         self._checkpoint_manager = self._create_checkpoint_manager()
+
+        self._resumed = False
+        resume_config = self._checkpoint_manager.resume(resume_type=resume)
+
+        if resume_config:
+            try:
+                self.resume(
+                    resume_unfinished=resume_config.resume_unfinished,
+                    resume_errored=resume_config.resume_errored,
+                    restart_errored=resume_config.restart_errored,
+                )
+                self._resumed = True
+            except Exception as e:
+                if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
+                    logger.error(str(e))
+                logger.exception("Runner restore failed.")
+                if self._fail_fast:
+                    raise
+                logger.info("Restarting experiment.")
+        else:
+            logger.debug("Starting a new experiment.")
 
     @Deprecated("Use `TrialRunner.experiment_state_path` instead.")
     @property

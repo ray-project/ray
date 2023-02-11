@@ -8,7 +8,7 @@ from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
