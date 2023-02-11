@@ -17,6 +17,24 @@ from ray.rllib.utils.policy import validate_policy_id
 ModuleID = str
 
 
+
+@ExperimentalAPI
+@dataclass
+class MultiAgentRLModuleSpec:
+    """A utility spec class to make it constructing RLModules (in multi-agent case) easier.
+
+    Args:
+        module_class: ...
+        module_specs: ...
+    """
+
+    module_class: Optional[Type["MultiAgentRLModule"]] = None
+    module_specs: Optional[Dict["ModuleID", SingleAgentRLModuleSpec]] = None
+
+    def build(self) -> "MultiAgentRLModule":
+        return self.module_class.from_multi_agent_config({"modules": self.module_specs})
+
+
 def _get_module_configs(config: Dict[str, Any]):
     """Constructs a mapping from module_id to module config.
 
