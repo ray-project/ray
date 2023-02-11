@@ -17,6 +17,7 @@ from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest, BCAlgorithmTest
 from ray.rllib.utils.test_utils import framework_iterator
 
+
 class TestRLTrainer(unittest.TestCase):
     @classmethod
     def setUp(cls) -> None:
@@ -25,7 +26,6 @@ class TestRLTrainer(unittest.TestCase):
     @classmethod
     def tearDown(cls) -> None:
         ray.shutdown()
-
 
     def test_bc_algorithm(self):
 
@@ -45,11 +45,9 @@ class TestRLTrainer(unittest.TestCase):
                 assert isinstance(rl_module, DiscreteBCTorchModule)
             elif fw == "tf":
                 assert isinstance(rl_module, DiscreteBCTFModule)
-        
+
     def test_bc_algorithm_w_custom_marl_module(self):
         pass
-
-
 
 
 if __name__ == "__main__":

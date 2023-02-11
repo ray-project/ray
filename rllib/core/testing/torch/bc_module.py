@@ -30,7 +30,6 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         self.input_dim = input_dim
 
-
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
         return ["action_dist"]

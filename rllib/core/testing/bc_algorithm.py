@@ -1,6 +1,6 @@
 """Contains example implementation of a custom algorithm.
 
-Note: It doesn't include any real use-case functionality; it only serves as an example 
+Note: It doesn't include any real use-case functionality; it only serves as an example
 to test the algorithm construction and customization.
 """
 
@@ -9,9 +9,8 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
-from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule 
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer 
-
+from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 
 
 class BCConfigTest(AlgorithmConfig):
@@ -32,11 +31,8 @@ class BCConfigTest(AlgorithmConfig):
 
 
 class BCAlgorithmTest(Algorithm):
-
     @classmethod
-    def get_default_policy_class(
-        cls, config: AlgorithmConfig
-    ):
+    def get_default_policy_class(cls, config: AlgorithmConfig):
         if config.framework_str == "torch":
             return TorchPolicyV2
         elif config.framework_str == "tf2":
@@ -44,7 +40,6 @@ class BCAlgorithmTest(Algorithm):
         else:
             raise ValueError("Unknown framework: {}".format(config.framework_str))
 
-
     def training_step(self):
-        # do nothing. 
+        # do nothing.
         return {}

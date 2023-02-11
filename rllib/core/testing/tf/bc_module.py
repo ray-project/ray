@@ -33,7 +33,6 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
 
-
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
         return ["action_dist"]
