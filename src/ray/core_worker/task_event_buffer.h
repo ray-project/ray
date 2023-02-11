@@ -205,8 +205,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
-      LOCKS_EXCLUDED(mutex_) override;
+  /// @brief Add a task event to the buffer by posting to the io_service.
+  /// @param task_event Task Event to be added.
+  void AddTaskEvent(std::unique_ptr<TaskEvent> task_event) override;
+
+  void AddTaskEventStr(std::unique_ptr<std::string> task_event);
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
 
@@ -247,6 +250,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     absl::MutexLock lock(&mutex_);
     return gcs_client_.get();
   }
+
+  /// Add a task event to internal buffer.
+  void AddTaskEventInternal(std::unique_ptr<TaskEvent> task_event) LOCKS_EXCLUDED(mutex_);
 
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;

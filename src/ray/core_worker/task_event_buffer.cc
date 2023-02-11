@@ -193,6 +193,22 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
   if (!enabled_) {
     return;
   }
+
+  if (RayConfig::instance().task_events_worker_post()) {
+    TaskEvent *ptr = task_event.release();
+    io_service_.dispatch(
+        [this, ptr]() mutable {
+          std::unique_ptr<TaskEvent> task_event(ptr);
+          AddTaskEventInternal(std::move(task_event));
+        },
+        "AddTaskEvent");
+    return;
+  }
+
+  AddTaskEventInternal(std::move(task_event));
+}
+
+void TaskEventBufferImpl::AddTaskEventInternal(std::unique_ptr<TaskEvent> task_event) {
   absl::MutexLock lock(&mutex_);
 
   if (buffer_.full()) {

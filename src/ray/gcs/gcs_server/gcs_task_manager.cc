@@ -415,6 +415,11 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  if (RayConfig::instance().task_events_gcs_skip_processing()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
   auto data = std::move(request.data());
   // Update counters.
   stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
