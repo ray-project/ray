@@ -104,21 +104,21 @@ class DiscreteBCTFModule(TfRLModule):
 
 
 class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
-
-    def __init__(self, 
-        encoder, 
-        local_dim, 
-        hidden_dim, 
-        action_dim
-    ):
+    def __init__(self, encoder, local_dim, hidden_dim, action_dim):
         super().__init__()
 
         self.encoder = encoder
-        self.policy_head = tf.keras.Sequential([
-            tf.keras.layers.Dense(hidden_dim + local_dim, input_shape=(hidden_dim + local_dim,), activation='relu'),
-            tf.keras.layers.Dense(hidden_dim, activation='relu'),
-            tf.keras.layers.Dense(action_dim),
-        ])
+        self.policy_head = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    hidden_dim + local_dim,
+                    input_shape=(hidden_dim + local_dim,),
+                    activation="relu",
+                ),
+                tf.keras.layers.Dense(hidden_dim, activation="relu"),
+                tf.keras.layers.Dense(action_dim),
+            ]
+        )
 
     def input_specs_inference(self):
         return self._common_input_spec()
@@ -131,13 +131,13 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
     def _common_input_spec(self):
         return [("obs", "global"), ("obs", "local")]
-    
+
     def _forward_inference(self, batch):
         return self._common_forward(batch)
 
     def _forward_exploration(self, batch):
         return self._common_forward(batch)
-    
+
     def _forward_train(self, batch):
         return self._common_forward(batch)
 
@@ -152,19 +152,19 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
 
 class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
-
-    
     def build(self):
-        # constructing the global encoder based on the observation_space of the first 
+        # constructing the global encoder based on the observation_space of the first
         # module
         module_spec = next(iter(self.module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
         hidden_dim = module_spec.model_config["hidden_dim"]
-        shared_encoder = tf.keras.Sequential([
-            tf.keras.Input(shape=(global_dim,)),
-            tf.keras.layers.ReLU(),
-            tf.keras.layers.Dense(hidden_dim),
-        ])
+        shared_encoder = tf.keras.Sequential(
+            [
+                tf.keras.Input(shape=(global_dim,)),
+                tf.keras.layers.ReLU(),
+                tf.keras.layers.Dense(hidden_dim),
+            ]
+        )
 
         rl_modules = {}
         for module_id, module_spec in self.module_specs.items():
@@ -174,5 +174,5 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
                 hidden_dim=hidden_dim,
                 action_dim=module_spec.action_space.n,
             )
-        
+
         return self.module_class(rl_modules)

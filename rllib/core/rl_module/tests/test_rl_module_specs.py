@@ -1,32 +1,30 @@
 import unittest
 import gymnasium as gym
-import numpy as np
 import torch
-import tensorflow as tf
-import tree # pip install dm-tree
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.testing.torch.bc_module import (
-    DiscreteBCTorchModule, 
+    DiscreteBCTorchModule,
     BCTorchRLModuleWithSharedGlobalEncoder,
-    BCTorchMultiAgentSpec
+    BCTorchMultiAgentSpec,
 )
 from ray.rllib.core.testing.tf.bc_module import (
     DiscreteBCTFModule,
     BCTfRLModuleWithSharedGlobalEncoder,
-    BCTfMultiAgentSpec
+    BCTfMultiAgentSpec,
 )
 
 MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 CUSTOM_MODULES = {
-    "torch": BCTorchRLModuleWithSharedGlobalEncoder, 
-    "tf": BCTfRLModuleWithSharedGlobalEncoder
+    "torch": BCTorchRLModuleWithSharedGlobalEncoder,
+    "tf": BCTfRLModuleWithSharedGlobalEncoder,
 }
-CUSTOM_MARL_SPECS = {
-    "torch": BCTorchMultiAgentSpec,
-    "tf": BCTfMultiAgentSpec
-}
+CUSTOM_MARL_SPECS = {"torch": BCTorchMultiAgentSpec, "tf": BCTfMultiAgentSpec}
+
 
 class BCRLModuleSpecCustom(SingleAgentRLModuleSpec):
     """A customized SingleAgentRLModuleSpec."""
@@ -37,12 +35,11 @@ class BCRLModuleSpecCustom(SingleAgentRLModuleSpec):
             "input_dim": self.observation_space.shape[0],
             "hidden_dim": self.model_config["hidden_dims"],
             "output_dim": self.action_space.n,
-        } 
+        }
         return self.module_class(**config)
 
 
 class TestRLModuleSpecs(unittest.TestCase):
-    
     def test_single_agent_spec(self):
         """Tests RLlib's default SingleAgentRLModuleSpec."""
         env = gym.make("CartPole-v1")
@@ -56,7 +53,7 @@ class TestRLModuleSpecs(unittest.TestCase):
 
             module = spec.build()
             self.assertIsInstance(module, module_class)
-    
+
     def test_customized_single_agent_spec(self):
         """Tests the a customized SingleAgentRLModuleSpec."""
         env = gym.make("CartPole-v1")
@@ -88,8 +85,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                 )
 
             spec = MultiAgentRLModuleSpec(
-                module_class=MultiAgentRLModule,
-                module_specs=module_specs
+                module_class=MultiAgentRLModule, module_specs=module_specs
             )
             module = spec.build()
             self.assertIsInstance(module, MultiAgentRLModule)
@@ -111,38 +107,45 @@ class TestRLModuleSpecs(unittest.TestCase):
                 module_specs={
                     "agent_1": SingleAgentRLModuleSpec(
                         module_class=module_cls,
-                        observation_space=gym.spaces.Dict({
-                            "global": gym.spaces.Box(low=-1, high=1, shape=(global_dim,)),
-                            "local": gym.spaces.Box(low=-1, high=1, shape=(local_dims[0],))
-                        }),
+                        observation_space=gym.spaces.Dict(
+                            {
+                                "global": gym.spaces.Box(
+                                    low=-1, high=1, shape=(global_dim,)
+                                ),
+                                "local": gym.spaces.Box(
+                                    low=-1, high=1, shape=(local_dims[0],)
+                                ),
+                            }
+                        ),
                         action_space=gym.spaces.Discrete(action_dims[0]),
                         model_config={"hidden_dim": 128},
                     ),
                     "agent_2": SingleAgentRLModuleSpec(
                         module_class=module_cls,
-                        observation_space=gym.spaces.Dict({
-                            "global": gym.spaces.Box(low=-1, high=1, shape=(global_dim,)),
-                            "local": gym.spaces.Box(low=-1, high=1, shape=(local_dims[1],))
-                        }),
+                        observation_space=gym.spaces.Dict(
+                            {
+                                "global": gym.spaces.Box(
+                                    low=-1, high=1, shape=(global_dim,)
+                                ),
+                                "local": gym.spaces.Box(
+                                    low=-1, high=1, shape=(local_dims[1],)
+                                ),
+                            }
+                        ),
                         action_space=gym.spaces.Discrete(action_dims[1]),
                         model_config={"hidden_dim": 128},
                     ),
-                }
+                },
             )
 
             model = spec.build()
 
             if fw == "torch":
-                # change the parameters of the shared encoder and make sure it changes 
+                # change the parameters of the shared encoder and make sure it changes
                 # across all agents
                 foo = model["agent_1"].encoder[0].bias
                 foo.data = torch.ones_like(foo.data)
                 self.assertTrue(torch.allclose(model["agent_2"].encoder[0].bias, foo))
-
-        
-
-
-
 
 
 if __name__ == "__main__":

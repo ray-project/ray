@@ -17,7 +17,6 @@ from ray.rllib.utils.policy import validate_policy_id
 ModuleID = str
 
 
-
 @ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleSpec:

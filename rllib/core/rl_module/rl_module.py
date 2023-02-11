@@ -26,6 +26,7 @@ from ray.rllib.utils.typing import SampleBatchType
 
 ModuleID = str
 
+
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:

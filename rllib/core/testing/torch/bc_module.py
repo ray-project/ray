@@ -90,22 +90,19 @@ class DiscreteBCTorchModule(TorchRLModule):
 
 class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     """An example of an RLModule that uses an encoder shared with other things.
-    
-    For example, we could consider a multi-agent case where for inference each agent 
-    needs to know the global state of the environment, as well as the local state of 
-    itself. For better representation learning we would like to share the encoder 
-    across all the modules. So this module simply accepts the encoder object as its 
-    input argument and uses it to encode the global state. The local state is passed 
-    through as is. The policy head is then a simple MLP that takes the concatenation of 
+
+    For example, we could consider a multi-agent case where for inference each agent
+    needs to know the global state of the environment, as well as the local state of
+    itself. For better representation learning we would like to share the encoder
+    across all the modules. So this module simply accepts the encoder object as its
+    input argument and uses it to encode the global state. The local state is passed
+    through as is. The policy head is then a simple MLP that takes the concatenation of
     the global and local state as input and outputs the action logits.
 
     """
 
-    def __init__(self, 
-        encoder: nn.Module, 
-        local_dim: int, 
-        hidden_dim: int, 
-        action_dim: int
+    def __init__(
+        self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
     ) -> None:
         super().__init__()
 
@@ -115,7 +112,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
         )
-    
+
     def input_specs_inference(self):
         return self._common_input_spec()
 
@@ -127,7 +124,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
 
     def _common_input_spec(self):
         return [("obs", "global"), ("obs", "local")]
-    
+
     def _forward_inference(self, batch):
         with torch.no_grad():
             return self._common_forward(batch)
@@ -135,7 +132,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     def _forward_exploration(self, batch):
         with torch.no_grad():
             return self._common_forward(batch)
-    
+
     def _forward_train(self, batch):
         return self._common_forward(batch)
 
@@ -148,14 +145,13 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
 
 
-
 class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
 
     # TODO: make sure the default class is MultiAgentRLModule
-    
+
     def build(self):
 
-        # constructing the global encoder based on the observation_space of the first 
+        # constructing the global encoder based on the observation_space of the first
         # module
         module_spec = next(iter(self.module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
@@ -174,5 +170,5 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
                 hidden_dim=hidden_dim,
                 action_dim=module_spec.action_space.n,
             )
-        
+
         return self.module_class(rl_modules)
