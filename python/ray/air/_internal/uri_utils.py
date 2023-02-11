@@ -18,6 +18,8 @@ class URI:
         's3://bucket?scheme=http&endpoint_override=localhost%3A900'
         >>> str(s3_uri)
         's3://bucket/a?scheme=http&endpoint_override=localhost%3A900'
+        >>> s3_uri.parent.name, s3_uri.name
+        ('bucket', 'a')
 
     Args:
         uri: The URI to represent.
@@ -30,6 +32,10 @@ class URI:
         if not self._parsed.scheme:
             raise ValueError(f"Invalid URI: {uri}")
         self._path = Path(os.path.normpath(self._parsed.netloc + self._parsed.path))
+
+    @property
+    def name(self) -> str:
+        return self._path.name
 
     @property
     def parent(self) -> "URI":
