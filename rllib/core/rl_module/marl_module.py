@@ -144,8 +144,6 @@ class MultiAgentRLModule(RLModule):
         multiagent_module = cls()
 
         for module_id, module_spec in module_configs.items():
-            # module_cls: RLModule = module_spec.pop("module_class")
-            # module = module_cls.from_model_config(**module_spec)
             module = module_spec.build()
             multiagent_module.add_module(module_id, module)
 
@@ -281,7 +279,7 @@ class MultiAgentRLModule(RLModule):
         """Returns a ModelSpec from the given method_name for all modules."""
         return SpecDict(
             {
-                module_id: getattr(module, method_name)()
+                module_id: getattr(module, f"_{method_name}")
                 for module_id, module in self._rl_modules.items()
             }
         )
@@ -301,7 +299,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_train pass the specified modules.
         """
-        return self.__run_forward_pass("forward_train", batch, **kwargs)
+        return self._run_forward_pass("forward_train", batch, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
@@ -318,7 +316,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_inference pass the specified modules.
         """
-        return self.__run_forward_pass("forward_inference", batch, **kwargs)
+        return self._run_forward_pass("forward_inference", batch, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
@@ -335,7 +333,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_exploration pass the specified modules.
         """
-        return self.__run_forward_pass("forward_exploration", batch, **kwargs)
+        return self._run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -411,7 +409,7 @@ class MultiAgentRLModule(RLModule):
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
 
-    def __run_forward_pass(
+    def _run_forward_pass(
         self,
         forward_fn_name: str,
         batch: NestedDict[Any],

@@ -8,7 +8,6 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
-    RandomizeBlocks,
     Repartition,
     Sort,
 )
@@ -155,28 +154,6 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
 
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
     ensure_sample_size_close(ds)
-
-
-def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
-    planner = Planner()
-    read_op = Read(ParquetDatasource())
-    op = RandomizeBlocks(
-        read_op,
-        seed=0,
-    )
-    plan = LogicalPlan(op)
-    physical_op = planner.plan(plan).dag
-
-    assert op.name == "RandomizeBlocks"
-    assert isinstance(physical_op, AllToAllOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], MapOperator)
-
-
-def test_randomize_blocks_e2e(ray_start_regular_shared, enable_optimizer):
-    ds = ray.data.range(12, parallelism=4)
-    ds = ds.randomize_block_order(seed=0)
-    assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
 
 
 def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
