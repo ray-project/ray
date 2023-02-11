@@ -1,12 +1,12 @@
 from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.torch.primitives import TorchMLP, TorchModel
+from ray.rllib.core.models.torch.primitives import TorchMLP
+from rllib.core.models.torch.base import TorchModel
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 
-_, nn = try_import_torch()
+torch, nn = try_import_torch()
 
 
 class TorchMLPModel(TorchModel, nn.Module):
@@ -26,5 +26,5 @@ class TorchMLPModel(TorchModel, nn.Module):
         self.output_spec = TorchTensorSpec("b, h", h=self.config.output_dim)
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.net(inputs)

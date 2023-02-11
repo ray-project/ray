@@ -3,7 +3,7 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import Mapping, Any, Union
+from typing import Mapping, Any
 
 import gymnasium as gym
 

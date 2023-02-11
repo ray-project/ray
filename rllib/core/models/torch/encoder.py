@@ -11,7 +11,8 @@ from ray.rllib.core.models.encoder import (
     ACTOR,
     CRITIC,
 )
-from ray.rllib.core.models.torch.primitives import TorchMLP, TorchModel
+from ray.rllib.core.models.torch.primitives import TorchMLP
+from rllib.core.models.torch.base import TorchModel
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.policy.rnn_sequencing import add_time_dimension

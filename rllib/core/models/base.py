@@ -4,6 +4,7 @@ from typing import List, Union
 
 from ray.rllib import SampleBatch
 from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.specs_base import DummySpec
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import TensorType
@@ -117,6 +118,9 @@ class Model(abc.ABC):
 
     def __init__(self, config: ModelConfig):
         self.config = config
+        # Model itself does not impose restrictions on inputs and outputs.
+        self.input_spec = DummySpec()
+        self.output_spec = DummySpec()
 
     def get_initial_state(self) -> Union[NestedDict, List[TensorType]]:
         """Returns the initial state of the Model.
