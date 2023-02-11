@@ -7,7 +7,6 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
-import urllib.parse
 
 import ray
 import ray.cloudpickle as pickle
