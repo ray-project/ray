@@ -2868,8 +2868,7 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator, executor = self._plan.execute_to_iterator()
-        stats = executor.get_stats()
+        block_iterator, stats, executor = self._plan.execute_to_iterator()
         self._current_executor = executor
         time_start = time.perf_counter()
 

@@ -459,7 +459,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], "Executor"]:
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -479,6 +479,7 @@ class ExecutionPlan:
             return (
                 self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
                 self._snapshot_stats,
+                None,
             )
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -500,7 +501,7 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor
+        return block_iter, executor.get_stats(), executor
 
     def execute(
         self,
