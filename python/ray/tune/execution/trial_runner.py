@@ -204,11 +204,9 @@ class TrialRunner:
         self._session_str = datetime.fromtimestamp(self._start_time).strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
-        self._experiment_state_file_name = None
-        if self._local_checkpoint_dir:
-            self._experiment_state_file_name = TrialRunner.CKPT_FILE_TMPL.format(
-                self._session_str
-            )
+        self._experiment_state_file_name = TrialRunner.CKPT_FILE_TMPL.format(
+            self._session_str
+        )
 
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
@@ -240,11 +238,11 @@ class TrialRunner:
 
     @Deprecated("Use `TrialRunner.experiment_state_path` instead.")
     @property
-    def checkpoint_file(self):
+    def checkpoint_file(self) -> str:
         return self.experiment_state_path
 
     @property
-    def experiment_state_path(self):
+    def experiment_state_path(self) -> str:
         return os.path.join(
             self._local_checkpoint_dir, self._experiment_state_file_name
         )
@@ -1234,7 +1232,6 @@ class TrialRunner:
             "_scheduler_alg",
             "_pending_trial_queue_times",
             "trial_executor",
-            "_syncer",
             "_callbacks",
             "_checkpoint_manager",
             "_local_checkpoint_dir",

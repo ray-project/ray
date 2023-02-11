@@ -202,7 +202,7 @@ class _ExperimentCheckpointManager:
         force = force or self._should_force_cloud_sync
 
         now = time.time()
-        if now - self._last_save_time < self._checkpoint_period and (not force):
+        if now - self._last_save_time < self._checkpoint_period and not force:
             return
 
         # Checkpoint
