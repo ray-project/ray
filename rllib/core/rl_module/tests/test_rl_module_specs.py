@@ -33,7 +33,7 @@ class BCRLModuleSpecCustom(SingleAgentRLModuleSpec):
         # this handles all implementation details
         config = {
             "input_dim": self.observation_space.shape[0],
-            "hidden_dim": self.model_config["hidden_dims"],
+            "hidden_dim": self.model_config["hidden_dim"],
             "output_dim": self.action_space.n,
         }
         return self.module_class(**config)

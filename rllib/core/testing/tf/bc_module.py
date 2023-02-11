@@ -120,24 +120,19 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
             ]
         )
 
-    def input_specs_inference(self):
-        return self._common_input_spec()
-
-    def input_specs_exploration(self):
-        return self._common_input_spec()
-
-    def input_specs_train(self):
-        return self._common_input_spec()
-
-    def _common_input_spec(self):
+    @override(RLModule)
+    def _default_input_specs(self):
         return [("obs", "global"), ("obs", "local")]
 
+    @override(RLModule)
     def _forward_inference(self, batch):
         return self._common_forward(batch)
 
+    @override(RLModule)
     def _forward_exploration(self, batch):
         return self._common_forward(batch)
 
+    @override(RLModule)
     def _forward_train(self, batch):
         return self._common_forward(batch)
 
