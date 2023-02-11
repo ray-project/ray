@@ -30,7 +30,6 @@ Restoring a Tuner
     :toctree: doc/
 
     Tuner.restore
-    Tuner.can_restore
 
 
 tune.run_experiments
