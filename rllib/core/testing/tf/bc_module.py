@@ -143,7 +143,6 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
     def _common_forward(self, batch):
         obs = batch["obs"]
-        breakpoint()
         global_enc = self.encoder(obs["global"])
         policy_in = tf.concat([global_enc, obs["local"]], axis=-1)
         action_logits = self.policy_head(policy_in)
