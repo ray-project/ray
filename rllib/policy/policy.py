@@ -387,6 +387,68 @@ class Policy(metaclass=ABCMeta):
             self.observation_space, self.action_space, model_config=self.config["model"]
         )
 
+        """
+        1. For single agent all we need is RLModule class, and we need obs_space, and action_space, and model_config which will infered from existing logic
+
+        - module_class.from_xxx(obs_space, action_space, model_config)
+        
+        2. For independent multi-agent we need to pass a dict of RLModule classes (or one that can be used for all agents), and we need a dict of obs_space, and action_space, and model_config which will infered from existing logic.
+
+        3. For the new MARL case we need to pass a MARLModule, along with its own construction logic.
+
+        Let's see what we can do with Specs design pattern.
+
+        1. 
+
+        # leave obs, action, and model config empty so that they will be inferred from the other logic (policy), if given, they will be used instead.
+        config = config.rl_module(spec=SingleAgentRLModuleSpec(module_class=MyModule))
+
+        internally:
+        if not spec.observation_space:
+            spec.observation_space = policy.observation_space
+        if not spec.action_space:
+            spec.action_space = policy.action_space
+        spec.model_config = merge(spec.model_config, policy.config["model"])
+        module = spec.build().as_multi_agent()
+
+        2. 
+
+        # This should at some point become in parity with the current multi-agent API.
+        # the module_class used by default will be MutliAgentRLModule, but it can be changed to any other class that inherits from MultiAgentRLModule (for item 3)
+        config = config.rl_module(spec=MultiAgentRLModuleSpec(module_specs={"agent_1": SingleAgentRLModuleSpec(module_class=MyModule), "agent_2": SingleAgentRLModuleSpec(module_class=MyModule)}))
+
+        internally:
+        spec.module_class = MultiAgentRLModule
+        for agent_id, spec in spec.module_specs.items():
+            policy = get_policy(agent_id)
+            if not spec.observation_space:
+                spec.observation_space = policy.observation_space
+            if not spec.action_space:
+                spec.action_space = policy.action_space
+            spec.model_config = merge(spec.model_config, policy.config["model"])
+        marl_module = spec.build().as_multi_agent()     
+
+        3. 
+
+        # we should make the base class of MultiAgentRLModule so reach that it can be extended to other MARL modules with the same construction logic.
+
+        config = config.rl_module(spec=MultiAgentRLModuleSpec(
+            module_class=MyMARLModule,
+            module_specs={"agent_1": SingleAgentRLModuleSpec(module_class=MyModule), "agent_2": SingleAgentRLModuleSpec(module_class=MyModule)}))
+        ))
+
+        internally:
+        for agent_id, spec in spec.module_specs.items():
+            policy = get_policy(agent_id)
+            if not spec.observation_space:
+                spec.observation_space = policy.observation_space
+            if not spec.action_space:
+                spec.action_space = policy.action_space
+            spec.model_config = merge(spec.model_config, policy.config["model"])
+        marl_module = spec.build().as_multi_agent()     
+
+        """
+
         # # this breaks circular dependency
         # from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
