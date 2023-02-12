@@ -102,7 +102,7 @@ def create_policy_for_framework(
 
     if isinstance(merged_config, AlgorithmConfig):
         merged_config = merged_config.to_dict()
-    
+
     # add policy_id to merged_config
     merged_config["__policy_id"] = policy_id
 
@@ -138,14 +138,10 @@ def create_policy_for_framework(
         # For tf-eager: no graph, no session.
         else:
             with tf1.variable_scope(var_scope):
-                return policy_class(
-                    observation_space, action_space, merged_config
-                )
+                return policy_class(observation_space, action_space, merged_config)
     # Non-tf: No graph, no session.
     else:
-        return policy_class(
-            observation_space, action_space, merged_config
-        )
+        return policy_class(observation_space, action_space, merged_config)
 
 
 @PublicAPI(stability="alpha")
