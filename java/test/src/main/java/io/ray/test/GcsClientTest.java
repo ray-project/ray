@@ -8,6 +8,7 @@ import io.ray.runtime.gcs.GcsClient;
 import java.util.List;
 import org.apache.commons.lang3.SystemUtils;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
