@@ -42,7 +42,7 @@ class PPOTorchPolicy(
 ):
     """PyTorch policy class used with PPO."""
 
-    def __init__(self, observation_space, action_space, config, policy_id):
+    def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
@@ -53,7 +53,6 @@ class PPOTorchPolicy(
             observation_space,
             action_space,
             config,
-            policy_id=policy_id,
             max_seq_len=config["model"]["max_seq_len"],
         )
 
