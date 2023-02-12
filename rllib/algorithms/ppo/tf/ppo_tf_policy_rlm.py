@@ -36,7 +36,7 @@ class PPOTfPolicyWithRLModule(
     KLCoeffMixin,
     EagerTFPolicyV2,
 ):
-    """PyTorch policy class used with PPO.
+    """Tensorflow policy class used with PPO.
 
     This class is copied from PPOTFPolicy and is modified to support RLModules.
     Some subtle differences:
