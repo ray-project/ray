@@ -1,20 +1,10 @@
-import gymnasium as gym
 import unittest
-import tensorflow as tf
-import numpy as np
 
 import ray
-
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, FrameworkHPs
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
-from ray.rllib.core.testing.bc_algorithm import BCConfigTest, BCAlgorithmTest
+from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -45,9 +35,6 @@ class TestRLTrainer(unittest.TestCase):
                 assert isinstance(rl_module, DiscreteBCTorchModule)
             elif fw == "tf":
                 assert isinstance(rl_module, DiscreteBCTFModule)
-
-    def test_bc_algorithm_w_custom_marl_module(self):
-        pass
 
 
 if __name__ == "__main__":
