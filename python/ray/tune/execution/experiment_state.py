@@ -182,6 +182,7 @@ class _ExperimentCheckpointManager:
         self,
         save_fn: Callable[[], None],
         force: bool = False,
+        wait: bool = False,
     ):
         """Saves execution state to `self._local_checkpoint_dir`.
 
@@ -192,9 +193,11 @@ class _ExperimentCheckpointManager:
         checkpoint dir.
 
         Args:
-            force: Forces a checkpoint despite checkpoint_period.
             save_fn: Function to call to actually save data. Should expect
                 one string argument specifying the directory to save to.
+            force: Forces a checkpoint despite checkpoint_period.
+            wait: Wait until sync to cloud has finished.
+
         """
         if not self._local_checkpoint_dir:
             return
@@ -212,7 +215,7 @@ class _ExperimentCheckpointManager:
             save_fn()
 
         # Sync to cloud
-        self.sync_up()
+        self.sync_up(force=force, wait=wait)
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
@@ -223,17 +226,17 @@ class _ExperimentCheckpointManager:
         self._last_save_time = time.time()
         return self._local_checkpoint_dir
 
-    def sync_up(self, force: bool = False) -> bool:
+    def sync_up(self, force: bool = False, wait: bool = False) -> bool:
         if not self._syncer or not self._remote_checkpoint_dir:
             return False
 
-        # If no upload dir is given, we also sync trial checkpoints up to cloud.
-        if not bool(self._sync_config.upload_dir):
-            exclude = None
-        else:
-            # Otherwise, the checkpoints are already there because the trainable
-            # synced them. Then we exclude them here.
+        if bool(self._sync_config.upload_dir):
+            # If an upload dir is given, trainable actors upload checkpoints
+            # themselves. Then the driver does not need to sync checkpoints.
             exclude = ["*/checkpoint_*"]
+        else:
+            # Otherwise, we sync the full trial dir.
+            exclude = None
 
         if force:
             # Wait until previous sync command finished
@@ -259,6 +262,9 @@ class _ExperimentCheckpointManager:
                 exclude=exclude,
             )
 
+        if wait:
+            self._syncer.wait()
+
         if not synced:
             return False
 
@@ -283,17 +289,17 @@ class _ExperimentCheckpointManager:
         self._last_sync_time = now
         return True
 
-    def sync_down(self, force: bool = False) -> bool:
+    def sync_down(self, force: bool = False, wait: bool = False) -> bool:
         if not self._syncer or not self._remote_checkpoint_dir:
             return False
 
-        # If no upload dir is given, we also sync trial checkpoints up to cloud.
-        if not bool(self._sync_config.upload_dir):
-            exclude = None
-        else:
-            # Otherwise, the checkpoints are already there because the trainable
-            # synced them. Then we exclude them here.
+        if bool(self._sync_config.upload_dir):
+            # If an upload dir is given, trainable actors upload checkpoints
+            # themselves. Then the driver does not need to sync checkpoints.
             exclude = ["*/checkpoint_*"]
+        else:
+            # Otherwise, we sync the full trial dir.
+            exclude = None
 
         if force:
             # Wait until previous sync command finished
@@ -316,18 +322,19 @@ class _ExperimentCheckpointManager:
                 exclude=exclude,
             )
 
-        try:
-            self._syncer.wait()
-        except TuneError as e:
-            raise RuntimeError(
-                "Syncing the remote experiment checkpoint to the driver "
-                "failed. Please check the error message. If you want to "
-                'start a new experiment, use `resume="AUTO"` or '
-                "`resume=None`. If you expected an experiment to "
-                "already exist, check if you supplied the correct "
-                "`upload_dir` to the `tune.SyncConfig` passed to "
-                "`tune.Tuner()`."
-            ) from e
+        if wait:
+            try:
+                self._syncer.wait()
+            except TuneError as e:
+                raise RuntimeError(
+                    "Syncing the remote experiment checkpoint to the driver "
+                    "failed. Please check the error message. If you want to "
+                    'start a new experiment, use `resume="AUTO"` or '
+                    "`resume=None`. If you expected an experiment to "
+                    "already exist, check if you supplied the correct "
+                    "`upload_dir` to the `tune.SyncConfig` passed to "
+                    "`tune.Tuner()`."
+                ) from e
 
         return synced
 
@@ -453,7 +460,7 @@ class _ExperimentCheckpointManager:
                 f"Downloading experiment checkpoint from "
                 f"{self._remote_checkpoint_dir}"
             )
-            self.sync_down(force=True)
+            self.sync_down(force=True, wait=True)
 
             if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError(

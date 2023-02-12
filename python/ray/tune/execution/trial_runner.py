@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, Set
 
 from datetime import datetime
@@ -194,7 +195,9 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
-        self._experiment_dir_name = experiment_dir_name
+        self._experiment_dir_name = (
+            experiment_dir_name or Path(self._local_checkpoint_dir).name
+        )
 
         self._stopper = stopper or NoopStopper()
 
@@ -417,7 +420,7 @@ class TrialRunner:
 
         return trials
 
-    def checkpoint(self, force: bool = False):
+    def checkpoint(self, force: bool = False, wait: bool = False):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
@@ -428,6 +431,8 @@ class TrialRunner:
 
         Args:
             force: Forces a checkpoint despite checkpoint_period.
+            wait: Wait until syncing to cloud has finished.
+
         """
         with warn_if_slow(
             "experiment_checkpoint",
@@ -440,11 +445,10 @@ class TrialRunner:
             "training loop.",
             # No backlog warning if forced checkpoint as we wait
             # for previous sync to finish.
-            disable=self._checkpoint_manager.auto_checkpoint_enabled or force,
+            disable=self._checkpoint_manager.auto_checkpoint_enabled or force or wait,
         ):
             self._checkpoint_manager.checkpoint(
-                save_fn=self.save_to_dir,
-                force=force,
+                save_fn=self.save_to_dir, force=force, wait=wait
             )
 
     def resume(
