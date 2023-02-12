@@ -929,6 +929,14 @@ class EagerTFPolicyV2(Policy):
                     if g is not None:
                         logger.info(f"Optimizing variable {v.name}")
 
+        # Clip gradients if needed.
+        if self.config["grad_clip"]:
+            grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+            grads_and_vars = [
+                [(g_clip, v) for g_clip, _, v in zip(g, g_and_v)]
+                for g, g_and_v in zip(grads, grads_and_vars)
+            ]
+
         # `grads_and_vars` is returned a list (len=num optimizers/losses)
         # of lists of (grad, var) tuples.
         if self.config["_tf_policy_handles_more_than_one_loss"]:

@@ -756,6 +756,13 @@ class TFPolicy(Policy):
             ]
             self._grads = [g for (g, _) in self._grads_and_vars]
 
+        if self.config["grad_clip"]:
+            grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+            grads_and_vars = [
+                [(g_clip, v) for g_clip, _, v in zip(g, g_and_v)]
+                for g, g_and_v in zip(grads, grads_and_vars)
+            ]
+
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self.get_session(), self.variables()
