@@ -6,7 +6,6 @@ from typing import (
     Type,
     Optional,
     Callable,
-    Dict,
     Sequence,
     Hashable,
 )
@@ -15,7 +14,6 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     FrameworkHPs,
     RLTrainer,
     ParamOptimizerPairs,
-    ParamRef,
     Optimizer,
     ParamType,
     ParamDictType,
@@ -42,49 +40,6 @@ logger = logging.getLogger(__name__)
 
 
 class TfRLTrainer(RLTrainer):
-    """Base class for RLlib TF algorithm trainers
-
-    Args:
-        module_class: The (MA)RLModule class to use.
-        module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_config: The config for the optimizer.
-        distributed: Whether this trainer is distributed or not.
-        enable_tf_function: Whether to enable tf.function tracing for the update
-            function.
-
-    Abstract Methods:
-        compute_gradients: Compute gradients for the module being optimized.
-        apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer.
-
-    Example:
-        .. code-block:: python
-
-        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_config)
-        trainer.init_trainer()
-        batch = ...
-        results = trainer.update(batch)
-
-        # add a new module, perhaps for league based training or lru caching
-        trainer.add_module("new_player", NewPlayerCls, new_player_kwargs,
-            NewPlayerOptimCls, new_player_optim_kwargs)
-
-        batch = ...
-        results = trainer.update(batch)  # will train previous and new modules.
-
-        # remove a module
-        trainer.remove_module("new_player")
-
-        batch = ...
-        results = trainer.update(batch)  # will train previous modules only.
-
-        # get the state of the trainer
-        state = trainer.get_state()
-
-        # set the state of the trainer
-        trainer.set_state(state)
-
-    """
 
     framework: str = "tf"
 
@@ -100,55 +55,18 @@ class TfRLTrainer(RLTrainer):
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
         # the default strategy is a no-op that can be used in the local mode
-        # cpu only case
+        # cpu only case, build will override this if needed.
         self._strategy = tf.distribute.get_strategy()
 
     @override(RLTrainer)
-    def build(self) -> None:
-        if self._distributed:
-            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        else:
-            if self._use_gpu:
-                # mirrored strategy is typically used for multi-gpu training
-                # on a single machine, however we can use it for single-gpu
-                devices = tf.config.list_logical_devices("GPU")
-                assert self._local_gpu_idx < len(devices), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
-                )
-                local_gpu = [devices[self._local_gpu_idx].name]
-                self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
-        with self._strategy.scope():
-            super().build()
-
-        if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
-        else:
-            self._update_fn = self._do_update_fn
-
-    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        # TODO (Avnish): Match this base class's implementation.
-        def helper(_batch):
-            with tf.GradientTape() as tape:
-                fwd_out = self._module.forward_train(_batch)
-                loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
-                if isinstance(loss, tf.Tensor):
-                    loss = {"total_loss": loss}
-            gradients = self.compute_gradients(loss, tape)
-            gradients = self.postprocess_gradients(gradients)
-            self.apply_gradients(gradients)
-            return {
-                "loss": loss,
-                "fwd_out": fwd_out,
-                "postprocessed_gradients": gradients,
-            }
-
-        return self._strategy.run(helper, args=(batch,))
-
-    @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
+        """Configures the optimizers for the Learner.
+
+        By default it sets up a single Adam optimizer for each sub-module in module
+        accessible via `moduel.keys()`.
+        """
         # TODO (Kourosh): convert optimizer_config to dataclass later.
-        lr = self.optimizer_config["lr"]
+        lr = self._optimizer_config["lr"]
         return [
             (
                 self._module[key].trainable_variables,
@@ -158,47 +76,6 @@ class TfRLTrainer(RLTrainer):
         ]
 
     @override(RLTrainer)
-    def update(
-        self,
-        batch: MultiAgentBatch,
-        *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = ...,
-    ) -> Mapping[str, Any]:
-        if set(batch.policy_batches.keys()) != set(self._module.keys()):
-            raise ValueError(
-                "Batch keys must match module keys. RLTrainer does not "
-                "currently support training of only some modules and not others"
-            )
-
-        batch_iter = (
-            MiniBatchCyclicIterator
-            if minibatch_size is not None
-            else MiniBatchDummyIterator
-        )
-
-        results = []
-        for minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # TODO (Avnish): converting to tf tensor and then from nested dict back to
-            # dict will most likely hit us in perf. But let's go with this for now.
-            minibatch = self.convert_batch_to_tf_tensor(minibatch)
-            update_outs = self._update_fn(minibatch.asdict())
-            loss = update_outs["loss"]
-            fwd_out = update_outs["fwd_out"]
-            postprocessed_gradients = update_outs["postprocessed_gradients"]
-            result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-            results.append(result)
-
-        # Reduce results across all minibatches, if necessary.
-        if len(results) == 1:
-            return results[0]
-        else:
-            if reduce_fn is None:
-                return results
-            return reduce_fn(results)
-
-    @override(RLTrainer)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
@@ -206,7 +83,7 @@ class TfRLTrainer(RLTrainer):
         return grads
 
     @override(RLTrainer)
-    def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
+    def apply_gradients(self, gradients: ParamDictType) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         # only some agents have a sample batch that is passed but not others.
         # This is probably because of the way that we are iterating over the
@@ -215,6 +92,54 @@ class TfRLTrainer(RLTrainer):
             variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
             gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
             optim.apply_gradients(zip(gradient_list, variable_list))
+
+    @override(RLTrainer)
+    def get_weights(self) -> Mapping[str, Any]:
+        # TODO (Kourosh) Implement this.
+        raise NotImplementedError
+
+    @override(RLTrainer)
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        # TODO (Kourosh) Implement this.
+        raise NotImplementedError
+
+    @override(RLTrainer)
+    def get_param_ref(self, param: ParamType) -> Hashable:
+        return param.ref()
+
+    @override(RLTrainer)
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        return list(module.trainable_variables)
+
+    @override(RLTrainer)
+    def get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        lr = self._optimizer_config["lr"]
+        return optimizer_cls(learning_rate=lr)
+
+    @override(RLTrainer)
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+        """Convert the arrays of batch to tf.Tensor's.
+
+        Note: This is an in place operation.
+
+        Args:
+            batch: The batch to convert.
+
+        Returns:
+            The converted batch.
+
+        """
+        # TODO(avnishn): This is a hack to get around the fact that
+        # SampleBatch.count becomes 0 after decorating the function with
+        # tf.function. This messes with input spec checking. Other fields of
+        # the sample batch are possibly modified by tf.function which may lead
+        # to unwanted consequences. We'll need to further investigate this.
+        batch = NestedDict(batch.policy_batches)
+        for key, value in batch.items():
+            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        return batch.asdict()
 
     @override(RLTrainer)
     def add_module(
@@ -250,47 +175,95 @@ class TfRLTrainer(RLTrainer):
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
-    def convert_batch_to_tf_tensor(self, batch: MultiAgentBatch) -> NestedDict:
-        """Convert the arrays of batch to tf.Tensor's.
+    @override(RLTrainer)
+    def build(self) -> None:
+        """Build the TfLearner.
 
-        Note: This is an in place operation.
-
-        Args:
-            batch: The batch to convert.
-
-        Returns:
-            The converted batch.
-
+        This method is specific TfLearner. Before running super() it sets the correct
+        distributing strategy with the right device, so that computational graph is
+        placed on the correct device. After running super(), depending on eager_tracing
+        flag it will decide whether to wrap the update function with tf.function or not.
         """
-        # TODO(avnishn): This is a hack to get around the fact that
-        # SampleBatch.count becomes 0 after decorating the function with
-        # tf.function. This messes with input spec checking. Other fields of
-        # the sample batch are possibly modified by tf.function which may lead
-        # to unwanted consequences. We'll need to further investigate this.
-        batch = NestedDict(batch.policy_batches)
-        for key, value in batch.items():
-            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        return batch
+        if self._distributed:
+            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        else:
+            if self._use_gpu:
+                # mirrored strategy is typically used for multi-gpu training
+                # on a single machine, however we can use it for single-gpu
+                devices = tf.config.list_logical_devices("GPU")
+                assert self._local_gpu_idx < len(devices), (
+                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                    " not available."
+                )
+                local_gpu = [devices[self._local_gpu_idx].name]
+                self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+        with self._strategy.scope():
+            super().build()
 
-    def get_weights(self) -> Mapping[str, Any]:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
-
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
-
-    @override(RLTrainer)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
-        return module.trainable_variables
-
-    @override(RLTrainer)
-    def get_param_ref(self, param: ParamType) -> Hashable:
-        return param.ref()
+        if self._enable_tf_function:
+            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+        else:
+            self._update_fn = self._do_update_fn
 
     @override(RLTrainer)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        lr = self.optimizer_config.get("lr", 1e-3)
-        return optimizer_cls(learning_rate=lr)
+    def update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = ...,
+    ) -> Mapping[str, Any]:
+        # TODO (Kourosh): The update of rl_trainer is vastly differnet than the base
+        # class. So we need to unify them.
+
+        if set(batch.policy_batches.keys()) != set(self._module.keys()):
+            raise ValueError(
+                "Batch keys must match module keys. RLTrainer does not "
+                "currently support training of only some modules and not others"
+            )
+
+        batch_iter = (
+            MiniBatchCyclicIterator
+            if minibatch_size is not None
+            else MiniBatchDummyIterator
+        )
+
+        results = []
+        for minibatch in batch_iter(batch, minibatch_size, num_iters):
+            # TODO (Avnish): converting to tf tensor and then from nested dict back to
+            # dict will most likely hit us in perf. But let's go with this for now.
+            minibatch = self._convert_batch_type(minibatch)
+            update_outs = self._update_fn(minibatch)
+            loss = update_outs["loss"]
+            fwd_out = update_outs["fwd_out"]
+            postprocessed_gradients = update_outs["postprocessed_gradients"]
+            result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+            results.append(result)
+
+        # Reduce results across all minibatches, if necessary.
+        if len(results) == 1:
+            return results[0]
+        else:
+            if reduce_fn is None:
+                return results
+            return reduce_fn(results)
+
+    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        # TODO (Avnish): Match this base class's implementation.
+        def helper(_batch):
+            with tf.GradientTape() as tape:
+                fwd_out = self._module.forward_train(_batch)
+                loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+                if isinstance(loss, tf.Tensor):
+                    loss = {"total_loss": loss}
+            gradients = self.compute_gradients(loss, tape)
+            gradients = self.postprocess_gradients(gradients)
+            self.apply_gradients(gradients)
+            return {
+                "loss": loss,
+                "fwd_out": fwd_out,
+                "postprocessed_gradients": gradients,
+            }
+
+        return self._strategy.run(helper, args=(batch,))
