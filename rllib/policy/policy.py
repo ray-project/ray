@@ -323,6 +323,7 @@ class Policy(metaclass=ABCMeta):
         observation_space: gym.Space,
         action_space: gym.Space,
         config: AlgorithmConfigDict,
+        policy_id: Optional[str] = None,
     ):
         """Initializes a Policy instance.
 
@@ -334,6 +335,8 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self._policy_id = policy_id
         # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
@@ -384,6 +387,22 @@ class Policy(metaclass=ABCMeta):
         return module_class.from_model_config(
             self.observation_space, self.action_space, model_config=self.config["model"]
         )
+
+        # # this breaks circular dependency
+        # from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+        # if self._policy_id is None:
+        #     raise ValueError(
+        #         "When using RLModule API, `policy_id` within the policies must be "
+        #         "set. Debug why it has not been set."
+        #     )
+
+        # module_spec = self.config["rl_module_spec"]
+        # if isinstance(module_spec, SingleAgentRLModuleSpec):
+        #     marl_module = module_spec.build().as_multi_agent()
+        # else:
+        #     marl_module = module_spec.build()
+        # return marl_module
 
     @DeveloperAPI
     def init_view_requirements(self):

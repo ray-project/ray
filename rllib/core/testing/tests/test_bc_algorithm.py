@@ -1,7 +1,10 @@
 import unittest
 
 import ray
-from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.testing.torch.bc_module import (
+    DiscreteBCTorchModule,
+    # BCTorchRLModuleWithSharedGlobalEncoder,
+)
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
@@ -35,6 +38,17 @@ class TestRLTrainer(unittest.TestCase):
                 assert isinstance(rl_module, DiscreteBCTorchModule)
             elif fw == "tf":
                 assert isinstance(rl_module, DiscreteBCTFModule)
+
+    def test_bc_algorithm_w_custom_marl_module(self):
+        # config = (
+        #     BCConfigTest()
+        #     .rl_module(
+        #         _enable_rl_module_api=True,
+        #         rl_module_class=BCTorchRLModuleWithSharedGlobalEncoder,
+        #     )
+        #     .training(_enable_rl_trainer_api=True, model={"fcnet_hiddens": [32, 32]})
+        # )
+        pass
 
 
 if __name__ == "__main__":

@@ -67,6 +67,7 @@ class EagerTFPolicyV2(Policy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: AlgorithmConfigDict,
+        policy_id: Optional[str] = None,
         **kwargs,
     ):
         self.framework = config.get("framework", "tf2")
@@ -78,7 +79,9 @@ class EagerTFPolicyV2(Policy):
             )
         )
 
-        Policy.__init__(self, observation_space, action_space, config)
+        Policy.__init__(
+            self, observation_space, action_space, config, policy_id=policy_id
+        )
 
         self._is_training = False
         # Global timestep should be a tensor.

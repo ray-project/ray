@@ -18,7 +18,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.core.rl_module import RLModule
@@ -69,6 +69,7 @@ class TorchPolicyV2(Policy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: AlgorithmConfigDict,
+        policy_id: Optional[str] = DEFAULT_POLICY_ID,
         *,
         max_seq_len: int = 20,
     ):
@@ -83,7 +84,7 @@ class TorchPolicyV2(Policy):
         self.framework = config["framework"] = "torch"
 
         self._loss_initialized = False
-        super().__init__(observation_space, action_space, config)
+        super().__init__(observation_space, action_space, config, policy_id=policy_id)
 
         # Create model.
         if self.config.get("_enable_rl_module_api", False):

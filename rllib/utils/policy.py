@@ -128,15 +128,22 @@ def create_policy_for_framework(
                         tf1.set_random_seed(seed)
                     with tf1.variable_scope(var_scope):
                         return policy_class(
-                            observation_space, action_space, merged_config
+                            observation_space,
+                            action_space,
+                            merged_config,
+                            policy_id=policy_id,
                         )
         # For tf-eager: no graph, no session.
         else:
             with tf1.variable_scope(var_scope):
-                return policy_class(observation_space, action_space, merged_config)
+                return policy_class(
+                    observation_space, action_space, merged_config, policy_id=policy_id
+                )
     # Non-tf: No graph, no session.
     else:
-        return policy_class(observation_space, action_space, merged_config)
+        return policy_class(
+            observation_space, action_space, merged_config, policy_id=policy_id
+        )
 
 
 @PublicAPI(stability="alpha")
