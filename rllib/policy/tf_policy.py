@@ -88,7 +88,6 @@ class TFPolicy(Policy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: AlgorithmConfigDict,
-        policy_id: Optional[str],
         sess: "tf1.Session",
         obs_input: TensorType,
         sampled_action: TensorType,
@@ -164,7 +163,7 @@ class TFPolicy(Policy):
             timestep: Placeholder for the global sampling timestep.
         """
         self.framework = "tf"
-        super().__init__(observation_space, action_space, config, policy_id=policy_id)
+        super().__init__(observation_space, action_space, config)
 
         # Get devices to build the graph on.
         num_gpus = self._get_num_gpus_for_policy()
