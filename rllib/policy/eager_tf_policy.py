@@ -326,15 +326,13 @@ def _build_eager_tf_policy(
         compute_gradients_fn = gradients_fn
 
     class eager_policy_cls(base):
-        def __init__(self, observation_space, action_space, config, policy_id):
+        def __init__(self, observation_space, action_space, config):
             # If this class runs as a @ray.remote actor, eager mode may not
             # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             self.framework = config.get("framework", "tf2")
-            EagerTFPolicy.__init__(
-                self, observation_space, action_space, config, policy_id
-            )
+            EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
             self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)

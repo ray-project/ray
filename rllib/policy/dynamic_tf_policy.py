@@ -54,7 +54,6 @@ class DynamicTFPolicy(TFPolicy):
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: AlgorithmConfigDict,
-        policy_id: Optional[str],
         loss_fn: Callable[
             [Policy, ModelV2, Type[TFActionDistribution], SampleBatch], TensorType
         ],
@@ -429,7 +428,6 @@ class DynamicTFPolicy(TFPolicy):
             observation_space=obs_space,
             action_space=action_space,
             config=config,
-            policy_id=policy_id,
             sess=sess,
             obs_input=self._input_dict[SampleBatch.OBS],
             action_input=self._input_dict[SampleBatch.ACTIONS],

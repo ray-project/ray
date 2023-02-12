@@ -323,7 +323,6 @@ class Policy(metaclass=ABCMeta):
         observation_space: gym.Space,
         action_space: gym.Space,
         config: AlgorithmConfigDict,
-        policy_id: Optional[str] = None,
     ):
         """Initializes a Policy instance.
 
@@ -336,7 +335,7 @@ class Policy(metaclass=ABCMeta):
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
         # the policy id in the global context.
-        self._policy_id = policy_id
+        self._policy_id = config.get("policy_id")
         # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
