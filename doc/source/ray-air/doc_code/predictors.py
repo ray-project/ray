@@ -76,6 +76,32 @@ print("Final accuracy: ", correct.mean(on="correct"))
 # Final accuracy:  0.5
 # __compute_accuracy_end__
 
+
+# __configure_batch_predictor_start__
+# Use CPUs for inference: Scaling from 1 to 4 workers, each with 3 CPUs
+predictions = batch_predictor.predict(
+    ds,
+    feature_columns=["feature_1"],
+    min_scoring_workers=1,
+    max_scoring_workers=4,
+    num_cpus_per_worker=3,
+)
+
+# Use GPUs for inference: Use 2 workers, each with 1 GPU
+predictions = batch_predictor.predict(
+    ds,
+    feature_columns=["feature_1"],
+    min_scoring_workers=2,
+    max_scoring_workers=2,
+    num_gpus_per_worker=1,
+)
+
+# Auto-scale your workers: each with 3 CPUs and 1 GPU
+predictions = batch_predictor.predict(
+    ds, feature_columns=["feature_1"], num_cpus_per_worker=3, num_gpus_per_worker=1
+)
+# __configure_batch_predictor_end__
+
 # __pipelined_prediction_start__
 import pandas as pd
 import ray

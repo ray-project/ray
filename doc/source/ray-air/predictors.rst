@@ -75,6 +75,41 @@ Additionally, you can compute metrics from the predictions. Do this by:
     :start-after: __compute_accuracy_start__
     :end-before: __compute_accuracy_end__
 
+
+Configuring Batch Prediction
+----------------------------
+To configure the computation resources for your `BatchPredictor`, you have to set the following parameters in `predict()`:
+
+- `min_scoring_workers` and `max_scoring_workers`
+
+  - The BatchPredictor will internally create an actor pool to autoscale the number of workers from [min, max] to execute your transforms.
+
+  - If not set, the auto-scaling range will be set to [1, inf) by default.
+
+- `num_gpus_per_worker`:
+
+  - If you want to use GPU for batch prediction, please set this parameter explicitly.
+
+  - If not specified, the BatchPredictor will perform inference on CPUs by default.
+
+- `num_cpus_per_worker`:
+
+  - Set the number of CPUs for a worker.
+
+- `separate_gpu_stage`:
+
+  - If using GPUs, whether to use separate stages for GPU inference and data preprocessing.
+
+  - Enabled by default to avoid excessive preprocessing workload on GPU workers. You may disable it if your preprocessor is very light-weighted.
+
+Here are some examples:
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_start__
+    :end-before: __configure_batch_predictor_end__
+
+
 Batch Inference Examples
 ------------------------
 Below, we provide examples of using common frameworks to do batch inference for different data types:
