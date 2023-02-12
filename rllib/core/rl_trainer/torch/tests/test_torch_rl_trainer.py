@@ -13,22 +13,11 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-
+from ray.rllib.core.testing.utils import get_rl_trainer
 
 def _get_trainer() -> RLTrainer:
     env = gym.make("CartPole-v1")
-
-    trainer = BCTorchRLTrainer(
-        module_spec=SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config={"fcnet_hiddens": 32},
-        ),
-        optimizer_config={"lr": 1e-3},
-        trainer_scaling_config=TrainerScalingConfig(),
-    )
-
+    trainer = get_rl_trainer("torch", env)
     trainer.build()
 
     return trainer
@@ -125,7 +114,7 @@ class TestRLTrainer(unittest.TestCase):
                 module_class=DiscreteBCTorchModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": 16},
+                model_config={"fcnet_hiddens": [16]},
             ),
             set_optimizer_fn=set_optimizer_fn,
         )
