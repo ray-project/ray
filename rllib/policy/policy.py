@@ -335,7 +335,7 @@ class Policy(metaclass=ABCMeta):
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
         # the policy id in the global context.
-        self._policy_id = config.get("policy_id")
+        self.__policy_id = config.get("__policy_id")
         # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
@@ -390,7 +390,7 @@ class Policy(metaclass=ABCMeta):
         # # this breaks circular dependency
         # from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
-        # if self._policy_id is None:
+        # if self.__policy_id is None:
         #     raise ValueError(
         #         "When using RLModule API, `policy_id` within the policies must be "
         #         "set. Debug why it has not been set."
