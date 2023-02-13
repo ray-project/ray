@@ -800,8 +800,8 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         runner.add_trial(trial)
 
-        runner.step()  # start trial
-        runner.step()  # run iteration 1-3
+        while not trial._last_result:
+            runner.step()  # start and run until first result
         runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
         self.assertEqual(num_checkpoints(trial), 1)
@@ -1058,7 +1058,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         # also check if the warning is printed
         buffer = []
-        from ray.tune.execution.trial_runner import logger
+        from ray.tune.execution.experiment_state import logger
 
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
             while not runner.is_finished():
@@ -1113,7 +1113,7 @@ class TrialRunnerTest3(unittest.TestCase):
         assert syncer.sync_up_counter == 1
 
         buffer = []
-        logger = logging.getLogger("ray.tune.execution.trial_runner")
+        logger = logging.getLogger("ray.tune.execution.experiment_state")
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
             # The second checkpoint will log a warning about the previous sync
             # timing out. Then, it will launch a new sync process in the background.

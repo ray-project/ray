@@ -740,9 +740,6 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
-        # Driver should only sync trial checkpoints if
-        # checkpoints are not synced to cloud
-        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
     )
 
     if not runner.resumed:
@@ -776,10 +773,7 @@ def run(
     tune_taken = time.time() - tune_start
 
     try:
-        runner.checkpoint(force=True)
-        # Wait for the final remote directory sync to finish before exiting
-        if runner._syncer:
-            runner._syncer.wait()
+        runner.checkpoint(force=True, wait=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
