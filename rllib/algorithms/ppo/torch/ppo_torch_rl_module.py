@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Mapping, Any, Union
+from typing import Mapping, Any
 
 import gymnasium as gym
 
@@ -76,6 +76,14 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.vf_config, "vf_config must be provided."
         assert self.config.encoder_config, "shared encoder config must be " "provided."
 
+        self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
+        self.config.pi_config.input_dim = self.config.encoder_config.output_dim
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            self.config.pi_config.output_dim = self.config.action_space.n
+        else:
+            self.config.pi_config.output_dim = self.config.action_space.shape[0] * 2
+        self.config.vf_config.output_dim = 1
+
         # TODO(Artur): Unify to tf and torch setup with Catalog
         self.encoder = self.config.encoder_config.build(framework="torch")
         self.pi = self.config.pi_config.build(framework="torch")
@@ -94,7 +102,7 @@ class PPOTorchRLModule(TorchRLModule):
         action_space: gym.Space,
         *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "PPOTorchRLModule":
 
         # TODO: use the new catalog to perform this logic and construct the final config
 
@@ -140,7 +148,6 @@ class PPOTorchRLModule(TorchRLModule):
             input_dim=encoder_config.output_dim,
             hidden_layer_dims=[32, 1],
             hidden_layer_activation="ReLU",
-            output_dim=1,
         )
 
         assert isinstance(
@@ -154,14 +161,6 @@ class PPOTorchRLModule(TorchRLModule):
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPOModule only supports Discrete and Box action space.",
         )
-
-        # build policy network head
-        encoder_config.input_dim = observation_space.shape[0]
-        pi_config.input_dim = encoder_config.output_dim
-        if isinstance(action_space, gym.spaces.Discrete):
-            pi_config.output_dim = action_space.n
-        else:
-            pi_config.output_dim = action_space.shape[0] * 2
 
         config_ = PPOModuleConfig(
             observation_space=observation_space,
