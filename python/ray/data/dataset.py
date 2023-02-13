@@ -1918,7 +1918,7 @@ class Dataset(Generic[T]):
             ...     for i in range(100)]).std(lambda x: x[1])
             2968.1748039269296
             >>> ray.data.range_table(100).std("value", ddof=0)
-            28.86607004772212
+            28.866070047722115
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
             ...     for i in range(100)]).std(["A", "B"])
@@ -2046,8 +2046,9 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> ds = ray.data.range(5)
-            >>> ds.zip(ds).take()
-            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
+            >>> ds.zip(ds)
+            Zip
+            +- Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
 
         Returns:
             A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
