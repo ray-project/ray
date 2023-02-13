@@ -2713,7 +2713,7 @@ class AlgorithmConfig:
             if module_spec.model_config is None:
                 module_spec.model_config = policy_spec.config.get("model", {})
 
-        return module_spec
+        return marl_module_spec
 
     def get_trainer_runner_config(self, module_spec: ModuleSpec) -> TrainerRunnerConfig:
 
