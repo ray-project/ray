@@ -219,6 +219,10 @@ class _ExperimentCheckpointManager:
         return self._local_checkpoint_dir
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
+        # self._remote_checkpoint_dir can be empty in tests, but shouldn't
+        # be empty when using in end-to-end tune.
+        # Todo (krfricke): We may want to not store directories in this manager
+        # but instead always pass them from the trial runner.
         if not self._syncer:  # or not self._remote_checkpoint_dir:
             return False
 

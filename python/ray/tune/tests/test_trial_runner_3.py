@@ -800,8 +800,8 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         runner.add_trial(trial)
 
-        runner.step()  # start trial
-        runner.step()  # run iteration 1-3
+        while not trial._last_result:
+            runner.step()  # start and run until first result
         runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
         self.assertEqual(num_checkpoints(trial), 1)
