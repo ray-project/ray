@@ -146,6 +146,14 @@ class TestJobSubmit:
         stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
         assert "hello" in stdout
 
+    def test_multiple_ray_init(self, ray_start_stop):
+        cmd = (
+            "python -c 'import ray; ray.init(); ray.shutdown(); "
+            "ray.init(); ray.shutdown();'"
+        )
+        stdout, _ = _run_cmd(f"ray job submit -- {cmd}")
+        assert "succeeded" in stdout
+
 
 class TestRuntimeEnv:
     def test_bad_runtime_env(self, ray_start_stop):
