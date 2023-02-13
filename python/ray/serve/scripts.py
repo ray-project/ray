@@ -539,7 +539,7 @@ def convert(config_path, output_path: Optional[str]):
 
 
 class ServeBuildDumper(yaml.SafeDumper):
-    """YAML dumper object with custom formatting for `serve build` command.
+    """YAML dumper object with custom format for `serve build` and `convert`.
 
     Reformat config to follow this spacing:
     ---------------------------------------
