@@ -134,7 +134,7 @@ class Model(abc.ABC):
         """Returns the output of this model for the given input.
 
         This method is called by the forwarding method of the respective framework
-        that is itself wrapped by RLLib in order to check model inputs and outputs.
+        that is itself wrapped by RLlib in order to check model inputs and outputs.
 
         Args:
             input_dict: The input tensors.
@@ -221,7 +221,7 @@ class Encoder(Model, abc.ABC):
         """Returns the latent of the encoder for the given inputs.
 
         This method is called by the forwarding method of the respective framework
-        that is itself wrapped by RLLib in order to check model inputs and outputs.
+        that is itself wrapped by RLlib in order to check model inputs and outputs.
 
         The input dict contains at minimum the observation and the state of the encoder.
         The output dict contains at minimum the latent and the state of the encoder.

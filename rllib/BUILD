@@ -1852,6 +1852,21 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_encoder.py"]
+)
+
+py_test(
+    name = "test_torch_mlp",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp.py"]
+)
+
+
+py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",

@@ -124,7 +124,7 @@ class LSTMEncoderConfig(ModelConfig):
         view_requirements_dict: The view requirements to use if anything else than
         observation_space or action_space is to be encoded. This signifies an
         anvanced use case.
-        get_tokenizer_config: A callable that returns a ModelConfig for to build
+        get_tokenizer_config: A callable that returns a ModelConfig to build
         tokenizers for observations, actions and other spaces that might be present
         in the view_requirements_dict.
 
