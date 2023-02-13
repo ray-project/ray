@@ -56,9 +56,9 @@ class CombinedStopper(Stopper):
 
     Examples:
 
+        >>> from ray import air, tune
         >>> from ray.tune.stopper import (CombinedStopper,
         ...     MaximumIterationStopper, TrialPlateauStopper)
-        >>>
         >>> stopper = CombinedStopper(
         ...     MaximumIterationStopper(max_iter=20),
         ...     TrialPlateauStopper(metric="my_metric")
