@@ -3,9 +3,12 @@ root: index
 parts:
   - caption: Ray
     chapters: 
-      - file: index
-        title: "Overview"
       - file: ray-overview/index
+        title: "Overview"
+        sections:
+          - file: ray-overview/workloads
+            title: "Common ML workloads"
+      - file: ray-overview/getting-started
         title: "Getting Started"
       - file: ray-overview/installation
         title: "Installation"

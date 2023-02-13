@@ -4,7 +4,7 @@
 (gentle-intro)=
 
 # Getting Started Guide
-This guide gives a quick tour of Ray's features. For an overview of Ray and Ray libraries, see the [docs home page](https://docs.ray.io/en/master/index.html).
+This guide gives a quick tour of Ray's features.
 
 ## Starting a local Ray cluster
 To get started, install, import, and initialize Ray. Most of the examples in this guide are based on Python, and some examples use Ray Core in Java.
