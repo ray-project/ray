@@ -579,6 +579,7 @@ def build(target: Union[ClassNode, FunctionNode], name: str = "") -> Application
     Args:
         target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
             that acts as the top level node of the DAG.
+        name: The name of the Serve application.
 
     Returns:
         The static built Serve application
