@@ -703,27 +703,19 @@ def test_final_experiment_checkpoint_sync(tmpdir):
     )
 
 
-def test_sync_folder_with_many_files_s3(tmpdir):
+def test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path):
+    source_dir = tmp_path / "source"
+    check_dir = tmp_path / "check"
+    source_dir.mkdir()
+    check_dir.mkdir()
+
     # Create 256 files to upload
     for i in range(256):
-        (tmpdir / str(i)).write_text("", encoding="utf-8")
+        (source_dir / str(i)).write_text("", encoding="utf-8")
 
-    root = "bucket_test_syncer/dir"
-    with simulate_storage("s3", root) as s3_uri:
-        # Upload to S3
-
-        s3 = boto3.client(
-            "s3", region_name="us-west-2", endpoint_url="http://localhost:5002"
-        )
-        s3.create_bucket(
-            Bucket="bucket_test_syncer",
-            CreateBucketConfiguration={"LocationConstraint": "us-west-2"},
-        )
-        upload_to_uri(tmpdir, s3_uri)
-
-        with tempfile.TemporaryDirectory() as download_dir:
-            download_from_uri(s3_uri, download_dir)
-            assert (Path(download_dir) / "255").exists()
+    upload_to_uri(source_dir, mock_s3_bucket_uri)
+    download_from_uri(mock_s3_bucket_uri, check_dir)
+    assert (check_dir / "255").exists()
 
 
 def test_sync_folder_with_many_files_fs(tmpdir):
