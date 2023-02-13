@@ -561,7 +561,7 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: Union[ClassNode, FunctionNode], name: str) -> Application:
+def build(target: Union[ClassNode, FunctionNode], name: str = "") -> Application:
     """Builds a Serve application into a static application.
 
     Takes in a ClassNode or FunctionNode and converts it to a
