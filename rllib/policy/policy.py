@@ -382,10 +382,10 @@ class Policy(metaclass=ABCMeta):
         this method should be implemented and should return the RLModule instance to
         use for this Policy. Otherwise, RLlib will error out.
         """
-        module_class: RLModule = self.config["rl_module_class"]
-        return module_class.from_model_config(
-            self.observation_space, self.action_space, model_config=self.config["model"]
-        )
+        # module_class: RLModule = self.config["rl_module_class"]
+        # return module_class.from_model_config(
+        #     self.observation_space, self.action_space, model_config=self.config["model"]
+        # )
 
         """
         1. For single agent all we need is RLModule class, and we need obs_space, and action_space, and model_config which will infered from existing logic
@@ -449,21 +449,21 @@ class Policy(metaclass=ABCMeta):
 
         """
 
-        # # this breaks circular dependency
-        # from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+        # if imported on top it creates circular dependency
+        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
-        # if self.__policy_id is None:
-        #     raise ValueError(
-        #         "When using RLModule API, `policy_id` within the policies must be "
-        #         "set. Debug why it has not been set."
-        #     )
+        if self.__policy_id is None:
+            raise ValueError(
+                "When using RLModule API, `policy_id` within the policies must be "
+                "set. This should have happened automatically. If you see this bug  please file a github issue."
+             ) 
 
-        # module_spec = self.config["rl_module_spec"]
-        # if isinstance(module_spec, SingleAgentRLModuleSpec):
-        #     marl_module = module_spec.build().as_multi_agent()
-        # else:
-        #     marl_module = module_spec.build()
-        # return marl_module
+        module_spec = self.config["rl_module_spec"]
+        if isinstance(module_spec, SingleAgentRLModuleSpec):
+            marl_module = module_spec.build().as_multi_agent()
+        else:
+            marl_module = module_spec.build()
+        return marl_module[self.__policy_id]
 
     @DeveloperAPI
     def init_view_requirements(self):

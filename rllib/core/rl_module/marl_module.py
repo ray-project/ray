@@ -33,6 +33,17 @@ class MultiAgentRLModuleSpec:
     def build(self) -> "MultiAgentRLModule":
         return self.module_class.from_multi_agent_config({"modules": self.module_specs})
 
+    def add_modules(self, module_specs: Dict[ModuleID, SingleAgentRLModuleSpec]) -> None:
+        """Add new module specs to the spec.
+        
+        Args:
+            module_specs: The mapping for the module_id to the single-agent module 
+                specs to be added to this multi-agent module spec.
+        """
+        if self.module_specs is None:
+            self.module_specs = {}
+        self.module_specs.update(module_specs)
+
 
 def _get_module_configs(config: Dict[str, Any]):
     """Constructs a mapping from module_id to module config.
