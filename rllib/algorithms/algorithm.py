@@ -98,6 +98,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
@@ -1339,14 +1340,16 @@ class Algorithm(Trainable):
             The results dict from executing the training iteration.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self.config.count_steps_by == "agent_steps":
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config.train_batch_size
-            )
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
