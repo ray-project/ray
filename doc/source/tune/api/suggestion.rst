@@ -111,6 +111,7 @@ default if no search algorithm is passed to
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     basic_variant.BasicVariantGenerator
 
@@ -121,6 +122,7 @@ Ax (tune.search.ax.AxSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ax.AxSearch
 
@@ -131,6 +133,7 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     bayesopt.BayesOptSearch
 
@@ -155,6 +158,7 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     bohb.TuneBOHB
 
@@ -212,6 +216,7 @@ Dragonfly (tune.search.dragonfly.DragonflySearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     dragonfly.DragonflySearch
 
@@ -222,6 +227,7 @@ HEBO (tune.search.hebo.HEBOSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     hebo.HEBOSearch
 
@@ -232,6 +238,7 @@ HyperOpt (tune.search.hyperopt.HyperOptSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     hyperopt.HyperOptSearch
 
@@ -242,6 +249,7 @@ Nevergrad (tune.search.nevergrad.NevergradSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     nevergrad.NevergradSearch
 
@@ -252,6 +260,7 @@ Optuna (tune.search.optuna.OptunaSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     optuna.OptunaSearch
 
@@ -265,6 +274,7 @@ to specify your search space.
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     sigopt.SigOptSearch
 
@@ -275,6 +285,7 @@ Scikit-Optimize (tune.search.skopt.SkOptSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     skopt.SkOptSearch
 
@@ -285,6 +296,7 @@ ZOOpt (tune.search.zoopt.ZOOptSearch)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     zoopt.ZOOptSearch
 
@@ -308,6 +320,7 @@ will run ``repeat`` trials of the configuration. It will then average the
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     Repeater
 
@@ -321,6 +334,7 @@ This is useful when a given optimization algorithm does not parallelize very wel
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ConcurrencyLimiter
 

@@ -38,6 +38,7 @@ Tune Built-in Loggers
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     tune.logger.JsonLoggerCallback
     tune.logger.CSVLoggerCallback
@@ -53,6 +54,7 @@ You can see the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     air.integrations.mlflow.MLflowLoggerCallback
 
@@ -65,6 +67,7 @@ You can see the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     air.integrations.wandb.WandbLoggerCallback
 
