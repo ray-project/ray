@@ -120,6 +120,7 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
+    "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
@@ -180,7 +181,6 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
-    "test_node_manager.py",
     "test_numba.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
@@ -203,6 +203,14 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+  files = [
+    "test_monitor_service.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test_module_list(
   files = [
@@ -266,6 +274,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_state_api.py",
+    "test_state_api_2.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
     "test_reconstruction_stress.py",
@@ -526,6 +535,7 @@ py_test_module_list(
     "spark/test_GPU.py",
     "spark/test_multicores_per_task.py",
     "spark/test_utils.py",
+    "spark/test_databricks_hook.py",
   ],
   size = "large",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],

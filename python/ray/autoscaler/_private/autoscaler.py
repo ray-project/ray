@@ -20,6 +20,7 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
     AUTOSCALER_MAX_NUM_FAILURES,
+    AUTOSCALER_STATUS_LOG,
     AUTOSCALER_UPDATE_INTERVAL_S,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -414,7 +415,8 @@ class StandardAutoscaler:
         )
 
         # Update status strings
-        logger.info(self.info_string())
+        if AUTOSCALER_STATUS_LOG:
+            logger.info(self.info_string())
         legacy_log_info_string(self, self.non_terminated_nodes.worker_ids)
 
         if not self.provider.is_readonly():
@@ -1363,7 +1365,6 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
-        self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
         if self.foreground_node_launch:
             assert self.foreground_node_launcher is not None

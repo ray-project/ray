@@ -2998,6 +2998,31 @@ def format_pg(pg):
     return f"{bundles_str} ({strategy})"
 
 
+def test_memory_string_formatting():
+    assert ray.autoscaler._private.util.format_memory(0) == "0B"
+    assert (
+        ray.autoscaler._private.util.format_memory(0.0) == "0B"
+    ), "Bytes aren't decimals"
+    assert ray.autoscaler._private.util.format_memory(1) == "1B"
+    assert ray.autoscaler._private.util.format_memory(1023) == "1023B"
+    assert ray.autoscaler._private.util.format_memory(1024) == "1.00KiB"
+    assert ray.autoscaler._private.util.format_memory(1025) == "1.00KiB"
+    assert ray.autoscaler._private.util.format_memory(1037) == "1.01KiB"
+    assert ray.autoscaler._private.util.format_memory(1200) == "1.17KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20 - 10) == "1023.99KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20 - 1) == "1024.00KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20) == "1.00MiB"
+    assert ray.autoscaler._private.util.format_memory(2**30) == "1.00GiB"
+    assert ray.autoscaler._private.util.format_memory(5.001 * 2**30) == "5.00GiB"
+    assert (
+        ray.autoscaler._private.util.format_memory(5.004 * 2**30) == "5.00GiB"
+    ), "rounds down"
+    assert (
+        ray.autoscaler._private.util.format_memory(5.005 * 2**30) == "5.00GiB"
+    ), "rounds down"
+    assert ray.autoscaler._private.util.format_memory(2**40) == "1.00TiB"
+
+
 def test_info_string():
     lm_summary = LoadMetricsSummary(
         usage={
@@ -3042,8 +3067,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3122,8 +3147,8 @@ Total Usage:
  1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3135,16 +3160,16 @@ Node: 192.168.1.1
   0.1/1 AcceleratorType:V100
   5.0/20.0 CPU
   0.7/1 GPU
-  1.00/4.000 GiB memory
-  3.14/4.000 GiB object_store_memory
+  1.00GiB/4.00GiB memory
+  3.14GiB/4.00GiB object_store_memory
 
 Node: 192.168.1.2
  Usage:
   0.9/1 AcceleratorType:V100
   15.0/20.0 CPU
   0.3/1 GPU
-  1.00/12.000 GiB memory
-  0.00/4.000 GiB object_store_memory
+  1.00GiB/12.00GiB memory
+  0B/4.00GiB object_store_memory
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3209,8 +3234,8 @@ Total Usage:
  1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3300,8 +3325,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3384,8 +3409,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)

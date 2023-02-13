@@ -36,7 +36,10 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {}
+message GetAllJobInfoRequest {
+  // The number of jobs to return. If not specified, return all jobs.
+  optional int32 limit = 1;
+}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -611,7 +614,7 @@ message GetTaskEventsRequest {
   // guarantee.
   optional int64 limit = 3;
   // True if task events from driver (only profiling events) should be excluded.
-  bool exclude_driver_task = 4;
+  bool exclude_driver = 4;
 }
 
 message GetTaskEventsReply {
