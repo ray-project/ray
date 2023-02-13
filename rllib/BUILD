@@ -1852,6 +1852,13 @@ py_test(
 )
 
 py_test(
+    name = "test_rl_module_specs",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
+)
+
+py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
@@ -1878,6 +1885,13 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/rl_trainer/torch/tests/test_torch_rl_trainer.py"]
+)
+
+py_test(
+    name = "test_bc_algorithm",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/testing/tests/test_bc_algorithm.py"]
 )
 
 # --------------------------------------------------------------------

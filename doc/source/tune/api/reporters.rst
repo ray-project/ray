@@ -88,21 +88,26 @@ The default reporting style can also be overridden more broadly by extending the
     results = tuner.fit()
 
 
-CLIReporter
------------
+.. currentmodule:: ray.tune
 
-.. autoclass:: ray.tune.CLIReporter
-    :members: add_metric_column
+Reporter Interface (tune.ProgressReporter)
+------------------------------------------
 
-JupyterNotebookReporter
+.. autosummary::
+    :toctree: doc/
+
+    ProgressReporter
+    ProgressReporter.report
+    ProgressReporter.should_report
+
+
+Tune Built-in Reporters
 -----------------------
 
-.. autoclass:: ray.tune.JupyterNotebookReporter
-    :members: add_metric_column
+.. autosummary::
+    :toctree: doc/
 
-
-ProgressReporter
-----------------
-
-.. autoclass:: ray.tune.ProgressReporter
-    :members:
+    CLIReporter
+    CLIReporter.add_metric_column
+    JupyterNotebookReporter
+    JupyterNotebookReporter.add_metric_column
