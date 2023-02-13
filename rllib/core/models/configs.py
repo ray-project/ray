@@ -180,7 +180,7 @@ class ActorCriticEncoderConfig(ModelConfig):
     ModelConfig for usage details.
 
     Attributes:
-        base_encoder_config: The configuration for the base encoder.
+        base_encoder_config: The configuration for the wrapped encoder(s).
         shared: Whether the base encoder is shared between the actor and critic.
     """
 
