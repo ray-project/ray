@@ -43,7 +43,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             AlgorithmConfig()
             .rl_module(rl_module_class=DiscreteBCTFModule)
             .training(rl_trainer_class=BCTfRLTrainer)
-            .training(model={"hidden_dim": 32})
+            .training(model={"fcnet_hiddens": [32]})
         )
         config.freeze()
         runner_config = config.get_trainer_runner_config(

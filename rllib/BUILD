@@ -1887,6 +1887,13 @@ py_test(
     srcs = ["core/rl_trainer/torch/tests/test_torch_rl_trainer.py"]
 )
 
+py_test(
+    name = "test_bc_algorithm",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/testing/tests/test_bc_algorithm.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
