@@ -176,7 +176,7 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
     # The below test should pass without errors.
 
     @patch.object(
-        ray.train.torch.train_loop_utils._TorchAccelerator,
+        ray.train.torch.train_loop_utils,
         "get_device",
         lambda self: torch.device(f"cuda:{1 - session.get_local_rank()}"),
     )
