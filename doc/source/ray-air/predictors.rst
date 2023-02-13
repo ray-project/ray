@@ -100,7 +100,7 @@ To configure the computation resources for your `BatchPredictor`, you have to se
 
   - If using GPUs, whether to use separate stages for GPU inference and data preprocessing.
 
-  - Enabled by default to avoid excessive preprocessing workload on GPU workers. You may disable it if your preprocessor is very light-weighted.
+  - Enabled by default to avoid excessive preprocessing workload on GPU workers. You may disable it if your preprocessor is very lightweight.
 
 Here are some examples:
 
