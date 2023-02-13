@@ -451,9 +451,7 @@ cdef prepare_args_internal(
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
-        # We only handle the ObjectRef type, because the inherit type will be deserialized
-        # to ObjectRef type which is incorrect.
-        if type(arg) is ObjectRef:
+        if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                     c_arg, &c_owner_address)
@@ -462,15 +460,15 @@ cdef prepare_args_internal(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function.
+                    (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function
 
         else:
             if arg == DUMMY_TYPE:
                 global dummy_type_serialized_arg
                 if dummy_type_serialized_arg is None:
                     # Cache the serialized dummy arg.
-                    dummy_type_serialized_arg = serialized_arg = worker.get_serialization_context(
-                    ).serialize(arg)
+                    dummy_type_serialized_arg = serialized_arg = \
+                        worker.get_serialization_context().serialize(arg)
                 else:
                     serialized_arg = dummy_type_serialized_arg
             else:
