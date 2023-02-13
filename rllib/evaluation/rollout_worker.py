@@ -1927,16 +1927,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
         """Updates the policy map (and other stuff) on this worker.
-        
+
         It performes the following:
-            1. It updates the observation preprocessors and updates the policy_specs 
+            1. It updates the observation preprocessors and updates the policy_specs
                 with the postprocessed observation_spaces.
-            2. It updates the policy_specs with the complete algorithm_config (merged 
+            2. It updates the policy_specs with the complete algorithm_config (merged
                 with the policy_spec's config).
             3. If needed it will update the self.marl_module_spec on this worker
             3. It updates the policy map with the new policies
             4. It updates the filter dict
-            5. It calls the on_create_policy() hook of the callbacks on the newly added 
+            5. It calls the on_create_policy() hook of the callbacks on the newly added
                 policies.
 
         Args:
@@ -1945,7 +1945,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             policy_states: The policy states to update the policy map with.
         """
 
-        # Update the input policy dict with the postprocessed observation spaces and 
+        # Update the input policy dict with the postprocessed observation spaces and
         # merge configs. Also updates the preprocessor dict.
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
@@ -1958,10 +1958,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # this is the first time, so we should create the marl_module_spec
                 self.marl_module_spec = spec
             else:
-                # This is adding a new policy, so we need call add_modules on the 
+                # This is adding a new policy, so we need call add_modules on the
                 # module_specs of returned spec.
                 self.marl_module_spec.add_modules(spec.module_specs)
-        
+
         # Builds the policy map
         self.policy_map = self._build_policy_map(
             policy_dict=updated_policy_dict,
@@ -1978,12 +1978,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")
             logger.info(f"Built preprocessor map: {self.preprocessors}")
-        
+
     def _get_complete_policy_specs_dict(self) -> MultiAgentPolicyConfigDict:
         """Processes the policy dict and creates a new copy with the processed attrs.
-        
-        This processes the observation_space and prepares them for passing to rl module 
-        construction. It also merges the policy configs with the algorithm config. 
+
+        This processes the observation_space and prepares them for passing to rl module
+        construction. It also merges the policy configs with the algorithm config.
         During this processing, we will also construct the preprocessors dict.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -2026,10 +2026,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     # If connectors are not enabled, rollout worker will handle
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
-            
+
             policy_spec.config = merged_conf
             policy_spec.observation_space = obs_space
-        
+
         return updated_policy_dict
 
     def _build_policy_map(
@@ -2081,7 +2081,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if restore_states:
                 new_policy.set_state(restore_states)
 
-
     def _update_filter_dict(self, policy_dict: MultiAgentPolicyConfigDict) -> None:
         """Updates the filter dict for the given policy_dict."""
 
@@ -2120,10 +2119,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 )
 
     def _call_callbacks_on_create_policy(self):
-        """Calls the on_create_policy callback for each policy in the policy map. """
+        """Calls the on_create_policy callback for each policy in the policy map."""
         for name, policy in self.policy_map.items():
             self.callbacks.on_create_policy(policy_id=name, policy=policy)
-
 
     def _get_input_creator_from_config(self):
         def valid_module(class_path):

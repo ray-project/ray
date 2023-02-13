@@ -22,7 +22,10 @@ from ray.rllib.core.rl_trainer.trainer_runner_config import (
     ModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, MultiAgentRLModule
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModule,
+)
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -2175,10 +2178,10 @@ class AlgorithmConfig:
         """Sets the config's RLModule settings.
 
         Args:
-            rl_module_spec: The RLModule spec to use for this config. It can be either 
-                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the 
-                observation_space, action_space, or the model_config is not specified 
-                it will be inferred from the env and other parts of the algorithm 
+            rl_module_spec: The RLModule spec to use for this config. It can be either
+                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
+                observation_space, action_space, or the model_config is not specified
+                it will be inferred from the env and other parts of the algorithm
                 config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(...)`, the
@@ -2668,32 +2671,32 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_marl_module_spec(
-        self, 
-        policy_dict: Dict[str, PolicySpec], 
-        policies_to_train: Callable[[PolicyID, SampleBatchType], bool]
+        self,
+        policy_dict: Dict[str, PolicySpec],
+        policies_to_train: Callable[[PolicyID, SampleBatchType], bool],
     ) -> MultiAgentRLModuleSpec:
-        """Returns the MultiAgentRLModule spec based on the given policy spec dict. 
-        
+        """Returns the MultiAgentRLModule spec based on the given policy spec dict.
+
         Args:
-            policy_dict: The policy spec dict. Using this dict, we can determine the 
-                inferred values for observation_space, action_space, and config for 
-                each policy. If the module spec does not have these values specified, 
-                they will get auto-filled with these values obtrained from the policy 
-                spec dict. Here we are relying on the policy's logic for infering these 
+            policy_dict: The policy spec dict. Using this dict, we can determine the
+                inferred values for observation_space, action_space, and config for
+                each policy. If the module spec does not have these values specified,
+                they will get auto-filled with these values obtrained from the policy
+                spec dict. Here we are relying on the policy's logic for infering these
                 values from other sources of information (e.g. environement)
-            policies_to_train: The policies to train. This can be optionally used to 
+            policies_to_train: The policies to train. This can be optionally used to
                 construct the MultiAgentRLModuleSpec (if necessary).
         """
-        
+
         marl_module_spec = self.rl_module_spec
 
         # If the module is single-agent convert it to multi-agent spec
         if isinstance(marl_module_spec, SingleAgentRLModuleSpec):
             marl_module_spec = MultiAgentRLModuleSpec(
-                module_class=MultiAgentRLModule, 
-                module_specs={k: marl_module_spec for k in policy_dict.keys()}
+                module_class=MultiAgentRLModule,
+                module_specs={k: marl_module_spec for k in policy_dict.keys()},
             )
-        
+
         # Make sure that policy_dict and marl_module_spec have similar keys
         if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
             raise ValueError("Policy dict and module spec have different keys!")
@@ -2702,16 +2705,15 @@ class AlgorithmConfig:
         for module_id in policy_dict:
             policy_spec = policy_dict[module_id]
             module_spec = marl_module_spec.module_specs[module_id]
-            
+
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
             if module_spec.config is None:
                 module_spec.config = policy_spec.config
-            
-        return module_spec
 
+        return module_spec
 
     def get_trainer_runner_config(self, module_spec: ModuleSpec) -> TrainerRunnerConfig:
 

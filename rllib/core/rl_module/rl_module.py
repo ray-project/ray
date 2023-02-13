@@ -52,7 +52,7 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Action space must be specified.")
         if self.model_config is None:
             raise ValueError("Model config must be specified.")
-            
+
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
