@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, Set
 
 from datetime import datetime
@@ -195,9 +194,7 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
-        self._experiment_dir_name = (
-            experiment_dir_name or Path(self._local_checkpoint_dir).name
-        )
+        self._experiment_dir_name = experiment_dir_name
 
         self._stopper = stopper or NoopStopper()
 
@@ -206,9 +203,6 @@ class TrialRunner:
 
         self._session_str = datetime.fromtimestamp(self._start_time).strftime(
             "%Y-%m-%d_%H-%M-%S"
-        )
-        self._experiment_state_file_name = TrialRunner.CKPT_FILE_TMPL.format(
-            self._session_str
         )
 
         if checkpoint_period is None:
@@ -245,10 +239,12 @@ class TrialRunner:
         return self.experiment_state_path
 
     @property
+    def experiment_state_file_name(self) -> str:
+        return TrialRunner.CKPT_FILE_TMPL.format(self._session_str)
+
+    @property
     def experiment_state_path(self) -> str:
-        return os.path.join(
-            self._local_checkpoint_dir, self._experiment_state_file_name
-        )
+        return os.path.join(self._local_checkpoint_dir, self.experiment_state_file_name)
 
     def setup_experiments(
         self, experiments: List[Experiment], total_num_samples: int
@@ -337,7 +333,7 @@ class TrialRunner:
 
         os.replace(
             tmp_file_name,
-            os.path.join(experiment_dir, self._experiment_state_file_name),
+            os.path.join(experiment_dir, self.experiment_state_file_name),
         )
 
         self._search_alg.save_to_dir(
@@ -363,21 +359,20 @@ class TrialRunner:
         self._local_checkpoint_dir = experiment_dir
 
         # Find newest state file
-        newest_state_file_name = _find_newest_experiment_checkpoint(
-            self._local_checkpoint_dir, full_path=False
+        newest_state_path = _find_newest_experiment_checkpoint(
+            self._local_checkpoint_dir
         )
 
-        if not newest_state_file_name:
+        if not newest_state_path:
             raise ValueError(
                 f"Tried to resume from checkpoint dir "
                 f"`{self._local_checkpoint_dir}`, but no "
                 f"experiment checkpoint data was found."
             )
 
-        self._experiment_state_file_name = newest_state_file_name
+        # Set checkpoint file to load
         logger.info(
-            f"Using following experiment state file to resume: "
-            f"{self.experiment_state_path}"
+            f"Using following experiment state file to resume: " f"{newest_state_path}"
         )
 
         logger.warning(
@@ -386,7 +381,7 @@ class TrialRunner:
         )
 
         # Actually load data
-        with open(self.experiment_state_path, "r") as f:
+        with open(newest_state_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
 
         # 1. Restore trial runner state

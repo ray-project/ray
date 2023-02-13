@@ -68,19 +68,11 @@ def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
     return bool(_find_newest_experiment_checkpoint(experiment_dir=experiment_dir))
 
 
-def _find_newest_experiment_checkpoint(
-    experiment_dir: str, full_path: bool = True
-) -> Optional[str]:
+def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
     """Returns file name of most recently modified checkpoint."""
-    if full_path:
 
-        def construct(file: str) -> str:
-            return os.path.join(experiment_dir, file)
-
-    else:
-
-        def construct(file: str) -> str:
-            return file
+    def construct(file: str) -> str:
+        return os.path.join(experiment_dir, file)
 
     candidate_paths = [
         construct(file)
@@ -227,7 +219,7 @@ class _ExperimentCheckpointManager:
         return self._local_checkpoint_dir
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
-        if not self._syncer or not self._remote_checkpoint_dir:
+        if not self._syncer:  # or not self._remote_checkpoint_dir:
             return False
 
         if bool(self._sync_config.upload_dir):
