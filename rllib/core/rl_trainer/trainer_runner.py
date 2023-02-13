@@ -334,7 +334,9 @@ class TrainerRunner:
         if self.is_local:
             self._trainer.set_weights(weights)
         else:
-            results_or_errors = self._worker_manager.foreach_actor(lambda w: w.set_weights(weights))
+            results_or_errors = self._worker_manager.foreach_actor(
+                lambda w: w.set_weights(weights)
+            )
             # raise errors if any
             self._get_results(results_or_errors)
 
