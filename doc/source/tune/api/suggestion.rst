@@ -177,6 +177,7 @@ See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and docu
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     flaml.BlendSearch
 
@@ -200,6 +201,7 @@ FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tun
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     flaml.CFO
 

@@ -4,6 +4,11 @@
   Those warnings will fail our build.
   As a temporary workaround, we don't autosummary classes with inherited instance attributes.
 #}
+{#
+  It also seems that autosummary doesn't work with type alias
+  so we don't autosummary those as well.
+  See ray.tune.schedulers.ASHAScheduler as an example.
+#}
 {{ fullname | escape | underline}}
 
 .. currentmodule:: {{ module }}

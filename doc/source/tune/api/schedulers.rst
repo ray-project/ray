@@ -75,6 +75,11 @@ This is the default used if no value is provided for the ``brackets`` argument.
     :toctree: doc/
 
     AsyncHyperBandScheduler
+
+.. autosummary::
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
+
     ASHAScheduler
 
 .. _tune-original-hyperband:
