@@ -460,6 +460,7 @@ def prepend_app_name_to_deployment_names(
     return ServeApplicationSchema.parse_obj(config_dict)
 
 
+@DeveloperAPI
 def remove_app_name_from_deployment_names(
     app_schema: ServeApplicationSchema,
 ) -> ServeApplicationSchema:
