@@ -136,18 +136,6 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     sigaddset(&mask, SIGINT);
     sigaddset(&mask, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
-
-    // Decrease the thread priority to allow worker threads to run.
-    int new_nice = std::min(
-        RayConfig::instance().worker_niceness() + kTaskEventBufferAdditionalNice, 19);
-    new_nice = nice(new_nice);
-    if (new_nice == -1) {
-      RAY_LOG(WARNING) << "Failed to set nice(" << new_nice
-                       << ") for task event buffer io thread: " << strerror(errno);
-    } else {
-      RAY_LOG(INFO) << "Current task event io thread's nice = " << new_nice;
-    }
-
 #endif
     SetThreadName("task_event_buffer.io");
     io_service_.run();

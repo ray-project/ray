@@ -785,26 +785,7 @@ def start(
                     if include_node_ip_address
                     else "",
                 )
-            cli_logger.newline()
-            cli_logger.print(
-                "To connect to this Ray runtime from outside of "
-                "the cluster, for example to"
-            )
-            cli_logger.print(
-                "connect to a remote cluster from your laptop "
-                "directly, use the following"
-            )
-            cli_logger.print("Python code:")
-            with cli_logger.indented():
-                cli_logger.print("{} ray", cf.magenta("import"))
-                cli_logger.print(
-                    "ray{}init(address{}{})",
-                    cf.magenta("."),
-                    cf.magenta("="),
-                    cf.yellow(
-                        "'ray://<head_node_ip_address>:" f"{ray_client_server_port}'"
-                    ),
-                )
+
             cli_logger.newline()
             cli_logger.print("To see the status of the cluster, use")
             cli_logger.print("  {}".format(cf.bold("ray status")))
