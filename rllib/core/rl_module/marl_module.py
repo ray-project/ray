@@ -30,7 +30,17 @@ class MultiAgentRLModuleSpec:
     module_class: Optional[Type["MultiAgentRLModule"]] = None
     module_specs: Optional[Dict[ModuleID, SingleAgentRLModuleSpec]] = None
 
-    def build(self) -> "MultiAgentRLModule":
+    def build(
+        self, module_id: Optional[ModuleID] = None
+    ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:
+        """Builds either the multi-agent module or the single-agent module.
+
+        If module_id is None, it builds the multi-agent module. Otherwise, it builds
+        the single-agent module with the given module_id.
+        """
+
+        if module_id:
+            return self.module_specs[module_id].build()
         return self.module_class.from_multi_agent_config({"modules": self.module_specs})
 
     def add_modules(

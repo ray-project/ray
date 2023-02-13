@@ -394,10 +394,10 @@ class Policy(metaclass=ABCMeta):
 
         module_spec = self.config["rl_module_spec"]
         if isinstance(module_spec, SingleAgentRLModuleSpec):
-            marl_module = module_spec.build().as_multi_agent()
+            module = module_spec.build()
         else:
-            marl_module = module_spec.build()
-        return marl_module[self.__policy_id]
+            module = module_spec.build(module_id=self.__policy_id)
+        return module
 
     @DeveloperAPI
     def init_view_requirements(self):
