@@ -1950,7 +1950,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
         # Use the updated policy dict to create the marl_module_spec if necessary
-        if self.conifg._enable_rl_module_api:
+        if self.config._enable_rl_module_api:
             spec = self.config.get_marl_module_spec(
                 updated_policy_dict, self.is_policy_to_train
             )
@@ -1962,8 +1962,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # module_specs of returned spec.
                 self.marl_module_spec.add_modules(spec.module_specs)
 
-        # Builds the policy map
-        self.policy_map = self._build_policy_map(
+        # Builds the self.policy_map dict
+        self._build_policy_map(
             policy_dict=updated_policy_dict,
             policy=policy,
             policy_states=policy_states,
@@ -1979,7 +1979,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             logger.info(f"Built policy map: {self.policy_map}")
             logger.info(f"Built preprocessor map: {self.preprocessors}")
 
-    def _get_complete_policy_specs_dict(self) -> MultiAgentPolicyConfigDict:
+    def _get_complete_policy_specs_dict(
+        self, policy_dict: MultiAgentPolicyConfigDict
+    ) -> MultiAgentPolicyConfigDict:
         """Processes the policy dict and creates a new copy with the processed attrs.
 
         This processes the observation_space and prepares them for passing to rl module
@@ -1988,7 +1990,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-        updated_policy_dict = copy.deepcopy(self.policy_dict)
+        updated_policy_dict = copy.deepcopy(policy_dict)
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
         # Loop through given policy-dict and add each entry to our map.
