@@ -185,7 +185,6 @@ class Encoder(Model, abc.ABC):
             @check_output_specs("output_spec")
             def __call__(self, *args, **kwargs):
                 # This is a dummy method to do checked forward passes.
-                #
                 return self._forward(*args, **kwargs)
 
             def _forward(self, input_dict, **kwargs):

@@ -1,8 +1,8 @@
 import tree
 
 from ray.rllib.core.models.base import ModelConfig, Model
-from ray.rllib.core.models.encoder import (
-    EncoderBase,
+from ray.rllib.core.models.base import (
+    Encoder,
     STATE_IN,
     STATE_OUT,
     ENCODER_OUT,
@@ -22,10 +22,10 @@ from ray.rllib.utils.nested_dict import NestedDict
 torch, nn = try_import_torch()
 
 
-class TfMLPEncoder(EncoderBase, TfModel):
+class TfMLPEncoder(Encoder, TfModel):
     def __init__(self, config: ModelConfig) -> None:
         TfModel.__init__(self, config)
-        EncoderBase.__init__(self, config)
+        Encoder.__init__(self, config)
 
         # Create the neural networks
         self.net = TfMLP(
@@ -60,12 +60,12 @@ class TfMLPEncoder(EncoderBase, TfModel):
         }
 
 
-class LSTMEncoder(EncoderBase, TfModel):
+class LSTMEncoder(Encoder, TfModel):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
         TfModel.__init__(self, config)
-        EncoderBase.__init__(self, config)
+        Encoder.__init__(self, config)
 
         # Create the neural networks
         self.lstm = nn.LSTM(
@@ -173,7 +173,7 @@ class TfIdentityEncoder(TfModel):
         return {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
 
 
-class TfActorCriticEncoder(TfModel, EncoderBase):
+class TfActorCriticEncoder(TfModel, Encoder):
     """An encoder that can hold two encoders.
 
     This is a special case of encoder that potentially holds two encoders:
@@ -184,7 +184,7 @@ class TfActorCriticEncoder(TfModel, EncoderBase):
 
     def __init__(self, config: ModelConfig) -> None:
         TfModel.__init__(self, config)
-        EncoderBase.__init__(self, config)
+        Encoder.__init__(self, config)
 
         # Create the neural networks
         if self.config.shared:

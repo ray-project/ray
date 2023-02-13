@@ -1,10 +1,10 @@
 from typing import Mapping, Any
 
 import tree
-
 from ray.rllib.algorithms.ppo.ppo_rl_module_base import PPORLModuleBase
-from ray.rllib.core.models.base import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
+from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
 from ray.rllib.core.models.torch.encoder import TorchActorCriticEncoder
+
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
@@ -76,7 +76,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
             action, _ = action_logits.chunk(2, dim=-1)
         action_dist = TorchDeterministic(action)
         output[SampleBatch.ACTION_DIST] = action_dist
-
         return output
 
     @override(RLModule)
@@ -102,7 +101,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         """PPO forward pass during exploration.
-
         Besides the action distribution, this method also returns the parameters of the
         policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
@@ -137,7 +135,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
             action_dist = TorchDiagGaussian(loc, scale)
             output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
         output[SampleBatch.ACTION_DIST] = action_dist
-
         return output
 
     @override(RLModule)
@@ -171,7 +168,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         )
         return spec
 
-    @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
