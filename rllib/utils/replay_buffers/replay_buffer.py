@@ -80,6 +80,10 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
     .. testcode::
 
+        from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+        from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+        from ray.rllib.policy.sample_batch import SampleBatch
+
         # Store any batch as a whole
         buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
         buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
