@@ -98,6 +98,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
@@ -695,7 +696,7 @@ class Algorithm(Trainable):
             # TODO (Kourosh): This is an interim solution where policies and modules
             # co-exist. In this world we have both policy_map and MARLModule that need
             # to be consistent with one another. To make a consistent parity between
-            # the two we need to loop throught the policy modules and create a simple
+            # the two we need to loop through the policy modules and create a simple
             # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_specs = {}
@@ -714,6 +715,10 @@ class Algorithm(Trainable):
 
             trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()
+
+            # sync the weights from local rollout worker to trainers
+            weights = local_worker.get_weights()
+            self.trainer_runner.set_weights(weights)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -858,7 +863,7 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker=self.workers.local_worker()
+                from_worker_or_trainer=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
@@ -1335,14 +1340,16 @@ class Algorithm(Trainable):
             The results dict from executing the training iteration.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self.config.count_steps_by == "agent_steps":
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config.train_batch_size
-            )
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -1376,11 +1383,11 @@ class Algorithm(Trainable):
             # TODO (Avnish): Implement this on trainer_runner.get_weights().
             # TODO (Kourosh): figure out how we are going to sync MARLModule
             # weights to MARLModule weights under the policy_map objects?
-            from_worker = None
+            from_worker_or_trainer = None
             if self.config._enable_rl_trainer_api:
-                from_worker = self.trainer_runner
+                from_worker_or_trainer = self.trainer_runner
             self.workers.sync_weights(
-                from_worker=from_worker,
+                from_worker_or_trainer=from_worker_or_trainer,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
@@ -2132,10 +2139,13 @@ class Algorithm(Trainable):
         eval_cf.freeze()
 
         # resources for local worker
-        local_worker = {
-            "CPU": cf.num_cpus_for_local_worker,
-            "GPU": 0 if cf._fake_gpus else cf.num_gpus,
-        }
+        if cf._enable_rl_trainer_api:
+            local_worker = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+        else:
+            local_worker = {
+                "CPU": cf.num_cpus_for_local_worker,
+                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+            }
 
         bundles = [local_worker]
 
@@ -2178,6 +2188,28 @@ class Algorithm(Trainable):
             evaluation_bundle = []
 
         bundles += rollout_workers + evaluation_bundle
+
+        if cf._enable_rl_trainer_api:
+            # resources for the trainer
+            if cf.num_trainer_workers == 0:
+                # if num_trainer_workers is 0, then we need to allocate one gpu if
+                # num_gpus_per_trainer_worker is greater than 0.
+                trainer_bundle = [
+                    {
+                        "CPU": cf.num_cpus_per_trainer_worker,
+                        "GPU": cf.num_gpus_per_trainer_worker,
+                    }
+                ]
+            else:
+                trainer_bundle = [
+                    {
+                        "CPU": cf.num_cpus_per_trainer_worker,
+                        "GPU": cf.num_gpus_per_trainer_worker,
+                    }
+                    for _ in range(cf.num_trainer_workers)
+                ]
+
+            bundles += trainer_bundle
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).

@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import DefaultDict, List, Optional, Union, Tuple, Set
+from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple, Set
 
 import click
 from datetime import datetime
@@ -331,7 +331,9 @@ class TrialRunner:
 
     def __init__(
         self,
+        *,
         search_alg: Optional[SearchAlgorithm] = None,
+        placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         local_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -349,6 +351,7 @@ class TrialRunner:
         driver_sync_trial_checkpoints: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
+        self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._callbacks = CallbackList(callbacks or [])
@@ -823,7 +826,6 @@ class TrialRunner:
             if not ray.util.client.ray.is_connected():
                 trial.init_logdir()  # Create logdir if it does not exist
 
-            trial.refresh_default_resource_request()
             trials.append(trial)
 
         # 4. Set trial statuses according to the resume configuration
@@ -909,10 +911,17 @@ class TrialRunner:
             elif event.type == _ExecutorEventType.YIELD:
                 pass
             else:
+                assert event.type in (
+                    _ExecutorEventType.TRAINING_RESULT,
+                    _ExecutorEventType.SAVING_RESULT,
+                    _ExecutorEventType.RESTORING_RESULT,
+                )
                 trial = event.trial
                 result = event.result
-                if event.type == _ExecutorEventType.ERROR:
-                    self._on_executor_error(trial, result[_ExecutorEvent.KEY_EXCEPTION])
+                if _ExecutorEvent.KEY_EXCEPTION in result:
+                    self._on_executor_error(
+                        trial, event.type, result[_ExecutorEvent.KEY_EXCEPTION]
+                    )
                 elif event.type == _ExecutorEventType.RESTORING_RESULT:
                     self._on_restoring_result(trial)
                 else:
@@ -1053,8 +1062,10 @@ class TrialRunner:
         if final_decision:
             self._execute_action(trial, final_decision)
 
-    def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
-        error_msg = f"Trial {trial}: Error processing event."
+    def _on_executor_error(
+        self, trial, event_type: _ExecutorEventType, e: Union[RayTaskError, TuneError]
+    ):
+        error_msg = f"Trial {trial}: Error happened when processing {str(event_type)}."
         if self._fail_fast == TrialRunner.RAISE:
             raise e
         else:
@@ -1085,6 +1096,14 @@ class TrialRunner:
         Args:
             trial: Trial to queue.
         """
+        # If the config map has had all the references replaced with placeholders,
+        # resolve them before adding the trial.
+        if self._placeholder_resolvers:
+            trial.resolve_config_placeholders(self._placeholder_resolvers)
+
+        # With trial.config resolved, create placement group factory if needed.
+        trial.create_placement_group_factory()
+
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)
@@ -1402,37 +1421,9 @@ class TrialRunner:
             error=exc is not None,
             exc=exc,
         )
-        if self.trial_executor.has_resources_for_trial(trial):
-            requeue_trial = False
-            logger.info(
-                "Trial %s: Attempting to restore trial state from last checkpoint.",
-                trial,
-            )
-            # TODO(xwjiang): For better consistency, consider not starting
-            #  trials here. Instead rely on requeuing the trial.
-            started = self.trial_executor.start_trial(trial)
-            if not started:
-                requeue_trial = True
-            elif trial.status == Trial.ERROR:
-                logger.exception(
-                    "Trial %s: Error restoring trial from checkpoint, abort.", trial
-                )
-                if started:
-                    # Clean up again if an actor was launched
-                    self.trial_executor.stop_trial(trial, error=True)
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration, trials=self._trials, trial=trial
-                )
-            else:
-                logger.debug("Trial %s: Restore dispatched correctly.", trial)
-        else:
-            requeue_trial = True
 
-        if requeue_trial:
-            logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)
-            self._requeue_trial(trial)
+        logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)
+        self._requeue_trial(trial)
 
     def _requeue_trial(self, trial):
         """Notification to TrialScheduler and requeue trial.
@@ -1586,6 +1577,7 @@ class TrialRunner:
             "_stop_queue",
             "_server",
             "_search_alg",
+            "_placeholder_resolvers",
             "_scheduler_alg",
             "_pending_trial_queue_times",
             "trial_executor",
@@ -1595,6 +1587,7 @@ class TrialRunner:
             "_local_checkpoint_dir",
             "_sync_config",
             "_experiment_dir_name",
+            "_insufficient_resources_manager",
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
