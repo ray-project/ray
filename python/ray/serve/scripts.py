@@ -488,7 +488,7 @@ def build(
         f"on Ray v{ray.__version__}.\n\n"
     )
     config_str += yaml.dump(
-        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+        config, Dumper=ServeConfigDumper, default_flow_style=False, sort_keys=False
     )
 
     # Ensure file ends with only one newline
@@ -528,7 +528,7 @@ def convert(config_path, output_path: Optional[str]):
     )
 
     config_str += yaml.dump(
-        k8s_dict, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+        k8s_dict, Dumper=ServeConfigDumper, default_flow_style=False, sort_keys=False
     )
 
     # Ensure file ends with only one newline
@@ -538,7 +538,7 @@ def convert(config_path, output_path: Optional[str]):
         f.write(config_str)
 
 
-class ServeBuildDumper(yaml.SafeDumper):
+class ServeConfigDumper(yaml.SafeDumper):
     """YAML dumper object with custom format for `serve build` and `convert`.
 
     Reformat config to follow this spacing:
