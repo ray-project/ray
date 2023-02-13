@@ -14,6 +14,7 @@ Ray Datasets Glossary
 
         .. doctest::
 
+            >>> import ray
             >>> dataset = ray.data.range_table(10)
             >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'value': array([0, 1, 2, 3, 4])}
@@ -41,8 +42,11 @@ Ray Datasets Glossary
     Block format
         The way :term:`blocks <Block>` are represented.
 
-        Blocks are represented as Arrow tables, pandas DataFrames, and Python lists.
-        To determine the block format, call :meth:`~ray.data.Dataset.dataset_format`.
+        Blocks are represented as
+        `Arrow tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`_,
+        `pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`_,
+        and Python lists. To determine the block format, call
+        :meth:`~ray.data.Dataset.dataset_format`.
 
     Data Shuffling
         The act of reordering :term:`records <Record>`. Shuffling prevents overfitting of models.
@@ -51,8 +55,9 @@ Ray Datasets Glossary
 
         .. doctest::
 
+            >>> import ray
             >>> dataset = ray.data.range(10)
-            >>> dataset.random_shuffle().take_all()
+            >>> dataset.random_shuffle().take_all()  # doctest: +SKIP
             [4, 7, 1, 5, 2, 3, 8, 6, 9, 0]
 
         If :meth:`~ray.data.Dataset.random_shuffle()` is slow, perform a local shuffle.
@@ -61,8 +66,9 @@ Ray Datasets Glossary
 
         .. doctest::
 
+            >>> import ray
             >>> dataset = ray.data.range(10)
-            >>> next(iter(dataset.iter_batches(local_shuffle_buffer_size=5)))
+            >>> next(iter(dataset.iter_batches(local_shuffle_buffer_size=5)))  # doctest: +SKIP
             [2, 6, 7, 8, 4, 9, 3, 1, 5, 0]
 
         To learn more about shuffling data, read :ref:`Shuffling Data <air-shuffle>`.
@@ -78,14 +84,19 @@ Ray Datasets Glossary
     Dataset (object)
         A class that represents a distributed collection of data.
 
-        :class:`Datasets <ray.data.Dataset>` expose methods to read, transform, and consume data at scale.
+        :class:`Dataset <ray.data.Dataset>` exposes methods to read, transform, and consume data at scale.
 
         To learn more about Datasets and the operations they support, read the :ref:`Datasets API Reference <data-api>`.
 
     Datasource
         A :class:`~ray.data.Datasource` specifies how to read and write from
         a variety of external storage and data formats.
-        For example: Parquet, images, TFRecord, CSV, and MongoDB.
+
+        Examples of Datasources include :class:`~ray.data.datasource.ParquetDatasource`,
+        :class:`~ray.data.datasource.ImageDatasource`,
+        :class:`~ray.data.datasource.TFRecordDatasource`,
+        :class:`~ray.data.datasource.CSVDatasource`, and
+        :class:`~ray.data.datasource.MongoDatasource`.
 
         To learn more about Datasources, read :ref:`Creating a Custom Datasource <custom_datasources>`.
 
@@ -94,7 +105,7 @@ Ray Datasets Glossary
 
         If your dataset is :term:`tabular <Tabular Dataset>`, then records are :class:`TableRows <ray.data.row.TableRow>`.
         If your dataset is :term:`simple <Simple Dataset>`, then records are arbitrary Python objects.
-        If your dataset is :term:`tensor <Tensor Dataset>`, then records are ndarrays.
+        If your dataset is :term:`tensor <Tensor Dataset>`, then records are `NumPy ndarrays <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_.
 
     Schema
         The data type of a dataset.
@@ -110,6 +121,7 @@ Ray Datasets Glossary
 
         .. doctest::
 
+            >>> import ray
             >>> ray.data.from_items(["spam", "ham", "eggs"])
             Dataset(num_blocks=3, num_rows=3, schema=<class 'str'>)
 
@@ -121,6 +133,7 @@ Ray Datasets Glossary
         .. doctest::
 
             >>> import numpy as np
+            >>> import ray
             >>> ray.data.from_numpy(np.zeros((100, 32, 32, 3)))
             Dataset(num_blocks=1, num_rows=100, schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=double)})
 
@@ -129,6 +142,7 @@ Ray Datasets Glossary
 
         .. doctest::
 
+            >>> import ray
             >>> ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
 
