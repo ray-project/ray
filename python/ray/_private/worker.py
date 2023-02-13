@@ -1787,7 +1787,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 return colorama.Style.BRIGHT + colorama.Fore.YELLOW
             else:
                 return colorama.Style.BRIGHT + colorama.Fore.CYAN
-        elif os.getenv("RAY_COLOR_PID") == "1":
+        elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
                 colorama.Fore.MAGENTA,
