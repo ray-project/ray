@@ -65,18 +65,9 @@ class TFRecordDatasource(FileBasedDatasource):
 def _convert_example_to_dict(
     example: "tf.train.Example",
 ) -> Dict[str, "pyarrow.Array"]:
-    import pyarrow as pa
-
     record = {}
     for feature_name, feature in example.features.feature.items():
-        value = _get_feature_value(feature)
-        value = value.to_pylist()
-        # Return value itself if the list has single value.
-        # This is to give better user experience when writing preprocessing UDF on
-        # these single-value lists.
-        if len(value) == 1:
-            value = value[0]
-        record[feature_name] = pa.array([value])
+        record[feature_name] = _get_feature_value(feature)
     return record
 
 
@@ -114,15 +105,33 @@ def _get_feature_value(
     assert sum(bool(value) for value in values) == 1
 
     if feature.HasField("bytes_list"):
-        return pa.array(feature.bytes_list.value, type=pa.binary())
-    if feature.HasField("float_list"):
-        return pa.array(feature.float_list.value, type=pa.float32())
-    if feature.HasField("int64_list"):
-        return pa.array(feature.int64_list.value, type=pa.int64())
-    raise AssertionError(
-        "tf.train.Feature should have at least one value field set, "
-        "so this should never be reached."
-    )
+        value = feature.bytes_list.value
+        type_ = pa.binary()
+    elif feature.HasField("float_list"):
+        value = feature.float_list.value
+        type_ = pa.float32()
+    elif feature.HasField("int64_list"):
+        value = feature.int64_list.value
+        type_ = pa.int64()
+    else:
+        raise AssertionError(
+            "tf.train.Feature should have at least one value field set, "
+            "so this should never be reached."
+        )
+    value = list(value)
+    if len(value) == 1:
+        # Use the value itself if the features contains a single value.
+        # This is to give better user experience when writing preprocessing UDF on
+        # these single-value lists.
+        value = value[0]
+    else:
+        # If the feature value is empty, set the type to null for now
+        # to allow pyarrow to construct a valid Array; later, infer the
+        # type from other records which have non-empty values for the feature.
+        if len(value) == 0:
+            type_ = pa.null()
+        type_ = pa.list_(type_)
+    return pa.array([value], type=type_)
 
 
 def _value_to_feature(

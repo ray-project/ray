@@ -102,9 +102,8 @@ def unify_schemas(
                 if not pa.types.is_list(col_type) or not pa.types.is_null(
                     col_type.value_type
                 ):
-                    if col_type is not None:
-                        schema_tensor_field_overrides[col_name] = col_type
-                        break
+                    schema_tensor_field_overrides[col_name] = col_type
+                    break
 
     if schema_tensor_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
