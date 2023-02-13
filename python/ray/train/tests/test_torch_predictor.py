@@ -281,7 +281,8 @@ def test_multi_modal_real_model(use_gpu):
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
-def test_predictor_w_ckpt_from_uri():
+# TO BE IMPORTED...
+def test_predictor_w_ckpt_from_uri(mock_s3_bucket_uri):
     def create_model():
         return torch.nn.Sequential(
             torch.nn.Linear(1, 1),
@@ -290,8 +291,8 @@ def test_predictor_w_ckpt_from_uri():
 
     model = create_model()
     saved_checkpoint = TorchCheckpoint.from_model(model=model)
-    saved_checkpoint.to_uri("memory:///unit-test/")
-    loaded_checkpoint = TorchCheckpoint.from_uri("memory:///unit-test/")
+    saved_checkpoint.to_uri(mock_s3_bucket_uri)
+    loaded_checkpoint = TorchCheckpoint.from_uri(mock_s3_bucket_uri)
     batch_predictor = BatchPredictor.from_checkpoint(
         checkpoint=loaded_checkpoint, predictor_cls=TorchPredictor
     )
