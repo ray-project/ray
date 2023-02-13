@@ -52,8 +52,8 @@ class ResourceRequest:
          - "STRICT_PACK": Packs Bundles into one node. The group is
            not allowed to span multiple nodes.
          - "STRICT_SPREAD": Packs Bundles across distinct nodes.
-        *args: Passed to the call of ``placement_group()``, if applicable.
-        **kwargs: Passed to the call of ``placement_group()``, if applicable.
+        args: Passed to the call of ``placement_group()``, if applicable.
+        kwargs: Passed to the call of ``placement_group()``, if applicable.
 
     """
 
