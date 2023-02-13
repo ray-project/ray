@@ -1852,6 +1852,13 @@ py_test(
 )
 
 py_test(
+    name = "test_rl_module_specs",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
+)
+
+py_test(
     name = "test_torch_encoder",
     tags = ["team:rllib", "core", "models"],
     size = "small",
@@ -1864,7 +1871,6 @@ py_test(
     size = "small",
     srcs = ["core/models/torch/tests/test_torch_mlp.py"]
 )
-
 
 py_test(
     name = "test_trainer_runner",
