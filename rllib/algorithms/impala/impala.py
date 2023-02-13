@@ -36,6 +36,7 @@ from ray.rllib.utils.metrics import (
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
@@ -673,27 +674,28 @@ class Impala(Algorithm):
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
-        # Perform asynchronous sampling on all (remote) rollout workers.
-        if self.workers.num_healthy_remote_workers() > 0:
-            self.workers.foreach_worker_async(
-                lambda worker: worker.sample(),
-                healthy_only=True,
-            )
-            sample_batches: List[
-                Tuple[int, ObjectRef]
-            ] = self.workers.fetch_ready_async_reqs(
-                timeout_seconds=self._timeout_s_sampler_manager,
-                return_obj_refs=return_object_refs,
-            )
-        elif self.workers.local_worker() and self.config.create_env_on_local_worker:
-            # Sampling from the local worker
-            sample_batch = self.workers.local_worker().sample()
-            if return_object_refs:
-                sample_batch = ray.put(sample_batch)
-            sample_batches = [(0, sample_batch)]
-        else:
-            # Not much we can do. Return empty list and wait.
-            return []
+        with self._timers[SAMPLE_TIMER]:
+            if self.workers.num_healthy_remote_workers() > 0:
+                # Perform asynchronous sampling on all (remote) rollout workers.
+                self.workers.foreach_worker_async(
+                    lambda worker: worker.sample(),
+                    healthy_only=True,
+                )
+                sample_batches: List[
+                    Tuple[int, ObjectRef]
+                ] = self.workers.fetch_ready_async_reqs(
+                    timeout_seconds=self._timeout_s_sampler_manager,
+                    return_obj_refs=return_object_refs,
+                )
+            elif self.workers.local_worker() and self.config.create_env_on_local_worker:
+                # Sampling from the local worker
+                sample_batch = self.workers.local_worker().sample()
+                if return_object_refs:
+                    sample_batch = ray.put(sample_batch)
+                sample_batches = [(0, sample_batch)]
+            else:
+                # Not much we can do. Return empty list and wait.
+                return []
 
         return sample_batches
 
