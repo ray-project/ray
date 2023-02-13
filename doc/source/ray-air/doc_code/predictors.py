@@ -78,7 +78,8 @@ print("Final accuracy: ", correct.mean(on="correct"))
 
 
 # __configure_batch_predictor_start__
-# Use CPUs for inference: Scaling from 1 to 4 workers, each with 3 CPUs
+# Use between 1 to 4 workers, depending on the dataset size
+# Each worker performs inference with 3 CPUs (no GPU)
 predictions = batch_predictor.predict(
     ds,
     feature_columns=["feature_1"],
