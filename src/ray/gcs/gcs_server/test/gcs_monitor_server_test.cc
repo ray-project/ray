@@ -89,33 +89,28 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
                                         std::function<void()> f1,
                                         std::function<void()> f2) { replied = true; };
 
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
-      gcs_node_manager_nodes;
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> gcs_node_manager_nodes;
 
   ON_CALL(*mock_node_manager_, GetAllAliveNodes())
       .WillByDefault(ReturnRef(gcs_node_manager_nodes));
 
-
-
   NodeID id_1 = NodeID::FromRandom();
-  cluster_resource_manager_.AddOrUpdateNode(scheduling::NodeID(id_1.Binary()),
-                                            constructNodeResources(
-                                                                   {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
-                                                                   {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}
-                                            ));
+  cluster_resource_manager_.AddOrUpdateNode(
+      scheduling::NodeID(id_1.Binary()),
+      constructNodeResources(
+          {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
+          {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
   gcs_node_manager_nodes[id_1] = Mocker::GenNodeInfo(0, "1.1.1.1", "Node1");
 
-
   NodeID id_2 = NodeID::FromRandom();
-  cluster_resource_manager_.AddOrUpdateNode(scheduling::NodeID(id_2.Binary()),
-                                            constructNodeResources(
-                                                                   {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
-                                                                   {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}
-                                                                   ));
+  cluster_resource_manager_.AddOrUpdateNode(
+      scheduling::NodeID(id_2.Binary()),
+      constructNodeResources(
+          {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
+          {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
 
   NodeID id_3 = NodeID::FromRandom();
   gcs_node_manager_nodes[id_3] = Mocker::GenNodeInfo(0, "1.1.1.3", "Node1");
-
 
   monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
 
@@ -125,8 +120,10 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   ASSERT_EQ(reply.node_statuses(0).address(), "1.1.1.1");
 
   ASSERT_EQ(reply.node_statuses()[0].available_resources().size(), 2);
-  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("CPU"), 0.5);
-  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("custom"), 4);
+  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("CPU"),
+            0.5);
+  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("custom"),
+            4);
 
   ASSERT_EQ(reply.node_statuses()[0].total_resources().size(), 2);
   ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_total_resources()->at("CPU"), 1);

@@ -43,12 +43,11 @@ void GcsMonitorServer::HandleDrainAndKillNode(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-
 void GcsMonitorServer::PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply) const {
   const absl::flat_hash_map<scheduling::NodeID, Node> &scheduling_nodes =
       cluster_resource_manager_.GetResourceView();
   const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
-    &gcs_node_manager_nodes = gcs_node_manager_->GetAllAliveNodes();
+      &gcs_node_manager_nodes = gcs_node_manager_->GetAllAliveNodes();
 
   for (const auto &pair : gcs_node_manager_nodes) {
     const auto &node_id = pair.first;
@@ -67,7 +66,8 @@ void GcsMonitorServer::PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply
     auto node_status = reply->add_node_statuses();
     node_status->set_node_id(node_id.Binary());
     node_status->set_address(gcs_node_info->node_manager_address());
-    node_status->mutable_available_resources()->insert(available.begin(), available.end());
+    node_status->mutable_available_resources()->insert(available.begin(),
+                                                       available.end());
     node_status->mutable_total_resources()->insert(total.begin(), total.end());
   }
 }

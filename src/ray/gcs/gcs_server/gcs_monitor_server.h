@@ -40,9 +40,7 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
                                  rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-
   void PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply) const;
-
 
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   ClusterResourceManager &cluster_resource_manager_;
