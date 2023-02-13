@@ -7,7 +7,7 @@ from ray.rllib.core.models.configs import MLPModelConfig
 torch, nn = try_import_torch()
 
 
-class TestTorchModels(unittest.TestCase):
+class TestTorchMLP(unittest.TestCase):
     def test_torch_mlp(self):
 
         inputs_dims = [1, 2, 1000]
