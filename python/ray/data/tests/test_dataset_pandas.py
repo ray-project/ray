@@ -162,6 +162,61 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
     assert all(row["array"] == [1, 1, 1])
 
 
+def test_to_pandas_nested_dict(ray_start_regular_shared):
+    # Including numpy arrays in the nested dict (under the `nested_arr_col` key)
+    # triggers the `SimpleBlockAccessor.to_pandas()` call;
+    # otherwise, this goes through `ArrowBlockAccessor.to_pandas()`
+    sample = [
+        {
+            "A": 5,
+            "nested": {
+                "nested_scalar_col": -1,
+                "nested_bool_col": True,
+                "nested_list_col": [1, 2, 3],
+                "nested_arr_col": np.array([[0, 1, 2], [3, 4, 5]]),
+            },
+        },
+        {
+            "A": 7,
+            "nested": {
+                "nested_scalar_col": -2,
+                "nested_bool_col": False,
+                "nested_list_col": [4, 5, 6],
+                "nested_arr_col": np.array([[4, 5, 6], [7, 8, 9]]),
+            },
+        },
+        {
+            "A": 2,
+            "nested": {
+                "nested_scalar_col": -3,
+                "nested_bool_col": True,
+                "nested_list_col": [7, 8, 9],
+                "nested_arr_col": np.array([[9, 10, 11], [12, 13, 14]]),
+            },
+        },
+    ]
+    converted_to_pd_df = ray.data.from_items(sample).to_pandas()
+    expected_df = pd.DataFrame(sample)
+
+    # First directly check the "A" column for equality, which contains scalar ints.
+    pd.testing.assert_series_equal(expected_df["A"], converted_to_pd_df["A"])
+
+    # Then compare each element of the nested column. We cannot directly use
+    # `pd.testing.assert_series_equal` / `assert_frame_equal` to check equality of
+    # the nested column because they currently do not handle equality
+    # checks on nested inputs (i.e. lists/arrays inside dicts).
+    for e, a in zip(expected_df["nested"], converted_to_pd_df["nested"]):
+        for key_name in e:
+            assert np.array_equal(e[key_name], a[key_name])
+
+    # Finally, we can also verify that the completely normalized table
+    # (removing all layers of dict nesting) yields the same elements.
+    pd.testing.assert_frame_equal(
+        pd.json_normalize(expected_df),
+        pd.json_normalize(converted_to_pd_df),
+    )
+
+
 if __name__ == "__main__":
     import sys
 
