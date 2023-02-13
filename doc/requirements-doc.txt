@@ -35,6 +35,9 @@ tensorflow-datasets
 torch
 torchvision
 transformers
+horovod[tensorflow,keras,pytorch]
+mosaicml==0.10.1
+mxnet==1.8.0.post0
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
