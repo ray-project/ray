@@ -94,6 +94,7 @@ def main():
     args.total_actors.sort()
 
     from distributed.dashboard_test import DashboardTestAtScale
+
     addr = ray.init(address="auto")
     dashboard_test = DashboardTestAtScale(addr)
 
