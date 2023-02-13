@@ -1572,7 +1572,20 @@ def no_resource_leaks_excluding_node_resources():
 
 
 @contextmanager
-def simulate_storage(storage_type, root=None, port=None, region=None):
+def simulate_storage(
+    storage_type: str,
+    root: Optional[str] = None,
+    port: int = 5002,
+    region: str = "us-west-2",
+):
+    """Context that simulates a given storage type and yields the URI.
+
+    Args:
+        storage_type: The storage type to simiulate ("fs" or "s3")
+        root: Root directory of the URI to return (e.g., s3 bucket name)
+        port: The port of the localhost endpoint where s3 is being served (s3 only)
+        region: The s3 region (s3 only)
+    """
     if storage_type == "fs":
         if root is None:
             with tempfile.TemporaryDirectory() as d:
@@ -1582,16 +1595,14 @@ def simulate_storage(storage_type, root=None, port=None, region=None):
     elif storage_type == "s3":
         from moto.server import ThreadedMotoServer
 
-        port = port or 5002
         s3_server = f"http://localhost:{port}"
-        region = region or "us-west-2"
-        server = ThreadedMotoServer(port=port or 5002)
+        server = ThreadedMotoServer(port=port)
         server.start()
         url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
         yield url
         server.stop()
     else:
-        raise ValueError(f"Unknown storage type: {storage_type}")
+        raise NotImplementedError(f"Unknown storage type: {storage_type}")
 
 
 def job_hook(**kwargs):
