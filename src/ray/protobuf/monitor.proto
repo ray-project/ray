@@ -83,14 +83,11 @@ message NodeStatus {
   // The address of the node. 
   string address = 2;
 
-  // An optional node type.
-  optional string node_type = 3;
-
   // The available resources on the node.
-  map<string,double> available_resources = 4;
+  map<string,double> available_resources = 3;
 
   // The corresponding total resources on the node.
-  map<string, double> total_resources = 5;
+  map<string, double> total_resources = 4;
 }
 
 message GetSchedulingStatusRequest {}

@@ -43,17 +43,42 @@ void GcsMonitorServer::HandleDrainAndKillNode(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+
+void GcsMonitorServer::PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply) const {
+  const absl::flat_hash_map<scheduling::NodeID, Node> &scheduling_nodes =
+      cluster_resource_manager_.GetResourceView();
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
+    &gcs_node_manager_nodes = gcs_node_manager_->GetAllAliveNodes();
+
+  for (const auto &pair : gcs_node_manager_nodes) {
+    const auto &node_id = pair.first;
+    const auto &gcs_node_info = pair.second;
+
+    const auto &it = scheduling_nodes.find(scheduling::NodeID(node_id.Binary()));
+    if (it == scheduling_nodes.end()) {
+      // A node may be in GcsNodeManager but not ClusterResourceManager due to
+      // a couple of edge cases/race conditions.
+      continue;
+    }
+    const auto &node_resources = it->second.GetLocalView();
+    const auto &available = node_resources.available.ToResourceMap();
+    const auto &total = node_resources.total.ToResourceMap();
+
+    auto node_status = reply->add_node_statuses();
+    node_status->set_node_id(node_id.Binary());
+    node_status->set_address(gcs_node_info->node_manager_address());
+    node_status->mutable_available_resources()->insert(available.begin(), available.end());
+    node_status->mutable_total_resources()->insert(total.begin(), total.end());
+  }
+}
+
 void GcsMonitorServer::HandleGetSchedulingStatus(
     rpc::GetSchedulingStatusRequest request,
     rpc::GetSchedulingStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const absl::flat_hash_map<scheduling::NodeID, Node> scheduling_nodes =
-      cluster_resource_manager_.GetResourceView();
+  PopulateNodeStatuses(reply);
 
-  if (scheduling_nodes.size() == 0) {
-    // TODO Delete
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace gcs
