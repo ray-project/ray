@@ -32,6 +32,7 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_replay_buffer,
@@ -314,9 +315,10 @@ class SimpleQ(Algorithm):
         local_worker = self.workers.local_worker()
 
         # Sample n MultiAgentBatches from n workers.
-        new_sample_batches = synchronous_parallel_sample(
-            worker_set=self.workers, concat=False
-        )
+        with self._timers[SAMPLE_TIMER]:
+            new_sample_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
 
         for batch in new_sample_batches:
             # Update sampling step counters.
