@@ -88,7 +88,7 @@ predictions = batch_predictor.predict(
     num_cpus_per_worker=3,
 )
 
-# Use GPUs for inference: Use 2 workers, each with 1 GPU
+# Use exactly 2 workers, each performing inference with 1 CPU (default) and 1 GPU
 predictions = batch_predictor.predict(
     ds,
     feature_columns=["feature_1"],
