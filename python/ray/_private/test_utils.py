@@ -1572,7 +1572,7 @@ def no_resource_leaks_excluding_node_resources():
 
 
 @contextmanager
-def simulate_storage(storage_type, root=None):
+def simulate_storage(storage_type, root=None, port=None, region=None):
     if storage_type == "fs":
         if root is None:
             with tempfile.TemporaryDirectory() as d:
@@ -1580,36 +1580,16 @@ def simulate_storage(storage_type, root=None):
         else:
             yield "file://" + root
     elif storage_type == "s3":
-        import uuid
+        from moto.server import ThreadedMotoServer
 
-        from moto import mock_s3
-
-        from ray.tests.mock_s3_server import start_service, stop_process
-
-        @contextmanager
-        def aws_credentials():
-            old_env = os.environ
-            os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-            os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-            os.environ["AWS_SECURITY_TOKEN"] = "testing"
-            os.environ["AWS_SESSION_TOKEN"] = "testing"
-            yield
-            os.environ = old_env
-
-        @contextmanager
-        def moto_s3_server():
-            host = "localhost"
-            port = 5002
-            url = f"http://{host}:{port}"
-            process = start_service("s3", host, port)
-            yield url
-            stop_process(process)
-
-        if root is None:
-            root = uuid.uuid4().hex
-        with moto_s3_server() as s3_server, aws_credentials(), mock_s3():
-            url = f"s3://{root}?region=us-west-2&endpoint_override={s3_server}"
-            yield url
+        port = port or 5002
+        s3_server = f"http://localhost:{port}"
+        region = region or "us-west-2"
+        server = ThreadedMotoServer(port=port or 5002)
+        server.start()
+        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
+        yield url
+        server.stop()
     else:
         raise ValueError(f"Unknown storage type: {storage_type}")
 
