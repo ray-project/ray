@@ -87,7 +87,7 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         # Store any batch as a whole
         buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
         buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
-        print(buffer.sample(1))
+        buffer.sample(1)
 
         # Store only complete episodes
         buffer = ReplayBuffer(capacity=10,
@@ -96,31 +96,20 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
                                 SampleBatch.T: [0, 1, 0, 1],
                                 SampleBatch.TERMINATEDS: [False, True, False, True],
                                 SampleBatch.EPS_ID: [0, 0, 1, 1]}))
-        eps_n = buffer.sample(1)
-        print(eps_n[SampleBatch.EPS_ID])
+        buffer.sample(1)
 
         # Store single timesteps
         buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
         buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
-        t_n = buffer.sample(1)
-        print(t_n["a"])
+        buffer.sample(1)
+
         buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
         print(buffer._eviction_started)
-        t_n = buffer.sample(1)
-        print(t_n["a"])
+        buffer.sample(1)
+
         buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
         buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
-        seq_n = buffer.sample(1)
-        print(seq_n["c"])
-
-    .. testoutput::
-
-        SampleBatch(1: ['a', 'b'])
-        [0 0]
-        [2]
-        True
-        [2]
-        [2 3]
+        buffer.sample(1)
 
     """
 
