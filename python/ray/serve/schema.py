@@ -372,7 +372,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         """
 
         config = self.dict(**kwargs)
-        for idx, deployment in enumerate(config["deployments"]):
+        for idx, deployment in enumerate(config.get("deployments", [])):
 
             if isinstance(deployment.get("ray_actor_options"), dict):
 
