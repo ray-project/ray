@@ -5,6 +5,7 @@ Exceptions
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ray.exceptions.RayError
     ray.exceptions.RayTaskError

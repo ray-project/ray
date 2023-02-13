@@ -9,6 +9,9 @@
   so we don't autosummary those as well.
   See ray.tune.schedulers.ASHAScheduler as an example.
 #}
+{#
+  We also don't autosummary some classes to reduce doc build time.
+#}
 {{ fullname | escape | underline}}
 
 .. currentmodule:: {{ module }}

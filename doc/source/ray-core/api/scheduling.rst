@@ -6,6 +6,7 @@ Scheduling Strategy
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
     ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
