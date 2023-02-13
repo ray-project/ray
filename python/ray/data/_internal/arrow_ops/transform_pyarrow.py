@@ -70,11 +70,14 @@ def unify_schemas(
     if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schemas[0].types):
         # If we have pyarrow extension types that may potentially be variable shaped,
         # examine the first schema to gather the columns that need type conversions.
-        for col_idx in range(len(schemas[0].types)):
+        # for col_idx in range(len(schemas[0].types)):
+        for col_field in schemas[0]:
+            col_name, col_type = col_field.name, col_field.type
             tensor_array_types = [
-                s.types[col_idx]
+                # s.types[col_idx]
+                s.field(col_name).type
                 for s in schemas
-                if isinstance(s.types[col_idx], pyarrow.ExtensionType)
+                if isinstance(s.field(col_name).type, pyarrow.ExtensionType)
             ]
             if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
                 if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
@@ -89,7 +92,7 @@ def unify_schemas(
                         "Detected need for variable shaped tensor representation, "
                         f"but schema is not ArrayTensorType: {tensor_array_types[0]}"
                     )
-                schema_tensor_field_overrides[col_idx] = new_type
+                schema_tensor_field_overrides[col_name] = new_type
 
     if cols_with_null_list:
         # For each opaque list column, iterate through all schemas until we find
@@ -103,8 +106,8 @@ def unify_schemas(
                     col_type.value_type
                 ):
                     if col_type is not None:
-                        col_idx = schema.get_field_index(col_name)
-                        schema_tensor_field_overrides[col_idx] = col_type
+                        # col_idx = schema.get_field_index(col_name)
+                        schema_tensor_field_overrides[col_name] = col_type
                         # scalar_type = col_type
                         break
             # if scalar_type is not None:
@@ -114,8 +117,9 @@ def unify_schemas(
     if schema_tensor_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
-            for col_idx, col_new_type in schema_tensor_field_overrides.items():
-                var_shaped_col = schema.field(col_idx).with_type(col_new_type)
+            for col_name, col_new_type in schema_tensor_field_overrides.items():
+                var_shaped_col = schema.field(col_name).with_type(col_new_type)
+                col_idx = schema.get_field_index(col_name)
                 schema = schema.set(col_idx, var_shaped_col)
             schemas_to_unify.append(schema)
     else:
@@ -126,7 +130,8 @@ def unify_schemas(
         or "float_empty" in cols_with_null_list
         or "bytes_empty" in cols_with_null_list
     ):
-        raise Exception(f"===> schemas_to_unify: {schemas_to_unify}")
+        print("===> schemas_to_unify in unify_schemas: {schemas_to_unify}")
+        # raise Exception(f"===> schemas_to_unify in unify_schemas: {schemas_to_unify}")
     return pyarrow.unify_schemas(schemas_to_unify)
 
 
@@ -169,7 +174,9 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     )
     import pyarrow as pa
 
-    print("===> concat start blocks:", )
+    print(
+        "===> concat start blocks:",
+    )
     for b in blocks:
         print("===> block schema:", b.schema)
 
@@ -246,7 +253,9 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                                     [pa.nulls(c.length(), type=scalar_type)]
                                 )
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
-            print("===> concat end of for loop blocks:", )
+            print(
+                "===> concat end of for loop blocks:",
+            )
             for b in blocks:
                 print("===> block schema:", b.schema)
             cols.append(col)
