@@ -28,6 +28,7 @@ from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
 
 # Must come last to avoid circular imports
+from ray.tune.impl.config import _Config
 from ray.tune.schedulers import (
     FIFOScheduler,
     PopulationBasedTraining,
@@ -478,12 +479,13 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
-    try:
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    except ImportError:
-        AlgorithmConfig = type(None)
-    if config and isinstance(config, AlgorithmConfig):
+    if isinstance(config, _Config):
         config = config.to_dict()
+    if not isinstance(config, dict):
+        raise ValueError(
+            "The `config` passed to `tune.run()` must be a dict. "
+            f"Got '{type(config)}' instead."
+        )
 
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()

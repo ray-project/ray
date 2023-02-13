@@ -16,6 +16,7 @@ from ray.air._internal.remote_storage import download_from_uri, is_non_local_pat
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.impl.config import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -100,7 +101,15 @@ class TunerInternal:
                 )
 
         self.trainable = trainable
-        self.param_space = param_space or {}
+        param_space = param_space or {}
+        if isinstance(param_space, _Config):
+            param_space = param_space.to_dict()
+        if not isinstance(param_space, dict):
+            raise ValueError(
+                "The `param_space` passed to the Tuner` must be a dict. "
+                f"Got '{type(param_space)}' instead."
+            )
+        self.param_space = param_space
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
