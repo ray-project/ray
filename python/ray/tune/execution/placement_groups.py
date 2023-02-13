@@ -1,7 +1,6 @@
 import warnings
 from typing import Dict, Optional
 from ray.air.execution.resources.request import ResourceRequest
-from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import placement_group
 
@@ -106,9 +105,6 @@ class PlacementGroupFactory(ResourceRequest):
 def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     """Translates resource dict into PlacementGroupFactory."""
     spec = spec or {"cpu": 1}
-
-    if isinstance(spec, Resources):
-        spec = spec._asdict()
 
     spec = spec.copy()
 

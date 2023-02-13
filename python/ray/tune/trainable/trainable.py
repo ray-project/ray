@@ -19,7 +19,6 @@ from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
-from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -202,7 +201,7 @@ class Trainable:
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]
-    ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    ) -> Optional[PlacementGroupFactory]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -219,8 +218,8 @@ class Trainable:
             config[Dict[str, Any]]: The Trainable's config dict.
 
         Returns:
-            Union[Resources, PlacementGroupFactory]: A Resources object or
-                PlacementGroupFactory consumed by Tune for queueing.
+            PlacementGroupFactory: A PlacementGroupFactory consumed by Tune
+                for queueing.
         """
         return None
 
@@ -1064,7 +1063,7 @@ class Trainable:
             return "default"
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> Optional[PlacementGroupFactory]:
         """Resources currently assigned to the trial of this Trainable.
 
         This is not set if not using Tune.
@@ -1076,7 +1075,7 @@ class Trainable:
         if self._trial_info:
             return self._trial_info.trial_resources
         else:
-            return "default"
+            return None
 
     @property
     def iteration(self):
