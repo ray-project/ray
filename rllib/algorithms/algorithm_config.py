@@ -885,6 +885,13 @@ class AlgorithmConfig:
         # resolve rl_module_spec class
         if self._enable_rl_module_api and self.rl_module_spec is None:
             self.rl_module_spec = self.get_default_rl_module_spec()
+            if not isinstance(
+                self.rl_module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)
+            ):
+                raise ValueError(
+                    "rl_module_spec must be an instance of "
+                    "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+                )
 
         # make sure the resource requirements for trainer runner is valid
         if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
@@ -2689,12 +2696,43 @@ class AlgorithmConfig:
         """
 
         marl_module_spec = self.rl_module_spec
-
         # If the module is single-agent convert it to multi-agent spec
-        if isinstance(marl_module_spec, SingleAgentRLModuleSpec):
+        if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
             marl_module_spec = MultiAgentRLModuleSpec(
                 module_class=MultiAgentRLModule,
                 module_specs={k: marl_module_spec for k in policy_dict.keys()},
+            )
+        elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
+
+            # If the RLModuleSpec is multi-agent then the underlying module_specs
+            # should be empty so that we can auto-fill them based on policy_dict
+            if marl_module_spec.module_specs:
+                raise ValueError(
+                    "The RLModuleSpec is multi-agent but its module_specs is not "
+                    "empty. This is not allowed. Please remove the module_specs "
+                    "from the RLModuleSpec."
+                )
+            else:
+                default_module_spec = self.get_default_rl_module_spec()
+
+                if isinstance(default_module_spec, SingleAgentRLModuleSpec):
+                    # the default module spec is single-agent so we can use it for all
+                    # single agent modules under the MARL spec
+                    marl_module_spec.module_specs = {
+                        k: self.get_default_rl_module_spec() for k in policy_dict.keys()
+                    }
+                elif isinstance(default_module_spec, MultiAgentRLModuleSpec):
+                    # TODO (Kourosh): add unittest coverage for this
+                    # the default module spec is multi-agent so we can iterate through
+                    # its sub-specs and fill out the in-complete MARL spec.
+                    marl_module_spec.module_specs = {
+                        k: default_module_spec.module_specs[k]
+                        for k in default_module_spec.module_specs
+                    }
+        else:
+            raise ValueError(
+                "RLModuleSpec must be either SingleAgentRLModuleSpec "
+                "or MultiAgentRLModuleSpec!"
             )
 
         # Make sure that policy_dict and marl_module_spec have similar keys

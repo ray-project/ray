@@ -1,8 +1,8 @@
 import gymnasium as gym
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, ModuleID
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
@@ -132,7 +132,7 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
 
     # TODO: make sure the default class is MultiAgentRLModule
 
-    def build(self):
+    def build(self, module_id: Optional[ModuleID] = None):
 
         # constructing the global encoder based on the observation_space of the first
         # module
@@ -144,6 +144,14 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
+
+        if module_id:
+            return module_spec.module_class(
+                encoder=shared_encoder,
+                local_dim=module_spec.observation_space["local"].shape[0],
+                hidden_dim=hidden_dim,
+                action_dim=module_spec.action_space.n,
+            )
 
         rl_modules = {}
         for module_id, module_spec in self.module_specs.items():
