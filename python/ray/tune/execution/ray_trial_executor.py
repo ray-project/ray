@@ -157,8 +157,7 @@ class _ExecutorEventType(Enum):
     SAVING_RESULT = 4
     RESTORING_RESULT = 5
     STOP_RESULT = 6  # Internally to executor only.
-    ERROR = 7  # This is to signal to TrialRunner that there is an error.
-    YIELD = 8  # Yielding back to TrialRunner's main event loop.
+    YIELD = 7  # Yielding back to TrialRunner's main event loop.
 
 
 class _ExecutorEvent:
@@ -1295,37 +1294,29 @@ class RayTrialExecutor:
             else:
                 trial = trial_or_acquired_resources
                 assert isinstance(trial, Trial)
+                assert result_type in (
+                    _ExecutorEventType.TRAINING_RESULT,
+                    _ExecutorEventType.SAVING_RESULT,
+                    _ExecutorEventType.RESTORING_RESULT,
+                )
                 try:
                     future_result = ray.get(ready_future)
                     # For local mode
                     if isinstance(future_result, _LocalWrapper):
                         future_result = future_result.unwrap()
-                    if result_type in (
-                        _ExecutorEventType.TRAINING_RESULT,
-                        _ExecutorEventType.SAVING_RESULT,
-                        _ExecutorEventType.RESTORING_RESULT,
-                    ):
-                        logger.debug(f"Returning [{result_type}] for trial {trial}")
-                        return _ExecutorEvent(
-                            result_type,
-                            trial,
-                            result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
-                        )
-                    else:
-                        raise TuneError(f"Unexpected future type - [{result_type}]")
-                except RayTaskError as e:
+                    logger.debug(f"Returning [{result_type}] for trial {trial}")
                     return _ExecutorEvent(
-                        _ExecutorEventType.ERROR,
+                        result_type,
                         trial,
-                        result={_ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
+                        result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
                     )
-                except Exception:
+                except Exception as e:
                     return _ExecutorEvent(
-                        _ExecutorEventType.ERROR,
+                        result_type,
                         trial,
                         result={
-                            _ExecutorEvent.KEY_EXCEPTION: _TuneNoNextExecutorEventError(
-                                traceback.format_exc()
-                            )
+                            _ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()
+                            if isinstance(e, RayTaskError)
+                            else _TuneNoNextExecutorEventError(traceback.format_exc())
                         },
                     )
