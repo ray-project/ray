@@ -1862,14 +1862,14 @@ py_test(
     name = "test_torch_encoder",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/torch/tests/test_torch_encoder.py"]
+    srcs = ["core/models/torch/tests/test_encoder.py"]
 )
 
 py_test(
     name = "test_torch_mlp",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp.py"]
+    srcs = ["core/models/torch/tests/test_mlp.py"]
 )
 
 py_test(
