@@ -31,6 +31,10 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     .. testcode::
 
+        from ray.rllib.core.models.torch.base import TorchModel
+        from ray.rllib.core.models.base import ModelConfig
+        import torch
+
         class FlattenModelConfig(ModelConfig):
             def build(self, framework: str):
                 assert framework == "torch"
@@ -39,7 +43,7 @@ class TorchModel(nn.Module, Model, abc.ABC):
         class TorchFlattenModel(TorchModel):
             def __init__(self, config):
                 TorchModel.__init__(self, config)
-                self.flatten_layer = nn.Flatten()
+                self.flatten_layer = torch.nn.Flatten()
 
             def _forward(self, inputs, **kwargs):
                 return self.flatten_layer(inputs)

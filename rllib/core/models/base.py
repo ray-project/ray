@@ -37,6 +37,8 @@ class ModelConfig(abc.ABC):
 
     .. testcode::
 
+        from ray.rllib.core.models.base import Model, ModelConfig
+
         class MyModel(Model):
             def __init__(self, config):
                 super().__init__(config)
@@ -87,6 +89,8 @@ class Model(abc.ABC):
     Usage Example together with ModelConfig:
 
     .. testcode::
+
+        from ray.rllib.core.models.base import Model, ModelConfig
 
         class MyModel(Model):
             def __init__(self, config):
@@ -174,6 +178,9 @@ class Encoder(Model, abc.ABC):
 
     .. testcode::
 
+        from ray.rllib.core.models.base import ModelConfig
+        from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT, Encoder
+        from ray.rllib.policy.sample_batch import SampleBatch
         import numpy as np
 
         class NumpyEncoder(Encoder):
