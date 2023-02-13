@@ -392,7 +392,7 @@ class Policy(metaclass=ABCMeta):
                 "bug, please file a github issue."
             )
 
-        module_spec = self.config["rl_module_spec"]
+        module_spec = self.config["__marl_module_spec"]
         if isinstance(module_spec, SingleAgentRLModuleSpec):
             module = module_spec.build()
         else:

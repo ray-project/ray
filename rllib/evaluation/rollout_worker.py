@@ -1962,6 +1962,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # module_specs of returned spec.
                 self.marl_module_spec.add_modules(spec.module_specs)
 
+            # Add __marl_module_spec key into the config so that the policy can access
+            # it.
+            updated_policy_dict = self._update_policy_dict_with_marl_module(
+                updated_policy_dict
+            )
+
         # Builds the self.policy_map dict
         self._build_policy_map(
             policy_dict=updated_policy_dict,
@@ -2033,6 +2039,13 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             policy_spec.observation_space = obs_space
 
         return updated_policy_dict
+
+    def _update_policy_dict_with_marl_module(
+        self, policy_dict: MultiAgentPolicyConfigDict
+    ) -> MultiAgentPolicyConfigDict:
+        for name, policy_spec in policy_dict.items():
+            policy_spec.config["__marl_module_spec"] = self.marl_module_spec
+        return policy_dict
 
     def _build_policy_map(
         self,

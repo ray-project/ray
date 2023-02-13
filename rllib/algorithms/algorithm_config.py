@@ -2710,8 +2710,8 @@ class AlgorithmConfig:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
-            if module_spec.config is None:
-                module_spec.config = policy_spec.config
+            if module_spec.model_config is None:
+                module_spec.model_config = policy_spec.config.get("model", {})
 
         return module_spec
 
