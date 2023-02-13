@@ -2654,11 +2654,11 @@ class AlgorithmConfig:
     def get_default_rl_module_spec(self) -> ModuleSpec:
         """Returns the RLModule spec to use for this algorithm.
 
-        Override this method in the sub-class to return the RLModule spec type given
+        Override this method in the sub-class to return the RLModule spec given
         the input framework.
 
         Returns:
-            The RLModule spec to use for this algorithm either as a class type.
+            The RLModule spec to use for this algorithm.
         """
         raise NotImplementedError
 
@@ -2691,16 +2691,19 @@ class AlgorithmConfig:
             policies_to_train: The policies to train. This can be optionally used to
                 construct the MultiAgentRLModuleSpec (if necessary).
         """
+        # TODO (Kourosh): When we replace policy entirely there will be no need for
+        # this function to map policy_dict to marl_module_specs anymore. The module
+        # spec will be directly given by the user or inferred from env and spaces.
 
-        marl_module_spec = self.rl_module_spec
         # If the module is single-agent convert it to multi-agent spec
         if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
             marl_module_spec = MultiAgentRLModuleSpec(
                 module_specs={
-                    k: copy.deepcopy(marl_module_spec) for k in policy_dict.keys()
+                    k: copy.deepcopy(self.rl_module_spec) for k in policy_dict.keys()
                 },
             )
         elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
+            marl_module_spec = self.rl_module_spec
 
             if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
                 # the individual module specs are not given, it is given as one

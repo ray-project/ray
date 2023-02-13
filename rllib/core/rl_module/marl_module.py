@@ -437,11 +437,21 @@ class MultiAgentRLModule(RLModule):
 @ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in multi-agent case) easier.
+    """A utility spec class to make it constructing MARL modules easier.
+
+
+    Users can extend this class to modify the behavior of base class. For example to 
+    share neural networks across the modules, the build method can be overriden to 
+    create the shared module first and then pass it to custom module classes that would 
+    then use it as a shared module.
 
     Args:
-        module_class: ...
-        module_specs: ...
+        marl_module_class: The class of the multi-agent RLModule to construct. By 
+            default it is set to MultiAgentRLModule class. This class simply loops 
+            throught each module and calls their foward methods.
+        module_specs: The module specs for each individual module. It can be either a 
+            SingleAgentRLModuleSpec used for all module_ids or a dictionary mapping 
+            from module IDs to SingleAgentRLModuleSpecs for each individual module.
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
@@ -468,6 +478,13 @@ class MultiAgentRLModuleSpec:
         Note: If when build is called the module_specs is not a dictionary, it will
         raise an error, since it should have been updated by the caller to inform us
         about the module_ids.
+
+        Args:
+            module_id: The module_id of the single-agent module to build. If None, it
+                builds the multi-agent module.
+        
+        Returns: 
+            The built module. If module_id is None, it returns the multi-agent module.
         """
 
         self._check_before_build()

@@ -136,6 +136,7 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
     def build(self, module_id: Optional[ModuleID] = None):
 
+        self._check_before_build()
         # constructing the global encoder based on the observation_space of the first
         # module
         module_spec = next(iter(self.module_specs.values()))
