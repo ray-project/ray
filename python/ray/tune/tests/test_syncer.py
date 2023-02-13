@@ -4,12 +4,11 @@ import shutil
 import subprocess
 import tempfile
 import time
-from pathlib import Path
 from typing import List, Optional
 from unittest.mock import patch
 
-import pytest
 import boto3
+import pytest
 from freezegun import freeze_time
 
 import ray
@@ -79,8 +78,6 @@ def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
     with simulate_storage("s3", root=bucket_name, port=port, region=region) as s3_uri:
-        import boto3
-
         s3 = boto3.client(
             "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
         )
