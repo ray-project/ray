@@ -297,7 +297,7 @@ class _TorchAccelerator(Accelerator):
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
         rank = session.get_local_rank()
-        device = self.get_device()
+        device = get_device()
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
@@ -477,7 +477,7 @@ class _TorchAccelerator(Accelerator):
             data_loader = with_sampler(data_loader)
 
         if move_to_device:
-            device = self.get_device()
+            device = get_device()
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
