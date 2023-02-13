@@ -166,4 +166,4 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
                 action_dim=module_spec.action_space.n,
             )
 
-        return self.module_class(rl_modules)
+        return self.marl_module_class(rl_modules)

@@ -134,6 +134,7 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
 
     def build(self, module_id: Optional[ModuleID] = None):
 
+        self._check_before_build()
         # constructing the global encoder based on the observation_space of the first
         # module
         module_spec = next(iter(self.module_specs.values()))
@@ -162,4 +163,4 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
                 action_dim=module_spec.action_space.n,
             )
 
-        return self.module_class(rl_modules)
+        return self.marl_module_class(rl_modules)

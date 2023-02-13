@@ -22,10 +22,7 @@ from ray.rllib.core.rl_trainer.trainer_runner_config import (
     ModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
-    MultiAgentRLModule,
-)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -2699,36 +2696,22 @@ class AlgorithmConfig:
         # If the module is single-agent convert it to multi-agent spec
         if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
             marl_module_spec = MultiAgentRLModuleSpec(
-                module_class=MultiAgentRLModule,
-                module_specs={k: marl_module_spec for k in policy_dict.keys()},
+                module_specs={
+                    k: copy.deepcopy(marl_module_spec) for k in policy_dict.keys()
+                },
             )
         elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
 
-            # If the RLModuleSpec is multi-agent then the underlying module_specs
-            # should be empty so that we can auto-fill them based on policy_dict
-            if marl_module_spec.module_specs:
-                raise ValueError(
-                    "The RLModuleSpec is multi-agent but its module_specs is not "
-                    "empty. This is not allowed. Please remove the module_specs "
-                    "from the RLModuleSpec."
-                )
-            else:
-                default_module_spec = self.get_default_rl_module_spec()
+            if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
+                # the individual module specs are not given, it is given as one
+                # SingleAgentRLModuleSpec to be re-used for all
+                marl_module_spec.module_specs = {
+                    k: copy.deepcopy(marl_module_spec.module_specs)
+                    for k in policy_dict.keys()
+                }
 
-                if isinstance(default_module_spec, SingleAgentRLModuleSpec):
-                    # the default module spec is single-agent so we can use it for all
-                    # single agent modules under the MARL spec
-                    marl_module_spec.module_specs = {
-                        k: self.get_default_rl_module_spec() for k in policy_dict.keys()
-                    }
-                elif isinstance(default_module_spec, MultiAgentRLModuleSpec):
-                    # TODO (Kourosh): add unittest coverage for this
-                    # the default module spec is multi-agent so we can iterate through
-                    # its sub-specs and fill out the in-complete MARL spec.
-                    marl_module_spec.module_specs = {
-                        k: default_module_spec.module_specs[k]
-                        for k in default_module_spec.module_specs
-                    }
+            # otherwise it is assumed that the module specs are given as a dict that
+            # match the sampler's policy dict
         else:
             raise ValueError(
                 "RLModuleSpec must be either SingleAgentRLModuleSpec "

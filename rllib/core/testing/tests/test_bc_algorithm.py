@@ -12,7 +12,7 @@ from ray.rllib.core.testing.tf.bc_module import (
     BCTfMultiAgentSpec,
     BCTfRLModuleWithSharedGlobalEncoder,
 )
-
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -80,11 +80,15 @@ class TestRLTrainer(unittest.TestCase):
         for fw in ["torch"]:
             if fw == "torch":
                 spec = BCTorchMultiAgentSpec(
-                    module_class=BCTorchRLModuleWithSharedGlobalEncoder
+                    module_specs=SingleAgentRLModuleSpec(
+                        module_class=BCTorchRLModuleWithSharedGlobalEncoder
+                    )
                 )
             else:
                 spec = BCTfMultiAgentSpec(
-                    module_class=BCTfRLModuleWithSharedGlobalEncoder
+                    module_specs=SingleAgentRLModuleSpec(
+                        module_class=BCTfRLModuleWithSharedGlobalEncoder
+                    )
                 )
 
             policies = {"policy_1", "policy_2"}
@@ -116,13 +120,14 @@ class TestRLTrainer(unittest.TestCase):
                 .experimental(_disable_preprocessor_api=True)
             )
             algo = config.build()
-            policy = algo.get_policy()
-            rl_module = policy.model
+            for policy_id in policies:
+                policy = algo.get_policy(policy_id=policy_id)
+                rl_module = policy.model
 
-            if fw == "torch":
-                assert isinstance(rl_module, BCTorchRLModuleWithSharedGlobalEncoder)
-            elif fw == "tf":
-                assert isinstance(rl_module, BCTfRLModuleWithSharedGlobalEncoder)
+                if fw == "torch":
+                    assert isinstance(rl_module, BCTorchRLModuleWithSharedGlobalEncoder)
+                elif fw == "tf":
+                    assert isinstance(rl_module, BCTfRLModuleWithSharedGlobalEncoder)
 
 
 if __name__ == "__main__":
