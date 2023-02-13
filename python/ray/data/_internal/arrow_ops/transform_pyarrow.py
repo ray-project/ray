@@ -70,11 +70,9 @@ def unify_schemas(
     if any(isinstance(type_, pyarrow.ExtensionType) for type_ in schemas[0].types):
         # If we have pyarrow extension types that may potentially be variable shaped,
         # examine the first schema to gather the columns that need type conversions.
-        # for col_idx in range(len(schemas[0].types)):
         for col_field in schemas[0]:
             col_name, col_type = col_field.name, col_field.type
             tensor_array_types = [
-                # s.types[col_idx]
                 s.field(col_name).type
                 for s in schemas
                 if isinstance(s.field(col_name).type, pyarrow.ExtensionType)
@@ -99,20 +97,14 @@ def unify_schemas(
         # a valid value_type that can be used to override the column types in
         # the following for-loop.
         for col_name in cols_with_null_list:
-            # scalar_type = None
             for schema in schemas:
                 col_type = schema.field(col_name).type
                 if not pa.types.is_list(col_type) or not pa.types.is_null(
                     col_type.value_type
                 ):
                     if col_type is not None:
-                        # col_idx = schema.get_field_index(col_name)
                         schema_tensor_field_overrides[col_name] = col_type
-                        # scalar_type = col_type
                         break
-            # if scalar_type is not None:
-            #     col_idx = schema.get_field_index(col_name)
-            #     schema_tensor_field_overrides[col_idx] = scalar_type
 
     if schema_tensor_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
@@ -125,13 +117,6 @@ def unify_schemas(
     else:
         schemas_to_unify = schemas
     # Let Arrow unify the schema of non-tensor extension type columns.
-    if (
-        "int_empty" in cols_with_null_list
-        or "float_empty" in cols_with_null_list
-        or "bytes_empty" in cols_with_null_list
-    ):
-        print("===> schemas_to_unify in unify_schemas: {schemas_to_unify}")
-        # raise Exception(f"===> schemas_to_unify in unify_schemas: {schemas_to_unify}")
     return pyarrow.unify_schemas(schemas_to_unify)
 
 
@@ -174,12 +159,6 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     )
     import pyarrow as pa
 
-    print(
-        "===> concat start blocks:",
-    )
-    for b in blocks:
-        print("===> block schema:", b.schema)
-
     if not blocks:
         # Short-circuit on empty list of blocks.
         return blocks
@@ -195,7 +174,6 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
-    print("===> cols_with_null_list:", cols_with_null_list)
     schema = blocks[0].schema
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
@@ -205,7 +183,6 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         cols = []
         for col_name in schema.names:
             col_chunked_arrays = []
-            print(f"===> col_name {col_name} in schema {schema}")
             for block in blocks:
                 col_chunked_arrays.append(block.column(col_name))
             if isinstance(
@@ -238,14 +215,12 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                         if not pa.types.is_list(c.type) or not pa.types.is_null(
                             c.type.value_type
                         ):
-                            col_chunked_arrays[c_idx] = c
+                            continue
                         elif pa.types.is_null(c.type.value_type):
                             if pa.types.is_list(scalar_type):
                                 # If we are dealing with a list input,
                                 # cast the array to the scalar_type found above.
-                                col_chunked_arrays[c_idx] = col_chunked_arrays[
-                                    c_idx
-                                ].cast(scalar_type)
+                                col_chunked_arrays[c_idx] = c.cast(scalar_type)
                             else:
                                 # If we are dealing with a single value, construct
                                 # a new array with null values filled.
@@ -253,17 +228,10 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                                     [pa.nulls(c.length(), type=scalar_type)]
                                 )
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
-            print(
-                "===> concat end of for loop blocks:",
-            )
-            for b in blocks:
-                print("===> block schema:", b.schema)
             cols.append(col)
 
         # If the result contains pyarrow schemas, unify them
         schemas_to_unify = [b.schema for b in blocks]
-        print("===> columns before unification:", cols)
-        print("===> schemas_to_unify:", schemas_to_unify)
         if pyarrow is not None and any(
             isinstance(s, pyarrow.Schema) for s in schemas_to_unify
         ):

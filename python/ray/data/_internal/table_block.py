@@ -97,11 +97,8 @@ class TableBlockBuilder(BlockBuilder[T]):
         else:
             tables = []
         tables.extend(self._tables)
-        print("===> calling _concat_tables in build() on:", tables)
         if len(tables) > 0:
-            x = self._concat_tables(tables)
-            print("===> concated table:", x)
-            return x
+            return self._concat_tables(tables)
         else:
             return self._empty_table()
 
