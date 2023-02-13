@@ -18,9 +18,9 @@ from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
-    HOSTNAME,
-    NODE_IP,
-    PID,
+    WORKER_HOSTNAME,
+    WORKER_NODE_IP,
+    WORKER_PID,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
@@ -229,9 +229,9 @@ class _TrainSession:
         auto_filled_metrics = {
             TIMESTAMP: int(time.mktime(current_datetime.timetuple())),
             TIME_TOTAL_S: self.time_total,
-            PID: os.getpid(),
-            HOSTNAME: platform.node(),
-            NODE_IP: self.local_ip,
+            WORKER_PID: os.getpid(),
+            WORKER_HOSTNAME: platform.node(),
+            WORKER_NODE_IP: self.local_ip,
         }
 
         if not self.detailed_autofilled_metrics:
