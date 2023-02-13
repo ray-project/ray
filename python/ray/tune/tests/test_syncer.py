@@ -644,7 +644,7 @@ def test_syncer_serialize(temp_data_dirs):
     pickle.dumps(syncer)
 
 
-def test_final_experiment_checkpoint_sync(tmpdir):
+def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
     class SlowSyncer(_DefaultSyncer):
         def __init__(self, **kwargs):
             super(_DefaultSyncer, self).__init__(**kwargs)
