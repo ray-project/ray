@@ -6,6 +6,8 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         RAY_IGNORE_UNHANDLED_ERRORS=1 \
         RAY_ADDRESS="nexus.chimp-beta.ts.net:6379" \
         RAY_CLIENT_RECONNECT_GRACE_PERIOD=60 \
+        RAY_memory_monitor_refresh_ms=0 \
+        RAY_record_ref_creation_sites=1 \
         TZ=America/Los_Angeles \
         NODETYPE=edge \
         TSKEY="" \
@@ -18,7 +20,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HEAP_DUMP_PATH="/data/crate/data" \
         CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS" \
         PATH=/crate/bin/:$PATH \
-        CRATE_HEAP_SIZE=5G \
+        CRATE_HEAP_SIZE="5G" \
         IPv6=false \
         DISABLE_IPV6=true \
         CRATE_HOME=/crate/bin/ \
@@ -36,6 +38,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 RUN $HOME/anaconda3/bin/pip install -q --no-cache-dir -U pip \
     pandas \
+    auto-sklearn \
+    pandas_datareader \
     'dask==2022.2.0' \
     modin[dask] \
     modin[ray] \
@@ -46,7 +50,6 @@ RUN $HOME/anaconda3/bin/pip install -q --no-cache-dir -U pip \
     numpy \
     datetime \
     icecream \
-    crate \
     geojson \
     sqlalchemy \
     crate[sqlalchemy] \
@@ -114,5 +117,5 @@ RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/mast
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=60s --timeout=15s --start-period=300s \
-CMD curl -s localhost:4200 | jq -r '.ok' | grep -q true && ray list nodes -f NODE_NAME=$HOSTNAME.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE
+CMD curl -s localhost:4200 | jq -r '.ok' | grep -q true && ray list nodes -f NODE_NAME=$HOSTNAME.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE || exit 1
 #CMD sh /home/ray/run_tests.sh
