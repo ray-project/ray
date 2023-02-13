@@ -34,18 +34,6 @@ class DiscreteBCTFModule(TfRLModule):
         self._input_dim = input_dim
 
     @override(RLModule)
-    def input_specs_exploration(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
         return ["action_dist"]
 
@@ -96,7 +84,7 @@ class DiscreteBCTFModule(TfRLModule):
 
         config = {
             "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config["hidden_dim"],
+            "hidden_dim": model_config["fcnet_hiddens"][0],
             "output_dim": action_space.n,
         }
 
@@ -151,7 +139,7 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
         # module
         module_spec = next(iter(self.module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["hidden_dim"]
+        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
         shared_encoder = tf.keras.Sequential(
             [
                 tf.keras.Input(shape=(global_dim,)),
