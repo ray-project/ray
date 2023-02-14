@@ -872,7 +872,7 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None):
+    def reset(self, new_config, logger_creator=None, remote_checkpoint_dir=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
@@ -914,6 +914,7 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
+        self.remote_checkpoint_dir = remote_checkpoint_dir
         self._restored = False
 
         return True
