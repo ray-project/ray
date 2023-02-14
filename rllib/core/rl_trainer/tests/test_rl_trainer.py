@@ -22,7 +22,7 @@ def get_trainer() -> RLTrainer:
             module_class=DiscreteBCTFModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"hidden_dim": 32},
+            model_config={"fcnet_hiddens": [32]},
         ),
         optimizer_config={"lr": 1e-3},
         trainer_scaling_config=TrainerScalingConfig(),
@@ -94,7 +94,7 @@ class TestRLTrainer(unittest.TestCase):
         params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
         n_steps = 100
         expected = [
-            param - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
+            param - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
@@ -127,7 +127,7 @@ class TestRLTrainer(unittest.TestCase):
                 module_class=DiscreteBCTFModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"hidden_dim": 16},
+                model_config={"fcnet_hiddens": [16]},
             ),
             set_optimizer_fn=set_optimizer_fn,
         )

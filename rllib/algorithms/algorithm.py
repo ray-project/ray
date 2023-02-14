@@ -35,14 +35,8 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
-    MultiAgentRLModule,
-)
-
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -98,6 +92,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
@@ -698,20 +693,7 @@ class Algorithm(Trainable):
             # the two we need to loop through the policy modules and create a simple
             # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            module_specs = {}
-
-            for pid, policy in local_worker.policy_map.items():
-                module_specs[pid] = SingleAgentRLModuleSpec(
-                    module_class=policy.config["rl_module_class"],
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config=policy.config["model"],
-                )
-
-            module_spec = MultiAgentRLModuleSpec(
-                module_class=MultiAgentRLModule, module_specs=module_specs
-            )
-
+            module_spec = local_worker.marl_module_spec
             trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()
 
@@ -1339,14 +1321,16 @@ class Algorithm(Trainable):
             The results dict from executing the training iteration.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self.config.count_steps_by == "agent_steps":
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config.train_batch_size
-            )
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -2357,12 +2341,13 @@ class Algorithm(Trainable):
         self,
         now: Optional[datetime] = None,
         time_this_iter: Optional[float] = None,
+        timestamp: Optional[int] = None,
         debug_metrics_only: bool = False,
     ) -> dict:
         # Override this method to make sure, the `config` key of the returned results
         # contains the proper Tune config dict (instead of an AlgorithmConfig object).
         auto_filled = super().get_auto_filled_metrics(
-            now, time_this_iter, debug_metrics_only
+            now, time_this_iter, timestamp, debug_metrics_only
         )
         if "config" not in auto_filled:
             raise KeyError("`config` key not found in auto-filled results dict!")
