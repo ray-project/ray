@@ -17,6 +17,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_rl_trainer_config import PPORLTrainerHPs
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -43,7 +44,6 @@ from ray.rllib.utils.metrics import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module import RLModule
     from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 
 
@@ -122,17 +122,17 @@ class PPOConfig(PGConfig):
         self.vf_share_layers = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
+    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
             )
 
-            return PPOTorchRLModule
+            return SingleAgentRLModuleSpec(module_class=PPOTorchRLModule)
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return PPOTfRLModule
+            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 

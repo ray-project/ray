@@ -16,12 +16,13 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
 from ray.rllib.core.rl_trainer.trainer_runner_config import (
     TrainerRunnerConfig,
     ModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -91,7 +92,6 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.core.rl_module import RLModule
     from ray.rllib.core.rl_trainer import RLTrainer
 
 logger = logging.getLogger(__name__)
@@ -406,7 +406,7 @@ class AlgorithmConfig:
         self.worker_cls = None
 
         # `self.rl_module()`
-        self.rl_module_class = None
+        self.rl_module_spec = None
         self._enable_rl_module_api = False
 
         # `self.experimental()`
@@ -879,10 +879,16 @@ class AlgorithmConfig:
                 # compatibility for now. User only needs to set num_rollout_workers.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
-        # resolve rl_module class
-        if self._enable_rl_module_api and self.rl_module_class is None:
-            rl_module_class_path = self.get_default_rl_module_class()
-            self.rl_module_class = _resolve_class_path(rl_module_class_path)
+        # resolve rl_module_spec class
+        if self._enable_rl_module_api and self.rl_module_spec is None:
+            self.rl_module_spec = self.get_default_rl_module_spec()
+            if not isinstance(
+                self.rl_module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)
+            ):
+                raise ValueError(
+                    "rl_module_spec must be an instance of "
+                    "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+                )
 
         # make sure the resource requirements for trainer runner is valid
         if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
@@ -2170,22 +2176,26 @@ class AlgorithmConfig:
     def rl_module(
         self,
         *,
-        rl_module_class: Optional[Type["RLModule"]] = NotProvided,
+        rl_module_spec: Optional[ModuleSpec] = NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
-            rl_module_class: The RLModule class to use for this config.
+            rl_module_spec: The RLModule spec to use for this config. It can be either
+                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
+                observation_space, action_space, or the model_config is not specified
+                it will be inferred from the env and other parts of the algorithm
+                config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
-                By default if you call `config.rl_module(rl_module=MyRLModule)`, the
+                By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
         Returns:
             This updated AlgorithmConfig object.
         """
-        if rl_module_class is not NotProvided:
-            self.rl_module_class = rl_module_class
+        if rl_module_spec is not NotProvided:
+            self.rl_module_spec = rl_module_spec
 
         if self._enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
@@ -2641,15 +2651,14 @@ class AlgorithmConfig:
                     f"{suggested_rollout_fragment_length}."
                 )
 
-    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
-        """Returns the RLModule class to use for this algorithm.
+    def get_default_rl_module_spec(self) -> ModuleSpec:
+        """Returns the RLModule spec to use for this algorithm.
 
-        Override this method in the sub-class to return the RLModule class type given
+        Override this method in the sub-class to return the RLModule spec given
         the input framework.
 
         Returns:
-            The RLModule class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCModule).
+            The RLModule spec to use for this algorithm.
         """
         raise NotImplementedError
 
@@ -2665,25 +2674,72 @@ class AlgorithmConfig:
         """
         raise NotImplementedError
 
-    def get_trainer_runner_config(
-        self, module_spec: Optional[ModuleSpec] = None
-    ) -> TrainerRunnerConfig:
+    def get_marl_module_spec(
+        self,
+        policy_dict: Dict[str, PolicySpec],
+        policies_to_train: Callable[[PolicyID, SampleBatchType], bool],
+    ) -> MultiAgentRLModuleSpec:
+        """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
-        if module_spec is None:
-            module_spec = SingleAgentRLModuleSpec()
+        Args:
+            policy_dict: The policy spec dict. Using this dict, we can determine the
+                inferred values for observation_space, action_space, and config for
+                each policy. If the module spec does not have these values specified,
+                they will get auto-filled with these values obtrained from the policy
+                spec dict. Here we are relying on the policy's logic for infering these
+                values from other sources of information (e.g. environement)
+            policies_to_train: The policies to train. This can be optionally used to
+                construct the MultiAgentRLModuleSpec (if necessary).
+        """
+        # TODO (Kourosh): When we replace policy entirely there will be no need for
+        # this function to map policy_dict to marl_module_specs anymore. The module
+        # spec will be directly given by the user or inferred from env and spaces.
 
-        if isinstance(module_spec, SingleAgentRLModuleSpec):
-            if module_spec.module_class is None:
-                module_spec.module_class = self.rl_module_class
+        # If the module is single-agent convert it to multi-agent spec
+        if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
+            marl_module_spec = MultiAgentRLModuleSpec(
+                module_specs={
+                    k: copy.deepcopy(self.rl_module_spec) for k in policy_dict.keys()
+                },
+            )
+        elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
+            marl_module_spec = self.rl_module_spec
+
+            if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
+                # the individual module specs are not given, it is given as one
+                # SingleAgentRLModuleSpec to be re-used for all
+                marl_module_spec.module_specs = {
+                    k: copy.deepcopy(marl_module_spec.module_specs)
+                    for k in policy_dict.keys()
+                }
+
+            # otherwise it is assumed that the module specs are given as a dict that
+            # match the sampler's policy dict
+        else:
+            raise ValueError(
+                "RLModuleSpec must be either SingleAgentRLModuleSpec "
+                "or MultiAgentRLModuleSpec!"
+            )
+
+        # Make sure that policy_dict and marl_module_spec have similar keys
+        if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
+            raise ValueError("Policy dict and module spec have different keys!")
+
+        # fill in the missing values from the module spec
+        for module_id in policy_dict:
+            policy_spec = policy_dict[module_id]
+            module_spec = marl_module_spec.module_specs[module_id]
 
             if module_spec.observation_space is None:
-                module_spec.observation_space = self.observation_space
-
+                module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
-                module_spec.action_space = self.action_space
-
+                module_spec.action_space = policy_spec.action_space
             if module_spec.model_config is None:
-                module_spec.model_config = self.model
+                module_spec.model_config = policy_spec.config.get("model", {})
+
+        return marl_module_spec
+
+    def get_trainer_runner_config(self, module_spec: ModuleSpec) -> TrainerRunnerConfig:
 
         if not self._is_frozen:
             raise ValueError(

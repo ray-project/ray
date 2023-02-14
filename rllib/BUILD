@@ -3867,7 +3867,7 @@ py_test(
 py_test(
     name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch",
     main = "examples/rl_trainer/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples", "no-gpu"],
+    tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/rl_trainer/multi_agent_cartpole_ppo.py"],
     args = ["--as-test", "--framework=torch", "--num-gpus=0"]
@@ -3886,7 +3886,7 @@ py_test(
 py_test(
     name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch_multi_gpu",
     main = "examples/rl_trainer/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples", "multi-gpu"],
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "medium",
     srcs = ["examples/rl_trainer/multi_agent_cartpole_ppo.py"],
     args = ["--as-test", "--framework=torch", "--num-gpus=2"]
