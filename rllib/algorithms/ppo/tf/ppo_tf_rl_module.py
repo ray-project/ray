@@ -6,7 +6,7 @@ import tree
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.configs import (
-    MLPModelConfig,
+    MLPHeadConfig,
     MLPEncoderConfig,
     ActorCriticEncoderConfig,
     LSTMEncoderConfig,
@@ -256,12 +256,12 @@ class PPOTfRLModule(TfRLModule):
             base_encoder_config=base_encoder_config
         )
 
-        pi_config = MLPModelConfig(
+        pi_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
             hidden_layer_dims=[32],
             hidden_layer_activation="relu",
         )
-        vf_config = MLPModelConfig(
+        vf_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
             hidden_layer_dims=[32, 1],
             hidden_layer_activation="relu",

@@ -1,18 +1,20 @@
+from typing import Union
+
 import torch
 import torch.nn as nn
 import tree
 
-from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.base import (
     Encoder,
+    ActorCriticEncoder,
     STATE_IN,
     STATE_OUT,
     ENCODER_OUT,
-    ACTOR,
-    CRITIC,
 )
-from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.torch.base import TorchModel
+from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
@@ -34,8 +36,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
             hidden_layer_activation=config.hidden_layer_activation,
         )
 
-        # Define the input spec
-        self.input_spec = SpecDict(
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return SpecDict(
             {
                 SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim),
                 STATE_IN: None,
@@ -43,8 +46,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
             }
         )
 
-        # Define the output spec
-        self.output_spec = SpecDict(
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim),
                 STATE_OUT: None,
@@ -53,10 +57,12 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return {
-            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-            STATE_OUT: inputs[STATE_IN],
-        }
+        return NestedDict(
+            {
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
+            }
+        )
 
 
 class TorchLSTMEncoder(TorchModel, Encoder):
@@ -74,33 +80,35 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         )
         self.linear = nn.Linear(config.hidden_dim, config.output_dim)
 
-        # Define the input spec
-        self.input_spec = SpecDict(
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
-                SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
+                SampleBatch.OBS: TorchTensorSpec("bxt, h", h=self.config.input_dim),
                 STATE_IN: {
                     "h": TorchTensorSpec(
-                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
                     ),
                     "c": TorchTensorSpec(
-                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
                     ),
                 },
                 SampleBatch.SEQ_LENS: None,
             }
         )
 
-        # Define the output spec
-        self.output_spec = SpecDict(
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
+                ENCODER_OUT: TorchTensorSpec("bxt, h", h=self.config.output_dim),
                 STATE_OUT: {
                     "h": TorchTensorSpec(
-                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
                     ),
                     "c": TorchTensorSpec(
-                        "b, l, h", h=config.hidden_dim, l=config.num_layers
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
                     ),
                 },
             }
@@ -149,7 +157,9 @@ class TorchIdentityEncoder(TorchModel, Encoder):
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        self.input_spec = SpecDict(
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return SpecDict(
             # Use the output dim as input dim because identity.
             {
                 SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.output_dim),
@@ -158,7 +168,9 @@ class TorchIdentityEncoder(TorchModel, Encoder):
             }
         )
 
-        self.output_spec = SpecDict(
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim),
                 STATE_OUT: None,
@@ -167,102 +179,20 @@ class TorchIdentityEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
+        return NestedDict(
+            {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
+        )
 
 
-class TorchActorCriticEncoder(TorchModel, Encoder):
-    """An encoder that potentially holds two encoders.
+class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
+    """An actor-critic encoder for torch."""
 
-    This is a special case of encoder that potentially holds two encoders:
-    One for the actor and one for the critic. If not, it will use the same encoder
-    for both. The two encoders are of the same type and we can therefore make the
-    assumption that they have the same input and output specs.
-    """
+    framework = "torch"
 
     def __init__(self, config: ModelConfig) -> None:
-        TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
-
-        if self.config.shared:
-            self.encoder = self.config.base_encoder_config.build(framework="torch")
-        else:
-            self.actor_encoder = self.config.base_encoder_config.build(
-                framework="torch"
-            )
-            self.critic_encoder = self.config.base_encoder_config.build(
-                framework="torch"
-            )
-
-        if self.config.shared:
-            self.input_spec = self.encoder.input_spec
-        else:
-            actor_input_spec = self.actor_encoder.input_spec
-            critic_input_spec = self.critic_encoder.input_spec
-            assert actor_input_spec == critic_input_spec
-            # We only make assumptions about OBS, STATE_IN and SEQ_LENS here.
-            # By extending this class, one could feed inputs that hold more keys.
-
-            self.input_spec = SpecDict(
-                {
-                    SampleBatch.OBS: actor_input_spec[SampleBatch.OBS],
-                    STATE_IN: {
-                        ACTOR: actor_input_spec[STATE_IN],
-                        CRITIC: critic_input_spec[STATE_IN],
-                    },
-                    SampleBatch.SEQ_LENS: actor_input_spec[SampleBatch.SEQ_LENS],
-                }
-            )
-
-        if self.config.shared:
-            state_out_spec = self.encoder.output_spec[STATE_OUT]
-            actor_out_spec = self.encoder.output_spec[ENCODER_OUT]
-            critic_out_spec = self.encoder.output_spec[ENCODER_OUT]
-        else:
-            state_out_spec = {
-                ACTOR: self.actor_encoder.output_spec[STATE_OUT],
-                CRITIC: self.critic_encoder.output_spec[STATE_OUT],
-            }
-            actor_out_spec = self.actor_encoder.output_spec[ENCODER_OUT]
-            critic_out_spec = self.critic_encoder.output_spec[ENCODER_OUT]
-            assert actor_out_spec == critic_out_spec
-
-        self.output_spec = {
-            ENCODER_OUT: {ACTOR: actor_out_spec, CRITIC: critic_out_spec},
-            STATE_OUT: state_out_spec,
-        }
-
-    @override(Model)
-    def get_initial_state(self):
-        if self.config.shared:
-            return self.encoder.get_initial_state()
-        else:
-            return {
-                ACTOR: self.actor_encoder.get_initial_state(),
-                CRITIC: self.critic_encoder.get_initial_state(),
-            }
-
-    @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        if self.config.shared:
-            outs = self.encoder(inputs, **kwargs)
-            return {
-                ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
-                STATE_OUT: outs[STATE_OUT],
-            }
-        else:
-            actor_inputs = NestedDict({**inputs, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
-            critic_inputs = NestedDict(
-                {**inputs, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
-            )
-            actor_out = self.actor_encoder(actor_inputs, **kwargs)
-            critic_out = self.critic_encoder(critic_inputs, **kwargs)
-            return {
-                ENCODER_OUT: {
-                    ACTOR: actor_out[ENCODER_OUT],
-                    CRITIC: critic_out[ENCODER_OUT],
-                },
-                STATE_OUT: {
-                    ACTOR: actor_out[STATE_OUT],
-                    CRITIC: critic_out[STATE_OUT],
-                },
-            }
+        # ActorCriticEncoder.__init__() has to go before TorchModel.__init__()
+        # because it adds sub-modules to this nn.Module. We there must skip the
+        # nn.Module.__init__() call in TorchModel.__init__().
+        nn.Module.__init__(self)
+        ActorCriticEncoder.__init__(self, config)
+        TorchModel.__init__(self, config, skip_nn_module_init=True)

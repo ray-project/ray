@@ -8,7 +8,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
 from ray.rllib.core.models.configs import (
-    MLPModelConfig,
+    MLPHeadConfig,
     MLPEncoderConfig,
     ActorCriticEncoderConfig,
 )
@@ -61,9 +61,9 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
             only has an effect is using the default fully connected net.
     """
 
-    encoder_config: MLPModelConfig = None
-    pi_config: MLPModelConfig = None
-    vf_config: MLPModelConfig = None
+    encoder_config: MLPEncoderConfig = None
+    pi_config: MLPHeadConfig = None
+    vf_config: MLPHeadConfig = None
     free_log_std: bool = False
 
 
@@ -137,12 +137,12 @@ class PPOTorchRLModule(TorchRLModule):
             base_encoder_config=base_encoder_config
         )
 
-        pi_config = MLPModelConfig(
+        pi_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
             hidden_layer_dims=[32],
             hidden_layer_activation="relu",
         )
-        vf_config = MLPModelConfig(
+        vf_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
             hidden_layer_dims=[32, 1],
             hidden_layer_activation="relu",

@@ -4,8 +4,11 @@ from typing import List, Union
 
 from ray.rllib import SampleBatch
 from ray.rllib.models.specs.specs_base import Spec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.models.specs.checker import convert_to_canonical_format
 from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.
@@ -25,7 +28,7 @@ class ModelConfig(abc.ABC):
     ModelConfigs are framework-agnostic.
     A ModelConfig is usually built by RLModules after getting it from a Catalog object.
     It is therefore a means of configuration for RLModules. However, ModelConfigs are
-    not tied to usage with Catalog or RLModules.
+    not restricted to be used only with Catalog or RLModules.
     A usage Example together with a Model can be found in the Model.
 
     Attributes:
@@ -237,10 +240,13 @@ class Encoder(Model, abc.ABC):
 
     """
 
-    def __init__(self, config: ModelConfig):
-        super().__init__(config)
-        self.input_spec = [SampleBatch.OBS, STATE_IN]
-        self.output_spec = [ENCODER_OUT, STATE_OUT]
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
 
     @abc.abstractmethod
     def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
@@ -263,3 +269,112 @@ class Encoder(Model, abc.ABC):
             NestedDict: The output tensors.
         """
         raise NotImplementedError
+
+
+class ActorCriticEncoder(Encoder):
+    """An encoder that potentially holds two encoders.
+
+    This is a special case of encoder that can either enclose a single,
+    shared encoder or two separate encoders: One for the actor and one for the
+    critic. The two encoders are of the same type and we can therefore make the
+    assumption that they have the same input and output specs.
+    """
+
+    framework = None
+
+    def __init__(self, config: ModelConfig) -> None:
+        if config.shared:
+            self.encoder = config.base_encoder_config.build(framework=self.framework)
+        else:
+            self.actor_encoder = config.base_encoder_config.build(
+                framework=self.framework
+            )
+            self.critic_encoder = config.base_encoder_config.build(
+                framework=self.framework
+            )
+
+        # We need to call Encoder.__init__() after initializing the encoder(s) in
+        # order to build on their specs.
+        super().__init__(config)
+
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        if self.config.shared:
+            state_in_spec = self.encoder.input_spec[STATE_IN]
+        else:
+            state_in_spec = NestedDict(
+                {
+                    ACTOR: self.actor_encoder.input_spec[STATE_IN],
+                    CRITIC: self.critic_encoder.input_spec[STATE_IN],
+                }
+            )
+
+        return SpecDict(
+            {
+                SampleBatch.OBS: None,
+                STATE_IN: state_in_spec,
+                SampleBatch.SEQ_LENS: None,
+            }
+        )
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        if self.config.shared:
+            state_out_spec = self.encoder.output_spec[STATE_OUT]
+        else:
+            state_out_spec = NestedDict(
+                {
+                    ACTOR: self.actor_encoder.output_spec[STATE_OUT],
+                    CRITIC: self.critic_encoder.output_spec[STATE_OUT],
+                }
+            )
+
+        return SpecDict(
+            {
+                ENCODER_OUT: {
+                    ACTOR: None,
+                    CRITIC: None,
+                },
+                STATE_OUT: state_out_spec,
+            }
+        )
+
+    @override(Model)
+    def get_initial_state(self):
+        if self.config.shared:
+            return self.encoder.get_initial_state()
+        else:
+            return {
+                ACTOR: self.actor_encoder.get_initial_state(),
+                CRITIC: self.critic_encoder.get_initial_state(),
+            }
+
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        if self.config.shared:
+            outs = self.encoder(inputs, **kwargs)
+            return NestedDict(
+                {
+                    ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
+                    STATE_OUT: outs[STATE_OUT],
+                }
+            )
+        else:
+            actor_inputs = NestedDict({**inputs, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            critic_inputs = NestedDict(
+                {**inputs, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+            )
+            actor_out = self.actor_encoder(actor_inputs, **kwargs)
+            critic_out = self.critic_encoder(critic_inputs, **kwargs)
+            return NestedDict(
+                {
+                    ENCODER_OUT: {
+                        ACTOR: actor_out[ENCODER_OUT],
+                        CRITIC: critic_out[ENCODER_OUT],
+                    },
+                    STATE_OUT: {
+                        ACTOR: actor_out[STATE_OUT],
+                        CRITIC: critic_out[STATE_OUT],
+                    },
+                }
+            )

@@ -1859,17 +1859,17 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_encoder",
+    name = "test_torch_mlp_encoder",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/torch/tests/test_encoder.py"]
+    srcs = ["core/models/torch/tests/test_mlp_encoder.py"]
 )
 
 py_test(
-    name = "test_torch_mlp",
+    name = "test_torch_mlp_head",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/torch/tests/test_mlp.py"]
+    srcs = ["core/models/torch/tests/test_mlp_head.py"]
 )
 
 py_test(

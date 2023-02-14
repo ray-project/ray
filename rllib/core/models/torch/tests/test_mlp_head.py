@@ -1,16 +1,14 @@
 import unittest
 import itertools
 
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.core.models.configs import MLPEncoderConfig
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT, ENCODER_OUT
+from ray.rllib.core.models.configs import MLPHeadConfig
 
 torch, nn = try_import_torch()
 
 
-class TestTorchEncoders(unittest.TestCase):
-    def test_torch_mlp_encoder(self):
+class TestTorchMLPHead(unittest.TestCase):
+    def test_torch_mlp_head(self):
 
         inputs_dims = [1, 2, 1000]
 
@@ -46,7 +44,7 @@ class TestTorchEncoders(unittest.TestCase):
                 f"output_dims: {output_dims}\n"
             )
 
-            config = MLPEncoderConfig(
+            config = MLPHeadConfig(
                 input_dim=inputs_dim,
                 hidden_layer_dims=hidden_layer_dims,
                 output_dim=output_dims,
@@ -56,16 +54,11 @@ class TestTorchEncoders(unittest.TestCase):
 
             model = config.build(framework="torch")
 
-            obs = torch.randn(1, inputs_dim)
-            seq_lens = torch.tensor([1])
-            state = None
+            inputs = torch.randn(1, inputs_dim)
 
-            outputs = model(
-                {SampleBatch.OBS: obs, SampleBatch.SEQ_LENS: seq_lens, STATE_IN: state}
-            )
+            outputs = model(inputs)
 
-            self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims))
-            self.assertEqual(outputs[STATE_OUT], None)
+            self.assertEqual(outputs.shape, (1, output_dims))
 
 
 if __name__ == "__main__":

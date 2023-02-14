@@ -66,12 +66,12 @@ def _convert_to_lower_case_if_tf(string: str, framework: str) -> str:
 
 @ExperimentalAPI
 @dataclass
-class MLPModelConfig(ModelConfig):
+class MLPHeadConfig(ModelConfig):
     """Configuration for a fully connected network.
 
     See ModelConfig for usage details.
 
-    Atributes:
+    Attributes:
         input_dim: The input dimension of the network. It cannot be None.
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer (
@@ -95,35 +95,43 @@ class MLPModelConfig(ModelConfig):
         )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchMLPModel
+            from ray.rllib.core.models.torch.mlp import TorchMLPHead
 
-            return TorchMLPModel(self)
+            return TorchMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfMLPModel
+            from ray.rllib.core.models.tf.mlp import TfMLPHead
 
-            return TfMLPModel(self)
+            return TfMLPHead(self)
 
 
 @ExperimentalAPI
 @dataclass
-class MLPEncoderConfig(MLPModelConfig):
+class MLPEncoderConfig(MLPHeadConfig):
     """Configuration for an MLP that acts as an encoder.
+
+    Although it inherits from MLPHeadConfig, it does not output an MLPHead.
+    This inheritance is solely to unify the configuration options between MLPEncoders
+    and MLPHeads.
 
     See ModelConfig for usage details.
     """
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
+        # Activation functions in TF are lower case
+        self.output_activation = _convert_to_lower_case_if_tf(
+            self.output_activation, framework
+        )
+        self.hidden_layer_activation = _convert_to_lower_case_if_tf(
+            self.hidden_layer_activation, framework
+        )
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
         else:
             from ray.rllib.core.models.tf.encoder import TfMLPEncoder
-
-            # Activation functions in TF are lower case
-            self.output_activation = self.output_activation.lower()
-            self.hidden_layer_activation = self.hidden_layer_activation.lower()
 
             return TfMLPEncoder(self)
 

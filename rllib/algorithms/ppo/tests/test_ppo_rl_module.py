@@ -18,7 +18,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
 )
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
-    MLPModelConfig,
+    MLPHeadConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
 )
@@ -62,12 +62,12 @@ def get_expected_module_config(
 
     encoder_config = ActorCriticEncoderConfig(base_encoder_config=base_encoder_config)
 
-    pi_config = MLPModelConfig(
+    pi_config = MLPHeadConfig(
         input_dim=32,
         hidden_layer_dims=[32],
         hidden_layer_activation="relu",
     )
-    vf_config = MLPModelConfig(
+    vf_config = MLPHeadConfig(
         input_dim=32,
         hidden_layer_dims=[32],
         hidden_layer_activation="relu",

@@ -58,11 +58,21 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     """
 
-    def __init__(self, config: ModelConfig):
-        nn.Module.__init__(self)
+    def __init__(self, config: ModelConfig, skip_nn_module_init=False):
+        """Initialized a TorchModel.
+
+        Args:
+            config: The ModelConfig to use
+            skip_nn_module_init: Whether to skip the call to nn.Module.__init__.
+                This should be used if the child class has called nn.Module.__init__
+                already to avoid deleting sub-modules that were added between the two
+                nn.Module.__init__ calls.
+        """
+        if not skip_nn_module_init:
+            nn.Module.__init__(self)
         Model.__init__(self, config)
 
-        # automatically apply spec checking
+        # Raise errors if forward method is not decorated to check specs.
         if not is_input_decorated(self.forward):
             _raise_not_decorated_exception("input")
         if not is_output_decorated(self.forward):
