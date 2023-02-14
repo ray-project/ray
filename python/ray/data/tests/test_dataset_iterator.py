@@ -44,6 +44,29 @@ def test_tf_conversion(ray_start_regular_shared):
         assert isinstance(row[1], tf.Tensor)
 
 
+def test_tf_conversion_pipeline(ray_start_regular_shared):
+    ds = ray.data.range_table(5).repeat(2)
+    it = ds.iterator()
+    tf_dataset = it.to_tf("value", "value")
+    for i, row in enumerate(tf_dataset):
+        assert all(row[0] == i)
+        assert all(row[1] == i)
+        assert isinstance(row[0], tf.Tensor)
+        assert isinstance(row[1], tf.Tensor)
+
+    # Repeated twice.
+    tf_dataset = it.to_tf("value", "value")
+    for i, row in enumerate(tf_dataset):
+        assert all(row[0] == i)
+        assert all(row[1] == i)
+        assert isinstance(row[0], tf.Tensor)
+        assert isinstance(row[1], tf.Tensor)
+
+    # Fails on third try.
+    with pytest.raises(StopIteration):
+        tf_dataset = it.to_tf("value", "value")
+
+
 def test_torch_conversion(ray_start_regular_shared):
     ds = ray.data.range_table(5)
     it = ds.iterator()
