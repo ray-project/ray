@@ -227,7 +227,7 @@ class TrialRunner:
                 if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
                     logger.error(str(e))
                 logger.exception("Runner restore failed.")
-                if self._fail_fast or True:
+                if self._fail_fast:
                     raise
                 logger.info("Restarting experiment.")
         else:
