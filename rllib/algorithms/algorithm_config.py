@@ -890,7 +890,7 @@ class AlgorithmConfig:
                     "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
                 )
 
-        # make sure the resource requirements for learner_groupis valid
+        # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
