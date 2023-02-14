@@ -3,8 +3,6 @@
 
 # Welcome to the Ray documentation
 
-Ray is an open-source unified framework for scaling AI and Python applications like machine learning. It provides the compute layer for parallel processing so that you don't need to be a distributed systems expert. 
-
 ```{image} https://readthedocs.org/projects/ray/badge/?version=master
 :target: http://docs.ray.io/en/master/?badge=master
 ```
@@ -24,9 +22,6 @@ Ray is an open-source unified framework for scaling AI and Python applications l
 ```{image} https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
 :target: https://twitter.com/raydistributed
 ```
-
-
-## Which resource is right for you?
 
 
 ````{panels}
@@ -56,11 +51,11 @@ Learn how to install Ray, compute an example with the Ray Core API, and use the 
 Learn about the key concepts and features. Get in-depth information about Ray's libraries and tooling.
 +++
 
-{link-badge}`ray-core/user-guide.html,"Core",cls=badge-light`
 {link-badge}`data/user-guide.html,"Data",cls=badge-light`
 {link-badge}`train/user-guides.html,"Train",cls=badge-light`
 {link-badge}`tune/tutorials/overview.html,"Tune",cls=badge-light`
 {link-badge}`serve/tutorials/index.html,"Serve",cls=badge-light`
+{link-badge}`ray-core/user-guide.html,"Core",cls=badge-light`
 {link-badge}`cluster/running-applications/index.html,"Clusters",cls=badge-light`
 ---
 **API reference**
