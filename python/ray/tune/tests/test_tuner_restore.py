@@ -96,7 +96,7 @@ def _train_fn_sometimes_failing(config):
 class _FailOnStats(Callback):
     """Fail when at least num_trials exist and num_finished have finished."""
 
-    def __init__(self, num_trials: int, num_finished: int, delay: int = 1):
+    def __init__(self, num_trials: int, num_finished: int = 0, delay: int = 1):
         self.num_trials = num_trials
         self.num_finished = num_finished
         self.delay = delay
@@ -574,7 +574,7 @@ def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir, caplog):
     with pytest.raises(ValueError):
         tuner = Tuner.restore(
             str(tmpdir / "overwrite_trainable"),
-            overwrite_trainable="__fake",
+            trainable="__fake",
             resume_errored=True,
         )
 
@@ -586,7 +586,7 @@ def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir, caplog):
     with pytest.raises(ValueError):
         tuner = Tuner.restore(
             str(tmpdir / "overwrite_trainable"),
-            overwrite_trainable=train_func_2,
+            trainable=train_func_2,
             resume_errored=True,
         )
 
@@ -599,7 +599,7 @@ def test_restore_overwrite_trainable(ray_start_4_cpus, tmpdir, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
         tuner = Tuner.restore(
             str(tmpdir / "overwrite_trainable"),
-            overwrite_trainable=train_func_1,
+            trainable=train_func_1,
             resume_errored=True,
         )
         assert "The trainable will be overwritten" in caplog.text
@@ -680,7 +680,7 @@ def test_restore_with_parameters(ray_start_4_cpus, tmp_path, use_function_traina
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
         resume_errored=True,
-        overwrite_trainable=create_trainable_with_params(),
+        trainable=create_trainable_with_params(),
     )
     results = tuner.fit()
     assert not results.errors
@@ -1009,6 +1009,86 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         assert not Tuner.can_restore(Path(upload_dir) / "new_exp")
     else:
         assert not Tuner.can_restore(tmp_path / "new_exp")
+
+
+def testParamSpaceOverwrite(tmp_path, monkeypatch):
+    """Test that overwriting param space on restore propagates new refs to existing
+    trials and newly generated trials."""
+
+    # Limit the number of generated trial configs -- so restore tests
+    # newly generated trials.
+    monkeypatch.setenv("TUNE_MAX_PENDING_TRIALS_PG", "1")
+
+    class FakeDataset:
+        def __init__(self, name):
+            self.name = name
+
+        def __repr__(self):
+            return f"<FakeDataset {self.name}>"
+
+    def train_fn(config):
+        raise RuntimeError("Failing!")
+
+    param_space = {
+        "test": tune.grid_search(
+            [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+        ),
+        "test2": tune.grid_search(
+            [
+                FakeDataset("4"),
+                FakeDataset("5"),
+                FakeDataset("6"),
+                FakeDataset("7"),
+            ]
+        ),
+    }
+
+    tuner = Tuner(
+        train_fn,
+        param_space=param_space,
+        tune_config=TuneConfig(num_samples=1),
+        run_config=RunConfig(
+            local_dir=str(tmp_path),
+            name="param_space_overwrite",
+            callbacks=[_FailOnStats(num_trials=4, num_finished=2)],
+        ),
+    )
+    with pytest.raises(RuntimeError):
+        tuner.fit()
+
+    # Just suppress the error this time with a new trainable
+    def train_fn(config):
+        pass
+
+    param_space = {
+        "test": tune.grid_search(
+            [FakeDataset("8"), FakeDataset("9"), FakeDataset("10")]
+        ),
+        "test2": tune.grid_search(
+            [
+                FakeDataset("11"),
+                FakeDataset("12"),
+                FakeDataset("13"),
+                FakeDataset("14"),
+            ]
+        ),
+    }
+
+    tuner = Tuner.restore(
+        str(tmp_path / "param_space_overwrite"),
+        trainable=train_fn,
+        param_space=param_space,
+        resume_errored=True,
+    )
+    tuner._local_tuner._run_config.callbacks = None
+    result_grid = tuner.fit()
+    assert not result_grid.errors
+    assert len(result_grid) == 12
+
+    for r in result_grid:
+        # Make sure that test and test2 are updated.
+        assert r.config["test"].name in ["8", "9", "10"]
+        assert r.config["test2"].name in ["11", "12", "13", "14"]
 
 
 if __name__ == "__main__":
