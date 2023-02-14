@@ -156,8 +156,9 @@ class ExecutionOptions:
     # node (node driving the execution).
     locality_with_output: bool = False
 
-    # Set this to preserve the ordering between blocks processed by operators.
-    preserve_order: bool = False
+    # Always preserve ordering of blocks, even if using operators that
+    # don't require it.
+    preserve_order: bool = True
 
     # Whether to enable locality-aware task dispatch to actors (on by default).
     actor_locality_enabled: bool = True
