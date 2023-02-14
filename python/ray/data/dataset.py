@@ -42,8 +42,8 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapRows,
     MapBatches,
-    Write,
 )
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn

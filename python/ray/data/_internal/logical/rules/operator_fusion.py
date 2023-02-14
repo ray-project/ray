@@ -55,6 +55,7 @@ class OperatorFusionRule(Rule):
         from ray.data._internal.execution.operators.map_operator import MapOperator
         from ray.data._internal.logical.operators.map_operator import AbstractMap
         from ray.data._internal.logical.operators.read_operator import Read
+        from ray.data._internal.logical.operators.write_operator import Write
 
         # We only support fusing MapOperators.
         if not isinstance(down_op, MapOperator) or not isinstance(up_op, MapOperator):
@@ -63,8 +64,9 @@ class OperatorFusionRule(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
-        # We only support fusing upstream reads and maps with downstream maps.
-        if not isinstance(down_logical_op, AbstractMap) or not isinstance(
+        # We only support fusing upstream reads and maps with downstream writes and
+        # maps.
+        if not isinstance(down_logical_op, (Write, AbstractMap)) or not isinstance(
             up_logical_op, (Read, AbstractMap)
         ):
             return False
@@ -84,21 +86,22 @@ class OperatorFusionRule(Rule):
         # their construction arguments are the same.
         # TODO(Clark): Support multiple callable classes instantiating in the same actor
         # worker.
-        if (
-            isinstance(down_logical_op._fn, CallableClass)
-            and isinstance(up_logical_op, AbstractMap)
-            and isinstance(up_logical_op._fn, CallableClass)
-            and (
-                up_logical_op._fn != down_logical_op._fn
-                or (
-                    up_logical_op._fn_constructor_args
-                    != down_logical_op._fn_constructor_args
-                    or up_logical_op._fn_constructor_kwargs
-                    != down_logical_op._fn_constructor_kwargs
+        if not isinstance(down_logical_op, Write):
+            if (
+                isinstance(down_logical_op._fn, CallableClass)
+                and isinstance(up_logical_op, AbstractMap)
+                and isinstance(up_logical_op._fn, CallableClass)
+                and (
+                    up_logical_op._fn != down_logical_op._fn
+                    or (
+                        up_logical_op._fn_constructor_args
+                        != down_logical_op._fn_constructor_args
+                        or up_logical_op._fn_constructor_kwargs
+                        != down_logical_op._fn_constructor_kwargs
+                    )
                 )
-            )
-        ):
-            return False
+            ):
+                return False
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
