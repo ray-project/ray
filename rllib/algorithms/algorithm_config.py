@@ -61,7 +61,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     SampleBatchType,
 )
-from ray.tune.impl.config import _Config
+from ray.tune.tune import _Config
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO

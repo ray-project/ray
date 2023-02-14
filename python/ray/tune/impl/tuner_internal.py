@@ -16,7 +16,7 @@ from ray.air._internal.remote_storage import download_from_uri, is_non_local_pat
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
-from ray.tune.impl.config import _Config
+from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable

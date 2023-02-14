@@ -1,3 +1,4 @@
+import abc
 import copy
 import datetime
 import logging
@@ -28,7 +29,6 @@ from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
 
 # Must come last to avoid circular imports
-from ray.tune.impl.config import _Config
 from ray.tune.schedulers import (
     FIFOScheduler,
     PopulationBasedTraining,
@@ -173,6 +173,12 @@ def _setup_signal_catching() -> threading.Event:
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
     return experiment_interrupted_event
+
+
+class _Config(abc.ABC):
+    def to_dict(self) -> dict:
+        """Converts this configuration to a dict format."""
+        raise NotImplementedError
 
 
 @PublicAPI

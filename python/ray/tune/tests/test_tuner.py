@@ -540,7 +540,7 @@ def test_invalid_param_space(shutdown_only):
     with pytest.raises(ValueError):
         Tuner(trainable, param_space="not allowed")
 
-    from ray.tune.impl.config import _Config
+    from ray.tune.tune import _Config
 
     class CustomConfig(_Config):
         def to_dict(self) -> dict:
