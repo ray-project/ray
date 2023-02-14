@@ -23,7 +23,6 @@ Comet (air.integrations.comet)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ~air.integrations.comet.CometLoggerCallback
 
@@ -65,7 +64,6 @@ Keras (air.integrations.keras)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ~air.integrations.keras.ReportCheckpointCallback
 
@@ -77,7 +75,6 @@ MXNet (tune.integration.mxnet)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ~tune.integration.mxnet.TuneReportCallback
     ~tune.integration.mxnet.TuneCheckpointCallback
@@ -90,7 +87,6 @@ PyTorch Lightning (tune.integration.pytorch_lightning)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ~tune.integration.pytorch_lightning.TuneReportCallback
     ~tune.integration.pytorch_lightning.TuneReportCheckpointCallback
@@ -102,7 +98,6 @@ XGBoost (tune.integration.xgboost)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ~tune.integration.xgboost.TuneReportCallback
     ~tune.integration.xgboost.TuneReportCheckpointCallback
@@ -115,7 +110,6 @@ LightGBM (tune.integration.lightgbm)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ~tune.integration.lightgbm.TuneReportCallback
     ~tune.integration.lightgbm.TuneReportCheckpointCallback

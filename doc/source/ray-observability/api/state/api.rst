@@ -70,7 +70,6 @@ State APIs Schema
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
 
     ray.experimental.state.common.ActorState
     ray.experimental.state.common.TaskState

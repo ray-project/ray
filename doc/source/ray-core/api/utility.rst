@@ -17,7 +17,6 @@ Custom Metrics
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
 
    ray.util.metrics.Counter
    ray.util.metrics.Gauge

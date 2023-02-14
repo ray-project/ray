@@ -73,7 +73,6 @@ This is the default used if no value is provided for the ``brackets`` argument.
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     AsyncHyperBandScheduler
     ASHAScheduler
@@ -88,7 +87,6 @@ Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.0
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     HyperBandScheduler
 
@@ -137,7 +135,6 @@ below the median of other trials at similar points in time.
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     MedianStoppingRule
 
@@ -188,7 +185,6 @@ of PBT usage.
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     PopulationBasedTraining
 
@@ -223,7 +219,6 @@ replay utility in practice.
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     PopulationBasedTrainingReplay
 
@@ -277,7 +272,6 @@ The example uses the ``BipedalWalker`` environment so does not require any addit
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     pb2.PB2
 
@@ -299,7 +293,6 @@ An example of this in use can be found here: :doc:`/tune/examples/includes/bohb_
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     HyperBandForBOHB
 
@@ -324,7 +317,6 @@ An example of this in use can be found here: :doc:`/tune/examples/includes/xgboo
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     ResourceChangingScheduler
     resource_changing_scheduler.DistributeResources
@@ -335,7 +327,6 @@ FIFOScheduler (Default Scheduler)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
 
     FIFOScheduler
 
