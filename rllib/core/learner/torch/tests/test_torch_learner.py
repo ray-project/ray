@@ -1,34 +1,22 @@
 import gymnasium as gym
 import unittest
-import tensorflow as tf
+import torch
 import numpy as np
 
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import Learner, FrameworkHPs
-from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfLearner
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.core.testing.utils import get_learner
 
 
-def get_trainer() -> Learner:
+def _get_trainer() -> Learner:
     env = gym.make("CartPole-v1")
-
-    trainer = BCTfLearner(
-        module_spec=SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTFModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
-        ),
-        optimizer_config={"lr": 1e-3},
-        trainer_scaling_config=TrainerScalingConfig(),
-        framework_hyperparameters=FrameworkHPs(eager_tracing=True),
-    )
-
+    trainer = get_learner("torch", env)
     trainer.build()
 
     return trainer
@@ -45,7 +33,7 @@ class TestLearner(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        trainer = get_trainer()
+        trainer = _get_trainer()
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
@@ -68,12 +56,11 @@ class TestLearner(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        trainer = get_trainer()
+        trainer = _get_trainer()
 
-        with tf.GradientTape() as tape:
-            params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
-            loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
-            gradients = trainer.compute_gradients(loss, tape)
+        params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
+        loss = {"total_loss": sum([param.sum() for param in params])}
+        gradients = trainer.compute_gradients(loss)
 
         # type should be a mapping from ParamRefs to gradients
         self.assertIsInstance(gradients, dict)
@@ -88,17 +75,18 @@ class TestLearner(unittest.TestCase):
         standard SGD/Adam update rule.
         """
 
-        trainer = get_trainer()
+        trainer = _get_trainer()
 
         # calculated the expected new params based on gradients of all ones.
-        params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
+        params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
         n_steps = 100
         expected = [
-            param - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
+            convert_to_numpy(param)
+            - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
-            gradients = {trainer.get_param_ref(p): tf.ones_like(p) for p in params}
+            gradients = {trainer.get_param_ref(p): torch.ones_like(p) for p in params}
             trainer.apply_gradients(gradients)
 
         check(params, expected)
@@ -111,20 +99,18 @@ class TestLearner(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        trainer = get_trainer()
+        trainer = _get_trainer()
 
         # add a test module with SGD optimizer with a known lr
         lr = 1e-4
 
         def set_optimizer_fn(module):
-            return [
-                (module.trainable_variables, tf.keras.optimizers.SGD(learning_rate=lr))
-            ]
+            return [(module.parameters(), torch.optim.Adam(module.parameters(), lr=lr))]
 
         trainer.add_module(
             module_id="test",
             module_spec=SingleAgentRLModuleSpec(
-                module_class=DiscreteBCTFModule,
+                module_class=DiscreteBCTorchModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
                 model_config={"fcnet_hiddens": [16]},
@@ -138,14 +124,16 @@ class TestLearner(unittest.TestCase):
         self.assertEqual(set(trainer.module.keys()), {"test"})
 
         # calculated the expected new params based on gradients of all ones.
-        params = trainer.module["test"].trainable_variables
+        params = trainer.get_parameters(trainer.module["test"])
         n_steps = 100
-        expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
+        expected = [
+            convert_to_numpy(param) - n_steps * lr * np.ones(param.shape)
+            for param in params
+        ]
         for _ in range(n_steps):
-            with tf.GradientTape() as tape:
-                loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
-                gradients = trainer.compute_gradients(loss, tape)
-                trainer.apply_gradients(gradients)
+            loss = {"total_loss": sum([param.sum() for param in params])}
+            gradients = trainer.compute_gradients(loss)
+            trainer.apply_gradients(gradients)
 
         check(params, expected)
 

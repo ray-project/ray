@@ -10,7 +10,7 @@ from typing import (
     Hashable,
 )
 
-from ray.rllib.core.rl_trainer.rl_trainer import (
+from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
     ParamOptimizerPairs,
@@ -214,7 +214,7 @@ class TfLearner(Learner):
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = ...,
     ) -> Mapping[str, Any]:
-        # TODO (Kourosh): The update of rl_trainer is vastly differnet than the base
+        # TODO (Kourosh): The update of learner is vastly differnet than the base
         # class. So we need to unify them.
 
         if set(batch.policy_batches.keys()) != set(self._module.keys()):

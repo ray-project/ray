@@ -3,13 +3,13 @@ from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECK
 
 import ray
 
-from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_trainer.rl_trainer import (
+from ray.rllib.core.learner.learner import (
     LearnerSpec,
     ParamOptimizerPairs,
     Optimizer,
@@ -22,15 +22,15 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer.rl_trainer import Learner
+    from ray.rllib.core.learner.learner import Learner
 
 
-def _get_backend_config(rl_trainer_class: Type["Learner"]) -> str:
-    if rl_trainer_class.framework == "torch":
+def _get_backend_config(learner_class: Type["Learner"]) -> str:
+    if learner_class.framework == "torch":
         from ray.train.torch import TorchConfig
 
         backend_config = TorchConfig()
-    elif rl_trainer_class.framework == "tf":
+    elif learner_class.framework == "tf":
         from ray.train.tensorflow import TensorflowConfig
 
         backend_config = TensorflowConfig()
@@ -56,7 +56,7 @@ class TrainerRunner:
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
                             by this TrainerRunner.
     Args:
-        rl_trainer_spec: The specification for constructing Learners.
+        learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing non-blocking
             updates (e.g. `self.update(batch, block=False)`). If the queue is full it
             will evict the oldest batch first.
@@ -64,11 +64,11 @@ class TrainerRunner:
 
     def __init__(
         self,
-        rl_trainer_spec: LearnerSpec,
+        learner_spec: LearnerSpec,
         max_queue_len: int = 20,
     ):
-        scaling_config = rl_trainer_spec.trainer_scaling_config
-        rl_trainer_class = rl_trainer_spec.rl_trainer_class
+        scaling_config = learner_spec.trainer_scaling_config
+        learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
         # explicit
@@ -82,11 +82,11 @@ class TrainerRunner:
         self._is_shut_down = False
 
         if self._is_local:
-            self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
+            self._trainer = learner_class(**learner_spec.get_params_dict())
             self._trainer.build()
             self._worker_manager = None
         else:
-            backend_config = _get_backend_config(rl_trainer_class)
+            backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=scaling_config.num_workers,
@@ -96,8 +96,8 @@ class TrainerRunner:
             )
 
             backend_executor.start(
-                train_cls=rl_trainer_class,
-                train_cls_kwargs=rl_trainer_spec.get_params_dict(),
+                train_cls=learner_class,
+                train_cls_kwargs=learner_spec.get_params_dict(),
             )
             self._backend_executor = backend_executor
 

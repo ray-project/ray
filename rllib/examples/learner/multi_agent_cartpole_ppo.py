@@ -101,7 +101,7 @@ if __name__ == "__main__":
         .training(num_sgd_iter=10)
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         .rl_module(_enable_rl_module_api=True)
-        .training(_enable_rl_trainer_api=True)
+        .training(_enable_learneri=True)
         .resources(**scaling_config)
     )
 

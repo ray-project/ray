@@ -36,8 +36,8 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -112,17 +112,17 @@ class Learner:
         optimizer_config: The deep learning gradient optimizer configuration to be
             used. For example lr=0.0001, momentum=0.9, etc.
         scaling_config: Configuration for scaling the learner actors.
-            Refer to ray.rllib.core.rl_trainer.scaling_config.TrainerScalingConfig
+            Refer to ray.rllib.core.learner.scaling_config.TrainerScalingConfig
             for more info.
         trainer_hyperparameters: The hyper-parameters for the Learner.
             Algorithm specific learner hyper-parameters will passed in via this
             argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
             passed in via this argument. Refer to
-            ray.rllib.core.rl_trainer.rl_trainer.LearnerHPs for more info.
+            ray.rllib.core.learner.learner.LearnerHPs for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
             creation. For example eager_tracing in TF or compile in Torch.
-            Refer to ray.rllib.core.rl_trainer.rl_trainer.FrameworkHPs for more info.
+            Refer to ray.rllib.core.learner.learner.FrameworkHPs for more info.
 
 
     Usage pattern:
@@ -772,7 +772,7 @@ class LearnerSpec:
     """The spec for constructing Learner actors.
 
     Args:
-        rl_trainer_class: The Learner class to use.
+        learner_class: The Learner class to use.
         module_spec: The underlying (MA)RLModule spec to completely define the module.
         module: Alternatively the RLModule instance can be passed in directly. This
             only works if the Learner is not an actor.
@@ -784,7 +784,7 @@ class LearnerSpec:
             change of training behaviors, etc. e.g lr, entropy_coeff.
     """
 
-    rl_trainer_class: Type["Learner"]
+    learner_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
     trainer_scaling_config: TrainerScalingConfig = field(
@@ -807,4 +807,4 @@ class LearnerSpec:
 
     def build(self) -> "Learner":
         """Builds the Learner instance."""
-        return self.rl_trainer_class(**self.get_params_dict())
+        return self.learner_class(**self.get_params_dict())

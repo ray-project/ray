@@ -84,7 +84,7 @@ class TestPPO(unittest.TestCase):
 
         policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
-        config.training(_enable_rl_trainer_api=True)
+        config.training(_enable_learner_api=True)
         config.validate()
         config.freeze()
 

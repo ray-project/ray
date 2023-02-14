@@ -686,7 +686,7 @@ class Algorithm(Trainable):
             method_config["type"] = method_type
 
         self.trainer_runner = None
-        if self.config._enable_rl_trainer_api:
+        if self.config._enable_learner_api:
             # TODO (Kourosh): This is an interim solution where policies and modules
             # co-exist. In this world we have both policy_map and MARLModule that need
             # to be consistent with one another. To make a consistent parity between
@@ -1345,7 +1345,7 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config._enable_rl_trainer_api:
+            if self.config._enable_learner_api:
                 train_results = self.trainer_runner.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1365,7 +1365,7 @@ class Algorithm(Trainable):
             # TODO (Kourosh): figure out how we are going to sync MARLModule
             # weights to MARLModule weights under the policy_map objects?
             from_worker_or_trainer = None
-            if self.config._enable_rl_trainer_api:
+            if self.config._enable_learner_api:
                 from_worker_or_trainer = self.trainer_runner
             self.workers.sync_weights(
                 from_worker_or_trainer=from_worker_or_trainer,
@@ -2120,7 +2120,7 @@ class Algorithm(Trainable):
         eval_cf.freeze()
 
         # resources for local worker
-        if cf._enable_rl_trainer_api:
+        if cf._enable_learner_api:
             local_worker = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
             local_worker = {
@@ -2170,7 +2170,7 @@ class Algorithm(Trainable):
 
         bundles += rollout_workers + evaluation_bundle
 
-        if cf._enable_rl_trainer_api:
+        if cf._enable_learner_api:
             # resources for the trainer
             if cf.num_trainer_workers == 0:
                 # if num_trainer_workers is 0, then we need to allocate one gpu if

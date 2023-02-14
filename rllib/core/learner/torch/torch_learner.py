@@ -17,7 +17,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_trainer.rl_trainer import (
+from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
     ParamOptimizerPairs,

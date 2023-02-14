@@ -16,8 +16,8 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_trainer.rl_trainer import LearnerHPs
-from ray.rllib.core.rl_trainer.trainer_runner_config import (
+from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.trainer_runner_config import (
     TrainerRunnerConfig,
     ModuleSpec,
 )
@@ -92,7 +92,7 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.core.rl_trainer import Learner
+    from ray.rllib.core.learner import Learner
 
 logger = logging.getLogger(__name__)
 
@@ -321,12 +321,12 @@ class AlgorithmConfig:
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
-        self.rl_trainer_class = None
-        self._enable_rl_trainer_api = False
+        self.learner_class = None
+        self._enable_learner_api = False
         # experimental: this will contain the hyper-parameters that are passed to the
         # Learner, for computing loss, etc. New algorithms have to set this to their
         # own default. .training() will modify the fields of this object.
-        self._rl_trainer_hps = LearnerHPs()
+        self._learner_hps = LearnerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -453,8 +453,8 @@ class AlgorithmConfig:
         self.no_done_at_end = DEPRECATED_VALUE
 
     @property
-    def rl_trainer_hps(self) -> LearnerHPs:
-        return self._rl_trainer_hps
+    def learner_hps(self) -> LearnerHPs:
+        return self._learner_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -897,10 +897,10 @@ class AlgorithmConfig:
                 "(i.e. num_trainer_workers = 0)"
             )
 
-        # resolve rl_trainer class
-        if self._enable_rl_trainer_api and self.rl_trainer_class is None:
-            rl_trainer_class_path = self.get_default_rl_trainer_class()
-            self.rl_trainer_class = _resolve_class_path(rl_trainer_class_path)
+        # resolve learner class
+        if self._enable_learner_api and self.learner_class is None:
+            learner_class_path = self.get_default_learner_class()
+            self.learner_class = _resolve_class_path(learner_class_path)
 
     def build(
         self,
@@ -1450,8 +1450,8 @@ class AlgorithmConfig:
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
-        _enable_rl_trainer_api: Optional[bool] = NotProvided,
-        rl_trainer_class: Optional[Type["Learner"]] = NotProvided,
+        _enable_learner_api: Optional[bool] = NotProvided,
+        learner_class: Optional[Type["Learner"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1475,7 +1475,7 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
-            _enable_rl_trainer_api: Whether to enable the TrainerRunner and Learner
+            _enable_learner_api: Whether to enable the TrainerRunner and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
 
@@ -1518,10 +1518,10 @@ class AlgorithmConfig:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if _enable_rl_trainer_api is not NotProvided:
-            self._enable_rl_trainer_api = _enable_rl_trainer_api
-        if rl_trainer_class is not NotProvided:
-            self.rl_trainer_class = rl_trainer_class
+        if _enable_learner_api is not NotProvided:
+            self._enable_learner_api = _enable_learner_api
+        if learner_class is not NotProvided:
+            self.learner_class = learner_class
 
         return self
 
@@ -2662,7 +2662,7 @@ class AlgorithmConfig:
         """
         raise NotImplementedError
 
-    def get_default_rl_trainer_class(self) -> Union[Type["Learner"], str]:
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         """Returns the Learner class to use for this algorithm.
 
         Override this method in the sub-class to return the Learner class type given
@@ -2670,7 +2670,7 @@ class AlgorithmConfig:
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
+            a string (e.g. ray.rllib.core.learner.testing.torch.BCTrainer).
         """
         raise NotImplementedError
 
@@ -2751,10 +2751,10 @@ class AlgorithmConfig:
             TrainerRunnerConfig()
             .module(module_spec)
             .trainer(
-                trainer_class=self.rl_trainer_class,
+                trainer_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={"lr": self.lr},
-                rl_trainer_hps=self.rl_trainer_hps,
+                learner_hps=self.learner_hps,
             )
             .resources(
                 num_trainer_workers=self.num_trainer_workers,

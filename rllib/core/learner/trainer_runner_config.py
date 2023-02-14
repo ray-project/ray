@@ -2,9 +2,9 @@ from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.core.rl_trainer.rl_trainer import (
+from ray.rllib.core.learner.trainer_runner import TrainerRunner
+from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.learner import (
     LearnerSpec,
     LearnerHPs,
     FrameworkHPs,
@@ -13,7 +13,7 @@ from ray.rllib.utils.from_config import NotProvided
 
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer import Learner
+    from ray.rllib.core.learner import Learner
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
 
@@ -34,7 +34,7 @@ class TrainerRunnerConfig:
         # `self.trainer()`
         self.trainer_class = None
         self.optimizer_config = None
-        self.rl_trainer_hps = LearnerHPs()
+        self.learner_hps = LearnerHPs()
 
         # `self.resources()`
         self.num_gpus_per_trainer_worker = 0
@@ -82,16 +82,16 @@ class TrainerRunnerConfig:
 
         framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
 
-        rl_trainer_spec = LearnerSpec(
-            rl_trainer_class=self.trainer_class,
+        learner_spec = LearnerSpec(
+            learner_class=self.trainer_class,
             module_spec=self.module_spec,
             optimizer_config=self.optimizer_config,
             trainer_scaling_config=scaling_config,
-            trainer_hyperparameters=self.rl_trainer_hps,
+            trainer_hyperparameters=self.learner_hps,
             framework_hyperparameters=framework_hps,
         )
 
-        return self.trainer_runner_class(rl_trainer_spec)
+        return self.trainer_runner_class(learner_spec)
 
     def framework(
         self, eager_tracing: Optional[bool] = NotProvided
@@ -135,14 +135,14 @@ class TrainerRunnerConfig:
         *,
         trainer_class: Optional[Type["Learner"]] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
-        rl_trainer_hps: Optional[LearnerHPs] = NotProvided,
+        learner_hps: Optional[LearnerHPs] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
         if trainer_class is not NotProvided:
             self.trainer_class = trainer_class
         if optimizer_config is not NotProvided:
             self.optimizer_config = optimizer_config
-        if rl_trainer_hps is not NotProvided:
-            self.rl_trainer_hps = rl_trainer_hps
+        if learner_hps is not NotProvided:
+            self.learner_hps = learner_hps
 
         return self

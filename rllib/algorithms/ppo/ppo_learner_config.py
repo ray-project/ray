@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
-from ray.rllib.core.rl_trainer.rl_trainer import LearnerHPs
+from ray.rllib.core.learner.learner import LearnerHPs
 
 
 @dataclass

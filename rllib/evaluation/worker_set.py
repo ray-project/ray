@@ -18,7 +18,7 @@ from typing import (
 
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.core.rl_trainer import TrainerRunner
+from ray.rllib.core.learner import TrainerRunner
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv

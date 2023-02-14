@@ -1,7 +1,7 @@
 import logging
 from typing import Mapping, Any
 
-from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchLearner
+from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch

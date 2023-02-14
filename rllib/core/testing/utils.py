@@ -3,9 +3,9 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.rl_trainer import LearnerSpec, FrameworkHPs
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.trainer_runner import TrainerRunner
+from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
+from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
 
-    from ray.rllib.core.rl_trainer.rl_trainer import Learner
+    from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.rl_module import RLModule
 
 
@@ -28,11 +28,11 @@ Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 @DeveloperAPI
 def get_trainer_class(framework: str) -> Type["Learner"]:
     if framework == "tf":
-        from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfLearner
+        from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
         return BCTfLearner
     elif framework == "torch":
-        from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchLearner
+        from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 
         return BCTorchLearner
     else:
@@ -88,7 +88,7 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 
 @DeveloperAPI
-def get_rl_trainer(
+def get_learner(
     framework: str,
     env: "gym.Env",
     is_multi_agent: bool = False,
@@ -126,8 +126,8 @@ def get_trainer_runner(
         trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
     else:
         trainer_hps = None
-    rl_trainer_spec = LearnerSpec(
-        rl_trainer_class=get_trainer_class(framework),
+    learner_spec = LearnerSpec(
+        learner_class=get_trainer_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
@@ -135,7 +135,7 @@ def get_trainer_runner(
         trainer_scaling_config=scaling_config,
         trainer_hyperparameters=trainer_hps,
     )
-    runner = TrainerRunner(rl_trainer_spec)
+    runner = TrainerRunner(learner_spec)
 
     return runner
 

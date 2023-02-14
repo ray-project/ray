@@ -6,10 +6,10 @@ import unittest
 import ray
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 from ray.rllib.core.testing.utils import (
     get_trainer_runner,
-    get_rl_trainer,
+    get_learner,
     add_module_to_runner_or_trainer,
 )
 from ray.util.timer import _Timer
@@ -40,7 +40,7 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
-        local_trainer = get_rl_trainer(fw, env)
+        local_trainer = get_learner(fw, env)
         local_trainer.build()
 
         # make the state of the trainer and the local runner identical
