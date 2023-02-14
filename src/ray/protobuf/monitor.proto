@@ -44,9 +44,9 @@ message ResourceRequest {
     // resources to satisfy these since they could run sequentially on the same
     // node.
     SHORT_RESERVATION = 0;
-    // A request which will hold resources for a longer period of time (like an
-    // actor or placement group). The autoscaler should provision enough
-    // resources for all of these to run concurrently if possible.
+    // A request which will hold resources for a longer period of time (like a
+    // placement group). The autoscaler should provision enough resources for
+    // all of these to run concurrently if possible.
     LONG_RESERVATION = 1;
     // The bundles in this reservation cannot belong on the same node. The
     // autoscaler may need to launch multiple nodes to satisfy these bundles

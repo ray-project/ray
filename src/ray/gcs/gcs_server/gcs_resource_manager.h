@@ -133,6 +133,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
+  virtual const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
+
  private:
   /// Aggregate nodes' pending task info.
   ///
