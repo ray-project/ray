@@ -31,7 +31,18 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     return output
 
 
-@pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize(
+    "preserve_order",
+    [
+        True,
+        pytest.param(
+            False,
+            marks=pytest.mark.skip(
+                reason="Bulk executor currently always preserves order"
+            ),
+        ),
+    ],
+)
 def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
     executor = BulkExecutor(ExecutionOptions(preserve_order=preserve_order))
     inputs = make_ref_bundles([[x] for x in range(20)])

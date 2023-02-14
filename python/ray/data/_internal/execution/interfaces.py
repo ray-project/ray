@@ -156,7 +156,8 @@ class ExecutionOptions:
     # node (node driving the execution).
     locality_with_output: bool = False
 
-    # Set this to preserve the ordering between blocks processed by operators.
+    # Set this to preserve the ordering between blocks processed by operators under the
+    # streaming executor. The bulk executor always preserves order.
     preserve_order: bool = False
 
     # Whether to enable locality-aware task dispatch to actors (on by default).
