@@ -209,21 +209,18 @@ class _BlockExecStatsBuilder:
 @DeveloperAPI
 @dataclass
 class BlockMetadata:
-    """Metadata about the block.
+    """Metadata about the block."""
 
-    Attributes:
-        num_rows: The number of rows contained in this block, or None.
-        size_bytes: The approximate size in bytes of this block, or None.
-        schema: The pyarrow schema or types of the block elements, or None.
-        input_files: The list of file paths used to generate this block, or
-            the empty list if indeterminate.
-        exec_stats: Execution stats for this block.
-    """
-
+    #: The number of rows contained in this block, or None.
     num_rows: Optional[int]
+    #: The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
+    #: The pyarrow schema or types of the block elements, or None.
     schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    #: The list of file paths used to generate this block, or
+    #: the empty list if indeterminate.
     input_files: Optional[List[str]]
+    #: Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
 
     def __post_init__(self):
