@@ -3,8 +3,12 @@ import sys
 import pytest
 from ray.util.ray_executor import RayExecutor
 import time
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, TimeoutError as ConTimeoutError
-import ray
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    ProcessPoolExecutor,
+    TimeoutError as ConTimeoutError,
+)
+
 
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
@@ -30,7 +34,7 @@ def test_remote_function_map_using_max_workers():
     with RayExecutor(max_workers=3) as ex:
         time_start = time.monotonic()
         ff = ex.map(lambda x: time.sleep(1), range(12))
-        print(f'blah: {list(ff)}')
+        print(f"blah: {list(ff)}")
         time_end = time.monotonic()
         # we expect about (12*1) / 3 = 4 rounds
         delta = time_end - time_start
@@ -66,21 +70,25 @@ def test_map_times_out():
     def f(x):
         time.sleep(2)
         return x
+
     with RayExecutor() as ex:
         with pytest.raises(ConTimeoutError):
             i1 = ex.map(f, [1, 2, 3], timeout=1)
             for _ in i1:
                 pass
 
+
 def test_map_times_out_with_max_workers():
     def f(x):
         time.sleep(2)
         return x
+
     with RayExecutor(max_workers=2) as ex:
         with pytest.raises(ConTimeoutError):
             i1 = ex.map(f, [1, 2, 3], timeout=1)
             for _ in i1:
                 pass
+
 
 def test_remote_function_runs_multiple_tasks_using_max_workers():
     with RayExecutor(max_workers=2) as ex:

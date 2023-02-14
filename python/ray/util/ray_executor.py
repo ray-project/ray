@@ -1,7 +1,5 @@
-import itertools
 import time
 from concurrent.futures import Executor, Future
-from concurrent.futures._base import TimeoutError as ConcurrentTimeoutError
 from functools import partial
 from typing import (
     Callable,
@@ -17,7 +15,6 @@ from typing import (
 
 import ray
 from ray.util.annotations import PublicAPI
-from ray.types import ObjectRef
 import ray.exceptions
 
 # Typing -----------------------------------------------
@@ -98,7 +95,7 @@ class RayExecutor(Executor):
                     `max_workers` must be >= 1"
                 )
             self.max_workers = max_workers
-            kwargs['num_cpus'] = max_workers
+            kwargs["num_cpus"] = max_workers
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
     def submit(
@@ -125,9 +122,11 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         fn_curried = partial(fn, *args, **kwargs)
 
-        future = self.__remote_fn.options(name=fn.__name__).remote(  # type: ignore
-            fn_curried
-        ).future()
+        future = (
+            self.__remote_fn.options(name=fn.__name__)
+            .remote(fn_curried)  # type: ignore
+            .future()
+        )
         self._futures.append(future)
         del fn_curried
         return future
@@ -150,7 +149,7 @@ class RayExecutor(Executor):
         self,
         fn: Callable[..., T],
         *iterables: Iterable[Any],
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
     ) -> Iterator[T]:
         """Returns an iterator equivalent to `map(fn, iter)`.
 
@@ -196,10 +195,13 @@ class RayExecutor(Executor):
                     if timeout is None:
                         yield self._result_or_cancel(fs.pop())
                     else:
-                        yield self._result_or_cancel(fs.pop(), end_time - time.monotonic())
+                        yield self._result_or_cancel(
+                            fs.pop(), end_time - time.monotonic()
+                        )
             finally:
                 for future in fs:
                     future.cancel()
+
         return result_iterator()
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
