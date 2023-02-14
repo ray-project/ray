@@ -1,9 +1,9 @@
 from collections import Counter
 from typing import Any
 
-UNIT_TEST_PROJECT_ID = "prj_HqxHjwtn2uRtzR3DW6AmBYZh"
+UNIT_TEST_PROJECT_ID = "prj_4xb461erbq13qz36uf731bmg2j"
 
-UNIT_TEST_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
+UNIT_TEST_CLOUD_ID = "cld_kvedZWag2qA8i5BjxUevf5i7"
 
 
 class UnitTestError(RuntimeError):

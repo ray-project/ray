@@ -29,7 +29,7 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_FKRmeV5pA6X72aVscFALNC32",
+    "prj_4xb461erbq13qz36uf731bmg2j",
 )
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
