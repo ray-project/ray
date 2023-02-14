@@ -389,7 +389,7 @@ class WorkerSet:
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
 
-        Weight source can be either a (local) rollout worker or a trainer runner. It
+        Weight source can be either a (local) rollout worker or a learner_group. It
         should just implement a `get_weights` method.
 
         Args:

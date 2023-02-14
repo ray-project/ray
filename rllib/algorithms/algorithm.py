@@ -685,7 +685,7 @@ class Algorithm(Trainable):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
-        self.trainer_runner = None
+        self.learner_group = None
         if self.config._enable_learner_api:
             # TODO (Kourosh): This is an interim solution where policies and modules
             # co-exist. In this world we have both policy_map and MARLModule that need
@@ -694,12 +694,12 @@ class Algorithm(Trainable):
             # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_spec = local_worker.marl_module_spec
-            trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
-            self.trainer_runner = trainer_runner_config.build()
+            learner_group_config = self.config.get_learner_group_config(module_spec)
+            self.learner_group = learner_group_config.build()
 
             # sync the weights from local rollout worker to trainers
             weights = local_worker.get_weights()
-            self.trainer_runner.set_weights(weights)
+            self.learner_group.set_weights(weights)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -1346,7 +1346,7 @@ class Algorithm(Trainable):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_learner_api:
-                train_results = self.trainer_runner.update(train_batch)
+                train_results = self.learner_group.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
@@ -1361,12 +1361,12 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            # TODO (Avnish): Implement this on trainer_runner.get_weights().
+            # TODO (Avnish): Implement this on learner_group.get_weights().
             # TODO (Kourosh): figure out how we are going to sync MARLModule
             # weights to MARLModule weights under the policy_map objects?
             from_worker_or_trainer = None
             if self.config._enable_learner_api:
-                from_worker_or_trainer = self.trainer_runner
+                from_worker_or_trainer = self.learner_group
             self.workers.sync_weights(
                 from_worker_or_trainer=from_worker_or_trainer,
                 policies=list(train_results.keys()),

@@ -17,7 +17,7 @@ from typing import (
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHPs
-from ray.rllib.core.learner.trainer_runner_config import (
+from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
 )
@@ -890,7 +890,7 @@ class AlgorithmConfig:
                     "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
                 )
 
-        # make sure the resource requirements for trainer runner is valid
+        # make sure the resource requirements for learner_groupis valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
@@ -2739,11 +2739,11 @@ class AlgorithmConfig:
 
         return marl_module_spec
 
-    def get_trainer_runner_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
+    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
 
         if not self._is_frozen:
             raise ValueError(
-                "Cannot call `get_trainer_runner_config()` on an unfrozen "
+                "Cannot call `get_learner_group_config()` on an unfrozen "
                 "AlgorithmConfig! Please call `freeze()` first."
             )
 

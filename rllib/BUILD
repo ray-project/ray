@@ -1859,17 +1859,17 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer_runner",
+    name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
-    srcs = ["core/learner/tests/test_trainer_runner.py"]
+    srcs = ["core/learner/tests/test_learner_group.py"]
 )
 
 py_test(
-    name = "test_trainer_runner_config",
+    name = "test_learner_group_config",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/learner/tests/test_trainer_runner_config.py"]
+    srcs = ["core/learner/tests/test_learner_group_config.py"]
 )
 
 py_test(

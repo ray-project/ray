@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 from ray.rllib.core.testing.utils import (
-    get_trainer_runner,
+    get_learner_group,
     get_learner,
     add_module_to_learner_or_learner_group,
 )
@@ -39,7 +39,7 @@ class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
+        runner = get_learner_group(fw, env, scaling_config, eager_tracing=True)
         local_trainer = get_learner(fw, env)
         local_trainer.build()
 
@@ -76,7 +76,7 @@ class TestLearnerGroup(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_trainer_runner_local(self):
+    def test_learner_group_local(self):
         fws = ["tf", "torch"]
 
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
@@ -99,7 +99,7 @@ class TestLearnerGroup(unittest.TestCase):
             env = gym.make("CartPole-v1")
 
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
+            runner = get_learner_group(fw, env, scaling_config, eager_tracing=True)
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
@@ -136,7 +136,7 @@ class TestLearnerGroup(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
+            runner = get_learner_group(fw, env, scaling_config, eager_tracing=True)
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
@@ -210,7 +210,7 @@ class TestLearnerGroup(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            runner = get_learner_group(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=512)
             min_loss = float("inf")
             batch = reader.next()

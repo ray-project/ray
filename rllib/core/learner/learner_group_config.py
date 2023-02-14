@@ -2,7 +2,7 @@ from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.learner.trainer_runner import LearnerGroup
+from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
@@ -26,7 +26,7 @@ class LearnerGroupConfig:
     def __init__(self, cls: Type[LearnerGroup] = None) -> None:
 
         # Define the default LearnerGroup class
-        self.trainer_runner_class = cls or LearnerGroup
+        self.learner_group_class = cls or LearnerGroup
 
         # `self.module()`
         self.module_spec = None
@@ -91,7 +91,7 @@ class LearnerGroupConfig:
             framework_hyperparameters=framework_hps,
         )
 
-        return self.trainer_runner_class(learner_spec)
+        return self.learner_group_class(learner_spec)
 
     def framework(
         self, eager_tracing: Optional[bool] = NotProvided

@@ -401,7 +401,7 @@ class PPO(Algorithm):
             # communication between driver and the remote
             # trainer workers
 
-            train_results = self.trainer_runner.update(
+            train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
@@ -441,15 +441,15 @@ class PPO(Algorithm):
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_trainer = None
                 if self.config._enable_learner_api:
-                    # sync weights from trainer_runner to all rollout workers
-                    from_worker_or_trainer = self.trainer_runner
+                    # sync weights from learner_group to all rollout workers
+                    from_worker_or_trainer = self.learner_group
                 self.workers.sync_weights(
                     from_worker_or_trainer=from_worker_or_trainer,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
             elif self.config._enable_learner_api:
-                weights = self.trainer_runner.get_weights()
+                weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_learner_api:
@@ -461,7 +461,7 @@ class PPO(Algorithm):
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
-            self.trainer_runner.additional_update(
+            self.learner_group.additional_update(
                 sampled_kl_values=kl_dict,
                 timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
             )

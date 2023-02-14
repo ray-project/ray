@@ -3,7 +3,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.core.learner.trainer_runner import LearnerGroup
+from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
 from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 
@@ -100,14 +100,14 @@ def get_learner(
 
 
 @DeveloperAPI
-def get_trainer_runner(
+def get_learner_group(
     framework: str,
     env: "gym.Env",
     scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
 ) -> LearnerGroup:
-    """Construct a trainer runner for testing.
+    """Construct a learner_group for testing.
 
     Args:
         framework: The framework used for training.
@@ -119,7 +119,7 @@ def get_trainer_runner(
             optimizations.
 
     Returns:
-        A trainer runner.
+        A learner_group.
 
     """
     if framework == "tf":
