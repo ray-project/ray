@@ -57,7 +57,8 @@ def unify_schemas(
     import pyarrow as pa
 
     schemas_to_unify = []
-    schema_tensor_field_overrides = {}
+    schema_field_overrides = {}
+
     # Rollup columns with opaque (null-typed) lists, to override types in
     # the following for-loop.
     cols_with_null_list = set()
@@ -90,7 +91,7 @@ def unify_schemas(
                         "Detected need for variable shaped tensor representation, "
                         f"but schema is not ArrayTensorType: {tensor_array_types[0]}"
                     )
-                schema_tensor_field_overrides[col_name] = new_type
+                schema_field_overrides[col_name] = new_type
 
     if cols_with_null_list:
         # For each opaque list column, iterate through all schemas until we find
@@ -102,13 +103,13 @@ def unify_schemas(
                 if not pa.types.is_list(col_type) or not pa.types.is_null(
                     col_type.value_type
                 ):
-                    schema_tensor_field_overrides[col_name] = col_type
+                    schema_field_overrides[col_name] = col_type
                     break
 
-    if schema_tensor_field_overrides:
+    if schema_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
-            for col_name, col_new_type in schema_tensor_field_overrides.items():
+            for col_name, col_new_type in schema_field_overrides.items():
                 var_shaped_col = schema.field(col_name).with_type(col_new_type)
                 col_idx = schema.get_field_index(col_name)
                 schema = schema.set(col_idx, var_shaped_col)
