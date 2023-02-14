@@ -12,6 +12,8 @@ For a more detailed explanation of how to use runtime environments, see the [doc
 
 Runtime environment creation is handled by a "dashboard agent" process (`RuntimeEnvAgent`) that runs on each node of the cluster (dashboard/modules/runtime_env/runtime_env_agent.py).  
 
+The dashboard agent fate-shares with the Raylet process. The reason is that if the dashboard agent fails, then runtime env creation will fail, so the Raylet will no longer be able to set up the environment for its workers.
+
 The artifacts of a created runtime environment are a set of files on disk and a `RuntimeEnvContext` Python object (python/ray/_private/runtime_env/context.py) in memory.
 
 The `RuntimeEnvContext` is serialized and passed to the Raylet, where it is used when starting a new worker process for this runtime env (see "Starting a Worker Process").
