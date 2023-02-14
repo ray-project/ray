@@ -574,6 +574,10 @@
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
     - export WANDB_MODE=offline
+    # Horovod needs to be installed separately (needed for API ref imports)
+    - ./ci/env/install-horovod.sh
+    # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
+    - pip install mosaicml==0.10.1 --ignore-installed
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"

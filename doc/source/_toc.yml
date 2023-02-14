@@ -118,7 +118,7 @@ parts:
               - file: ray-air/examples/automl_with_ray_air
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
-          - file: ray-air/package-ref
+          - file: ray-air/api/api
           - file: ray-air/benchmarks
 
       - file: data/dataset
@@ -181,7 +181,7 @@ parts:
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
                 title: "Torch Data Prefetching Benchmark"
           - file: train/faq
-          - file: train/api
+          - file: train/api/api
 
       - file: tune/index
         title: Ray Tune
