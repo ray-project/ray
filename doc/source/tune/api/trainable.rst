@@ -292,6 +292,7 @@ Trainable (Class API)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     tune.Trainable
     tune.Trainable.setup
