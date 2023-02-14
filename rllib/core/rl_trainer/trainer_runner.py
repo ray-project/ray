@@ -334,7 +334,11 @@ class TrainerRunner:
         if self.is_local:
             self._trainer.set_weights(weights)
         else:
-            self._worker_manager.foreach_actor(lambda w: w.set_weights(weights))
+            results_or_errors = self._worker_manager.foreach_actor(
+                lambda w: w.set_weights(weights)
+            )
+            # raise errors if any
+            self._get_results(results_or_errors)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
