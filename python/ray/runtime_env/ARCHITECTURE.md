@@ -67,6 +67,8 @@ This section deals with files that are stored on disk on all nodes, such as inst
 
 References for these files are tracked by the runtime env agent process on each node.  Each agent keeps its own reference table in memory.  References are incremented when a runtime env is created, and decremented when the runtime env is deleted.  The files are not deleted until the reference count reaches 0 and the cache size exceeds the maximum cache size.
 
+Each runtime_env field has its own cache size limit, which defaults to 10GB and can be configured via the env var `RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB` on each node (e.g. `RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB`).
+
 ## Testing
 
 The runtime environment feature is tested in files matching the pattern `test_runtime_env*`. The names of these files should be mostly self-explanatory.
