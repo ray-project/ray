@@ -14,7 +14,7 @@ class TestTorchEncoders(unittest.TestCase):
 
         inputs_dims = [1, 2, 1000]
 
-        hidden_layer_dimss = [[], [1], [64, 64], [1000, 1000, 1000, 1000]]
+        list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000, 1000, 1000]]
 
         hidden_layer_activations = [None, "linear", "relu", "tanh", "elu", "swish"]
 
@@ -24,7 +24,7 @@ class TestTorchEncoders(unittest.TestCase):
 
         for permutation in itertools.product(
             inputs_dims,
-            hidden_layer_dimss,
+            list_of_hidden_layer_dims,
             hidden_layer_activations,
             output_activations,
             output_dims,
