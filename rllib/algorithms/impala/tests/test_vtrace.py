@@ -35,7 +35,6 @@ torch, nn = try_import_torch()
 
 
 def _ground_truth_calculation(
-    vtrace,
     discounts,
     log_rhos,
     rewards,
@@ -43,6 +42,7 @@ def _ground_truth_calculation(
     bootstrap_value,
     clip_rho_threshold,
     clip_pg_rho_threshold,
+    vtrace=None,
 ):
     """Calculates the ground truth for V-trace in Python/Numpy."""
     vs = []
@@ -86,7 +86,10 @@ def _ground_truth_calculation(
         - values
     )
 
-    return vtrace.VTraceReturns(vs=vs, pg_advantages=pg_advantages)
+    if vtrace:
+        return vtrace.VTraceReturns(vs=vs, pg_advantages=pg_advantages)
+    else:
+        return vs, pg_advantages
 
 
 class LogProbsFromLogitsAndActionsTest(unittest.TestCase):
@@ -166,7 +169,7 @@ class VtraceTest(unittest.TestCase):
             if sess:
                 output = sess.run(output)
 
-            ground_truth_v = _ground_truth_calculation(vtrace, **values)
+            ground_truth_v = _ground_truth_calculation(vtrace=vtrace, **values)
             check(output, ground_truth_v)
 
     def test_vtrace_from_logits(self):
