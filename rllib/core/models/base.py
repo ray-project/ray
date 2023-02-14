@@ -3,13 +3,13 @@ from dataclasses import dataclass
 from typing import List, Union
 
 from ray.rllib import SampleBatch
+from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_base import DummySpec
-
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-
+from ray.rllib.models.specs.checker import convert_to_canonical_format
+from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.
 STATE_IN: str = "state_in"
@@ -26,42 +26,10 @@ class ModelConfig(abc.ABC):
     """Base class for model configurations.
 
     ModelConfigs are framework-agnostic.
-    A ModelConfig is usually built by RLModules by querying it form a Catalog object.
-    It is therefore a means of configuration for RLModules.
-    However, that is not a limitation, and they can be built directly as well.
-
-    Usage Example together with a Model:
-
-    .. testcode::
-
-        from ray.rllib.core.models.base import Model, ModelConfig
-
-        class MyModel(Model):
-            def __init__(self, config):
-                super().__init__(config)
-                self.my_param = config.my_param * 2
-
-            def _forward(self, input_dict):
-                return input_dict["obs"] * self.my_param
-
-
-        @dataclass
-        class MyModelConfig(ModelConfig):
-            my_param: int = 42
-
-            def build(self, framework: str):
-                if framework == "bork":
-                    return MyModel(self)
-
-
-        config = MyModelConfig(my_param=3)
-        model = config.build(framework="bork")
-        print(model._forward({"obs": 1}))
-
-    .. testoutput::
-
-        6
-
+    A ModelConfig is usually built by RLModules after getting it from a Catalog object.
+    It is therefore a means of configuration for RLModules. However, ModelConfigs are
+    not restricted to be used only with Catalog or RLModules.
+    A usage Example together with a Model can be found in the Model.
     """
 
     @abc.abstractmethod
@@ -86,6 +54,7 @@ class Model(abc.ABC):
     .. testcode::
 
         from ray.rllib.core.models.base import Model, ModelConfig
+        from dataclasses import dataclass
 
         class MyModel(Model):
             def __init__(self, config):
@@ -117,16 +86,68 @@ class Model(abc.ABC):
 
     def __init__(self, config: ModelConfig):
         self.config = config
-        # Model itself does not impose restrictions on inputs and outputs.
-        self.input_spec = DummySpec()
-        self.output_spec = DummySpec()
+
+        # These should not be overridden by subclasses. Instead, get_input_spec and
+        # get_output_spec should be overridden.
+        self._input_spec = self.get_input_spec()
+        self._output_spec = self.get_output_spec()
+
+    def get_input_spec(self) -> Union[Spec, None]:
+        """Returns the input spec of this model.
+
+        Override `get_input_spec` to define your own input spec.
+        This method should not be called often, e.g. every forward pass.
+        Instead, it should be called once at instantiation to define Model.input_spec.
+
+        Returns:
+            Spec: The input spec.
+        """
+        return None
+
+    def get_output_spec(self) -> Union[Spec, None]:
+        """Returns the output spec of this model.
+
+        Override `get_output_spec` to define your own output spec.
+        This method should not be called often, e.g. every forward pass.
+        Instead, it should be called once at instantiation to define Model.output_spec.
+
+        Returns:
+            Spec: The output spec.
+        """
+        return None
+
+    @property
+    def input_spec(self) -> Spec:
+        """Returns the input spec of this model."""
+        return self._input_spec
+
+    @input_spec.setter
+    def input_spec(self, spec: Spec) -> None:
+        raise ValueError(
+            "Input spec cannot be set directly. Override "
+            "Model.get_input_spec() instead. Set Model._input_spec if "
+            "you want to override this behavior."
+        )
+
+    @property
+    def output_spec(self) -> Spec:
+        """Returns the output spec of this model."""
+        return self._output_spec
+
+    @output_spec.setter
+    def output_spec(self, spec: Spec) -> None:
+        raise ValueError(
+            "Output spec cannot be set directly. Override "
+            "Model.get_input_spec() instead. Set Model._input_spec if "
+            "you want to override this behavior."
+        )
 
     def get_initial_state(self) -> Union[NestedDict, List[TensorType]]:
         """Returns the initial state of the Model.
 
         It can be left empty if this Model is not stateful.
         """
-        return {}
+        return NestedDict()
 
     @abc.abstractmethod
     def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
@@ -176,6 +197,7 @@ class Encoder(Model, abc.ABC):
         from ray.rllib.core.models.base import ModelConfig
         from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT, Encoder
         from ray.rllib.policy.sample_batch import SampleBatch
+        from dataclasses import dataclass
         import numpy as np
 
         class NumpyEncoder(Encoder):
@@ -213,10 +235,13 @@ class Encoder(Model, abc.ABC):
 
     """
 
-    def __init__(self, config: ModelConfig):
-        super().__init__(config)
-        self.input_spec = SpecDict({SampleBatch.OBS: None, STATE_IN: None})
-        self.output_spec = [ENCODER_OUT, STATE_OUT]
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
 
     @abc.abstractmethod
     def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
@@ -239,3 +264,112 @@ class Encoder(Model, abc.ABC):
             NestedDict: The output tensors.
         """
         raise NotImplementedError
+
+
+class ActorCriticEncoder(Encoder):
+    """An encoder that potentially holds two encoders.
+
+    This is a special case of encoder that can either enclose a single,
+    shared encoder or two separate encoders: One for the actor and one for the
+    critic. The two encoders are of the same type and we can therefore make the
+    assumption that they have the same input and output specs.
+    """
+
+    framework = None
+
+    def __init__(self, config: ModelConfig) -> None:
+        if config.shared:
+            self.encoder = config.base_encoder_config.build(framework=self.framework)
+        else:
+            self.actor_encoder = config.base_encoder_config.build(
+                framework=self.framework
+            )
+            self.critic_encoder = config.base_encoder_config.build(
+                framework=self.framework
+            )
+
+        # We need to call Encoder.__init__() after initializing the encoder(s) in
+        # order to build on their specs.
+        super().__init__(config)
+
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        if self.config.shared:
+            state_in_spec = self.encoder.input_spec[STATE_IN]
+        else:
+            state_in_spec = NestedDict(
+                {
+                    ACTOR: self.actor_encoder.input_spec[STATE_IN],
+                    CRITIC: self.critic_encoder.input_spec[STATE_IN],
+                }
+            )
+
+        return SpecDict(
+            {
+                SampleBatch.OBS: None,
+                STATE_IN: state_in_spec,
+                SampleBatch.SEQ_LENS: None,
+            }
+        )
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        if self.config.shared:
+            state_out_spec = self.encoder.output_spec[STATE_OUT]
+        else:
+            state_out_spec = NestedDict(
+                {
+                    ACTOR: self.actor_encoder.output_spec[STATE_OUT],
+                    CRITIC: self.critic_encoder.output_spec[STATE_OUT],
+                }
+            )
+
+        return SpecDict(
+            {
+                ENCODER_OUT: {
+                    ACTOR: None,
+                    CRITIC: None,
+                },
+                STATE_OUT: state_out_spec,
+            }
+        )
+
+    @override(Model)
+    def get_initial_state(self):
+        if self.config.shared:
+            return self.encoder.get_initial_state()
+        else:
+            return {
+                ACTOR: self.actor_encoder.get_initial_state(),
+                CRITIC: self.critic_encoder.get_initial_state(),
+            }
+
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        if self.config.shared:
+            outs = self.encoder(inputs, **kwargs)
+            return NestedDict(
+                {
+                    ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
+                    STATE_OUT: outs[STATE_OUT],
+                }
+            )
+        else:
+            actor_inputs = NestedDict({**inputs, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            critic_inputs = NestedDict(
+                {**inputs, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+            )
+            actor_out = self.actor_encoder(actor_inputs, **kwargs)
+            critic_out = self.critic_encoder(critic_inputs, **kwargs)
+            return NestedDict(
+                {
+                    ENCODER_OUT: {
+                        ACTOR: actor_out[ENCODER_OUT],
+                        CRITIC: critic_out[ENCODER_OUT],
+                    },
+                    STATE_OUT: {
+                        ACTOR: actor_out[STATE_OUT],
+                        CRITIC: critic_out[STATE_OUT],
+                    },
+                }
+            )
