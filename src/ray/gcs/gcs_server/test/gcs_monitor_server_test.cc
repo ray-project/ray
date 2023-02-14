@@ -38,15 +38,15 @@ NodeResources constructNodeResources(
 }
 
 rpc::ResourceDemand constructResourceDemand(
-    abls::flat_hash_map<std::string, double> shape,
+    absl::flat_hash_map<std::string, double> shape,
     int num_ready_requests_queued,
     int num_infeasible_requests_queued,
     int backlog_size) {
   rpc::ResourceDemand demand;
-  demand->mutable_shape()->insert(shape.begin(), shape.end());
-  demand->set_num_ready_requests_queued(num_ready_requests_queued);
-  demand->set_num_infeasible_requests_queued(num_infeasible_requests_queued);
-  demand->set_backlog_size(backlog_size);
+  demand.mutable_shape()->insert(shape.begin(), shape.end());
+  demand.set_num_ready_requests_queued(num_ready_requests_queued);
+  demand.set_num_infeasible_requests_queued(num_infeasible_requests_queued);
+  demand.set_backlog_size(backlog_size);
 
   return demand;
 }
@@ -124,6 +124,37 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   NodeID id_3 = NodeID::FromRandom();
 
   {
+    // Setup resource demand mocks.
+    rpc::ResourcesData data;
+    data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
+                                                                            constructResourceDemand(
+                                                                                                    {
+                                                                                                      {"CPU", 0.75},
+                                                                                                    },
+                                                                                                    1,
+                                                                                                    2,
+                                                                                                    3));
+    data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
+                                                                            constructResourceDemand(
+                                                                                                    {
+                                                                                                      {"custom", 0.25},
+                                                                                                    },
+                                                                                                    1,
+                                                                                                    1,
+                                                                                                    1));
+
+    data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
+                                                                            constructResourceDemand(
+                                                                                                    {
+                                                                                                      {"CPU", 0.75},
+                                                                                                      {"custom", 0.25},
+                                                                                                    },
+                                                                                                    1,
+                                                                                                    1,
+                                                                                                    1));
+    gcs_resource_manager_nodes[id_1] = data;
+  }
+  {
     // Setup the node management mocks.
     cluster_resource_manager_.AddOrUpdateNode(
         scheduling::NodeID(id_1.Binary()),
@@ -141,53 +172,62 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     gcs_node_manager_nodes[id_3] = Mocker::GenNodeInfo(0, "1.1.1.3", "Node1");
   }
 
-  {
-    rpc::ResourcesData data;
-    data->mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
-            {
-                {"CPU", 0.75},
-            },
-            1,
-            2,
-            3));
-    data->mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
-            {
-                {"custom", 0.25},
-            },
-            1,
-            1,
-            1));
-
-    data->mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
-            {
-                {"CPU", 0.75},
-                {"custom", 0.25},
-            },
-            1,
-            1,
-            1));
-    gcs_resource_manager_nodes[id_1] = data;
-  }
 
   monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
 
   ASSERT_TRUE(replied);
-  ASSERT_EQ(reply.node_statuses().size(), 1);
-  ASSERT_EQ(reply.node_statuses(0).node_id(), id_1.Binary());
-  ASSERT_EQ(reply.node_statuses(0).address(), "1.1.1.1");
+  {
+    // Check the node_statuses field looks good.
+    ASSERT_EQ(reply.node_statuses().size(), 1);
+    ASSERT_EQ(reply.node_statuses(0).node_id(), id_1.Binary());
+    ASSERT_EQ(reply.node_statuses(0).address(), "1.1.1.1");
 
-  ASSERT_EQ(reply.node_statuses()[0].available_resources().size(), 2);
-  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("CPU"),
-            0.5);
-  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("custom"),
-            4);
+    ASSERT_EQ(reply.node_statuses()[0].available_resources().size(), 2);
+    ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("CPU"),
+              0.5);
+    ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_available_resources()->at("custom"),
+              4);
 
-  ASSERT_EQ(reply.node_statuses()[0].total_resources().size(), 2);
-  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_total_resources()->at("CPU"), 1);
-  ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_total_resources()->at("custom"), 8);
+    ASSERT_EQ(reply.node_statuses()[0].total_resources().size(), 2);
+    ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_total_resources()->at("CPU"), 1);
+    ASSERT_EQ(reply.mutable_node_statuses(0)->mutable_total_resources()->at("custom"), 8);
+  }
+  {
+    // Check the resource requests field looks good.
+    ASSERT_EQ(reply.resource_requests().size(), 3);
+
+    bool cpu_found = false;
+    bool custom_found = false;
+    bool cpu_and_custom_found = false;
+
+    for (const auto &request : reply.resource_requests()) {
+      RAY_LOG(ERROR) << request.DebugString();
+      ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
+                ResourceRequest_ResourceRequestType_SHORT_RESERVATION);
+      ASSERT_EQ(request.bundles().size(), 1);
+      const auto &resources = request.bundles()[0].resources();
+      if (resources.size() == 1 && resources.begin()->first == "CPU") {
+        cpu_found = true;
+        ASSERT_EQ(request.count(), 6);
+        ASSERT_EQ(resources.begin()->second, 0.75);
+      }
+      if (resources.size() == 1 && resources.begin()->first == "custom") {
+        custom_found = true;
+        ASSERT_EQ(request.count(), 3);
+        ASSERT_EQ(resources.begin()->second, 0.25);
+      }
+      if (resources.size() == 2) {
+        cpu_and_custom_found = true;
+        ASSERT_EQ(resources.at("CPU"), 0.75);
+        ASSERT_EQ(resources.at("custom"), 0.25);
+        ASSERT_EQ(request.count(), 3);
+      }
+    }
+
+    ASSERT_TRUE(cpu_found);
+    ASSERT_TRUE(custom_found);
+    ASSERT_TRUE(cpu_and_custom_found);
+  }
 }
 
 }  // namespace ray

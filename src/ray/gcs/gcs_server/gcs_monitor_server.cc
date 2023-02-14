@@ -86,7 +86,7 @@ void GcsMonitorServer::PopulateResourceDemands(
   for (const auto &node_report_pair : resources_report_by_node) {
     for (const auto &resource_demand :
          node_report_pair.second.resource_load_by_shape().resource_demands()) {
-      rpc::ResourceRequest *request = task_load_by_shape[resource_demand.shape()];
+      rpc::ResourceRequest *request;
       auto it = task_load_by_shape.find(resource_demand.shape());
       if (it == task_load_by_shape.end()) {
         request = reply->add_resource_requests();
