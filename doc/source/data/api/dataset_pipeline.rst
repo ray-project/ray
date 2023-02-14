@@ -10,6 +10,7 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline
 
@@ -18,6 +19,7 @@ Basic Transformations
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.map
    DatasetPipeline.map_batches
@@ -33,6 +35,7 @@ Sorting, Shuffling, Repartitioning
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.sort_each_window
    DatasetPipeline.random_shuffle_each_window
@@ -44,6 +47,7 @@ Splitting DatasetPipelines
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.split
    DatasetPipeline.split_at_indices
@@ -53,6 +57,7 @@ Creating DatasetPipelines
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.repeat
    DatasetPipeline.rewindow
@@ -63,6 +68,7 @@ Consuming DatasetPipelines
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.show
    DatasetPipeline.show_windows
@@ -79,6 +85,7 @@ I/O and Conversion
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.write_json
    DatasetPipeline.write_csv
@@ -92,6 +99,7 @@ Inspecting Metadata
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    DatasetPipeline.schema
    DatasetPipeline.count

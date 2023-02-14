@@ -12,6 +12,7 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    grouped_dataset.GroupedDataset
 
@@ -20,6 +21,7 @@ Computations / Descriptive Stats
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    grouped_dataset.GroupedDataset.count
    grouped_dataset.GroupedDataset.sum
@@ -33,6 +35,7 @@ Function Application
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    grouped_dataset.GroupedDataset.aggregate
    grouped_dataset.GroupedDataset.map_groups
