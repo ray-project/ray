@@ -89,8 +89,8 @@ if __name__ == "__main__":
         return pol_id
 
     scaling_config = {
-        "num_trainer_workers": args.num_gpus,
-        "num_gpus_per_trainer_worker": int(args.num_gpus > 0),
+        "num_learner_workers": args.num_gpus,
+        "num_gpus_per_learner_worker": int(args.num_gpus > 0),
     }
 
     config = (

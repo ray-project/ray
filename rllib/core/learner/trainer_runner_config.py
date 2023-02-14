@@ -37,9 +37,9 @@ class TrainerRunnerConfig:
         self.learner_hps = LearnerHPs()
 
         # `self.resources()`
-        self.num_gpus_per_trainer_worker = 0
-        self.num_cpus_per_trainer_worker = 1
-        self.num_trainer_workers = 1
+        self.num_gpus_per_learner_worker = 0
+        self.num_cpus_per_learner_worker = 1
+        self.num_learner_workers = 1
 
         # TODO (Avnishn): We should come back and revise how to specify algorithm
         # resources this is a stop gap solution for now so that users can specify the
@@ -74,9 +74,9 @@ class TrainerRunnerConfig:
         self.validate()
 
         scaling_config = TrainerScalingConfig(
-            num_workers=self.num_trainer_workers,
-            num_gpus_per_worker=self.num_gpus_per_trainer_worker,
-            num_cpus_per_worker=self.num_cpus_per_trainer_worker,
+            num_workers=self.num_learner_workers,
+            num_gpus_per_worker=self.num_gpus_per_learner_worker,
+            num_cpus_per_worker=self.num_cpus_per_learner_worker,
             local_gpu_idx=self.local_gpu_idx,
         )
 
@@ -113,18 +113,18 @@ class TrainerRunnerConfig:
 
     def resources(
         self,
-        num_trainer_workers: Optional[int] = NotProvided,
-        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
-        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_learner_workers: Optional[int] = NotProvided,
+        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
-        if num_trainer_workers is not NotProvided:
-            self.num_trainer_workers = num_trainer_workers
-        if num_gpus_per_trainer_worker is not NotProvided:
-            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
-        if num_cpus_per_trainer_worker is not NotProvided:
-            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
+        if num_learner_workers is not NotProvided:
+            self.num_learner_workers = num_learner_workers
+        if num_gpus_per_learner_worker is not NotProvided:
+            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
+        if num_cpus_per_learner_worker is not NotProvided:
+            self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
 

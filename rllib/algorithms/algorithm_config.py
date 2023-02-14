@@ -243,9 +243,9 @@ class AlgorithmConfig:
         self.num_gpus_per_worker = 0
         self._fake_gpus = False
         self.num_cpus_for_local_worker = 1
-        self.num_trainer_workers = 0
-        self.num_gpus_per_trainer_worker = 0
-        self.num_cpus_per_trainer_worker = 1
+        self.num_learner_workers = 0
+        self.num_gpus_per_learner_worker = 0
+        self.num_cpus_per_learner_worker = 1
         self.local_gpu_idx = 0
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
@@ -891,10 +891,10 @@ class AlgorithmConfig:
                 )
 
         # make sure the resource requirements for trainer runner is valid
-        if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
+        if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
-                "(i.e. num_trainer_workers = 0)"
+                "(i.e. num_learner_workers = 0)"
             )
 
         # resolve learner class
@@ -973,9 +973,9 @@ class AlgorithmConfig:
         num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_for_local_worker: Optional[int] = NotProvided,
-        num_trainer_workers: Optional[int] = NotProvided,
-        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
-        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_learner_workers: Optional[int] = NotProvided,
+        num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
@@ -996,18 +996,18 @@ class AlgorithmConfig:
                 fractional. This is usually needed only if your env itself requires a
                 GPU (i.e., it is a GPU-intensive video game), or model inference is
                 unusually expensive.
-            num_trainer_workers: Number of workers used for training. A value of 0
+            num_learner_workers: Number of workers used for training. A value of 0
                 means training will take place on a local worker on head node CPUs or 1
-                GPU (determined by `num_gpus_per_trainer_worker`). For multi-gpu
+                GPU (determined by `num_gpus_per_learner_worker`). For multi-gpu
                 training, set number of workers greater than 1 and set
-                `num_gpus_per_trainer_worker` accordingly (e.g. 4 GPUs total, and model
-                needs 2 GPUs: `num_trainer_workers = 2` and
-                `num_gpus_per_trainer_worker = 2`)
-            num_cpus_per_trainer_worker: Number of CPUs allocated per trainer worker.
+                `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
+                needs 2 GPUs: `num_learner_workers = 2` and
+                `num_gpus_per_learner_worker = 2`)
+            num_cpus_per_learner_worker: Number of CPUs allocated per trainer worker.
                 Only necessary for custom processing pipeline inside each Learner
-                requiring multiple CPU cores. Ignored if `num_trainer_workers = 0`.
-            num_gpus_per_trainer_worker: Number of GPUs allocated per worker. If
-                `num_trainer_workers = 0`, any value greater than 0 will run the
+                requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
+            num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
+                `num_learner_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
                 the training on head node CPU cores.
             local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
@@ -1054,12 +1054,12 @@ class AlgorithmConfig:
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
 
-        if num_trainer_workers is not NotProvided:
-            self.num_trainer_workers = num_trainer_workers
-        if num_cpus_per_trainer_worker is not NotProvided:
-            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
-        if num_gpus_per_trainer_worker is not NotProvided:
-            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
+        if num_learner_workers is not NotProvided:
+            self.num_learner_workers = num_learner_workers
+        if num_cpus_per_learner_worker is not NotProvided:
+            self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
+        if num_gpus_per_learner_worker is not NotProvided:
+            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
 
@@ -2757,9 +2757,9 @@ class AlgorithmConfig:
                 learner_hps=self.learner_hps,
             )
             .resources(
-                num_trainer_workers=self.num_trainer_workers,
-                num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
-                num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
+                num_learner_workers=self.num_learner_workers,
+                num_cpus_per_learner_worker=self.num_cpus_per_learner_worker,
+                num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
             .framework(eager_tracing=self.eager_tracing)

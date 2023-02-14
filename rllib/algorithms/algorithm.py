@@ -2172,22 +2172,22 @@ class Algorithm(Trainable):
 
         if cf._enable_learner_api:
             # resources for the trainer
-            if cf.num_trainer_workers == 0:
-                # if num_trainer_workers is 0, then we need to allocate one gpu if
-                # num_gpus_per_trainer_worker is greater than 0.
+            if cf.num_learner_workers == 0:
+                # if num_learner_workers is 0, then we need to allocate one gpu if
+                # num_gpus_per_learner_worker is greater than 0.
                 trainer_bundle = [
                     {
-                        "CPU": cf.num_cpus_per_trainer_worker,
-                        "GPU": cf.num_gpus_per_trainer_worker,
+                        "CPU": cf.num_cpus_per_learner_worker,
+                        "GPU": cf.num_gpus_per_learner_worker,
                     }
                 ]
             else:
                 trainer_bundle = [
                     {
-                        "CPU": cf.num_cpus_per_trainer_worker,
-                        "GPU": cf.num_gpus_per_trainer_worker,
+                        "CPU": cf.num_cpus_per_learner_worker,
+                        "GPU": cf.num_gpus_per_learner_worker,
                     }
-                    for _ in range(cf.num_trainer_workers)
+                    for _ in range(cf.num_learner_workers)
                 ]
 
             bundles += trainer_bundle
