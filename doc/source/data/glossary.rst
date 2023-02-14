@@ -50,32 +50,6 @@ Ray Datasets Glossary
         and Python lists. To determine the block format, call
         :meth:`Dataset.dataset_format() <ray.data.Dataset.dataset_format>`.
 
-    Data Shuffling
-        The act of reordering :term:`records <Record>`. Shuffling prevents overfitting of models.
-
-        To perform a global shuffle, call :meth:`~ray.data.Dataset.random_shuffle`.
-
-        .. doctest::
-
-            >>> import ray
-            >>> dataset = ray.data.range(10)
-            >>> dataset.random_shuffle().take_all()  # doctest: +SKIP
-            [4, 7, 1, 5, 2, 3, 8, 6, 9, 0]
-
-        If :meth:`~ray.data.Dataset.random_shuffle` is slow, perform a local shuffle.
-        It’s lower quality but more performant. To perform a local shuffle, call methods
-        like :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and specify
-        ``local_shuffle_buffer_size``.
-
-        .. doctest::
-
-            >>> import ray
-            >>> dataset = ray.data.range(10)
-            >>> next(iter(dataset.iter_batches(local_shuffle_buffer_size=5)))  # doctest: +SKIP
-            [2, 6, 7, 8, 4, 9, 3, 1, 5, 0]
-
-        To learn more about shuffling data, read :ref:`Shuffling Data <air-shuffle>`.
-
     Datasets (library)
         A library for distributed data processing.
 
