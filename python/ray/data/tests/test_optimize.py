@@ -375,11 +375,6 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
 
 
 def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
-    context.optimize_fuse_stages = True
-    context.optimize_fuse_read_stages = True
-    context.optimize_fuse_shuffle_stages = True
-
     path = os.path.join(tmp_path, "out")
     ds = ray.data.range(100).randomize_block_order().map_batches(lambda x: x)
     ds.write_csv(path)
