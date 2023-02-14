@@ -69,7 +69,7 @@ class RemoteTrainingHelper:
         check(local_trainer.get_state(), runner.get_state())
 
 
-class TestTrainerRunner(unittest.TestCase):
+class TestLearnerGroup(unittest.TestCase):
     def setUp(self) -> None:
         ray.init()
 

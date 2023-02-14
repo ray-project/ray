@@ -40,7 +40,7 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
     return backend_config
 
 
-class TrainerRunner:
+class LearnerGroup:
     """Coordinator of Learners.
     Public API:
         .update(batch) -> updates the RLModule based on gradient descent algos.
@@ -52,9 +52,9 @@ class TrainerRunner:
         .get_weights() -> returns the weights of the RLModule from the Learner(s).
         .set_weights() -> sets the weights of the RLModule in the Learner(s).
         .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
-                         this TrainerRunner.
+                         this LearnerGroup.
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
-                            by this TrainerRunner.
+                            by this LearnerGroup.
     Args:
         learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing non-blocking
@@ -184,7 +184,7 @@ class TrainerRunner:
     ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the Learners using DDP training.
 
-        Note: this function is used if the num_gpus this TrainerRunner is configured
+        Note: this function is used if the num_gpus this LearnerGroup is configured
             with is > 0. If _fake_gpus is True then this function will still be used
             for distributed training, but the workers will be configured to use a
             different backend than the cuda backend.
@@ -281,7 +281,7 @@ class TrainerRunner:
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        """Add a module to the Learners maintained by this TrainerRunner.
+        """Add a module to the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to add.
@@ -313,7 +313,7 @@ class TrainerRunner:
             return self._get_results(results)
 
     def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the Learners maintained by this TrainerRunner.
+        """Remove a module from the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to remove.
@@ -381,7 +381,7 @@ class TrainerRunner:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
 
     def shutdown(self):
-        """Shuts down the TrainerRunner."""
+        """Shuts down the LearnerGroup."""
         if not self._is_local:
             self._backend_executor.shutdown()
             self._is_shut_down = True

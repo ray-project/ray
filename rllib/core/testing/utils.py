@@ -3,7 +3,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.core.learner.trainer_runner import TrainerRunner
+from ray.rllib.core.learner.trainer_runner import LearnerGroup
 from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
 from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 
@@ -106,7 +106,7 @@ def get_trainer_runner(
     scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
-) -> TrainerRunner:
+) -> LearnerGroup:
     """Construct a trainer runner for testing.
 
     Args:
@@ -135,7 +135,7 @@ def get_trainer_runner(
         trainer_scaling_config=scaling_config,
         trainer_hyperparameters=trainer_hps,
     )
-    runner = TrainerRunner(learner_spec)
+    runner = LearnerGroup(learner_spec)
 
     return runner
 
@@ -145,7 +145,7 @@ def add_module_to_learner_or_learner_group(
     framework: str,
     env: "gym.Env",
     module_id: str,
-    runner_or_trainer: Union[TrainerRunner, "Learner"],
+    runner_or_trainer: Union[LearnerGroup, "Learner"],
 ):
     runner_or_trainer.add_module(
         module_id=module_id,

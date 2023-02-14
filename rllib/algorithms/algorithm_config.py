@@ -18,7 +18,7 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.core.learner.trainer_runner_config import (
-    TrainerRunnerConfig,
+    LearnerGroupConfig,
     ModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -1475,7 +1475,7 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
-            _enable_learner_api: Whether to enable the TrainerRunner and Learner
+            _enable_learner_api: Whether to enable the LearnerGroup and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
 
@@ -2739,7 +2739,7 @@ class AlgorithmConfig:
 
         return marl_module_spec
 
-    def get_trainer_runner_config(self, module_spec: ModuleSpec) -> TrainerRunnerConfig:
+    def get_trainer_runner_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
 
         if not self._is_frozen:
             raise ValueError(
@@ -2748,7 +2748,7 @@ class AlgorithmConfig:
             )
 
         config = (
-            TrainerRunnerConfig()
+            LearnerGroupConfig()
             .module(module_spec)
             .trainer(
                 trainer_class=self.learner_class,

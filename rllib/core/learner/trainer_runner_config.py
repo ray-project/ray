@@ -2,7 +2,7 @@ from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.learner.trainer_runner import TrainerRunner
+from ray.rllib.core.learner.trainer_runner import LearnerGroup
 from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
@@ -20,13 +20,13 @@ ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
 
 # TODO (Kourosh): We should make all configs come from a standard base class that
 # defines the general interfaces for validation, from_dict, to_dict etc.
-class TrainerRunnerConfig:
-    """Configuration object for TrainerRunner."""
+class LearnerGroupConfig:
+    """Configuration object for LearnerGroup."""
 
-    def __init__(self, cls: Type[TrainerRunner] = None) -> None:
+    def __init__(self, cls: Type[LearnerGroup] = None) -> None:
 
-        # Define the default TrainerRunner class
-        self.trainer_runner_class = cls or TrainerRunner
+        # Define the default LearnerGroup class
+        self.trainer_runner_class = cls or LearnerGroup
 
         # `self.module()`
         self.module_spec = None
@@ -70,7 +70,7 @@ class TrainerRunnerConfig:
             # TODO (Kourosh): Change the optimizer config to a dataclass object.
             self.optimizer_config = {"lr": 1e-3}
 
-    def build(self) -> TrainerRunner:
+    def build(self) -> LearnerGroup:
         self.validate()
 
         scaling_config = TrainerScalingConfig(
@@ -95,7 +95,7 @@ class TrainerRunnerConfig:
 
     def framework(
         self, eager_tracing: Optional[bool] = NotProvided
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
@@ -104,7 +104,7 @@ class TrainerRunnerConfig:
     def module(
         self,
         module_spec: Optional[ModuleSpec] = NotProvided,
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
         if module_spec is not NotProvided:
             self.module_spec = module_spec
@@ -117,7 +117,7 @@ class TrainerRunnerConfig:
         num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
         if num_learner_workers is not NotProvided:
             self.num_learner_workers = num_learner_workers
@@ -136,7 +136,7 @@ class TrainerRunnerConfig:
         trainer_class: Optional[Type["Learner"]] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
         learner_hps: Optional[LearnerHPs] = NotProvided,
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
         if trainer_class is not NotProvided:
             self.trainer_class = trainer_class
