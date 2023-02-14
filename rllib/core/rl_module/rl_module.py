@@ -45,6 +45,14 @@ class SingleAgentRLModuleSpec:
     model_config: Optional[Dict[str, Any]] = None
 
     def build(self) -> "RLModule":
+
+        if self.observation_space is None:
+            raise ValueError("Observation space must be specified.")
+        if self.action_space is None:
+            raise ValueError("Action space must be specified.")
+        if self.model_config is None:
+            raise ValueError("Model config must be specified.")
+
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,

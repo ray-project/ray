@@ -35,14 +35,8 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
-    MultiAgentRLModule,
-)
-
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -699,20 +693,7 @@ class Algorithm(Trainable):
             # the two we need to loop through the policy modules and create a simple
             # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            module_specs = {}
-
-            for pid, policy in local_worker.policy_map.items():
-                module_specs[pid] = SingleAgentRLModuleSpec(
-                    module_class=policy.config["rl_module_class"],
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config=policy.config["model"],
-                )
-
-            module_spec = MultiAgentRLModuleSpec(
-                module_class=MultiAgentRLModule, module_specs=module_specs
-            )
-
+            module_spec = local_worker.marl_module_spec
             trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()
 

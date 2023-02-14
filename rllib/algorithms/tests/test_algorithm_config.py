@@ -5,6 +5,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -157,14 +158,14 @@ class TestAlgorithmConfig(unittest.TestCase):
         )
 
         config.validate()
-        self.assertEqual(config.rl_module_class, PPOTorchRLModule)
+        self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
         class A:
             pass
 
-        config = config.rl_module(rl_module_class=A)
+        config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(A))
         config.validate()
-        self.assertEqual(config.rl_module_class, A)
+        self.assertEqual(config.rl_module_spec.module_class, A)
 
     def test_rl_trainer_api(self):
         # TODO (Kourosh): the default rl_trainer of PPO is not implemented yet. When
