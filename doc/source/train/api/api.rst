@@ -11,7 +11,7 @@ For core Ray AIR APIs, take a look at the :ref:`AIR package reference <air-api-r
 Ray Train Base Classes (Developer APIs)
 ---------------------------------------
 
-.. currentmodule:: ray.train
+.. currentmodule:: ray
 
 .. _train-base-trainer:
 
@@ -22,9 +22,9 @@ Trainer Base Classes
     :toctree: doc/
     :template: autosummary/class_with_autosummary.rst
 
-    ~trainer.BaseTrainer
-    ~data_parallel_trainer.DataParallelTrainer
-    ~gbdt_trainer.GBDTTrainer
+    ~train.trainer.BaseTrainer
+    ~train.data_parallel_trainer.DataParallelTrainer
+    ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` Methods
 ************************
@@ -32,11 +32,11 @@ Trainer Base Classes
 .. autosummary::
     :toctree: doc/
 
-    ~trainer.BaseTrainer.fit
-    ~trainer.BaseTrainer.setup
-    ~trainer.BaseTrainer.preprocess_datasets
-    ~trainer.BaseTrainer.training_loop
-    ~trainer.BaseTrainer.as_trainable
+    ~train.trainer.BaseTrainer.fit
+    ~train.trainer.BaseTrainer.setup
+    ~train.trainer.BaseTrainer.preprocess_datasets
+    ~train.trainer.BaseTrainer.training_loop
+    ~train.trainer.BaseTrainer.as_trainable
 
 
 Train Backend Base Classes
@@ -48,8 +48,8 @@ Train Backend Base Classes
 .. autosummary::
     :toctree: doc/
 
-    backend.Backend
-    backend.BackendConfig
+    ~train.backend.Backend
+    ~train.backend.BackendConfig
 
 
 .. _train-integration-api:
@@ -66,19 +66,19 @@ Pytorch
 .. autosummary::
     :toctree: doc/
 
-    ~torch.TorchTrainer
-    ~torch.prepare_model
-    ~torch.prepare_optimizer
-    ~torch.prepare_data_loader
-    ~torch.get_device
-    ~torch.accelerate
-    ~torch.backward
-    ~torch.enable_reproducibility
-    ~torch.TorchConfig
+    ~train.torch.TorchTrainer
+    ~train.torch.prepare_model
+    ~train.torch.prepare_optimizer
+    ~train.torch.prepare_data_loader
+    ~train.torch.get_device
+    ~train.torch.accelerate
+    ~train.torch.backward
+    ~train.torch.enable_reproducibility
+    ~train.torch.TorchConfig
 
 .. autosummary::
 
-    ~torch.TorchCheckpoint
+    ~train.torch.TorchCheckpoint
 
 
 Tensorflow/Keras
@@ -87,13 +87,13 @@ Tensorflow/Keras
 .. autosummary::
     :toctree: doc/
 
-    ~tensorflow.TensorflowTrainer
-    ~tensorflow.prepare_dataset_shard
-    ~tensorflow.TensorflowConfig
+    ~train.tensorflow.TensorflowTrainer
+    ~train.tensorflow.prepare_dataset_shard
+    ~train.tensorflow.TensorflowConfig
 
 .. autosummary::
 
-    ~tensorflow.TensorflowCheckpoint
+    ~train.tensorflow.TensorflowCheckpoint
     ~air.integrations.keras.ReportCheckpointCallback
 
 
@@ -103,8 +103,8 @@ Horovod
 .. autosummary::
     :toctree: doc/
 
-    ~horovod.HorovodTrainer
-    ~horovod.HorovodConfig
+    ~train.horovod.HorovodTrainer
+    ~train.horovod.HorovodConfig
 
 
 XGBoost
@@ -113,12 +113,12 @@ XGBoost
 .. autosummary::
     :toctree: doc/
 
-    ~xgboost.XGBoostTrainer
+    ~train.xgboost.XGBoostTrainer
 
 
 .. autosummary::
 
-    ~xgboost.XGBoostCheckpoint
+    ~train.xgboost.XGBoostCheckpoint
 
 
 LightGBM
@@ -127,12 +127,12 @@ LightGBM
 .. autosummary::
     :toctree: doc/
 
-    ~lightgbm.LightGBMTrainer
+    ~train.lightgbm.LightGBMTrainer
 
 
 .. autosummary::
 
-    ~lightgbm.LightGBMCheckpoint
+    ~train.lightgbm.LightGBMCheckpoint
 
 
 HuggingFace
@@ -141,11 +141,11 @@ HuggingFace
 .. autosummary::
     :toctree: doc/
 
-    ~huggingface.HuggingFaceTrainer
+    ~train.huggingface.HuggingFaceTrainer
 
 .. autosummary::
 
-    ~huggingface.HuggingFaceCheckpoint
+    ~train.huggingface.HuggingFaceCheckpoint
 
 
 Scikit-Learn
@@ -154,11 +154,11 @@ Scikit-Learn
 .. autosummary::
     :toctree: doc/
 
-    ~sklearn.SklearnTrainer
+    ~train.sklearn.SklearnTrainer
 
 .. autosummary::
 
-    ~sklearn.SklearnCheckpoint
+    ~train.sklearn.SklearnCheckpoint
 
 
 Mosaic
@@ -167,7 +167,7 @@ Mosaic
 .. autosummary::
     :toctree: doc/
 
-    ~mosaic.MosaicTrainer
+    ~train.mosaic.MosaicTrainer
 
 
 Reinforcement Learning (RLlib)
@@ -176,8 +176,8 @@ Reinforcement Learning (RLlib)
 .. autosummary::
     :toctree: doc/
 
-    ~rl.RLTrainer
+    ~train.rl.RLTrainer
 
 .. autosummary::
 
-    ~rl.RLCheckpoint
+    ~train.rl.RLCheckpoint
