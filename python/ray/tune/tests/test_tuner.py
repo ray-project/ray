@@ -533,7 +533,10 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
 
 def test_invalid_param_space(shutdown_only):
     """Check that Tune raises an error on invalid param_space types."""
-    trainable = lambda config: {"metric": 1}
+
+    def trainable(config):
+        return {"metric": 1}
+
     with pytest.raises(ValueError):
         Tuner(trainable, param_space="not allowed")
 
