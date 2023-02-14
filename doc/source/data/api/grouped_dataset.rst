@@ -12,6 +12,7 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    grouped_dataset.GroupedDataset
 

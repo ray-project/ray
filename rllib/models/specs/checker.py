@@ -10,7 +10,8 @@ from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
 
 
-def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
+@DeveloperAPI
+def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     """Converts a spec type input to the canonical format.
 
     The canonical format is either
@@ -34,23 +35,23 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     .. code-block:: python
         spec = ["foo", ("bar", "baz")]
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict({"foo": None, ("bar", "baz"): None})
 
         spec = {"foo": int, "bar": {"baz": None}}
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict(
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": None})}
         # )
 
         spec = {"foo": int, "bar": {"baz": str}}
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict(
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TypeSpec(str)})}
         # )
 
         spec = {"foo": int, "bar": {"baz": TorchTensorSpec("b,h")}}
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict(
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TorchTensorSpec("b,h")})}
         # )
@@ -60,15 +61,15 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     .. code-block:: python
         spec = int
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = TypeSpec(int)
 
         spec = None
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = None
 
         spec = TorchTensorSpec("b,h")
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = TorchTensorSpec("b,h")
 
     Args:
@@ -232,7 +233,7 @@ def check_input_specs(
                 spec = getattr(self, input_spec, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
                     raise ValueError(f"object {self} has no attribute {input_spec}.")
-                spec = _convert_to_canonical_format(spec)
+                spec = convert_to_canonical_format(spec)
                 checked_data = _validate(
                     cls_instance=self,
                     method=func,
@@ -318,7 +319,7 @@ def check_output_specs(
                 spec = getattr(self, output_spec, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
                     raise ValueError(f"object {self} has no attribute {output_spec}.")
-                spec = _convert_to_canonical_format(spec)
+                spec = convert_to_canonical_format(spec)
                 _validate(
                     cls_instance=self,
                     method=func,
