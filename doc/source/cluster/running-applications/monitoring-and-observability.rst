@@ -87,8 +87,15 @@ below.
 
 .. _multi-node-metrics:
 
-Prometheus metrics
-^^^^^^^^^^^^^^^^^^
+Prometheus
+^^^^^^^^^^
+Ray supports prometheus for emitting and recording time-series metrics.
+See :ref:`metrics <ray-metrics>` for more details of the metrics emitted.
+When using Prometheus in a Ray cluster, one must decide where they want to host prometheus and then configure
+Prometheus so that Prometheus can scrape the metrics from Ray.
+
+Scraping metrics
+################
 
 Ray runs a metrics agent per node to export :ref:`metrics <ray-metrics>` about Ray core as well as
 custom user-defined metrics. Each metrics agent collects metrics from the local
@@ -142,7 +149,7 @@ start``.  If using KubeRay, you can specify
 ``rayStartParams.metrics-export-port`` in the RayCluster configuration file.
 The port must be specified on all nodes in the cluster.
 
-If you do not know the IP addresses of the nodes in your Ray cluster, 
+If you do not know the IP addresses of the nodes in your Ray cluster,
 you can also programmatically discover the endpoints by reading the
 Ray Cluster information. Here, we will use a Python script and the
 ``ray.nodes()`` API to find the metrics agents' URLs, by combining the
@@ -188,3 +195,67 @@ Ray Cluster information. Here, we will use a Python script and the
                     'object_store_memory': 2.0},
      'alive': True}]
     """
+
+
+.. _multi-node-metrics-grafana:
+
+
+Grafana
+^^^^^^^
+Ray dashboard integrates with grafana to show visualizations of time-series metrics.
+
+.. image:: images/graphs.png
+    :align: center
+
+First, you must decide where you want to host Grafana. One common place is to run it on the head node of the cluster.
+See :ref:`here <grafana>` for instructions on how to install Grafana and how to use the default Grafana configurations
+exported by Ray.
+
+Next, the head node must be able to access Prometheus and Grafana and the browser of the dashboard user
+must be able to access Grafana. You can configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
+and `RAY_GRAFANA_IFRAME_HOST` environment variables.
+
+* `RAY_GRAFANA_HOST` should be set to an address that the head node can use to access Grafana.
+* `RAY_PROMETHEUS_HOST` should be set to an address the head node can use to access Prometheus.
+* `RAY_GRAFANA_IFRAME_HOST` can be set to an address for the user's browsers to use to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST` will be equal to `RAY_GRAFANA_HOST`.
+
+For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
+to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
+
+
+.. _multi-node-metrics-grafana-existing:
+
+Using an existing Grafana instance
+##################################
+
+When you want to use existing Grafana instance, before starting your Ray cluster you will need to setup environment variable `RAY_GRAFANA_HOST` with an URL of your Grafana. After starting Ray, you can find Grafana dashboard json at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
+
+If Grafana reports that datasource is not found, you can `add a datasource variable <https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable>`_ and using `JSON model view <https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model>`_ change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
+
+.. code-block:: json
+
+  "datasource": {
+    "type": "prometheus",
+    "uid": "$data_source"
+  }
+
+When existing Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray dashboard:
+
+.. code-block:: ini
+
+  [security]
+  allow_embedding = true
+  cookie_secure = true
+  cookie_samesite = none
+
+If Grafana is exposed via nginx ingress on Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
+
+.. code-block:: yaml
+
+  nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options SAMEORIGIN always;
+
+When both Grafana and Ray cluster are on the same Kubernetes cluster, it is important to set `RAY_GRAFANA_HOST` to the external URL of the Grafana ingress. For successful embedding, `RAY_GRAFANA_HOST` needs to be accessible to both Ray cluster backend and Ray dashboard frontend:
+
+* On the backend, *Ray cluster head* does health checks on Grafana. Hence `RAY_GRAFANA_HOST` needs to be accessible in the Kubernetes pod which is running the head node.
+* When accessing *Ray dashboard* from the browser, frontend embeds Grafana dashboard using the URL specified in `RAY_GRAFANA_HOST`. Hence `RAY_GRAFANA_HOST` needs to be accessible from the browser as well.
