@@ -2832,7 +2832,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
         drop_last: bool = False,
-        collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
+        collate_fn: Optional[Callable[[DataBatch], Any]] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[DataBatch]:
@@ -2902,7 +2902,7 @@ class Dataset(Generic[T]):
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], "TorchTensorBatchType"]
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2964,21 +2964,19 @@ class Dataset(Generic[T]):
             convert_ndarray_batch_to_torch_tensor_batch,
         )
 
-        def batch_fn(
-            batch: Union[np.ndarray, Dict[str, np.ndarray]]
-        ) -> "TorchTensorBatchType":
-            if collate_fn:
-                batch = collate_fn(batch)
-
-                def tensor_creator_fn(ndarray, dtype, device):
-                    return ndarray.to(dtype=dtype, device=device)
-
-            else:
-                tensor_creator_fn = None
-
-            return convert_ndarray_batch_to_torch_tensor_batch(
-                batch, dtypes=dtypes, device=device, tensor_creator_fn=tensor_creator_fn
+        if collate_fn and (dtypes or device):
+            raise ValueError(
+                "collate_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `collate_fn` will move the output Torch tensors to the"
+                "appropriate dtype and device."
             )
+
+        if not collate_fn:
+
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+                convert_ndarray_batch_to_torch_tensor_batch(
+                    batch, dtypes=dtypes, device=device
+                )
 
         yield from self.iter_batches(
             prefetch_blocks=prefetch_blocks,

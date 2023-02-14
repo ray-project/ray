@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable, Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any
 
 import numpy as np
 import pandas as pd
@@ -159,9 +159,6 @@ def convert_ndarray_batch_to_torch_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
-    tensor_creator_fn: Optional[
-        Callable[[np.ndarray, torch.dtype, str], torch.Tensor]
-    ] = None,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Convert a NumPy ndarray batch to a Torch Tensor batch.
 
@@ -171,13 +168,9 @@ def convert_ndarray_batch_to_torch_tensor_batch(
             will be inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
-        tensor_creator_fn: Function to override default Torch tensor creation.
 
     Returns: A (dict of) Torch Tensor(s).
     """
-    if tensor_creator_fn is None:
-        tensor_creator_fn = convert_ndarray_to_torch_tensor
-
     if not isinstance(ndarrays, dict):
         # Single-tensor case.
         if isinstance(dtypes, dict):
@@ -187,11 +180,11 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = tensor_creator_fn(ndarrays, dtype=dtypes, device=device)
+        batch = convert_ndarray_to_torch_tensor(ndarrays, dtype=dtypes, device=device)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: tensor_creator_fn(
+            col_name: convert_ndarray_to_torch_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
                 device=device,
