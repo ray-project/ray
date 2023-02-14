@@ -39,16 +39,14 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
 
-        config = (
-            AlgorithmConfig()
-            .rl_module(rl_module_class=DiscreteBCTFModule)
-            .training(rl_trainer_class=BCTfRLTrainer)
-            .training(model={"fcnet_hiddens": [32]})
-        )
+        config = AlgorithmConfig().training(rl_trainer_class=BCTfRLTrainer)
         config.freeze()
         runner_config = config.get_trainer_runner_config(
             SingleAgentRLModuleSpec(
-                observation_space=env.observation_space, action_space=env.action_space
+                module_class=DiscreteBCTFModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config={"fcnet_hiddens": [32]},
             )
         )
         runner_config.build()
