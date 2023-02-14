@@ -411,6 +411,44 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return config
 
+    def prepend_app_name_to_deployment_names(self):
+        """Prepend the app name to all deployment names listed in the config."""
+        app_config = self.dict(exclude_unset=True)
+
+        if "deployments" in app_config and not app_config["name"] == "":
+            for idx, deployment in enumerate(app_config["deployments"]):
+                deployment["name"] = app_config["name"] + "_" + deployment["name"]
+                app_config["deployments"][idx] = deployment
+
+        return ServeApplicationSchema.parse_obj(app_config)
+
+    def remove_app_name_from_deployment_names(self):
+        """Remove the app name prefix from all deployment names listed in the config.
+
+        This method should only be called on configs that have been processed internally
+        through prepend_app_name_to_deployment_names, which appends the app name prefix
+        to every deployment name.
+        """
+        app_config = self.dict(exclude_unset=True)
+        if "deployments" in app_config and not app_config["name"] == "":
+            for idx, deployment in enumerate(app_config["deployments"]):
+                prefix = app_config["name"] + "_"
+                # This method should not be called on any config that's not processed
+                # internally & returned by prepend_app_name_to_deployment_names
+                assert deployment["name"].startswith(prefix)
+
+                deployment["name"] = deployment["name"][len(prefix) :]
+                app_config["deployments"][idx] = deployment
+
+        return ServeApplicationSchema.parse_obj(app_config)
+
+    def to_deploy_schema(self):
+        return ServeDeploySchema(
+            host=self.host,
+            port=self.port,
+            applications=[self],
+        )
+
 
 @PublicAPI(stability="alpha")
 class ServeDeploySchema(BaseModel, extra=Extra.forbid):
@@ -444,50 +482,6 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         """
 
         return {"applications": []}
-
-
-@DeveloperAPI
-def prepend_app_name_to_deployment_names(
-    app_schema: ServeApplicationSchema,
-) -> ServeApplicationSchema:
-    config_dict = app_schema.dict(exclude_unset=True)
-
-    if len(app_schema.deployments) > 0 and not app_schema.name == "":
-        for idx, deployment in enumerate(config_dict["deployments"]):
-            deployment["name"] = app_schema.name + "_" + deployment["name"]
-            config_dict["deployments"][idx] = deployment
-
-    return ServeApplicationSchema.parse_obj(config_dict)
-
-
-@DeveloperAPI
-def remove_app_name_from_deployment_names(
-    app_schema: ServeApplicationSchema,
-) -> ServeApplicationSchema:
-    config_dict = app_schema.dict(exclude_unset=True)
-
-    if len(app_schema.deployments) > 0 and not app_schema.name == "":
-        for idx, deployment in enumerate(config_dict["deployments"]):
-            prefix = app_schema.name + "_"
-            # This method should not be called on any config other than one
-            # processed internally & returned by prepend_app_name_to_deployment_names
-            assert deployment["name"].startswith(prefix)
-
-            deployment["name"] = deployment["name"][len(prefix) :]
-            config_dict["deployments"][idx] = deployment
-
-    return ServeApplicationSchema.parse_obj(config_dict)
-
-
-@DeveloperAPI
-def serve_application_to_deploy_schema(
-    application_schema: ServeApplicationSchema,
-) -> ServeDeploySchema:
-    return ServeDeploySchema(
-        host=application_schema.host,
-        port=application_schema.port,
-        applications=[application_schema],
-    )
 
 
 @PublicAPI(stability="beta")

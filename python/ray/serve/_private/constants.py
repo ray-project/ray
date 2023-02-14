@@ -28,6 +28,9 @@ DEFAULT_HTTP_PORT = 8000
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
+#: Default Serve application name
+SERVE_DEFAULT_APP_NAME = ""
+
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 

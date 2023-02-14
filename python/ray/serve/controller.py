@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -41,9 +42,6 @@ from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
-    serve_application_to_deploy_schema,
-    prepend_app_name_to_deployment_names,
-    remove_app_name_from_deployment_names,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -444,7 +442,7 @@ class ServeController:
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
-        user_provided: bool = True,
+        _internal: bool = True,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 
@@ -466,15 +464,16 @@ class ServeController:
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
 
-            user_provided: whether the config is provided by user (otherwise it is
-                restored from a checkpoint). If it is provided by user, we need to
+            _internal: whether the config is provided by user or internally (i.e. it is
+                restored from a checkpoint). If it is provided by the user, we need to
                 prepend the app name to each deployment name. If not, it should already
                 be prepended.
         """
-        # We should still support single-app mode, i.e. ServeApplicationSchema.
-        # Eventually, after migration is complete, we should deprecate such usage.
+        # TODO (zcin): We should still support single-app mode, i.e.
+        # ServeApplicationSchema. Eventually, after migration is complete, we should
+        # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
-            config = serve_application_to_deploy_schema(config)
+            config = config.to_deploy_schema()
 
         if not deployment_time:
             deployment_time = time.time()
@@ -490,8 +489,8 @@ class ServeController:
 
         for app_config in config.applications:
             # Prepend app name to each deployment name
-            if user_provided:
-                app_config = prepend_app_name_to_deployment_names(app_config)
+            if not _internal:
+                app_config = app_config.prepend_app_name_to_deployment_names()
 
             app_config_dict = app_config.dict(exclude_unset=True)
 
@@ -624,7 +623,7 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def get_serve_status(self, name: str = "") -> bytes:
+    def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
@@ -648,7 +647,7 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = "") -> Dict:
+    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
@@ -658,9 +657,11 @@ class ServeController:
                 return ServeApplicationSchema.get_empty_schema_dict()
             config, _ = config_checkpoints_dict[name]
 
-            return remove_app_name_from_deployment_names(
+            return (
                 ServeApplicationSchema.parse_obj(config)
-            ).dict(exclude_unset=True)
+                .remove_app_name_from_deployment_names()
+                .dict(exclude_unset=True)
+            )
 
     def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""
@@ -774,7 +775,7 @@ def run_graph(
     graph_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
-    name: str = "",
+    name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ):
     """
