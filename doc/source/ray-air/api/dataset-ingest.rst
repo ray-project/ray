@@ -8,6 +8,7 @@ Ray Dataset Ingest into AIR Trainers
 .. currentmodule:: ray
 
 .. autosummary::
+    :template: autosummary/class_with_autosummary.rst
 
     air.session.get_dataset_shard
     ~data.DatasetIterator

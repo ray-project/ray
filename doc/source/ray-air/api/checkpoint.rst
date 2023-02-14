@@ -15,6 +15,7 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Checkpoint
     Checkpoint.from_dict

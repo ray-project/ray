@@ -20,6 +20,7 @@ Trainer Base Classes
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     ~trainer.BaseTrainer
     ~data_parallel_trainer.DataParallelTrainer

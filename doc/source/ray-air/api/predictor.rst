@@ -16,6 +16,7 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     predictor.Predictor
     predictor.Predictor.from_checkpoint
@@ -58,6 +59,7 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     batch_predictor.BatchPredictor
 

@@ -37,5 +37,3 @@ AIR Session Metadata
     session.get_local_rank
     session.get_node_rank
 
-
-
