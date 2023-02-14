@@ -13,4 +13,4 @@ API References
     ../rllib/package_ref/index.rst
     ../workflows/api/api.rst
     ../cluster/package-overview.rst
-    ../ray-core/package-ref.rst
+    ../ray-core/api/index.rst
