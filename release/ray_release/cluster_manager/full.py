@@ -91,6 +91,10 @@ class FullClusterManager(MinimalClusterManager):
             )
             completed = result.result.completed
 
+        # Sleep 120 seconds to let the cluster hostname propogate into the Anyscale DB.
+        # This is a bug in the Anyscale product: https://github.com/anyscale/product/issues/17385
+        time.sleep(120)            
+
         result = self.sdk.get_cluster(self.cluster_id)
         if result.result.state != "Running":
             raise ClusterStartupFailed(
@@ -124,10 +128,6 @@ class FullClusterManager(MinimalClusterManager):
                 )
                 cluster_operation = cluster_operation_response.result
                 completed = cluster_operation.completed
-
-            # Sleep 120 seconds to let the cluster hostname propogate into the Anyscale DB.
-            # This is a bug in the Anyscale product: https://github.com/anyscale/product/issues/17385
-            time.sleep(120)            
 
             result = self.sdk.get_cluster(self.cluster_id)
             while result.result.state != "Terminated":
