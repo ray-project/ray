@@ -75,7 +75,6 @@ LoggerCallback Interface
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     tune.logger.LoggerCallback
     tune.logger.LoggerCallback.log_trial_start

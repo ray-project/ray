@@ -12,7 +12,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    random_access_dataset.RandomAccessDataset
 
