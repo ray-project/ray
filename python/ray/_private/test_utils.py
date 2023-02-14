@@ -1595,6 +1595,7 @@ def simulate_storage(
     elif storage_type == "s3":
         from moto.server import ThreadedMotoServer
 
+        root = root or uuid.uuid4().hex
         s3_server = f"http://localhost:{port}"
         server = ThreadedMotoServer(port=port)
         server.start()
