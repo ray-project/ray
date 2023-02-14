@@ -10,7 +10,7 @@ from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
 from ray.rllib.core.testing.utils import (
     get_trainer_runner,
     get_learner,
-    add_module_to_runner_or_trainer,
+    add_module_to_learner_or_learner_group,
 )
 from ray.util.timer import _Timer
 
@@ -53,8 +53,8 @@ class RemoteTrainingHelper:
 
         new_module_id = "test_module"
 
-        add_module_to_runner_or_trainer(fw, env, new_module_id, runner)
-        add_module_to_runner_or_trainer(fw, env, new_module_id, local_trainer)
+        add_module_to_learner_or_learner_group(fw, env, new_module_id, runner)
+        add_module_to_learner_or_learner_group(fw, env, new_module_id, local_trainer)
 
         # make the state of the trainer and the local runner identical
         local_trainer.set_state(runner.get_state())
@@ -146,7 +146,7 @@ class TestTrainerRunner(unittest.TestCase):
             new_module_id = "test_module"
 
             # add a test_module
-            add_module_to_runner_or_trainer(fw, env, new_module_id, runner)
+            add_module_to_learner_or_learner_group(fw, env, new_module_id, runner)
 
             # do training that includes the test_module
             results = runner.update(

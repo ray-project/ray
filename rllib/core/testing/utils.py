@@ -141,7 +141,7 @@ def get_trainer_runner(
 
 
 @DeveloperAPI
-def add_module_to_runner_or_trainer(
+def add_module_to_learner_or_learner_group(
     framework: str,
     env: "gym.Env",
     module_id: str,
