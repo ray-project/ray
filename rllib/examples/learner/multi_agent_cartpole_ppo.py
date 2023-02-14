@@ -30,7 +30,7 @@ parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument(
     "--framework",
-    choices=["tf2", "torch"],  # tf will be deprecated with the new RLTrainer stack
+    choices=["tf2", "torch"],  # tf will be deprecated with the new Learner stack
     default="torch",
     help="The DL framework specifier.",
 )
@@ -89,8 +89,8 @@ if __name__ == "__main__":
         return pol_id
 
     scaling_config = {
-        "num_trainer_workers": args.num_gpus,
-        "num_gpus_per_trainer_worker": int(args.num_gpus > 0),
+        "num_learner_workers": args.num_gpus,
+        "num_gpus_per_learner_worker": int(args.num_gpus > 0),
     }
 
     config = (
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         .training(num_sgd_iter=10)
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         .rl_module(_enable_rl_module_api=True)
-        .training(_enable_rl_trainer_api=True)
+        .training(_enable_learner_api=True)
         .resources(**scaling_config)
     )
 

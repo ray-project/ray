@@ -3,14 +3,14 @@ from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECK
 
 import ray
 
-from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_trainer.rl_trainer import (
-    RLTrainerSpec,
+from ray.rllib.core.learner.learner import (
+    LearnerSpec,
     ParamOptimizerPairs,
     Optimizer,
 )
@@ -22,15 +22,15 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+    from ray.rllib.core.learner.learner import Learner
 
 
-def _get_backend_config(rl_trainer_class: Type["RLTrainer"]) -> str:
-    if rl_trainer_class.framework == "torch":
+def _get_backend_config(learner_class: Type["Learner"]) -> str:
+    if learner_class.framework == "torch":
         from ray.train.torch import TorchConfig
 
         backend_config = TorchConfig()
-    elif rl_trainer_class.framework == "tf":
+    elif learner_class.framework == "tf":
         from ray.train.tensorflow import TensorflowConfig
 
         backend_config = TensorflowConfig()
@@ -40,23 +40,23 @@ def _get_backend_config(rl_trainer_class: Type["RLTrainer"]) -> str:
     return backend_config
 
 
-class TrainerRunner:
-    """Coordinator of RLTrainers.
+class LearnerGroup:
+    """Coordinator of Learners.
     Public API:
         .update(batch) -> updates the RLModule based on gradient descent algos.
         .additional_update() -> any additional non-gradient based updates will get
                                 called from this entry point.
         .get_state() -> returns the state of the RLModule and RLOptimizer from
-                        all of the RLTrainers.
-        .set_state() -> sets the state of all the RLTrainers.
-        .get_weights() -> returns the weights of the RLModule from the RLTrainer(s).
-        .set_weights() -> sets the weights of the RLModule in the RLTrainer(s).
+                        all of the Learners.
+        .set_state() -> sets the state of all the Learners.
+        .get_weights() -> returns the weights of the RLModule from the Learner(s).
+        .set_weights() -> sets the weights of the RLModule in the Learner(s).
         .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
-                         this TrainerRunner.
+                         this LearnerGroup.
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
-                            by this TrainerRunner.
+                            by this LearnerGroup.
     Args:
-        rl_trainer_spec: The specification for constructing RLTrainers.
+        learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing non-blocking
             updates (e.g. `self.update(batch, block=False)`). If the queue is full it
             will evict the oldest batch first.
@@ -64,16 +64,16 @@ class TrainerRunner:
 
     def __init__(
         self,
-        rl_trainer_spec: RLTrainerSpec,
+        learner_spec: LearnerSpec,
         max_queue_len: int = 20,
     ):
-        scaling_config = rl_trainer_spec.trainer_scaling_config
-        rl_trainer_class = rl_trainer_spec.rl_trainer_class
+        scaling_config = learner_spec.learner_scaling_config
+        learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
         # explicit
         self._is_local = scaling_config.num_workers == 0
-        self._trainer = None
+        self._learner = None
         self._workers = None
         # if a user calls self.shutdown() on their own then this flag is set to true.
         # When del is called the backend executor isn't shutdown twice if this flag is
@@ -82,11 +82,11 @@ class TrainerRunner:
         self._is_shut_down = False
 
         if self._is_local:
-            self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
-            self._trainer.build()
+            self._learner = learner_class(**learner_spec.get_params_dict())
+            self._learner.build()
             self._worker_manager = None
         else:
-            backend_config = _get_backend_config(rl_trainer_class)
+            backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=scaling_config.num_workers,
@@ -96,8 +96,8 @@ class TrainerRunner:
             )
 
             backend_executor.start(
-                train_cls=rl_trainer_class,
-                train_cls_kwargs=rl_trainer_spec.get_params_dict(),
+                train_cls=learner_class,
+                train_cls_kwargs=learner_spec.get_params_dict(),
             )
             self._backend_executor = backend_executor
 
@@ -126,14 +126,14 @@ class TrainerRunner:
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         block: bool = True,
     ) -> List[Mapping[str, Any]]:
-        """Do one gradient based update to the RLTrainer(s).
+        """Do one gradient based update to the Learner(s).
 
         Args:
             batch: The data to use for the update.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
-            reduce_fn: A function to reduce the results from a list of RLTrainer Actors
+            reduce_fn: A function to reduce the results from a list of Learner Actors
                 into a single result. This can be any arbitrary function that takes a
                 list of dictionaries and returns a single dictionary. For example you
                 can either take an average (default) or concatenate the results (for
@@ -143,7 +143,7 @@ class TrainerRunner:
             block: Whether to block until the update is complete.
 
         Returns:
-            A list of dictionaries of results from the updates from the RLTrainer(s)
+            A list of dictionaries of results from the updates from the Learner(s)
         """
         if self.is_local:
             if not block:
@@ -152,7 +152,7 @@ class TrainerRunner:
                     "mode with num_workers=0."
                 )
             results = [
-                self._trainer.update(
+                self._learner.update(
                     batch,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
@@ -182,9 +182,9 @@ class TrainerRunner:
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         block: bool = True,
     ) -> List[Mapping[str, Any]]:
-        """Do a gradient based update to the RLTrainers using DDP training.
+        """Do a gradient based update to the Learners using DDP training.
 
-        Note: this function is used if the num_gpus this TrainerRunner is configured
+        Note: this function is used if the num_gpus this LearnerGroup is configured
             with is > 0. If _fake_gpus is True then this function will still be used
             for distributed training, but the workers will be configured to use a
             different backend than the cuda backend.
@@ -193,7 +193,7 @@ class TrainerRunner:
             See `.update()` docstring.
 
         Returns:
-            A list of dictionaries of results from the updates from the RLTrainer(s)
+            A list of dictionaries of results from the updates from the Learner(s)
         """
 
         if block:
@@ -247,23 +247,23 @@ class TrainerRunner:
         reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
         **kwargs,
     ) -> List[Mapping[str, Any]]:
-        """Apply additional non-gradient based updates to the RLTrainers.
+        """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.
 
-        By default this is a pass through that calls `RLTrainer.additional_update`
+        By default this is a pass through that calls `Learner.additional_update`
 
         Args:
             reduce_fn: See `update()` documentation for more details.
-            **kwargs: Keyword arguments to pass to each RLTrainer.
+            **kwargs: Keyword arguments to pass to each Learner.
 
         Returns:
             A list of dictionaries of results from the updates from each worker.
         """
 
         if self.is_local:
-            results = [self._trainer.additional_update(**kwargs)]
+            results = [self._learner.additional_update(**kwargs)]
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for worker in self._workers]
@@ -281,7 +281,7 @@ class TrainerRunner:
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        """Add a module to the RLTrainers maintained by this TrainerRunner.
+        """Add a module to the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to add.
@@ -295,7 +295,7 @@ class TrainerRunner:
                 should be provided.
         """
         if self.is_local:
-            self._trainer.add_module(
+            self._learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
                 set_optimizer_fn=set_optimizer_fn,
@@ -313,14 +313,14 @@ class TrainerRunner:
             return self._get_results(results)
 
     def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the RLTrainers maintained by this TrainerRunner.
+        """Remove a module from the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to remove.
 
         """
         if self.is_local:
-            self._trainer.remove_module(module_id)
+            self._learner.remove_module(module_id)
         else:
             refs = []
             for worker in self._workers:
@@ -332,7 +332,7 @@ class TrainerRunner:
         # TODO (Kourosh) Set / get weight has to be thoroughly
         # tested across actors and multi-gpus
         if self.is_local:
-            self._trainer.set_weights(weights)
+            self._learner.set_weights(weights)
         else:
             results_or_errors = self._worker_manager.foreach_actor(
                 lambda w: w.set_weights(weights)
@@ -342,7 +342,7 @@ class TrainerRunner:
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
-            weights = self._trainer.get_weights(module_ids)
+            weights = self._learner.get_weights(module_ids)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
@@ -354,12 +354,12 @@ class TrainerRunner:
         return convert_to_numpy(weights)
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
-        """Get the states of the first RLTrainers.
+        """Get the states of the first Learners.
 
-        This should be the same across RLTrainers
+        This should be the same across Learners
         """
         if self.is_local:
-            return self._trainer.get_state()
+            return self._learner.get_state()
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
@@ -369,19 +369,19 @@ class TrainerRunner:
             return self._get_results(results)[0]
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
-        """Sets the states of the RLTrainers.
+        """Sets the states of the Learners.
 
         Args:
-            state: The state of the RLTrainers
+            state: The state of the Learners
 
         """
         if self.is_local:
-            self._trainer.set_state(state)
+            self._learner.set_state(state)
         else:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
 
     def shutdown(self):
-        """Shuts down the TrainerRunner."""
+        """Shuts down the LearnerGroup."""
         if not self._is_local:
             self._backend_executor.shutdown()
             self._is_shut_down = True

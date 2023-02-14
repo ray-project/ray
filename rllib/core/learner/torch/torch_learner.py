@@ -17,9 +17,9 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_trainer.rl_trainer import (
+from ray.rllib.core.learner.learner import (
     FrameworkHPs,
-    RLTrainer,
+    Learner,
     ParamOptimizerPairs,
     Optimizer,
     ParamType,
@@ -43,7 +43,7 @@ if torch:
 logger = logging.getLogger(__name__)
 
 
-class TorchRLTrainer(RLTrainer):
+class TorchLearner(Learner):
     framework: str = "torch"
 
     def __init__(
@@ -57,7 +57,7 @@ class TorchRLTrainer(RLTrainer):
         # will be set during build
         self._device = None
 
-    @override(RLTrainer)
+    @override(Learner)
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
@@ -74,7 +74,7 @@ class TorchRLTrainer(RLTrainer):
             for key in self._module.keys()
         ]
 
-    @override(RLTrainer)
+    @override(Learner)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
     ) -> ParamDictType:
@@ -86,7 +86,7 @@ class TorchRLTrainer(RLTrainer):
 
         return grads
 
-    @override(RLTrainer)
+    @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
         # make sure the parameters do not carry gradients on their own
         for optim in self._optim_to_param:
@@ -100,7 +100,7 @@ class TorchRLTrainer(RLTrainer):
         for optim in self._optim_to_param:
             optim.step()
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule"""
         module_weights = self._module.get_state()
@@ -111,21 +111,21 @@ class TorchRLTrainer(RLTrainer):
             {k: v for k, v in module_weights.items() if k in module_ids}
         )
 
-    @override(RLTrainer)
+    @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         """Sets the weights of the underlying MultiAgentRLModule"""
         weights = convert_to_torch_tensor(weights, device=self._device)
         return self._module.set_state(weights)
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
         return param
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.parameters())
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
@@ -134,13 +134,13 @@ class TorchRLTrainer(RLTrainer):
         lr = self._optimizer_config["lr"]
         return optimizer_cls(module.parameters(), lr=lr)
 
-    @override(RLTrainer)
+    @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch):
         batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
         batch = NestedDict(batch)
         return batch
 
-    @override(RLTrainer)
+    @override(Learner)
     def add_module(
         self,
         *,
@@ -163,7 +163,7 @@ class TorchRLTrainer(RLTrainer):
                 module_id, TorchDDPRLModule(self._module[module_id]), override=True
             )
 
-    @override(RLTrainer)
+    @override(Learner)
     def build(self) -> None:
         """Builds the TorchLearner.
 
@@ -212,7 +212,7 @@ class TorchRLTrainer(RLTrainer):
                         key, TorchDDPRLModule(self._module[key]), override=True
                     )
 
-    @override(RLTrainer)
+    @override(Learner)
     def _make_module(self) -> MultiAgentRLModule:
         module = super()._make_module()
         self._map_module_to_device(module)

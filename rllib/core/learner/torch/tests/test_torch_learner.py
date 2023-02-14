@@ -6,23 +6,23 @@ import numpy as np
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.testing.utils import get_rl_trainer
+from ray.rllib.core.testing.utils import get_learner
 
 
-def _get_trainer() -> RLTrainer:
+def _get_learner() -> Learner:
     env = gym.make("CartPole-v1")
-    trainer = get_rl_trainer("torch", env)
-    trainer.build()
+    learner = get_learner("torch", env)
+    learner.build()
 
-    return trainer
+    return learner
 
 
-class TestRLTrainer(unittest.TestCase):
+class TestLearner(unittest.TestCase):
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -33,13 +33,13 @@ class TestRLTrainer(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        trainer = _get_trainer()
+        learner = _get_learner()
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
         for iter_i in range(1000):
             batch = reader.next()
-            results = trainer.update(batch.as_multi_agent())
+            results = learner.update(batch.as_multi_agent())
 
             loss = results["loss"]["total_loss"]
             min_loss = min(loss, min_loss)
@@ -56,11 +56,11 @@ class TestRLTrainer(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        trainer = _get_trainer()
+        learner = _get_learner()
 
-        params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
+        params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
         loss = {"total_loss": sum([param.sum() for param in params])}
-        gradients = trainer.compute_gradients(loss)
+        gradients = learner.compute_gradients(loss)
 
         # type should be a mapping from ParamRefs to gradients
         self.assertIsInstance(gradients, dict)
@@ -75,19 +75,19 @@ class TestRLTrainer(unittest.TestCase):
         standard SGD/Adam update rule.
         """
 
-        trainer = _get_trainer()
+        learner = _get_learner()
 
         # calculated the expected new params based on gradients of all ones.
-        params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
+        params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
         n_steps = 100
         expected = [
             convert_to_numpy(param)
-            - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
+            - n_steps * learner._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
-            gradients = {trainer.get_param_ref(p): torch.ones_like(p) for p in params}
-            trainer.apply_gradients(gradients)
+            gradients = {learner.get_param_ref(p): torch.ones_like(p) for p in params}
+            learner.apply_gradients(gradients)
 
         check(params, expected)
 
@@ -99,7 +99,7 @@ class TestRLTrainer(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        trainer = _get_trainer()
+        learner = _get_learner()
 
         # add a test module with SGD optimizer with a known lr
         lr = 1e-4
@@ -107,7 +107,7 @@ class TestRLTrainer(unittest.TestCase):
         def set_optimizer_fn(module):
             return [(module.parameters(), torch.optim.Adam(module.parameters(), lr=lr))]
 
-        trainer.add_module(
+        learner.add_module(
             module_id="test",
             module_spec=SingleAgentRLModuleSpec(
                 module_class=DiscreteBCTorchModule,
@@ -118,13 +118,13 @@ class TestRLTrainer(unittest.TestCase):
             set_optimizer_fn=set_optimizer_fn,
         )
 
-        trainer.remove_module(DEFAULT_POLICY_ID)
+        learner.remove_module(DEFAULT_POLICY_ID)
 
         # only test module should be left
-        self.assertEqual(set(trainer.module.keys()), {"test"})
+        self.assertEqual(set(learner.module.keys()), {"test"})
 
         # calculated the expected new params based on gradients of all ones.
-        params = trainer.get_parameters(trainer.module["test"])
+        params = learner.get_parameters(learner.module["test"])
         n_steps = 100
         expected = [
             convert_to_numpy(param) - n_steps * lr * np.ones(param.shape)
@@ -132,8 +132,8 @@ class TestRLTrainer(unittest.TestCase):
         ]
         for _ in range(n_steps):
             loss = {"total_loss": sum([param.sum() for param in params])}
-            gradients = trainer.compute_gradients(loss)
-            trainer.apply_gradients(gradients)
+            gradients = learner.compute_gradients(loss)
+            learner.apply_gradients(gradients)
 
         check(params, expected)
 

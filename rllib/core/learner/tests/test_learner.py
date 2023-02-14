@@ -6,18 +6,18 @@ import numpy as np
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, FrameworkHPs
+from ray.rllib.core.learner.learner import Learner, FrameworkHPs
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
+from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
-def get_trainer() -> RLTrainer:
+def get_learner() -> Learner:
     env = gym.make("CartPole-v1")
 
-    trainer = BCTfRLTrainer(
+    learner = BCTfLearner(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTFModule,
             observation_space=env.observation_space,
@@ -25,16 +25,16 @@ def get_trainer() -> RLTrainer:
             model_config={"fcnet_hiddens": [32]},
         ),
         optimizer_config={"lr": 1e-3},
-        trainer_scaling_config=TrainerScalingConfig(),
+        learner_scaling_config=LearnerGroupScalingConfig(),
         framework_hyperparameters=FrameworkHPs(eager_tracing=True),
     )
 
-    trainer.build()
+    learner.build()
 
-    return trainer
+    return learner
 
 
-class TestRLTrainer(unittest.TestCase):
+class TestLearner(unittest.TestCase):
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -45,13 +45,13 @@ class TestRLTrainer(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        trainer = get_trainer()
+        learner = get_learner()
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
         for iter_i in range(1000):
             batch = reader.next()
-            results = trainer.update(batch.as_multi_agent())
+            results = learner.update(batch.as_multi_agent())
 
             loss = results["loss"]["total_loss"]
             min_loss = min(loss, min_loss)
@@ -68,12 +68,12 @@ class TestRLTrainer(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        trainer = get_trainer()
+        learner = get_learner()
 
         with tf.GradientTape() as tape:
-            params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
+            params = learner.module[DEFAULT_POLICY_ID].trainable_variables
             loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
-            gradients = trainer.compute_gradients(loss, tape)
+            gradients = learner.compute_gradients(loss, tape)
 
         # type should be a mapping from ParamRefs to gradients
         self.assertIsInstance(gradients, dict)
@@ -88,18 +88,18 @@ class TestRLTrainer(unittest.TestCase):
         standard SGD/Adam update rule.
         """
 
-        trainer = get_trainer()
+        learner = get_learner()
 
         # calculated the expected new params based on gradients of all ones.
-        params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
+        params = learner.module[DEFAULT_POLICY_ID].trainable_variables
         n_steps = 100
         expected = [
-            param - n_steps * trainer._optimizer_config["lr"] * np.ones(param.shape)
+            param - n_steps * learner._optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
-            gradients = {trainer.get_param_ref(p): tf.ones_like(p) for p in params}
-            trainer.apply_gradients(gradients)
+            gradients = {learner.get_param_ref(p): tf.ones_like(p) for p in params}
+            learner.apply_gradients(gradients)
 
         check(params, expected)
 
@@ -111,7 +111,7 @@ class TestRLTrainer(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        trainer = get_trainer()
+        learner = get_learner()
 
         # add a test module with SGD optimizer with a known lr
         lr = 1e-4
@@ -121,7 +121,7 @@ class TestRLTrainer(unittest.TestCase):
                 (module.trainable_variables, tf.keras.optimizers.SGD(learning_rate=lr))
             ]
 
-        trainer.add_module(
+        learner.add_module(
             module_id="test",
             module_spec=SingleAgentRLModuleSpec(
                 module_class=DiscreteBCTFModule,
@@ -132,20 +132,20 @@ class TestRLTrainer(unittest.TestCase):
             set_optimizer_fn=set_optimizer_fn,
         )
 
-        trainer.remove_module(DEFAULT_POLICY_ID)
+        learner.remove_module(DEFAULT_POLICY_ID)
 
         # only test module should be left
-        self.assertEqual(set(trainer.module.keys()), {"test"})
+        self.assertEqual(set(learner.module.keys()), {"test"})
 
         # calculated the expected new params based on gradients of all ones.
-        params = trainer.module["test"].trainable_variables
+        params = learner.module["test"].trainable_variables
         n_steps = 100
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:
                 loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
-                gradients = trainer.compute_gradients(loss, tape)
-                trainer.apply_gradients(gradients)
+                gradients = learner.compute_gradients(loss, tape)
+                learner.apply_gradients(gradients)
 
         check(params, expected)
 

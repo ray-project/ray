@@ -1,7 +1,7 @@
 import logging
 from typing import Mapping, Any
 
-from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
+from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -16,8 +16,8 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PPOTorchRLTrainer(TorchRLTrainer):
-    """Implements PPO loss / update logic on top of TorchRLTrainer.
+class PPOTorchLearner(TorchLearner):
+    """Implements PPO loss / update logic on top of TorchLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()` and the
     additional non-gradient based updates such as KL-coeff and learning rate updates
@@ -30,13 +30,13 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         # TODO (Kourosh): Move these failures to config.validate() or support them.
         self.entropy_coeff_scheduler = None
         if self.hps.entropy_coeff_schedule:
-            raise ValueError("entropy_coeff_schedule is not supported in RLTrainer yet")
+            raise ValueError("entropy_coeff_schedule is not supported in Learner yet")
 
         # TODO (Kourosh): Create a way on the base class for users to define arbitrary
         # schedulers for learning rates.
         self.lr_scheduler = None
         if self.hps.lr_schedule:
-            raise ValueError("lr_schedule is not supported in RLTrainer yet")
+            raise ValueError("lr_schedule is not supported in Learner yet")
 
         # TODO (Kourosh): We can still use mix-ins in the new design. Do we want that?
         # Most likely not. I rather be specific about everything. kl_coeff is a
@@ -45,7 +45,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         self.kl_coeff = self.hps.kl_coeff
         self.kl_target = self.hps.kl_target
 
-    @override(TorchRLTrainer)
+    @override(TorchLearner)
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
@@ -125,7 +125,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
             "mean_kl_loss": mean_kl_loss,
         }
 
-    @override(TorchRLTrainer)
+    @override(TorchLearner)
     def additional_update_per_module(
         self, module_id: str, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:

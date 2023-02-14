@@ -84,11 +84,11 @@ class TestPPO(unittest.TestCase):
 
         policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
-        config.training(_enable_rl_trainer_api=True)
+        config.training(_enable_learner_api=True)
         config.validate()
         config.freeze()
 
-        trainer_runner_config = config.get_trainer_runner_config(
+        learner_group_config = config.get_learner_group_config(
             SingleAgentRLModuleSpec(
                 module_class=config.rl_module_spec.module_class,
                 observation_space=policy.observation_space,
@@ -96,17 +96,17 @@ class TestPPO(unittest.TestCase):
                 model_config=policy.config["model"],
             )
         )
-        trainer_runner = trainer_runner_config.build()
+        learner_group = learner_group_config.build()
 
-        # load the policy weights into the trainer runner
+        # load the policy weights into the learner_group
         state_dict = {"module_state": {"default_policy": policy.get_weights()}}
         state_dict = convert_to_torch_tensor(state_dict)
-        trainer_runner.set_state(state_dict)
-        results = trainer_runner.update(train_batch.as_multi_agent())
+        learner_group.set_state(state_dict)
+        results = learner_group.update(train_batch.as_multi_agent())
 
-        trainer_runner_loss = results["loss"]["total_loss"]
+        learner_group_loss = results["loss"]["total_loss"]
 
-        check(trainer_runner_loss, policy_loss)
+        check(learner_group_loss, policy_loss)
 
 
 if __name__ == "__main__":

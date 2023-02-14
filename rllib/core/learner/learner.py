@@ -36,8 +36,8 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -71,10 +71,10 @@ class FrameworkHPs:
 
 
 @dataclass
-class RLTrainerHPs:
-    """The hyper-parameters for RLTrainer.
+class LearnerHPs:
+    """The hyper-parameters for Learner.
 
-    When creating a new RLTrainer, the new hyper-parameters have to be defined by
+    When creating a new Learner, the new hyper-parameters have to be defined by
     subclassing this class and adding the new hyper-parameters as fields.
 
     # TODO (Kourosh): The things that could be part of the base class:
@@ -85,7 +85,7 @@ class RLTrainerHPs:
     pass
 
 
-class RLTrainer:
+class Learner:
     """Base class for learners.
 
     This class will be used to train RLModules. It is responsible for defining the loss
@@ -112,17 +112,17 @@ class RLTrainer:
         optimizer_config: The deep learning gradient optimizer configuration to be
             used. For example lr=0.0001, momentum=0.9, etc.
         scaling_config: Configuration for scaling the learner actors.
-            Refer to ray.rllib.core.rl_trainer.scaling_config.TrainerScalingConfig
+            Refer to ray.rllib.core.learner.scaling_config.LearnerGroupScalingConfig
             for more info.
-        trainer_hyperparameters: The hyper-parameters for the Learner.
+        learner_hyperparameters: The hyper-parameters for the Learner.
             Algorithm specific learner hyper-parameters will passed in via this
             argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
             passed in via this argument. Refer to
-            ray.rllib.core.rl_trainer.rl_trainer.RLTrainerHPs for more info.
+            ray.rllib.core.learner.learner.LearnerHPs for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
             creation. For example eager_tracing in TF or compile in Torch.
-            Refer to ray.rllib.core.rl_trainer.rl_trainer.FrameworkHPs for more info.
+            Refer to ray.rllib.core.learner.learner.FrameworkHPs for more info.
 
 
     Usage pattern:
@@ -166,10 +166,10 @@ class RLTrainer:
         # will train previous modules only.
         results = learner.update(batch)
 
-        # get the state of the trainer
+        # get the state of the learner
         state = learner.get_state()
 
-        # set the state of the trainer
+        # set the state of the learner
         learner.set_state(state)
 
         # get the weights of the underly multi-agent RLModule
@@ -203,31 +203,31 @@ class RLTrainer:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
-        trainer_hyperparameters: Optional[RLTrainerHPs] = RLTrainerHPs(),
+        learner_scaling_config: LearnerGroupScalingConfig = LearnerGroupScalingConfig(),
+        learner_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
         # TODO (Kourosh): convert optimizer configs to dataclasses
         if module_spec is not None and module is not None:
             raise ValueError(
-                "Only one of module spec or module can be provided to RLTrainer."
+                "Only one of module spec or module can be provided to Learner."
             )
 
         if module_spec is None and module is None:
             raise ValueError(
-                "Either module_spec or module should be provided to RLTrainer."
+                "Either module_spec or module should be provided to Learner."
             )
 
         self._module_spec = module_spec
         self._module_obj = module
         self._optimizer_config = optimizer_config
-        self._hps = trainer_hyperparameters
+        self._hps = learner_hyperparameters
 
-        # pick the configs that we need for the trainer from scaling config
-        self._distributed = trainer_scaling_config.num_workers > 1
-        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
+        # pick the configs that we need for the learner from scaling config
+        self._distributed = learner_scaling_config.num_workers > 1
+        self._use_gpu = learner_scaling_config.num_gpus_per_worker > 0
         # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_idx = trainer_scaling_config.local_gpu_idx
+        self._local_gpu_idx = learner_scaling_config.local_gpu_idx
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -247,8 +247,8 @@ class RLTrainer:
         return self._module
 
     @property
-    def hps(self) -> RLTrainerHPs:
-        """The hyper-parameters for the trainer."""
+    def hps(self) -> LearnerHPs:
+        """The hyper-parameters for the learner."""
         return self._hps
 
     @abc.abstractmethod
@@ -328,7 +328,7 @@ class RLTrainer:
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         """Returns the list of parameters of a module.
 
-        This should be overriden in framework specific trainer. For example in torch it
+        This should be overriden in framework specific learner. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
 
         Args:
@@ -695,7 +695,7 @@ class RLTrainer:
             return reduce_fn(results)
 
     def set_state(self, state: Mapping[str, Any]) -> None:
-        """Set the state of the trainer.
+        """Set the state of the learner.
 
         Args:
             state: The state of the optimizer and module. Can be obtained
@@ -709,7 +709,7 @@ class RLTrainer:
         self._module.set_state(state.get("module_state", {}))
 
     def get_state(self) -> Mapping[str, Any]:
-        """Get the state of the trainer.
+        """Get the state of the learner.
 
         Returns:
             The state of the optimizer and module.
@@ -720,7 +720,7 @@ class RLTrainer:
         return {"module_state": self._module.get_state()}
 
     def _make_module(self) -> MultiAgentRLModule:
-        """Construct the multi-agent RL module for the trainer.
+        """Construct the multi-agent RL module for the learner.
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
@@ -759,8 +759,8 @@ class RLTrainer:
     def __check_if_build_called(self):
         if self._module is None:
             raise ValueError(
-                "RLTrainer.build() must be called after constructing a "
-                "RLTrainer and before calling any methods on it."
+                "Learner.build() must be called after constructing a "
+                "Learner and before calling any methods on it."
             )
 
     def apply(self, func, *_args, **_kwargs):
@@ -768,43 +768,43 @@ class RLTrainer:
 
 
 @dataclass
-class RLTrainerSpec:
-    """The spec for constructing RLTrainer actors.
+class LearnerSpec:
+    """The spec for constructing Learner actors.
 
     Args:
-        rl_trainer_class: The RLTrainer class to use.
+        learner_class: The Learner class to use.
         module_spec: The underlying (MA)RLModule spec to completely define the module.
         module: Alternatively the RLModule instance can be passed in directly. This
-            only works if the RLTrainer is not an actor.
+            only works if the Learner is not an actor.
         backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
-        trainer_hyperparameters: The extra config for the loss/additional update. This
-            should be a subclass of RLTrainerHPs. This is useful for passing in
+        learner_hyperparameters: The extra config for the loss/additional update. This
+            should be a subclass of LearnerHPs. This is useful for passing in
             algorithm configs that contains the hyper-parameters for loss computation,
             change of training behaviors, etc. e.g lr, entropy_coeff.
     """
 
-    rl_trainer_class: Type["RLTrainer"]
+    learner_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    trainer_scaling_config: TrainerScalingConfig = field(
-        default_factory=TrainerScalingConfig
+    learner_scaling_config: LearnerGroupScalingConfig = field(
+        default_factory=LearnerGroupScalingConfig
     )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    trainer_hyperparameters: RLTrainerHPs = field(default_factory=RLTrainerHPs)
+    learner_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
     framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
 
     def get_params_dict(self) -> Dict[str, Any]:
-        """Returns the parameters than be passed to the RLTrainer constructor."""
+        """Returns the parameters than be passed to the Learner constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "trainer_scaling_config": self.trainer_scaling_config,
+            "learner_scaling_config": self.learner_scaling_config,
             "optimizer_config": self.optimizer_config,
-            "trainer_hyperparameters": self.trainer_hyperparameters,
+            "learner_hyperparameters": self.learner_hyperparameters,
             "framework_hyperparameters": self.framework_hyperparameters,
         }
 
-    def build(self) -> "RLTrainer":
-        """Builds the RLTrainer instance."""
-        return self.rl_trainer_class(**self.get_params_dict())
+    def build(self) -> "Learner":
+        """Builds the Learner instance."""
+        return self.learner_class(**self.get_params_dict())
