@@ -25,6 +25,7 @@ Remote Storage Syncer Interface (tune.Syncer)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Syncer
     Syncer.sync_up
