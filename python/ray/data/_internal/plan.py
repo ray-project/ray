@@ -1163,7 +1163,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
             reorder_buf.append(s)
         else:
             # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage):
+            if isinstance(s, AllToAllStage) or s.name == "write":
                 output.extend(reorder_buf)
                 reorder_buf = []
             output.append(s)
