@@ -242,7 +242,6 @@ class DatasetIterator(abc.ABC):
         raise NotImplementedError
 
     @property
-    @abc.abstractmethod
     def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
         """The :class:`~ray.data.dataset.Dataset` or
         :class:`~ray.data.dataset.DatasetPipeline` that this object iterates over."""
