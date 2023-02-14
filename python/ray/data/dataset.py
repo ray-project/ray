@@ -2985,7 +2985,7 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format="numpy",
             drop_last=drop_last,
-            batch_fn=batch_fn,
+            collate_fn=collate_fn,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )
