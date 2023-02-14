@@ -8,7 +8,7 @@ Python SDK API Reference
 For an overview with examples see :ref:`Ray Jobs <jobs-overview>`.
 
 For the CLI reference see :ref:`Ray Job Submission CLI Reference <ray-job-submission-cli-ref>`.
- 
+
 .. _job-submission-client-ref:
 
 JobSubmissionClient
