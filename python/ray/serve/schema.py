@@ -416,12 +416,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         """Prepend the app name to all deployment names listed in the config."""
         app_config = self.dict(exclude_unset=True)
 
-        if "deployments" in app_config and not app_config["name"] == "":
+        if "deployments" in app_config and not self.name == "":
             for idx, deployment in enumerate(app_config["deployments"]):
                 deployment["name"] = (
-                    app_config["name"]
-                    + DEPLOYMENT_NAME_PREFIX_SEPARATOR
-                    + deployment["name"]
+                    self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment["name"]
                 )
                 app_config["deployments"][idx] = deployment
 
@@ -435,9 +433,9 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         to every deployment name.
         """
         app_config = self.dict(exclude_unset=True)
-        if "deployments" in app_config and not app_config["name"] == "":
+        if "deployments" in app_config and not self.name == "":
             for idx, deployment in enumerate(app_config["deployments"]):
-                prefix = app_config["name"] + DEPLOYMENT_NAME_PREFIX_SEPARATOR
+                prefix = self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
                 # This method should not be called on any config that's not processed
                 # internally & returned by prepend_app_name_to_deployment_names
                 assert deployment["name"].startswith(prefix)
