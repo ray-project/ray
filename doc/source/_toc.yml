@@ -118,7 +118,6 @@ parts:
               - file: ray-air/examples/automl_with_ray_air
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
-              - file: ray-air/examples/pytorch_resnet_finetune
           - file: ray-air/package-ref
           - file: ray-air/benchmarks
 
@@ -181,6 +180,8 @@ parts:
                 title: "Tune & PyTorch Example"
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
                 title: "Torch Data Prefetching Benchmark"
+              - file: ray-air/examples/pytorch_resnet_finetune
+                title: "PyTorch Finetuning ResNet Example"
           - file: train/faq
           - file: train/api
 
