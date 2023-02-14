@@ -135,9 +135,9 @@ def get_learner_group(
         learner_scaling_config=scaling_config,
         learner_hyperparameters=learner_hps,
     )
-    runner = LearnerGroup(learner_spec)
+    lg = LearnerGroup(learner_spec)
 
-    return runner
+    return lg
 
 
 @DeveloperAPI
@@ -145,9 +145,9 @@ def add_module_to_learner_or_learner_group(
     framework: str,
     env: "gym.Env",
     module_id: str,
-    runner_or_learner: Union[LearnerGroup, "Learner"],
+    learner_group_or_learner: Union[LearnerGroup, "Learner"],
 ):
-    runner_or_learner.add_module(
+    learner_group_or_learner.add_module(
         module_id=module_id,
         module_spec=get_module_spec(framework, env, is_multi_agent=False),
         optimizer_cls=get_optimizer_default_class(framework),

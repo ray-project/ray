@@ -41,7 +41,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = AlgorithmConfig().training(learner_class=BCTfLearner)
         config.freeze()
-        runner_config = config.get_learner_group_config(
+        learner_group_config = config.get_learner_group_config(
             SingleAgentRLModuleSpec(
                 module_class=DiscreteBCTFModule,
                 observation_space=env.observation_space,
@@ -49,7 +49,7 @@ class TestAlgorithmConfig(unittest.TestCase):
                 model_config={"fcnet_hiddens": [32]},
             )
         )
-        runner_config.build()
+        learner_group_config.build()
 
 
 if __name__ == "__main__":
