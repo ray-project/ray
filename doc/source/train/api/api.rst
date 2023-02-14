@@ -60,13 +60,26 @@ Ray Train Integrations
 
 .. _train-pytorch-integration:
 
-Pytorch
+PyTorch
 ~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
 
     ~train.torch.TorchTrainer
+    ~train.torch.TorchConfig
+
+.. autosummary::
+
+    ~train.torch.TorchCheckpoint
+
+
+PyTorch Training Loop Utilities
+********************************
+
+.. autosummary::
+    :toctree: doc/
+
     ~train.torch.prepare_model
     ~train.torch.prepare_optimizer
     ~train.torch.prepare_data_loader
@@ -74,11 +87,6 @@ Pytorch
     ~train.torch.accelerate
     ~train.torch.backward
     ~train.torch.enable_reproducibility
-    ~train.torch.TorchConfig
-
-.. autosummary::
-
-    ~train.torch.TorchCheckpoint
 
 
 Tensorflow/Keras
@@ -88,12 +96,23 @@ Tensorflow/Keras
     :toctree: doc/
 
     ~train.tensorflow.TensorflowTrainer
-    ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.TensorflowConfig
 
 .. autosummary::
 
     ~train.tensorflow.TensorflowCheckpoint
+
+
+Tensorflow/Keras Training Loop Utilities
+****************************************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.tensorflow.prepare_dataset_shard
+
+.. autosummary::
+
     ~air.integrations.keras.ReportCheckpointCallback
 
 
