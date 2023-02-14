@@ -435,6 +435,7 @@ class Checkpoint:
         generic :py:class:`Checkpoint` object.
 
         Examples:
+
             >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
             >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
             >>> model = checkpoint.get_model()  # doctest: +SKIP
