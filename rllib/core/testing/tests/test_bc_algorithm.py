@@ -18,7 +18,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
 
-class TestRLTrainer(unittest.TestCase):
+class TestLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -33,7 +33,7 @@ class TestRLTrainer(unittest.TestCase):
         config = (
             BCConfigTest()
             .rl_module(_enable_rl_module_api=True)
-            .training(_enable_rl_trainer_api=True, model={"fcnet_hiddens": [32, 32]})
+            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
         )
 
         # TODO (Kourosh): Add tf2 support
@@ -54,7 +54,7 @@ class TestRLTrainer(unittest.TestCase):
         config = (
             BCConfigTest()
             .rl_module(_enable_rl_module_api=True)
-            .training(_enable_rl_trainer_api=True, model={"fcnet_hiddens": [32, 32]})
+            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
                 policy_mapping_fn=lambda agent_id, **kwargs: list(policies)[agent_id],
@@ -97,7 +97,7 @@ class TestRLTrainer(unittest.TestCase):
                 .framework(fw)
                 .rl_module(_enable_rl_module_api=True, rl_module_spec=spec)
                 .training(
-                    _enable_rl_trainer_api=True,
+                    _enable_learner_api=True,
                     model={"fcnet_hiddens": [32, 32]},
                 )
                 .multi_agent(

@@ -10,9 +10,9 @@ from typing import (
     Hashable,
 )
 
-from ray.rllib.core.rl_trainer.rl_trainer import (
+from ray.rllib.core.learner.learner import (
     FrameworkHPs,
-    RLTrainer,
+    Learner,
     ParamOptimizerPairs,
     Optimizer,
     ParamType,
@@ -39,7 +39,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class TfRLTrainer(RLTrainer):
+class TfLearner(Learner):
 
     framework: str = "tf"
 
@@ -58,7 +58,7 @@ class TfRLTrainer(RLTrainer):
         # cpu only case, build will override this if needed.
         self._strategy = tf.distribute.get_strategy()
 
-    @override(RLTrainer)
+    @override(Learner)
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
@@ -75,14 +75,14 @@ class TfRLTrainer(RLTrainer):
             for key in self._module.keys()
         ]
 
-    @override(RLTrainer)
+    @override(Learner)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
         grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
         return grads
 
-    @override(RLTrainer)
+    @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         # only some agents have a sample batch that is passed but not others.
@@ -93,32 +93,32 @@ class TfRLTrainer(RLTrainer):
             gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
             optim.apply_gradients(zip(gradient_list, variable_list))
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_weights(self) -> Mapping[str, Any]:
         # TODO (Kourosh) Implement this.
         raise NotImplementedError
 
-    @override(RLTrainer)
+    @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         # TODO (Kourosh) Implement this.
         raise NotImplementedError
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
         return param.ref()
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.trainable_variables)
 
-    @override(RLTrainer)
+    @override(Learner)
     def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
         lr = self._optimizer_config["lr"]
         return optimizer_cls(learning_rate=lr)
 
-    @override(RLTrainer)
+    @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
         """Convert the arrays of batch to tf.Tensor's.
 
@@ -141,7 +141,7 @@ class TfRLTrainer(RLTrainer):
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return batch.asdict()
 
-    @override(RLTrainer)
+    @override(Learner)
     def add_module(
         self,
         *,
@@ -168,14 +168,14 @@ class TfRLTrainer(RLTrainer):
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
-    @override(RLTrainer)
+    @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
-    @override(RLTrainer)
+    @override(Learner)
     def build(self) -> None:
         """Build the TfLearner.
 
@@ -205,7 +205,7 @@ class TfRLTrainer(RLTrainer):
         else:
             self._update_fn = self._do_update_fn
 
-    @override(RLTrainer)
+    @override(Learner)
     def update(
         self,
         batch: MultiAgentBatch,
@@ -214,12 +214,12 @@ class TfRLTrainer(RLTrainer):
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = ...,
     ) -> Mapping[str, Any]:
-        # TODO (Kourosh): The update of rl_trainer is vastly differnet than the base
+        # TODO (Kourosh): The update of learner is vastly differnet than the base
         # class. So we need to unify them.
 
         if set(batch.policy_batches.keys()) != set(self._module.keys()):
             raise ValueError(
-                "Batch keys must match module keys. RLTrainer does not "
+                "Batch keys must match module keys. Learner does not "
                 "currently support training of only some modules and not others"
             )
 

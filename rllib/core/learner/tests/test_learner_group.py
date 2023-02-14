@@ -6,29 +6,29 @@ import unittest
 import ray
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.utils import (
-    get_trainer_runner,
-    get_rl_trainer,
-    add_module_to_runner_or_trainer,
+    get_learner_group,
+    get_learner,
+    add_module_to_learner_or_learner_group,
 )
 from ray.util.timer import _Timer
 
 
 REMOTE_SCALING_CONFIGS = {
-    "remote-cpu": TrainerScalingConfig(num_workers=1),
-    "remote-gpu": TrainerScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
-    "multi-gpu-ddp": TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1),
-    "multi-cpu-ddp": TrainerScalingConfig(num_workers=2, num_cpus_per_worker=2),
-    # "multi-gpu-ddp-pipeline": TrainerScalingConfig(
+    "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
+    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
+    "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
+    "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
+    # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
     #     num_workers=2, num_gpus_per_worker=2
     # ),
 }
 
 
 LOCAL_SCALING_CONFIGS = {
-    "local-cpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+    "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
+    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
 }
 
 
@@ -39,44 +39,44 @@ class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
-        local_trainer = get_rl_trainer(fw, env)
-        local_trainer.build()
+        learner_group = get_learner_group(fw, env, scaling_config, eager_tracing=True)
+        local_learner = get_learner(fw, env)
+        local_learner.build()
 
-        # make the state of the trainer and the local runner identical
-        local_trainer.set_state(runner.get_state())
+        # make the state of the learner and the local learner_group identical
+        local_learner.set_state(learner_group.get_state())
 
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
-        check(local_trainer.update(batch), runner.update(batch))
+        check(local_learner.update(batch), learner_group.update(batch))
 
         new_module_id = "test_module"
 
-        add_module_to_runner_or_trainer(fw, env, new_module_id, runner)
-        add_module_to_runner_or_trainer(fw, env, new_module_id, local_trainer)
+        add_module_to_learner_or_learner_group(fw, env, new_module_id, learner_group)
+        add_module_to_learner_or_learner_group(fw, env, new_module_id, local_learner)
 
-        # make the state of the trainer and the local runner identical
-        local_trainer.set_state(runner.get_state())
+        # make the state of the learner and the local learner_group identical
+        local_learner.set_state(learner_group.get_state())
 
         # do another update
         batch = reader.next()
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
         )
-        check(local_trainer.update(ma_batch), runner.update(ma_batch))
+        check(local_learner.update(ma_batch), learner_group.update(ma_batch))
 
-        check(local_trainer.get_state(), runner.get_state())
+        check(local_learner.get_state(), learner_group.get_state())
 
 
-class TestTrainerRunner(unittest.TestCase):
+class TestLearnerGroup(unittest.TestCase):
     def setUp(self) -> None:
         ray.init()
 
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_trainer_runner_local(self):
+    def test_learner_group_local(self):
         fws = ["tf", "torch"]
 
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
@@ -99,13 +99,15 @@ class TestTrainerRunner(unittest.TestCase):
             env = gym.make("CartPole-v1")
 
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
+            learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
             for iter_i in range(1000):
                 batch = reader.next()
-                results = runner.update(batch.as_multi_agent(), reduce_fn=None)
+                results = learner_group.update(batch.as_multi_agent(), reduce_fn=None)
 
                 loss = np.mean([res["loss"]["total_loss"] for res in results])
                 min_loss = min(loss, min_loss)
@@ -123,9 +125,10 @@ class TestTrainerRunner(unittest.TestCase):
 
             self.assertLess(min_loss, 0.57)
 
-            # make sure the runner resources are freed up so that we don't autoscale
-            runner.shutdown()
-            del runner
+            # make sure the learner_group resources are freed up so that we don't
+            # autoscale
+            learner_group.shutdown()
+            del learner_group
 
     def test_add_remove_module(self):
         fws = ["tf", "torch"]
@@ -136,20 +139,24 @@ class TestTrainerRunner(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
+            learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
             # update once with the default policy
-            results = runner.update(batch.as_multi_agent(), reduce_fn=None)
+            results = learner_group.update(batch.as_multi_agent(), reduce_fn=None)
             module_ids_before_add = {DEFAULT_POLICY_ID}
             new_module_id = "test_module"
 
             # add a test_module
-            add_module_to_runner_or_trainer(fw, env, new_module_id, runner)
+            add_module_to_learner_or_learner_group(
+                fw, env, new_module_id, learner_group
+            )
 
             # do training that includes the test_module
-            results = runner.update(
+            results = learner_group.update(
                 MultiAgentBatch(
                     {new_module_id: batch, DEFAULT_POLICY_ID: batch}, batch.count
                 ),
@@ -173,10 +180,10 @@ class TestTrainerRunner(unittest.TestCase):
                 )
 
             # remove the test_module
-            runner.remove_module(module_id=new_module_id)
+            learner_group.remove_module(module_id=new_module_id)
 
             # run training without the test_module
-            results = runner.update(batch.as_multi_agent(), reduce_fn=None)
+            results = learner_group.update(batch.as_multi_agent(), reduce_fn=None)
 
             # check that module weights are updated across workers and synchronized
             for i in range(1, len(results)):
@@ -194,9 +201,10 @@ class TestTrainerRunner(unittest.TestCase):
                     set(result["loss"]) - {"total_loss"}, module_ids_before_add
                 )
 
-            # make sure the runner resources are freed up so that we don't autoscale
-            runner.shutdown()
-            del runner
+            # make sure the learner_group resources are freed up so that we don't
+            # autoscale
+            learner_group.shutdown()
+            del learner_group
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
@@ -210,16 +218,16 @@ class TestTrainerRunner(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            learner_group = get_learner_group(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=512)
             min_loss = float("inf")
             batch = reader.next()
             timer_sync = _Timer()
             timer_async = _Timer()
             with timer_sync:
-                runner.update(batch.as_multi_agent(), block=True, reduce_fn=None)
+                learner_group.update(batch.as_multi_agent(), block=True, reduce_fn=None)
             with timer_async:
-                result_async = runner.update(
+                result_async = learner_group.update(
                     batch.as_multi_agent(), block=False, reduce_fn=None
                 )
             # ideally the the first async update will return nothing, and an easy
@@ -230,7 +238,7 @@ class TestTrainerRunner(unittest.TestCase):
             self.assertEqual(len(result_async), 0)
             for iter_i in range(1000):
                 batch = reader.next()
-                results = runner.update(
+                results = learner_group.update(
                     batch.as_multi_agent(), block=False, reduce_fn=None
                 )
                 if not results:
@@ -248,7 +256,7 @@ class TestTrainerRunner(unittest.TestCase):
                         res1["mean_weight"]["default_policy"],
                         res2["mean_weight"]["default_policy"],
                     )
-            runner.shutdown()
+            learner_group.shutdown()
             self.assertLess(min_loss, 0.57)
 
 

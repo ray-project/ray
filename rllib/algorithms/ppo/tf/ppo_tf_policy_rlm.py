@@ -52,7 +52,7 @@ class PPOTfPolicyWithRLModule(
     # TODO: In the future we will deprecate doing all phases of training, exploration,
     # and inference via one policy abstraction. Instead, we will use separate
     # abstractions for each phase. For training (i.e. gradient updates, given the
-    # sample that have been collected) we will use RLTrainer which will own one or
+    # sample that have been collected) we will use Learner which will own one or
     # possibly many RLModules, and RLOptimizer. For exploration, we will use RLSampler
     # which will own RLModule, and RLTrajectoryProcessor. The exploration and inference
     # phase details are TBD but the whole point is to make rllib extremely modular.

@@ -333,7 +333,7 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during training called from the trainer. This method should
+        """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.
 
         Args:

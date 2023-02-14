@@ -1218,7 +1218,7 @@ class Policy(metaclass=ABCMeta):
             # if we are in the new rl trainer world num_gpus is deprecated.
             # so use num_gpus_per_worker for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
-            if self.config.get("_enable_rl_trainer_api", False):
+            if self.config.get("_enable_learner_api", False):
                 num_gpus = self.config["num_gpus_per_worker"]
             else:
                 # If head node, take num_gpus.
