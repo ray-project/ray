@@ -43,7 +43,7 @@ class RemoteTrainingHelper:
         local_learner = get_learner(fw, env)
         local_learner.build()
 
-        # make the state of the trainer and the local runner identical
+        # make the state of the learner and the local runner identical
         local_learner.set_state(runner.get_state())
 
         reader = get_cartpole_dataset_reader(batch_size=500)
@@ -56,7 +56,7 @@ class RemoteTrainingHelper:
         add_module_to_learner_or_learner_group(fw, env, new_module_id, runner)
         add_module_to_learner_or_learner_group(fw, env, new_module_id, local_learner)
 
-        # make the state of the trainer and the local runner identical
+        # make the state of the learner and the local runner identical
         local_learner.set_state(runner.get_state())
 
         # do another update

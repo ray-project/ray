@@ -114,7 +114,7 @@ class Learner:
         scaling_config: Configuration for scaling the learner actors.
             Refer to ray.rllib.core.learner.scaling_config.TrainerScalingConfig
             for more info.
-        trainer_hyperparameters: The hyper-parameters for the Learner.
+        learner_hyperparameters: The hyper-parameters for the Learner.
             Algorithm specific learner hyper-parameters will passed in via this
             argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
             passed in via this argument. Refer to
@@ -166,10 +166,10 @@ class Learner:
         # will train previous modules only.
         results = learner.update(batch)
 
-        # get the state of the trainer
+        # get the state of the learner
         state = learner.get_state()
 
-        # set the state of the trainer
+        # set the state of the learner
         learner.set_state(state)
 
         # get the weights of the underly multi-agent RLModule
@@ -203,8 +203,8 @@ class Learner:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
-        trainer_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
+        learner_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        learner_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
         # TODO (Kourosh): convert optimizer configs to dataclasses
@@ -221,13 +221,13 @@ class Learner:
         self._module_spec = module_spec
         self._module_obj = module
         self._optimizer_config = optimizer_config
-        self._hps = trainer_hyperparameters
+        self._hps = learner_hyperparameters
 
-        # pick the configs that we need for the trainer from scaling config
-        self._distributed = trainer_scaling_config.num_workers > 1
-        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
+        # pick the configs that we need for the learner from scaling config
+        self._distributed = learner_scaling_config.num_workers > 1
+        self._use_gpu = learner_scaling_config.num_gpus_per_worker > 0
         # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_idx = trainer_scaling_config.local_gpu_idx
+        self._local_gpu_idx = learner_scaling_config.local_gpu_idx
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -248,7 +248,7 @@ class Learner:
 
     @property
     def hps(self) -> LearnerHPs:
-        """The hyper-parameters for the trainer."""
+        """The hyper-parameters for the learner."""
         return self._hps
 
     @abc.abstractmethod
@@ -328,7 +328,7 @@ class Learner:
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         """Returns the list of parameters of a module.
 
-        This should be overriden in framework specific trainer. For example in torch it
+        This should be overriden in framework specific learner. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
 
         Args:
@@ -695,7 +695,7 @@ class Learner:
             return reduce_fn(results)
 
     def set_state(self, state: Mapping[str, Any]) -> None:
-        """Set the state of the trainer.
+        """Set the state of the learner.
 
         Args:
             state: The state of the optimizer and module. Can be obtained
@@ -709,7 +709,7 @@ class Learner:
         self._module.set_state(state.get("module_state", {}))
 
     def get_state(self) -> Mapping[str, Any]:
-        """Get the state of the trainer.
+        """Get the state of the learner.
 
         Returns:
             The state of the optimizer and module.
@@ -720,7 +720,7 @@ class Learner:
         return {"module_state": self._module.get_state()}
 
     def _make_module(self) -> MultiAgentRLModule:
-        """Construct the multi-agent RL module for the trainer.
+        """Construct the multi-agent RL module for the learner.
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
@@ -778,7 +778,7 @@ class LearnerSpec:
             only works if the Learner is not an actor.
         backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
-        trainer_hyperparameters: The extra config for the loss/additional update. This
+        learner_hyperparameters: The extra config for the loss/additional update. This
             should be a subclass of LearnerHPs. This is useful for passing in
             algorithm configs that contains the hyper-parameters for loss computation,
             change of training behaviors, etc. e.g lr, entropy_coeff.
@@ -787,11 +787,11 @@ class LearnerSpec:
     learner_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    trainer_scaling_config: TrainerScalingConfig = field(
+    learner_scaling_config: TrainerScalingConfig = field(
         default_factory=TrainerScalingConfig
     )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    trainer_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
+    learner_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
     framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
 
     def get_params_dict(self) -> Dict[str, Any]:
@@ -799,9 +799,9 @@ class LearnerSpec:
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "trainer_scaling_config": self.trainer_scaling_config,
+            "learner_scaling_config": self.learner_scaling_config,
             "optimizer_config": self.optimizer_config,
-            "trainer_hyperparameters": self.trainer_hyperparameters,
+            "learner_hyperparameters": self.learner_hyperparameters,
             "framework_hyperparameters": self.framework_hyperparameters,
         }
 

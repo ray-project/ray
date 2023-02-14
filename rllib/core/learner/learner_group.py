@@ -67,7 +67,7 @@ class LearnerGroup:
         learner_spec: LearnerSpec,
         max_queue_len: int = 20,
     ):
-        scaling_config = learner_spec.trainer_scaling_config
+        scaling_config = learner_spec.learner_scaling_config
         learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
@@ -152,7 +152,7 @@ class LearnerGroup:
                     "mode with num_workers=0."
                 )
             results = [
-                self._trainer.update(
+                self._learner.update(
                     batch,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
@@ -263,7 +263,7 @@ class LearnerGroup:
         """
 
         if self.is_local:
-            results = [self._trainer.additional_update(**kwargs)]
+            results = [self._learner.additional_update(**kwargs)]
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for worker in self._workers]
@@ -295,7 +295,7 @@ class LearnerGroup:
                 should be provided.
         """
         if self.is_local:
-            self._trainer.add_module(
+            self._learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
                 set_optimizer_fn=set_optimizer_fn,
@@ -320,7 +320,7 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            self._trainer.remove_module(module_id)
+            self._learner.remove_module(module_id)
         else:
             refs = []
             for worker in self._workers:
@@ -332,7 +332,7 @@ class LearnerGroup:
         # TODO (Kourosh) Set / get weight has to be thoroughly
         # tested across actors and multi-gpus
         if self.is_local:
-            self._trainer.set_weights(weights)
+            self._learner.set_weights(weights)
         else:
             results_or_errors = self._worker_manager.foreach_actor(
                 lambda w: w.set_weights(weights)
@@ -342,7 +342,7 @@ class LearnerGroup:
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
-            weights = self._trainer.get_weights(module_ids)
+            weights = self._learner.get_weights(module_ids)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
@@ -359,7 +359,7 @@ class LearnerGroup:
         This should be the same across Learners
         """
         if self.is_local:
-            return self._trainer.get_state()
+            return self._learner.get_state()
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
@@ -376,7 +376,7 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            self._trainer.set_state(state)
+            self._learner.set_state(state)
         else:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
 

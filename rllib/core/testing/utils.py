@@ -123,17 +123,17 @@ def get_learner_group(
 
     """
     if framework == "tf":
-        trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
+        learner_hps = FrameworkHPs(eager_tracing=eager_tracing)
     else:
-        trainer_hps = None
+        learner_hps = None
     learner_spec = LearnerSpec(
         learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": 0.1},
-        trainer_scaling_config=scaling_config,
-        trainer_hyperparameters=trainer_hps,
+        learner_scaling_config=scaling_config,
+        learner_hyperparameters=learner_hps,
     )
     runner = LearnerGroup(learner_spec)
 
@@ -145,9 +145,9 @@ def add_module_to_learner_or_learner_group(
     framework: str,
     env: "gym.Env",
     module_id: str,
-    runner_or_trainer: Union[LearnerGroup, "Learner"],
+    runner_or_learner: Union[LearnerGroup, "Learner"],
 ):
-    runner_or_trainer.add_module(
+    runner_or_learner.add_module(
         module_id=module_id,
         module_spec=get_module_spec(framework, env, is_multi_agent=False),
         optimizer_cls=get_optimizer_default_class(framework),

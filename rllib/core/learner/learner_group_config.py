@@ -31,7 +31,7 @@ class LearnerGroupConfig:
         # `self.module()`
         self.module_spec = None
 
-        # `self.trainer()`
+        # `self.learner()`
         self.learner_class = None
         self.optimizer_config = None
         self.learner_hps = LearnerHPs()
@@ -62,7 +62,7 @@ class LearnerGroupConfig:
         if self.learner_class is None:
             raise ValueError(
                 "Cannot initialize an Learner without an Learner class. Please provide "
-                "the Learner class with .trainer(learner_class=MyTrainerClass)."
+                "the Learner class with .learner(learner_class=MyTrainerClass)."
             )
 
         if self.optimizer_config is None:
@@ -86,8 +86,8 @@ class LearnerGroupConfig:
             learner_class=self.learner_class,
             module_spec=self.module_spec,
             optimizer_config=self.optimizer_config,
-            trainer_scaling_config=scaling_config,
-            trainer_hyperparameters=self.learner_hps,
+            learner_scaling_config=scaling_config,
+            learner_hyperparameters=self.learner_hps,
             framework_hyperparameters=framework_hps,
         )
 
@@ -130,7 +130,7 @@ class LearnerGroupConfig:
 
         return self
 
-    def trainer(
+    def learner(
         self,
         *,
         learner_class: Optional[Type["Learner"]] = NotProvided,
