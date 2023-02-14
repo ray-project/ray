@@ -37,7 +37,6 @@ torchvision
 transformers
 
 # Train
-horovod[tensorflow,keras,pytorch]
 mosaicml==0.10.1
 mxnet==1.8.0.post0
 
