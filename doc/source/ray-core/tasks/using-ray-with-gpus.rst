@@ -40,7 +40,7 @@ and assign GPUs to the task or actor by setting the ``CUDA_VISIBLE_DEVICES`` env
     :start-after: __get_gpu_ids_start__
     :end-before: __get_gpu_ids_end__
 
-Inside a task or actor, :ref:`ray.get_gpu_ids() <ray-get_gpu_ids-ref>` will return a
+Inside a task or actor, :func:`ray.get_gpu_ids() <ray.get_gpu_ids>` will return a
 list of GPU IDs that are available to the task or actor.
 Typically, it is not necessary to call ``ray.get_gpu_ids()`` because Ray will
 automatically set the ``CUDA_VISIBLE_DEVICES`` environment variable,
@@ -99,7 +99,7 @@ task tries to use the same GPU. To address the problem, Ray disables the worker
 process reuse between GPU tasks by default, where the GPU resources is released after
 the task process exits. Since this adds overhead to GPU task scheduling,
 you can re-enable worker reuse by setting ``max_calls=0``
-in the :ref:`ray.remote <ray-remote-ref>` decorator.
+in the :func:`ray.remote <ray.remote>` decorator.
 
 .. literalinclude:: ../doc_code/gpus.py
     :language: python

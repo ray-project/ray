@@ -360,7 +360,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 You can schedule actors/tasks on the placement group using
-:ref:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <scheduling-strategy-ref>`.
+:class:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy>`.
 
 .. tabbed:: Python
 
@@ -470,7 +470,7 @@ You can schedule actors/tasks on the placement group using
       };
 
       RAY_REMOTE(&Counter::Ping, &Counter::GetValue, CreateCounter);
-      
+
       // Create GPU actors on a gpu bundle.
       for (int index = 0; index < 2; index++) {
         ray::Actor(CreateCounter)
@@ -660,9 +660,9 @@ Placement Group Lifetimes
 .. tabbed:: Python
 
     By default, the lifetimes of placement groups are not detached and will be destroyed
-    when the driver is terminated (but, if it is created from a detached actor, it is 
-    killed when the detached actor is killed). If you'd like to keep the placement group 
-    alive regardless of its job or detached actor, you should specify 
+    when the driver is terminated (but, if it is created from a detached actor, it is
+    killed when the detached actor is killed). If you'd like to keep the placement group
+    alive regardless of its job or detached actor, you should specify
     `lifetime="detached"`. For example:
 
     .. code-block:: python
@@ -671,8 +671,8 @@ Placement Group Lifetimes
       pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
       ray.get(pg.ready())
 
-    The placement group's lifetime will be independent of the driver now. This means it 
-    is possible to retrieve the placement group from other drivers regardless of when 
+    The placement group's lifetime will be independent of the driver now. This means it
+    is possible to retrieve the placement group from other drivers regardless of when
     the current driver exits. Let's see an example:
 
     .. code-block:: python
