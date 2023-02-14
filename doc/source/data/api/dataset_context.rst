@@ -19,6 +19,5 @@ Get DatasetContext
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    context.DatasetContext.get_current

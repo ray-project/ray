@@ -19,7 +19,6 @@ Basic Transformations
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.map
    Dataset.map_batches
@@ -36,7 +35,6 @@ Sorting, Shuffling, Repartitioning
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.sort
    Dataset.random_shuffle
@@ -48,7 +46,6 @@ Splitting and Merging Datasets
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.split
    Dataset.split_at_indices
@@ -62,7 +59,6 @@ Grouped and Global Aggregations
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.groupby
    Dataset.aggregate
@@ -77,7 +73,6 @@ Converting to Pipeline
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.repeat
    Dataset.window
@@ -87,7 +82,6 @@ Consuming Datasets
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.show
    Dataset.take
@@ -103,7 +97,6 @@ I/O and Conversion
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.write_parquet
    Dataset.write_json
@@ -129,7 +122,6 @@ Inspecting Metadata
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.count
    Dataset.schema
@@ -145,7 +137,6 @@ Execution
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.fully_executed
    Dataset.is_fully_executed
@@ -156,7 +147,6 @@ Serialization
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage

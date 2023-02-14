@@ -9,7 +9,6 @@ DatasetIterator API
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    DatasetIterator.iter_batches
    DatasetIterator.iter_torch_batches
