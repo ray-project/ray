@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import sys
@@ -12,6 +13,7 @@ from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
@@ -281,6 +283,7 @@ def create_api_options(
     limit: int = DEFAULT_LIMIT,
     filters: List[Tuple[str, SupportedFilterType]] = None,
     detail: bool = False,
+    exclude_driver: bool = True,
 ):
     if not filters:
         filters = []
@@ -290,6 +293,7 @@ def create_api_options(
         filters=filters,
         _server_timeout_multiplier=1.0,
         detail=detail,
+        exclude_driver=exclude_driver,
     )
 
 
@@ -802,12 +806,13 @@ async def test_api_manager_list_tasks(state_api_manager):
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
     data_source_client.get_all_task_info.assert_any_await(
-        timeout=DEFAULT_RPC_TIMEOUT, job_id=None
+        timeout=DEFAULT_RPC_TIMEOUT, job_id=None, exclude_driver=True
     )
     data = result.result
     data = data
     assert len(data) == 2
     assert result.total == 2
+    print(data)
     verify_schema(TaskState, data[0])
     assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
@@ -2211,6 +2216,58 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+def test_pg_worker_id_tasks(shutdown_only):
+    ray.init(num_cpus=1)
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    pg.wait()
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    class A:
+        def ready(self):
+            return os.getpid()
+
+    ray.get(
+        f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
+
+    def verify():
+        tasks = list_tasks(detail=True)
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(tasks) == 1
+        assert len(workers) == 1
+
+        assert tasks[0]["placement_group_id"] == pg.id.hex()
+        assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks(detail=True))
+
+    a = A.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+    pid = ray.get(a.ready.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])
+        assert len(actors) == 1
+        assert len(workers) == 1
+
+        assert actors[0]["placement_group_id"] == pg.id.hex()
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
+
+
 def test_parent_task_id(shutdown_only):
     """Test parent task id set up properly"""
     ray.init(num_cpus=2)
@@ -2307,10 +2364,10 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
 
     def verify(task_attempts):
         assert len(task_attempts) == 3
-        for task_attempt in task_attempts[:-1]:
+        for task_attempt in task_attempts[1:]:
             assert task_attempt["state"] == "FAILED"
 
-        task_attempts[-1]["state"] == "FINISHED"
+        task_attempts[0]["state"] == "FINISHED"
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
             0,
@@ -3252,7 +3309,6 @@ def test_core_state_api_usage_tags(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

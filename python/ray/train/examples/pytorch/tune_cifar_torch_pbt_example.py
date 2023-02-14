@@ -69,7 +69,10 @@ def train_func(config):
     epochs = config.get("epochs", 3)
 
     model = resnet18()
-    model = train.torch.prepare_model(model)
+
+    # Note that `prepare_model` needs to be called before setting optimizer.
+    if not session.get_checkpoint():  # fresh start
+        model = train.torch.prepare_model(model)
 
     # Create optimizer.
     optimizer_config = {
@@ -85,6 +88,7 @@ def train_func(config):
         # Load in model
         model_state = checkpoint_dict["model"]
         model.load_state_dict(model_state)
+        model = train.torch.prepare_model(model)
 
         # Load in optimizer
         optimizer_state = checkpoint_dict["optimizer_state_dict"]

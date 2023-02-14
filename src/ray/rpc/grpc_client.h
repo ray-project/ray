@@ -57,7 +57,8 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
                     ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
   arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-
+  arguments->SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
+                    ::RayConfig::instance().grpc_stream_buffer_size());
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
     std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());

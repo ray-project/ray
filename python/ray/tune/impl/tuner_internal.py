@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
+import urllib.parse
 
 import ray
 import ray.cloudpickle as pickle
@@ -14,7 +15,7 @@ from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -80,15 +81,31 @@ class TunerInternal:
     ):
         from ray.train.trainer import BaseTrainer
 
-        # If no run config was passed to Tuner directly, use the one from the Trainer,
-        # if available
-        if not run_config and isinstance(trainable, BaseTrainer):
-            run_config = trainable.run_config
+        if isinstance(trainable, BaseTrainer):
+            # If no run config was passed to the Tuner directly,
+            # use the one from the Trainer, if available
+            if not run_config:
+                run_config = trainable.run_config
+            if run_config and trainable.run_config != RunConfig():
+                logger.info(
+                    "A `RunConfig` was passed to both the `Tuner` and the "
+                    f"`{trainable.__class__.__name__}`. The run config passed to "
+                    "the `Tuner` is the one that will be used."
+                )
+            if param_space and "run_config" in param_space:
+                raise ValueError(
+                    "`RunConfig` cannot be tuned as part of the `param_space`! "
+                    "Move the run config to be a parameter of the `Tuner`: "
+                    "Tuner(..., run_config=RunConfig(...))"
+                )
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
         self._missing_params_error_message = None
+
+        self._param_space = param_space or {}
+        self._process_scaling_config()
 
         # Restore from Tuner checkpoint.
         if restore_path:
@@ -113,10 +130,6 @@ class TunerInternal:
         )
 
         self._experiment_analysis = None
-
-        # Not used for restored Tuner.
-        self._param_space = param_space or {}
-        self._process_scaling_config()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -237,7 +250,7 @@ class TunerInternal:
                 "# Reconstruct the trainable with the same parameters\n"
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
-                "    ..., overwrite_trainable=trainable_with_params\n"
+                "    ..., trainable=trainable_with_params\n"
                 ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
                 "#tune-with-parameters for more details."
             )
@@ -245,9 +258,8 @@ class TunerInternal:
             return
 
         error_message = (
-            "Usage of `overwrite_trainable` is limited to re-specifying the "
-            "same trainable that was passed to `Tuner`, in the case "
-            "that the trainable is not serializable (e.g. it holds object references)."
+            "Invalid trainable input. To avoid errors, pass in the same trainable "
+            "that was used to initialize the Tuner."
         )
 
         if type(original_trainable) != type(overwrite_trainable):
@@ -334,6 +346,16 @@ class TunerInternal:
             self._run_config.local_dir = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
+            # Set the experiment `name` and `upload_dir` according to the URI
+            parsed_uri = urllib.parse.urlparse(path_or_uri)
+            remote_path = Path(os.path.normpath(parsed_uri.netloc + parsed_uri.path))
+            upload_dir = parsed_uri._replace(
+                netloc="", path=str(remote_path.parent)
+            ).geturl()
+
+            self._run_config.name = remote_path.name
+            self._run_config.sync_config.upload_dir = upload_dir
+
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
@@ -427,11 +449,11 @@ class TunerInternal:
     def fit(self) -> ResultGrid:
         trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
+        param_space = copy.deepcopy(self._param_space)
         if not self._is_restored:
-            param_space = copy.deepcopy(self._param_space)
             analysis = self._fit_internal(trainable, param_space)
         else:
-            analysis = self._fit_resume(trainable)
+            analysis = self._fit_resume(trainable, param_space)
 
         self._experiment_analysis = analysis
 
@@ -530,7 +552,7 @@ class TunerInternal:
         )
 
     def _fit_internal(
-        self, trainable: TrainableType, param_space
+        self, trainable: TrainableType, param_space: Dict[str, Any]
     ) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
@@ -552,7 +574,9 @@ class TunerInternal:
         self.clear_remote_string_queue()
         return analysis
 
-    def _fit_resume(self, trainable: TrainableType) -> ExperimentAnalysis:
+    def _fit_resume(
+        self, trainable: TrainableType, param_space: Dict[str, Any]
+    ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         if self._missing_params_error_message:
             raise ValueError(self._missing_params_error_message)
@@ -575,6 +599,7 @@ class TunerInternal:
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
+                config={**param_space},
                 resume=resume,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
