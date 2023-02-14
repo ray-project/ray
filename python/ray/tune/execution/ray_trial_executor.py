@@ -799,7 +799,11 @@ class RayTrialExecutor:
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset.remote(extra_config, logger_creator),
+                        trainable.reset.remote(
+                            extra_config,
+                            logger_creator=logger_creator,
+                            remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                        ),
                         timeout=DEFAULT_GET_TIMEOUT,
                     )
                 except GetTimeoutError:
