@@ -16,21 +16,22 @@ from ray.air.constants import (  # noqa: F401
 )
 
 # Autofilled session.report() metrics. Keys should be consistent with Tune.
-TIMESTAMP = "_timestamp"
-TIME_THIS_ITER_S = "_time_this_iter_s"
-TRAINING_ITERATION = "_training_iteration"
+# The train provided `TIME_THIS_ITER_S` and `TIMESTAMP` will triumph what's
+# auto-filled by Tune session.
+# TODO: Combine the following two with tune's, once there is a centralized
+#  file for both tune/train constants.
+TIMESTAMP = "timestamp"
+TIME_THIS_ITER_S = "time_this_iter_s"
 
-BASIC_AUTOFILLED_KEYS = {TIMESTAMP, TIME_THIS_ITER_S, TRAINING_ITERATION}
-
-DATE = "_date"
-HOSTNAME = "_hostname"
-NODE_IP = "_node_ip"
-PID = "_pid"
 TIME_TOTAL_S = "_time_total_s"
+
+WORKER_HOSTNAME = "_hostname"
+WORKER_NODE_IP = "_node_ip"
+WORKER_PID = "_pid"
 
 # Will not be reported unless ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 # env var is not 0
-DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
+DETAILED_AUTOFILLED_KEYS = {WORKER_HOSTNAME, WORKER_NODE_IP, WORKER_PID, TIME_TOTAL_S}
 
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
