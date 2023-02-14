@@ -12,6 +12,7 @@ Tuner
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Tuner
     Tuner.fit
