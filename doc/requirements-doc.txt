@@ -37,6 +37,7 @@ torchvision
 transformers
 
 # Train
+ruamel==0.15.87  # This is required for MosaicML
 mosaicml==0.10.1
 mxnet==1.8.0.post0
 
