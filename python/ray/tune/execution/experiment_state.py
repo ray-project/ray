@@ -1,6 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, Optional, Union, Callable
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import click
 import logging
@@ -28,7 +28,7 @@ class _ResumeConfig:
     restart_errored: bool = False
 
 
-def _resume_str_to_config(resume_str: str) -> _ResumeConfig:
+def _resume_str_to_config(resume_str: str) -> Tuple[str, _ResumeConfig]:
     if resume_str is True:
         resume_str = "LOCAL"
     elif resume_str == "ERRORED_ONLY":
@@ -61,7 +61,7 @@ def _resume_str_to_config(resume_str: str) -> _ResumeConfig:
     assert resume_str in VALID_RESUME_TYPES, "resume={} is not one of {}".format(
         resume_str, VALID_RESUME_TYPES
     )
-    return resume_config
+    return resume_str, resume_config
 
 
 def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
@@ -406,7 +406,7 @@ class _ExperimentCheckpointManager:
         if not resume_type:
             return None
 
-        resume_config = _resume_str_to_config(resume_type)
+        resume_type, resume_config = _resume_str_to_config(resume_type)
 
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
