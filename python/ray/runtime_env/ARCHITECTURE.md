@@ -55,6 +55,12 @@ References are tracked per package (URI).  The reference counting is managed in 
 
 When a reference count reaches 0, the file is deleted.
 
+#### The "temporary reference" for Ray Jobs API and Ray Client
+
+When the user specifies a local directory in `working_dir` or `py_modules`, it is zipped and uploaded to the GCS as a URI by Ray.  However, as described above, the reference count is ordinarily only incremented when a driver (or detached actor) is started that uses that URI.  In the case of Ray Jobs API and Ray Client, this uploading happens before the driver starts.  
+
+To prevent the file from being garbage collected before the driver starts, a special "temporary reference" is added for the URI when it is uploaded.  This reference is removed after a configurable timeout (controlled by the env var `RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S` on the head node, default 600 seconds).
+
 ### Local node garbage collection
 
 This section deals with files that are stored on disk on all nodes, such as installed `pip` packages or `working_dir` files downloaded from the GCS or from a remote URI.
