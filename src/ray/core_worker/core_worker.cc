@@ -271,16 +271,34 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
-  // Register a callback to monitor removed nodes.
-  // Note we capture a shared ownership of reference_counter_
+  if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
+    lease_request_rate_limiter_ = std::make_shared<StaticLeaseRequestRateLimiter>(
+        RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
+  } else {
+    RAY_CHECK(
+        RayConfig::instance().max_pending_lease_requests_per_scheduling_category() != 0)
+        << "max_pending_lease_requests_per_scheduling_category can't be 0";
+    lease_request_rate_limiter_ =
+        std::make_shared<ClusterSizeBasedLeaseRequestRateLimiter>(
+            /*kMinConcurrentLeaseCap*/ 10);
+  }
+
+  // Register a callback to monitor add/removed nodes.
+  // Note we capture a shared ownership of reference_counter_ and rate_limiter
   // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [reference_counter = this->reference_counter_](
+  auto on_node_change = [reference_counter = this->reference_counter_,
+                         rate_limiter = this->lease_request_rate_limiter_](
                             const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       RAY_LOG(INFO) << "Node failure from " << node_id
                     << ". All objects pinned on that node will be lost if object "
                        "reconstruction is not enabled.";
       reference_counter->ResetObjectsOnRemovedNode(node_id);
+    }
+    auto cluster_size_based_rate_limiter =
+        dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(rate_limiter.get());
+    if (cluster_size_based_rate_limiter) {
+      cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
@@ -360,11 +378,26 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     builder.SetDriverTaskSpec(task_id,
                               options_.language,
                               worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
+                              // Driver has no parent task
+                              /* parent_task_id */ TaskID::Nil(),
                               GetCallerId(),
-                              rpc_address_);
+                              rpc_address_,
+                              TaskID::Nil());
     // Drivers are never re-executed.
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
+
+    // Add the driver task info.
+    if (task_event_buffer_->Enabled()) {
+      const auto spec = builder.Build();
+      auto task_event = std::make_unique<worker::TaskStatusEvent>(
+          task_id,
+          spec.JobId(),
+          /* attempt_number */ 0,
+          rpc::TaskStatus::RUNNING,
+          /* timestamp */ absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(spec));
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
@@ -428,8 +461,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_,
       worker_context_.GetCurrentJobID(),
-      boost::asio::steady_timer(io_service_),
-      RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
+      lease_request_rate_limiter_,
+      boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
                                            const absl::flat_hash_set<NodeID> &locations,
@@ -515,7 +548,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
-                        << io_service_.stats().StatsString() << "\n\n";
+                        << io_service_.stats().StatsString() << "\n\n"
+                        << "-----------------\n"
+                        << "Task Event stats:\n"
+                        << task_event_buffer_->DebugString() << "\n";
         },
         event_stats_print_interval_ms);
   }
@@ -642,6 +678,17 @@ void CoreWorker::Disconnect(
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
   RecordMetrics();
+
+  // Driver exiting.
+  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
+    auto task_event = std::make_unique<worker::TaskStatusEvent>(
+        worker_context_.GetCurrentTaskID(),
+        worker_context_.GetCurrentJobID(),
+        /* attempt_number */ 0,
+        rpc::TaskStatus::FINISHED,
+        /* timestamp */ absl::GetCurrentTimeNanos());
+    task_event_buffer_->AddTaskEvent(std::move(task_event));
+  }
 
   // Force task state events push before exiting the worker.
   task_event_buffer_->FlushEvents(/* forced */ true);
@@ -1203,8 +1250,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  }
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1365,8 +1416,12 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  }
 
   results->resize(ids.size(), false);
 
@@ -1719,6 +1774,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
+    const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
     bool include_job_config) {
   // Build common task spec.
@@ -1751,6 +1807,7 @@ void CoreWorker::BuildCommonTaskSpec(
       required_placement_resources,
       debugger_breakpoint,
       depth,
+      main_thread_current_task_id,
       override_runtime_env_info,
       concurrency_group_name);
   // Set task arguments.
@@ -1801,6 +1858,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true);
   builder.SetNormalTaskSpec(max_retries,
@@ -1884,6 +1942,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "" /* debugger_breakpoint */,
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true);
 
@@ -2108,6 +2167,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
@@ -2156,22 +2216,53 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
+  std::vector<std::pair<TaskID, Status>> recursive_cancellation_status;
   bool recursive_success = true;
   for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
-    if (child_spec.has_value()) {
+    if (!child_spec.has_value()) {
+      recursive_success = false;
+      recursive_cancellation_status.push_back(
+          std::make_pair(child_id,
+                         Status::UnknownError(
+                             "Recursive task cancellation failed--check warning logs.")));
+    } else if (child_spec->IsActorTask()) {
+      recursive_success = false;
+      recursive_cancellation_status.push_back(std::make_pair(
+          child_id,
+          Status::Invalid(
+              "Actor task cancellation is not supported. The task won't be cancelled.")));
+    } else {
       auto result =
           direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
-      recursive_success = recursive_success && result.ok();
-    } else {
-      recursive_success = false;
+      recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     }
   }
+
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError(
-        "Recursive task cancellation failed--check warning logs.");
+    auto kMaxFailedTaskSampleSize = 10;
+    std::ostringstream ostr;
+    ostr << "Failed to cancel all the children tasks of " << task_id << " recursively.\n"
+         << "Here are up to " << kMaxFailedTaskSampleSize
+         << " samples tasks that failed to be canceled\n";
+    auto success = 0;
+    auto failures = 0;
+    for (const auto &[child_id, status] : recursive_cancellation_status) {
+      if (status.ok()) {
+        success += 1;
+      } else {
+        // Only record up to sample sizes.
+        if (failures < kMaxFailedTaskSampleSize) {
+          ostr << "\t" << child_id << ", " << status.ToString() << "\n";
+        }
+        failures += 1;
+      }
+    }
+    ostr << "Total Recursive cancelation success: " << success
+         << ", failures: " << failures;
+    return Status::UnknownError(ostr.str());
   }
 }
 
@@ -3270,8 +3361,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
     if (!recursive_cancel.ok()) {
-      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
-                     << " due to reason: " << recursive_cancel.ToString();
+      RAY_LOG(ERROR) << recursive_cancel.ToString();
     }
   }
 
@@ -3498,12 +3588,21 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
-  reply->set_success(is_idle);
+  bool force_exit = request.force_exit();
+  RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
+  if (!is_idle && force_exit) {
+    RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
+                     "workers that depends on the object to lose it. "
+                  << "Own objects: " << own_objects
+                  << " # Pins in flight: " << pins_in_flight;
+  }
+  bool will_exit = is_idle || force_exit;
+  reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),
-      [this, is_idle]() {
+      [this, will_exit]() {
         // If the worker is idle, we exit.
-        if (is_idle) {
+        if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");
@@ -3722,6 +3821,30 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
+}
+
+ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
+    size_t min_concurrent_lease_limit)
+    : kMinConcurrentLeaseCap(min_concurrent_lease_limit), num_alive_nodes_(0) {}
+
+size_t ClusterSizeBasedLeaseRequestRateLimiter::
+    GetMaxPendingLeaseRequestsPerSchedulingCategory() {
+  return std::max<size_t>(kMinConcurrentLeaseCap, num_alive_nodes_.load());
+}
+
+void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
+    const rpc::GcsNodeInfo &data) {
+  if (data.state() == rpc::GcsNodeInfo::DEAD) {
+    if (num_alive_nodes_ != 0) {
+      num_alive_nodes_--;
+    } else {
+      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
+                       << " change state to DEAD but num_alive_node is 0.";
+    }
+  } else {
+    num_alive_nodes_++;
+  }
+  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
 }  // namespace core

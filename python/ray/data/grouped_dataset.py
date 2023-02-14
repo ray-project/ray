@@ -3,6 +3,8 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -138,8 +140,6 @@ class GroupedDataset(Generic[T]):
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
 
-        This is a blocking operation.
-
         Examples:
 
             .. testcode::
@@ -152,7 +152,7 @@ class GroupedDataset(Generic[T]):
                     init=lambda k: [],
                     accumulate_row=lambda a, r: a + [r],
                     merge=lambda a1, a2: a1 + a2,
-                    finalize=lambda a: a
+                    finalize=lambda a: sorted(a)
                 ))
                 result.show()
 
@@ -219,10 +219,20 @@ class GroupedDataset(Generic[T]):
             )
 
         plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             self._dataset._epoch,
             self._dataset._lazy,
+            logical_plan,
         )
 
     def _aggregate_on(
@@ -262,8 +272,6 @@ class GroupedDataset(Generic[T]):
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
-
-        This is a blocking operation.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -374,8 +382,6 @@ class GroupedDataset(Generic[T]):
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
@@ -395,8 +401,6 @@ class GroupedDataset(Generic[T]):
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
         r"""Compute grouped sum aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -457,8 +461,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped min aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
@@ -518,8 +520,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped max aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
@@ -578,8 +578,6 @@ class GroupedDataset(Generic[T]):
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
         """Compute grouped mean aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -643,8 +641,6 @@ class GroupedDataset(Generic[T]):
         ignore_nulls: bool = True,
     ) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray

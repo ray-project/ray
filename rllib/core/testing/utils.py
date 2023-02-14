@@ -4,6 +4,8 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec, FrameworkHPs
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
@@ -58,7 +60,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         module_class=get_module_class(framework),
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config={"hidden_dim": 32},
+        model_config={"fcnet_hiddens": [32]},
     )
 
     if is_multi_agent:
@@ -101,17 +103,39 @@ def get_rl_trainer(
 def get_trainer_runner(
     framework: str,
     env: "gym.Env",
-    compute_config: dict,
+    scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
+    eager_tracing: bool = False,
 ) -> TrainerRunner:
-    trainer_class = get_trainer_class(framework)
-    trainer_cfg = dict(
+    """Construct a trainer runner for testing.
+
+    Args:
+        framework: The framework used for training.
+        env: The environment to train on.
+        scaling_config: A config for the amount and types of resources to use for
+            training.
+        is_multi_agent: Whether to construct a multi agent rl module.
+        eager_tracing: TF Specific. Whether to use tf.function for tracing
+            optimizations.
+
+    Returns:
+        A trainer runner.
+
+    """
+    if framework == "tf":
+        trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
+    else:
+        trainer_hps = None
+    rl_trainer_spec = RLTrainerSpec(
+        rl_trainer_class=get_trainer_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": 0.1},
+        trainer_scaling_config=scaling_config,
+        trainer_hyperparameters=trainer_hps,
     )
-    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=compute_config)
+    runner = TrainerRunner(rl_trainer_spec)
 
     return runner
 

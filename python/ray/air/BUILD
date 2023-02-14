@@ -116,33 +116,17 @@ py_test(
 )
 
 py_test(
+    name = "test_remote_storage_hdfs",
+    size = "small",
+    srcs = ["tests/test_remote_storage_hdfs.py"],
+    tags = ["team:ml", "exclusive", "hdfs"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_resource_changing",
     size = "large",
     srcs = ["tests/test_resource_changing.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_resource_manager_fixed",
-    size = "small",
-    srcs = ["tests/test_resource_manager_fixed.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_resource_manager_placement_group",
-    size = "small",
-    srcs = ["tests/test_resource_manager_placement_group.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_resource_request",
-    size = "small",
-    srcs = ["tests/test_resource_request.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -162,6 +146,86 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/air/tests/execution directory.
+# Covers all tests starting with `test_`.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_barrier",
+    size = "small",
+    srcs = ["tests/execution/test_barrier.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_e2e_train_flow",
+    size = "medium",
+    srcs = ["tests/execution/test_e2e_train_flow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_e2e_tune_flow",
+    size = "medium",
+    srcs = ["tests/execution/test_e2e_tune_flow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_event_manager",
+    size = "medium",
+    srcs = ["tests/execution/test_event_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_manager_fixed",
+    size = "small",
+    srcs = ["tests/execution/test_resource_manager_fixed.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_manager_placement_group",
+    size = "small",
+    srcs = ["tests/execution/test_resource_manager_placement_group.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_request",
+    size = "small",
+    srcs = ["tests/execution/test_resource_request.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_tracked_actor",
+    size = "small",
+    srcs = ["tests/execution/test_tracked_actor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_tracked_actor_task",
+    size = "small",
+    srcs = ["tests/execution/test_tracked_actor_task.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

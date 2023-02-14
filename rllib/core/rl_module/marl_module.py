@@ -17,23 +17,6 @@ from ray.rllib.utils.policy import validate_policy_id
 ModuleID = str
 
 
-@ExperimentalAPI
-@dataclass
-class MultiAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in multi-agent case) easier.
-
-    Args:
-        module_class: ...
-        module_specs: ...
-    """
-
-    module_class: Optional[Type["MultiAgentRLModule"]] = None
-    module_specs: Optional[Dict[ModuleID, SingleAgentRLModuleSpec]] = None
-
-    def build(self) -> "MultiAgentRLModule":
-        return self.module_class.from_multi_agent_config({"modules": self.module_specs})
-
-
 def _get_module_configs(config: Dict[str, Any]):
     """Constructs a mapping from module_id to module config.
 
@@ -144,8 +127,6 @@ class MultiAgentRLModule(RLModule):
         multiagent_module = cls()
 
         for module_id, module_spec in module_configs.items():
-            # module_cls: RLModule = module_spec.pop("module_class")
-            # module = module_cls.from_model_config(**module_spec)
             module = module_spec.build()
             multiagent_module.add_module(module_id, module)
 
@@ -281,7 +262,7 @@ class MultiAgentRLModule(RLModule):
         """Returns a ModelSpec from the given method_name for all modules."""
         return SpecDict(
             {
-                module_id: getattr(module, method_name)()
+                module_id: getattr(module, f"_{method_name}")
                 for module_id, module in self._rl_modules.items()
             }
         )
@@ -301,7 +282,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_train pass the specified modules.
         """
-        return self.__run_forward_pass("forward_train", batch, **kwargs)
+        return self._run_forward_pass("forward_train", batch, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
@@ -318,7 +299,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_inference pass the specified modules.
         """
-        return self.__run_forward_pass("forward_inference", batch, **kwargs)
+        return self._run_forward_pass("forward_inference", batch, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
@@ -335,7 +316,7 @@ class MultiAgentRLModule(RLModule):
         Returns:
             The output of the forward_exploration pass the specified modules.
         """
-        return self.__run_forward_pass("forward_exploration", batch, **kwargs)
+        return self._run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -411,7 +392,7 @@ class MultiAgentRLModule(RLModule):
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
 
-    def __run_forward_pass(
+    def _run_forward_pass(
         self,
         forward_fn_name: str,
         batch: NestedDict[Any],
@@ -450,4 +431,87 @@ class MultiAgentRLModule(RLModule):
             raise KeyError(
                 f"Module with module_id {module_id} not found. "
                 f"Available modules: {set(self.keys())}"
+            )
+
+
+@ExperimentalAPI
+@dataclass
+class MultiAgentRLModuleSpec:
+    """A utility spec class to make it constructing MARL modules easier.
+
+
+    Users can extend this class to modify the behavior of base class. For example to
+    share neural networks across the modules, the build method can be overriden to
+    create the shared module first and then pass it to custom module classes that would
+    then use it as a shared module.
+
+    Args:
+        marl_module_class: The class of the multi-agent RLModule to construct. By
+            default it is set to MultiAgentRLModule class. This class simply loops
+            throught each module and calls their foward methods.
+        module_specs: The module specs for each individual module. It can be either a
+            SingleAgentRLModuleSpec used for all module_ids or a dictionary mapping
+            from module IDs to SingleAgentRLModuleSpecs for each individual module.
+    """
+
+    marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
+    module_specs: Union[
+        SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
+    ] = None
+
+    def __post_init__(self):
+        if self.module_specs is None:
+            raise ValueError(
+                "module_specs cannot be None. It should be either a "
+                "SingleAgentRLModuleSpec or a dictionary mapping from module IDs to "
+                "SingleAgentRLModuleSpecs for each individual module."
+            )
+
+    def build(
+        self, module_id: Optional[ModuleID] = None
+    ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:
+        """Builds either the multi-agent module or the single-agent module.
+
+        If module_id is None, it builds the multi-agent module. Otherwise, it builds
+        the single-agent module with the given module_id.
+
+        Note: If when build is called the module_specs is not a dictionary, it will
+        raise an error, since it should have been updated by the caller to inform us
+        about the module_ids.
+
+        Args:
+            module_id: The module_id of the single-agent module to build. If None, it
+                builds the multi-agent module.
+
+        Returns:
+            The built module. If module_id is None, it returns the multi-agent module.
+        """
+
+        self._check_before_build()
+
+        if module_id:
+            return self.module_specs[module_id].build()
+        return self.marl_module_class.from_multi_agent_config(
+            {"modules": self.module_specs}
+        )
+
+    def add_modules(
+        self, module_specs: Dict[ModuleID, SingleAgentRLModuleSpec]
+    ) -> None:
+        """Add new module specs to the spec.
+
+        Args:
+            module_specs: The mapping for the module_id to the single-agent module
+                specs to be added to this multi-agent module spec.
+        """
+        if self.module_specs is None:
+            self.module_specs = {}
+        self.module_specs.update(module_specs)
+
+    def _check_before_build(self):
+        if not isinstance(self.module_specs, dict):
+            raise ValueError(
+                f"When build() is called on {self.__class__} the module_specs "
+                "should be a dictionary mapping from module IDs to "
+                "SingleAgentRLModuleSpecs for each individual module."
             )

@@ -1,27 +1,31 @@
-import { makeStyles } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
+import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
 import dayjs from "dayjs";
-import React from "react";
+import React, { useContext, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { GlobalContext } from "../../App";
+import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
 
+import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
-import { useJobProgress } from "./hook/useJobProgress";
-import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
-import { TaskProgressBar } from "./TaskProgressBar";
+import { JobProgressBar } from "./JobProgressBar";
+import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
-  },
-  taskProgressTable: {
-    marginTop: theme.spacing(2),
   },
 }));
 
@@ -35,7 +39,68 @@ export const JobDetailChartsPage = ({
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
-  const { progress, error, driverExists } = useJobProgress(jobId);
+
+  const [taskListFilter, setTaskListFilter] = useState<string>();
+  const [taskTableExpanded, setTaskTableExpanded] = useState(false);
+  const taskTableRef = useRef<HTMLDivElement>(null);
+
+  const [actorListFilter, setActorListFilter] = useState<string>();
+  const [actorTableExpanded, setActorTableExpanded] = useState(false);
+  const actorTableRef = useRef<HTMLDivElement>(null);
+  const { cluster_status } = useRayStatus();
+
+  const formatNodeStatus = (cluster_status: string) => {
+    // ==== auto scaling status
+    // Node status
+    // ....
+    // Resources
+    // ....
+    const sections = cluster_status.split("Resources");
+    return formatClusterStatus(
+      "Node Status",
+      sections[0].split("Node status")[1],
+    );
+  };
+
+  const formatResourcesStatus = (cluster_status: string) => {
+    // ==== auto scaling status
+    // Node status
+    // ....
+    // Resources
+    // ....
+    const sections = cluster_status.split("Resources");
+    return formatClusterStatus("Resource Status", sections[1]);
+  };
+
+  const formatClusterStatus = (title: string, cluster_status: string) => {
+    const cluster_status_rows = cluster_status.split("\n");
+
+    return (
+      <div>
+        <Typography variant="h6">
+          <b>{title}</b>
+        </Typography>
+        {cluster_status_rows.map((i, key) => {
+          // Format the output.
+          // See format_info_string in util.py
+          if (i.startsWith("-----") || i.startsWith("=====")) {
+            // Separator
+            return <div key={key} />;
+          } else if (i.endsWith(":")) {
+            return (
+              <div key={key}>
+                <b>{i}</b>
+              </div>
+            );
+          } else if (i === "") {
+            return <br key={key} />;
+          } else {
+            return <div key={key}>{i}</div>;
+          }
+        })}
+      </div>
+    );
+  };
 
   if (!job) {
     return (
@@ -50,53 +115,39 @@ export const JobDetailChartsPage = ({
     );
   }
 
-  const tasksSectionContents = (() => {
-    if (!driverExists) {
-      return <TaskProgressBar />;
+  const handleClickLink = (link: NestedJobProgressLink) => {
+    if (link.type === "task") {
+      setTaskListFilter(link.id);
+      if (!taskTableExpanded) {
+        setTaskTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          taskTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        taskTableRef.current?.scrollIntoView();
+      }
+    } else if (link.type === "actor") {
+      setActorListFilter(link.id);
+      if (!actorTableExpanded) {
+        setActorTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          actorTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        actorTableRef.current?.scrollIntoView();
+      }
     }
-    const { status } = job;
-    if (!progress || error) {
-      return (
-        <Alert severity="warning">
-          No tasks visualizations because prometheus is not detected. Please
-          make sure prometheus is running and refresh this page. See:{" "}
-          <a
-            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
-            target="_blank"
-            rel="noreferrer"
-          >
-            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-          </a>
-          .
-          <br />
-          If you are hosting prometheus on a separate machine or using a
-          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
-          to your prometheus server when launching ray.
-        </Alert>
-      );
-    }
-    if (status === "SUCCEEDED" || status === "FAILED") {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} showAsComplete />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    } else {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    }
-  })();
+  };
+
+  const handleTaskListFilterChange = () => {
+    setTaskListFilter(undefined);
+  };
+
+  const handleActorListFilterChange = () => {
+    setActorListFilter(undefined);
+  };
 
   return (
     <div className={classes.root}>
@@ -163,17 +214,161 @@ export const JobDetailChartsPage = ({
                   : "-",
               },
             },
+            {
+              label: "Actions",
+              content: (
+                <div>
+                  <JobLogsLink job={job} newIA />
+                  <br />
+                  <CpuProfilingLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                    type="Driver"
+                  />
+                  <br />
+                  <CpuStackTraceLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                    type="Driver"
+                  />
+                </div>
+              ),
+            },
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
-      <TitleCard title="Task Table">
-        <TaskList jobId={jobId} />
+      <TitleCard title="Tasks (beta)">
+        <JobProgressBar jobId={jobId} job={job} onClickLink={handleClickLink} />
       </TitleCard>
-      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
-      <TitleCard title="Placement Groups">
-        <PlacementGroupList jobId={jobId} />
+      <TitleCard title="Task Timeline (beta)">
+        <TaskTimeline jobId={jobId} />
+      </TitleCard>
+      <Grid container>
+        <Grid item xs={4}>
+          <TitleCard title="">
+            <Box
+              mb={2}
+              display="flex"
+              flexDirection="column"
+              height="300px"
+              style={{
+                overflow: "hidden",
+                overflowY: "scroll",
+              }}
+              sx={{ borderRadius: "16px" }}
+            >
+              {cluster_status?.data
+                ? formatNodeStatus(cluster_status?.data.clusterStatus)
+                : "No cluster status."}
+            </Box>
+          </TitleCard>
+        </Grid>
+        <Grid item xs={4}>
+          <TitleCard title="">
+            <Box
+              mb={2}
+              display="flex"
+              flexDirection="column"
+              height="300px"
+              style={{
+                overflow: "hidden",
+                overflowY: "scroll",
+              }}
+              sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
+            >
+              {cluster_status?.data
+                ? formatResourcesStatus(cluster_status?.data.clusterStatus)
+                : "No cluster status."}
+            </Box>
+          </TitleCard>
+        </Grid>
+      </Grid>
+      <TitleCard>
+        <CollapsibleSection
+          ref={taskTableRef}
+          title="Task Table"
+          expanded={taskTableExpanded}
+          onExpandButtonClick={() => {
+            setTaskTableExpanded(!taskTableExpanded);
+          }}
+        >
+          <TaskList
+            jobId={jobId}
+            filterToTaskId={taskListFilter}
+            onFilterChange={handleTaskListFilterChange}
+            newIA={newIA}
+          />
+        </CollapsibleSection>
+      </TitleCard>
+      <TitleCard>
+        <CollapsibleSection
+          ref={actorTableRef}
+          title="Actors"
+          expanded={actorTableExpanded}
+          onExpandButtonClick={() => {
+            setActorTableExpanded(!actorTableExpanded);
+          }}
+        >
+          <ActorList
+            jobId={jobId}
+            newIA={newIA}
+            filterToActorId={actorListFilter}
+            onFilterChange={handleActorListFilterChange}
+            detailPathPrefix={newIA ? "actors" : "/actors"}
+          />
+        </CollapsibleSection>
+      </TitleCard>
+      <TitleCard>
+        <CollapsibleSection title="Placement Groups">
+          <PlacementGroupList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
     </div>
   );
+};
+
+type JobLogsLinkProps = {
+  job: Pick<
+    UnifiedJob,
+    | "driver_agent_http_address"
+    | "driver_info"
+    | "job_id"
+    | "submission_id"
+    | "type"
+  >;
+  newIA?: boolean;
+};
+
+export const JobLogsLink = ({
+  job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
+  newIA = false,
+}: JobLogsLinkProps) => {
+  const { ipLogMap } = useContext(GlobalContext);
+
+  let link: string | undefined;
+
+  const baseLink = newIA ? "/new/logs" : "/log";
+
+  if (driver_agent_http_address) {
+    link = `${baseLink}/${encodeURIComponent(
+      `${driver_agent_http_address}/logs`,
+    )}`;
+  } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
+    link = `${baseLink}/${encodeURIComponent(
+      ipLogMap[driver_info.node_ip_address],
+    )}`;
+  }
+
+  if (link) {
+    link += `?fileName=${
+      type === "DRIVER" ? job_id : `driver-${submission_id}`
+    }`;
+    return (
+      <Link to={link} target="_blank">
+        Log
+      </Link>
+    );
+  }
+
+  return <span>-</span>;
 };

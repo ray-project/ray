@@ -40,6 +40,14 @@ py_test(
 )
 
 py_test(
+    name = "test_callbacks",
+    size = "small",
+    srcs = ["tests/test_callbacks.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
@@ -230,6 +238,14 @@ py_test(
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
+)
+
+py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
