@@ -30,9 +30,6 @@ class ModelConfig(abc.ABC):
     It is therefore a means of configuration for RLModules.
     However, that is not a limitation, and they can be built directly as well.
 
-    Attributes:
-        output_dim: The output dimension of the network.
-
     Usage Example together with a Model:
 
     .. testcode::
@@ -66,8 +63,6 @@ class ModelConfig(abc.ABC):
         6
 
     """
-
-    output_dim: int = None
 
     @abc.abstractmethod
     def build(self, framework: str):
