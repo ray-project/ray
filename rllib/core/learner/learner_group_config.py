@@ -3,7 +3,7 @@ from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
     LearnerHPs,
@@ -73,7 +73,7 @@ class LearnerGroupConfig:
     def build(self) -> LearnerGroup:
         self.validate()
 
-        scaling_config = TrainerScalingConfig(
+        scaling_config = LearnerGroupScalingConfig(
             num_workers=self.num_learner_workers,
             num_gpus_per_worker=self.num_gpus_per_learner_worker,
             num_cpus_per_worker=self.num_cpus_per_learner_worker,

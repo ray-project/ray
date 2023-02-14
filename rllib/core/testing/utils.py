@@ -5,7 +5,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
-from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
@@ -103,7 +103,7 @@ def get_learner(
 def get_learner_group(
     framework: str,
     env: "gym.Env",
-    scaling_config: TrainerScalingConfig,
+    scaling_config: LearnerGroupScalingConfig,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
 ) -> LearnerGroup:

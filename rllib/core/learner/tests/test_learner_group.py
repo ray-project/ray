@@ -6,7 +6,7 @@ import unittest
 import ray
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.utils import (
     get_learner_group,
     get_learner,
@@ -16,19 +16,19 @@ from ray.util.timer import _Timer
 
 
 REMOTE_SCALING_CONFIGS = {
-    "remote-cpu": TrainerScalingConfig(num_workers=1),
-    "remote-gpu": TrainerScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
-    "multi-gpu-ddp": TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1),
-    "multi-cpu-ddp": TrainerScalingConfig(num_workers=2, num_cpus_per_worker=2),
-    # "multi-gpu-ddp-pipeline": TrainerScalingConfig(
+    "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
+    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
+    "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
+    "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
+    # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
     #     num_workers=2, num_gpus_per_worker=2
     # ),
 }
 
 
 LOCAL_SCALING_CONFIGS = {
-    "local-cpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+    "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
+    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
 }
 
 

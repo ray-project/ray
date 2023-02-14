@@ -11,7 +11,7 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
 def get_learner() -> Learner:
@@ -25,7 +25,7 @@ def get_learner() -> Learner:
             model_config={"fcnet_hiddens": [32]},
         ),
         optimizer_config={"lr": 1e-3},
-        learner_scaling_config=TrainerScalingConfig(),
+        learner_scaling_config=LearnerGroupScalingConfig(),
         framework_hyperparameters=FrameworkHPs(eager_tracing=True),
     )
 

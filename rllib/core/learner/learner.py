@@ -36,7 +36,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
-from ray.rllib.core.learner.scaling_config import TrainerScalingConfig
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -112,7 +112,7 @@ class Learner:
         optimizer_config: The deep learning gradient optimizer configuration to be
             used. For example lr=0.0001, momentum=0.9, etc.
         scaling_config: Configuration for scaling the learner actors.
-            Refer to ray.rllib.core.learner.scaling_config.TrainerScalingConfig
+            Refer to ray.rllib.core.learner.scaling_config.LearnerGroupScalingConfig
             for more info.
         learner_hyperparameters: The hyper-parameters for the Learner.
             Algorithm specific learner hyper-parameters will passed in via this
@@ -203,7 +203,7 @@ class Learner:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        learner_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        learner_scaling_config: LearnerGroupScalingConfig = LearnerGroupScalingConfig(),
         learner_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
@@ -787,8 +787,8 @@ class LearnerSpec:
     learner_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    learner_scaling_config: TrainerScalingConfig = field(
-        default_factory=TrainerScalingConfig
+    learner_scaling_config: LearnerGroupScalingConfig = field(
+        default_factory=LearnerGroupScalingConfig
     )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
     learner_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
