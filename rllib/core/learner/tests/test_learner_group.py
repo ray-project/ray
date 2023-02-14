@@ -40,33 +40,33 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         runner = get_learner_group(fw, env, scaling_config, eager_tracing=True)
-        local_trainer = get_learner(fw, env)
-        local_trainer.build()
+        local_learner = get_learner(fw, env)
+        local_learner.build()
 
         # make the state of the trainer and the local runner identical
-        local_trainer.set_state(runner.get_state())
+        local_learner.set_state(runner.get_state())
 
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
-        check(local_trainer.update(batch), runner.update(batch))
+        check(local_learner.update(batch), runner.update(batch))
 
         new_module_id = "test_module"
 
         add_module_to_learner_or_learner_group(fw, env, new_module_id, runner)
-        add_module_to_learner_or_learner_group(fw, env, new_module_id, local_trainer)
+        add_module_to_learner_or_learner_group(fw, env, new_module_id, local_learner)
 
         # make the state of the trainer and the local runner identical
-        local_trainer.set_state(runner.get_state())
+        local_learner.set_state(runner.get_state())
 
         # do another update
         batch = reader.next()
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
         )
-        check(local_trainer.update(ma_batch), runner.update(ma_batch))
+        check(local_learner.update(ma_batch), runner.update(ma_batch))
 
-        check(local_trainer.get_state(), runner.get_state())
+        check(local_learner.get_state(), runner.get_state())
 
 
 class TestLearnerGroup(unittest.TestCase):

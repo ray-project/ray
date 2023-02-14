@@ -29,7 +29,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             LearnerGroupConfig()
             .module(get_module_spec("tf", env))
             .trainer(
-                trainer_class=BCTfLearner,
+                learner_class=BCTfLearner,
             )
         )
         config.build()

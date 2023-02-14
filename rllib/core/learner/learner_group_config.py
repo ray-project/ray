@@ -32,7 +32,7 @@ class LearnerGroupConfig:
         self.module_spec = None
 
         # `self.trainer()`
-        self.trainer_class = None
+        self.learner_class = None
         self.optimizer_config = None
         self.learner_hps = LearnerHPs()
 
@@ -59,10 +59,10 @@ class LearnerGroupConfig:
                 "Please provide the specs via .module(module_spec)."
             )
 
-        if self.trainer_class is None:
+        if self.learner_class is None:
             raise ValueError(
                 "Cannot initialize an Learner without an Learner class. Please provide "
-                "the Learner class with .trainer(trainer_class=MyTrainerClass)."
+                "the Learner class with .trainer(learner_class=MyTrainerClass)."
             )
 
         if self.optimizer_config is None:
@@ -83,7 +83,7 @@ class LearnerGroupConfig:
         framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
 
         learner_spec = LearnerSpec(
-            learner_class=self.trainer_class,
+            learner_class=self.learner_class,
             module_spec=self.module_spec,
             optimizer_config=self.optimizer_config,
             trainer_scaling_config=scaling_config,
@@ -133,13 +133,13 @@ class LearnerGroupConfig:
     def trainer(
         self,
         *,
-        trainer_class: Optional[Type["Learner"]] = NotProvided,
+        learner_class: Optional[Type["Learner"]] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
         learner_hps: Optional[LearnerHPs] = NotProvided,
     ) -> "LearnerGroupConfig":
 
-        if trainer_class is not NotProvided:
-            self.trainer_class = trainer_class
+        if learner_class is not NotProvided:
+            self.learner_class = learner_class
         if optimizer_config is not NotProvided:
             self.optimizer_config = optimizer_config
         if learner_hps is not NotProvided:

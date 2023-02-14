@@ -73,7 +73,7 @@ class LearnerGroup:
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
         # explicit
         self._is_local = scaling_config.num_workers == 0
-        self._trainer = None
+        self._learner = None
         self._workers = None
         # if a user calls self.shutdown() on their own then this flag is set to true.
         # When del is called the backend executor isn't shutdown twice if this flag is
@@ -82,8 +82,8 @@ class LearnerGroup:
         self._is_shut_down = False
 
         if self._is_local:
-            self._trainer = learner_class(**learner_spec.get_params_dict())
-            self._trainer.build()
+            self._learner = learner_class(**learner_spec.get_params_dict())
+            self._learner.build()
             self._worker_manager = None
         else:
             backend_config = _get_backend_config(learner_class)

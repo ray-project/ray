@@ -2751,7 +2751,7 @@ class AlgorithmConfig:
             LearnerGroupConfig()
             .module(module_spec)
             .trainer(
-                trainer_class=self.learner_class,
+                learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={"lr": self.lr},
                 learner_hps=self.learner_hps,
