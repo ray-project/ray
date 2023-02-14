@@ -50,8 +50,8 @@ class TrainDatasetIterator(DatasetIterator):
         return self._dataset_iterator.stats()
 
     @property
-    def base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
-        return self._dataset_iterator.base_dataset_or_pipeline
+    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
+        return self._dataset_iterator._base_dataset_or_pipeline
 
     def __getattr__(self, name):
         if name == "_dataset_iterator":
@@ -70,4 +70,4 @@ class TrainDatasetIterator(DatasetIterator):
             "for full DatasetIterator docs."
         )
 
-        return getattr(self.base_dataset_or_pipeline, name)
+        return getattr(self._base_dataset_or_pipeline, name)

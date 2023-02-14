@@ -106,7 +106,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         return self._base_dataset_pipeline.stats()
 
     @property
-    def base_dataset_or_pipeline(self) -> "DatasetPipeline":
+    def _base_dataset_or_pipeline(self) -> "DatasetPipeline":
         return self._base_dataset_pipeline
 
     def _to_train_iterator(self) -> "TrainDatasetIterator":

@@ -3,7 +3,7 @@ import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 
 from ray.data.block import DataBatch
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -243,8 +243,7 @@ class DatasetIterator(abc.ABC):
 
     @property
     @abc.abstractmethod
-    @DeveloperAPI
-    def base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
+    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
         """The :class:`~ray.data.dataset.Dataset` or
         :class:`~ray.data.dataset.DatasetPipeline` that this object iterates over."""
         raise NotImplementedError
