@@ -103,6 +103,9 @@ def create_policy_for_framework(
     if isinstance(merged_config, AlgorithmConfig):
         merged_config = merged_config.to_dict()
 
+    # add policy_id to merged_config
+    merged_config["__policy_id"] = policy_id
+
     framework = merged_config.get("framework", "tf")
     # Tf.
     if framework in ["tf2", "tf"]:
