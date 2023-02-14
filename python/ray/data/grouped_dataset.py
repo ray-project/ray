@@ -3,6 +3,8 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -217,10 +219,20 @@ class GroupedDataset(Generic[T]):
             )
 
         plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             self._dataset._epoch,
             self._dataset._lazy,
+            logical_plan,
         )
 
     def _aggregate_on(
