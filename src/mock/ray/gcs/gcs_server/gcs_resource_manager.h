@@ -20,13 +20,9 @@ namespace gcs {
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
-  MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager) :
-    GcsResourceManager(
-                       io_context_,
-                       cluster_resource_manager,
-                       NodeID::FromRandom(),
-                       nullptr
-                       ) {}
+  MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager)
+      : GcsResourceManager(
+            io_context_, cluster_resource_manager, NodeID::FromRandom(), nullptr) {}
 
   MOCK_METHOD(void,
               HandleGetResources,
@@ -52,14 +48,12 @@ class MockGcsResourceManager : public GcsResourceManager {
                rpc::GetAllResourceUsageReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(
-              (const absl::flat_hash_map<NodeID, rpc::ResourcesData> &),
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::ResourcesData> &),
               NodeResourceReportView,
               (),
-              (const override)
-              );
+              (const override));
 
-private:
+ private:
   instrumented_io_context io_context_;
 };
 
