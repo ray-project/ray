@@ -327,10 +327,6 @@ class BatchPredictor:
             **ray_remote_args,
         )
 
-        if isinstance(prediction_results, ray.data.Dataset):
-            # Force execution because Dataset uses lazy execution by default.
-            prediction_results.fully_executed()
-
         return prediction_results
 
     def predict_pipelined(
