@@ -6,18 +6,18 @@ import numpy as np
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, FrameworkHPs
+from ray.rllib.core.rl_trainer.rl_trainer import Learner, FrameworkHPs
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
+from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 
-def get_trainer() -> RLTrainer:
+def get_trainer() -> Learner:
     env = gym.make("CartPole-v1")
 
-    trainer = BCTfRLTrainer(
+    trainer = BCTfLearner(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTFModule,
             observation_space=env.observation_space,
@@ -34,7 +34,7 @@ def get_trainer() -> RLTrainer:
     return trainer
 
 
-class TestRLTrainer(unittest.TestCase):
+class TestLearner(unittest.TestCase):
     @classmethod
     def setUp(cls) -> None:
         ray.init()

@@ -30,7 +30,7 @@ parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument(
     "--framework",
-    choices=["tf2", "torch"],  # tf will be deprecated with the new RLTrainer stack
+    choices=["tf2", "torch"],  # tf will be deprecated with the new Learner stack
     default="torch",
     help="The DL framework specifier.",
 )

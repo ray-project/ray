@@ -4,7 +4,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec, FrameworkHPs
+from ray.rllib.core.rl_trainer.rl_trainer import LearnerSpec, FrameworkHPs
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
 
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+    from ray.rllib.core.rl_trainer.rl_trainer import Learner
     from ray.rllib.core.rl_module import RLModule
 
 
@@ -26,15 +26,15 @@ Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 
 @DeveloperAPI
-def get_trainer_class(framework: str) -> Type["RLTrainer"]:
+def get_trainer_class(framework: str) -> Type["Learner"]:
     if framework == "tf":
-        from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
+        from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfLearner
 
-        return BCTfRLTrainer
+        return BCTfLearner
     elif framework == "torch":
-        from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
+        from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchLearner
 
-        return BCTorchRLTrainer
+        return BCTorchLearner
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 
@@ -92,7 +92,7 @@ def get_rl_trainer(
     framework: str,
     env: "gym.Env",
     is_multi_agent: bool = False,
-) -> "RLTrainer":
+) -> "Learner":
 
     _cls = get_trainer_class(framework)
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
@@ -126,7 +126,7 @@ def get_trainer_runner(
         trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
     else:
         trainer_hps = None
-    rl_trainer_spec = RLTrainerSpec(
+    rl_trainer_spec = LearnerSpec(
         rl_trainer_class=get_trainer_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
@@ -145,7 +145,7 @@ def add_module_to_runner_or_trainer(
     framework: str,
     env: "gym.Env",
     module_id: str,
-    runner_or_trainer: Union[TrainerRunner, "RLTrainer"],
+    runner_or_trainer: Union[TrainerRunner, "Learner"],
 ):
     runner_or_trainer.add_module(
         module_id=module_id,

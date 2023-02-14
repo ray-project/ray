@@ -7,7 +7,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_trainer.trainer_runner_config import TrainerRunnerConfig
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
+from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfLearner
 from ray.rllib.core.testing.utils import get_module_spec
 
 
@@ -29,7 +29,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             TrainerRunnerConfig()
             .module(get_module_spec("tf", env))
             .trainer(
-                trainer_class=BCTfRLTrainer,
+                trainer_class=BCTfLearner,
             )
         )
         config.build()
@@ -39,7 +39,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
 
-        config = AlgorithmConfig().training(rl_trainer_class=BCTfRLTrainer)
+        config = AlgorithmConfig().training(rl_trainer_class=BCTfLearner)
         config.freeze()
         runner_config = config.get_trainer_runner_config(
             SingleAgentRLModuleSpec(

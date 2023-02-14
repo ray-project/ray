@@ -71,10 +71,10 @@ class FrameworkHPs:
 
 
 @dataclass
-class RLTrainerHPs:
-    """The hyper-parameters for RLTrainer.
+class LearnerHPs:
+    """The hyper-parameters for Learner.
 
-    When creating a new RLTrainer, the new hyper-parameters have to be defined by
+    When creating a new Learner, the new hyper-parameters have to be defined by
     subclassing this class and adding the new hyper-parameters as fields.
 
     # TODO (Kourosh): The things that could be part of the base class:
@@ -85,7 +85,7 @@ class RLTrainerHPs:
     pass
 
 
-class RLTrainer:
+class Learner:
     """Base class for learners.
 
     This class will be used to train RLModules. It is responsible for defining the loss
@@ -118,7 +118,7 @@ class RLTrainer:
             Algorithm specific learner hyper-parameters will passed in via this
             argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
             passed in via this argument. Refer to
-            ray.rllib.core.rl_trainer.rl_trainer.RLTrainerHPs for more info.
+            ray.rllib.core.rl_trainer.rl_trainer.LearnerHPs for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
             creation. For example eager_tracing in TF or compile in Torch.
@@ -204,18 +204,18 @@ class RLTrainer:
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
         trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
-        trainer_hyperparameters: Optional[RLTrainerHPs] = RLTrainerHPs(),
+        trainer_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
         # TODO (Kourosh): convert optimizer configs to dataclasses
         if module_spec is not None and module is not None:
             raise ValueError(
-                "Only one of module spec or module can be provided to RLTrainer."
+                "Only one of module spec or module can be provided to Learner."
             )
 
         if module_spec is None and module is None:
             raise ValueError(
-                "Either module_spec or module should be provided to RLTrainer."
+                "Either module_spec or module should be provided to Learner."
             )
 
         self._module_spec = module_spec
@@ -247,7 +247,7 @@ class RLTrainer:
         return self._module
 
     @property
-    def hps(self) -> RLTrainerHPs:
+    def hps(self) -> LearnerHPs:
         """The hyper-parameters for the trainer."""
         return self._hps
 
@@ -759,8 +759,8 @@ class RLTrainer:
     def __check_if_build_called(self):
         if self._module is None:
             raise ValueError(
-                "RLTrainer.build() must be called after constructing a "
-                "RLTrainer and before calling any methods on it."
+                "Learner.build() must be called after constructing a "
+                "Learner and before calling any methods on it."
             )
 
     def apply(self, func, *_args, **_kwargs):
@@ -768,34 +768,34 @@ class RLTrainer:
 
 
 @dataclass
-class RLTrainerSpec:
-    """The spec for constructing RLTrainer actors.
+class LearnerSpec:
+    """The spec for constructing Learner actors.
 
     Args:
-        rl_trainer_class: The RLTrainer class to use.
+        rl_trainer_class: The Learner class to use.
         module_spec: The underlying (MA)RLModule spec to completely define the module.
         module: Alternatively the RLModule instance can be passed in directly. This
-            only works if the RLTrainer is not an actor.
+            only works if the Learner is not an actor.
         backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
         trainer_hyperparameters: The extra config for the loss/additional update. This
-            should be a subclass of RLTrainerHPs. This is useful for passing in
+            should be a subclass of LearnerHPs. This is useful for passing in
             algorithm configs that contains the hyper-parameters for loss computation,
             change of training behaviors, etc. e.g lr, entropy_coeff.
     """
 
-    rl_trainer_class: Type["RLTrainer"]
+    rl_trainer_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
     trainer_scaling_config: TrainerScalingConfig = field(
         default_factory=TrainerScalingConfig
     )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    trainer_hyperparameters: RLTrainerHPs = field(default_factory=RLTrainerHPs)
+    trainer_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
     framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
 
     def get_params_dict(self) -> Dict[str, Any]:
-        """Returns the parameters than be passed to the RLTrainer constructor."""
+        """Returns the parameters than be passed to the Learner constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
@@ -805,6 +805,6 @@ class RLTrainerSpec:
             "framework_hyperparameters": self.framework_hyperparameters,
         }
 
-    def build(self) -> "RLTrainer":
-        """Builds the RLTrainer instance."""
+    def build(self) -> "Learner":
+        """Builds the Learner instance."""
         return self.rl_trainer_class(**self.get_params_dict())

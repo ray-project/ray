@@ -16,7 +16,7 @@ from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.ppo.ppo_rl_trainer_config import PPORLTrainerHPs
+from ray.rllib.algorithms.ppo.ppo_rl_trainer_config import PPOLearnerHPs
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -44,7 +44,7 @@ from ray.rllib.utils.metrics import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+    from ray.rllib.core.rl_trainer.rl_trainer import Learner
 
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class PPOConfig(PGConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # PPO specific settings:
-        self._rl_trainer_hps = PPORLTrainerHPs()
+        self._rl_trainer_hps = PPOLearnerHPs()
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -137,13 +137,13 @@ class PPOConfig(PGConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
-    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
+    def get_default_rl_trainer_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import (
-                PPOTorchRLTrainer,
+                PPOTorchLearner,
             )
 
-            return PPOTorchRLTrainer
+            return PPOTorchLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 

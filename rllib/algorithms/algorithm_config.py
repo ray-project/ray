@@ -16,7 +16,7 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
+from ray.rllib.core.rl_trainer.rl_trainer import LearnerHPs
 from ray.rllib.core.rl_trainer.trainer_runner_config import (
     TrainerRunnerConfig,
     ModuleSpec,
@@ -92,7 +92,7 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.core.rl_trainer import RLTrainer
+    from ray.rllib.core.rl_trainer import Learner
 
 logger = logging.getLogger(__name__)
 
@@ -324,9 +324,9 @@ class AlgorithmConfig:
         self.rl_trainer_class = None
         self._enable_rl_trainer_api = False
         # experimental: this will contain the hyper-parameters that are passed to the
-        # RLTrainer, for computing loss, etc. New algorithms have to set this to their
+        # Learner, for computing loss, etc. New algorithms have to set this to their
         # own default. .training() will modify the fields of this object.
-        self._rl_trainer_hps = RLTrainerHPs()
+        self._rl_trainer_hps = LearnerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -453,7 +453,7 @@ class AlgorithmConfig:
         self.no_done_at_end = DEPRECATED_VALUE
 
     @property
-    def rl_trainer_hps(self) -> RLTrainerHPs:
+    def rl_trainer_hps(self) -> LearnerHPs:
         return self._rl_trainer_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
@@ -791,7 +791,7 @@ class AlgorithmConfig:
         elif self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
-            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            #  Remove this hacky check, once we have fully moved to the Learner API.
             if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
@@ -1004,7 +1004,7 @@ class AlgorithmConfig:
                 needs 2 GPUs: `num_trainer_workers = 2` and
                 `num_gpus_per_trainer_worker = 2`)
             num_cpus_per_trainer_worker: Number of CPUs allocated per trainer worker.
-                Only necessary for custom processing pipeline inside each RLTrainer
+                Only necessary for custom processing pipeline inside each Learner
                 requiring multiple CPU cores. Ignored if `num_trainer_workers = 0`.
             num_gpus_per_trainer_worker: Number of GPUs allocated per worker. If
                 `num_trainer_workers = 0`, any value greater than 0 will run the
@@ -1451,7 +1451,7 @@ class AlgorithmConfig:
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         _enable_rl_trainer_api: Optional[bool] = NotProvided,
-        rl_trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
+        rl_trainer_class: Optional[Type["Learner"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1475,7 +1475,7 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
-            _enable_rl_trainer_api: Whether to enable the TrainerRunner and RLTrainer
+            _enable_rl_trainer_api: Whether to enable the TrainerRunner and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
 
@@ -2662,14 +2662,14 @@ class AlgorithmConfig:
         """
         raise NotImplementedError
 
-    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
-        """Returns the RLTrainer class to use for this algorithm.
+    def get_default_rl_trainer_class(self) -> Union[Type["Learner"], str]:
+        """Returns the Learner class to use for this algorithm.
 
-        Override this method in the sub-class to return the RLTrainer class type given
+        Override this method in the sub-class to return the Learner class type given
         the input framework.
 
         Returns:
-            The RLTrainer class to use for this algorithm either as a class type or as
+            The Learner class to use for this algorithm either as a class type or as
             a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
         """
         raise NotImplementedError

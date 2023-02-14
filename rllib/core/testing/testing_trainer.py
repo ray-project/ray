@@ -1,12 +1,12 @@
 from typing import Mapping, Any
 import numpy as np
 
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+from ray.rllib.core.rl_trainer.rl_trainer import Learner
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 
 
-class BaseTestingTrainer(RLTrainer):
+class BaseTestingTrainer(Learner):
     def compile_results(
         self,
         batch: NestedDict,

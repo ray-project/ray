@@ -5,15 +5,15 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.core.rl_trainer.rl_trainer import (
-    RLTrainerSpec,
-    RLTrainerHPs,
+    LearnerSpec,
+    LearnerHPs,
     FrameworkHPs,
 )
 from ray.rllib.utils.from_config import NotProvided
 
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer import RLTrainer
+    from ray.rllib.core.rl_trainer import Learner
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
 
@@ -34,7 +34,7 @@ class TrainerRunnerConfig:
         # `self.trainer()`
         self.trainer_class = None
         self.optimizer_config = None
-        self.rl_trainer_hps = RLTrainerHPs()
+        self.rl_trainer_hps = LearnerHPs()
 
         # `self.resources()`
         self.num_gpus_per_trainer_worker = 0
@@ -55,14 +55,14 @@ class TrainerRunnerConfig:
 
         if self.module_spec is None:
             raise ValueError(
-                "Cannot initialize an RLTrainer without the module specs. "
+                "Cannot initialize an Learner without the module specs. "
                 "Please provide the specs via .module(module_spec)."
             )
 
         if self.trainer_class is None:
             raise ValueError(
-                "Cannot initialize an RLTrainer without an RLTrainer. Please provide "
-                "the RLTrainer class with .trainer(trainer_class=MyTrainerClass)."
+                "Cannot initialize an Learner without an Learner class. Please provide "
+                "the Learner class with .trainer(trainer_class=MyTrainerClass)."
             )
 
         if self.optimizer_config is None:
@@ -82,7 +82,7 @@ class TrainerRunnerConfig:
 
         framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
 
-        rl_trainer_spec = RLTrainerSpec(
+        rl_trainer_spec = LearnerSpec(
             rl_trainer_class=self.trainer_class,
             module_spec=self.module_spec,
             optimizer_config=self.optimizer_config,
@@ -133,9 +133,9 @@ class TrainerRunnerConfig:
     def trainer(
         self,
         *,
-        trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
+        trainer_class: Optional[Type["Learner"]] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
-        rl_trainer_hps: Optional[RLTrainerHPs] = NotProvided,
+        rl_trainer_hps: Optional[LearnerHPs] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
         if trainer_class is not NotProvided:

@@ -18,7 +18,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
 
-class TestRLTrainer(unittest.TestCase):
+class TestLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()

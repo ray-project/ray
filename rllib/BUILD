@@ -3859,7 +3859,7 @@ py_test(
 #
 # 
 # Description: These are RLlib tests for the new multi-gpu enabled 
-# training stack via RLTrainers.
+# training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
