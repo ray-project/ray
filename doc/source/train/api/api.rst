@@ -53,38 +53,131 @@ Train Backend Base Classes
 
 
 .. _train-integration-api:
+.. _train-framework-specific-ckpts:
 
 Ray Train Integrations
 ----------------------
 
-Ray Train Built-in Trainers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _train-pytorch-integration:
+
+Pytorch
+~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~torch.TorchTrainer
+    ~torch.prepare_model
+    ~torch.prepare_optimizer
+    ~torch.prepare_data_loader
+    ~torch.get_device
+    ~torch.accelerate
+    ~torch.backward
+    ~torch.enable_reproducibility
+    ~torch.TorchConfig
+
+.. autosummary::
+
+    ~torch.TorchCheckpoint
+
+
+Tensorflow/Keras
+~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~tensorflow.TensorflowTrainer
+    ~tensorflow.prepare_dataset_shard
+    ~tensorflow.TensorflowConfig
+
+.. autosummary::
+
+    ~tensorflow.TensorflowCheckpoint
+    ~air.integrations.keras.ReportCheckpointCallback
+
+
+Horovod
+~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~horovod.HorovodTrainer
+    ~horovod.HorovodConfig
+
+
+XGBoost
+~~~~~~~
 
 .. autosummary::
     :toctree: doc/
 
     ~xgboost.XGBoostTrainer
-    ~lightgbm.LightGBMTrainer
-    ~tensorflow.TensorflowTrainer
-    ~torch.TorchTrainer
-    ~horovod.HorovodTrainer
-    ~huggingface.HuggingFaceTrainer
-    ~sklearn.SklearnTrainer
-    ~mosaic.MosaicTrainer
-    ~rl.RLTrainer
 
-.. _train-framework-specific-ckpts:
 
-Ray Train Framework-specific Checkpoints
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+
+    ~xgboost.XGBoostCheckpoint
+
+
+LightGBM
+~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
 
-    ~tensorflow.TensorflowCheckpoint
-    ~torch.TorchCheckpoint
-    ~xgboost.XGBoostCheckpoint
+    ~lightgbm.LightGBMTrainer
+
+
+.. autosummary::
+
     ~lightgbm.LightGBMCheckpoint
+
+
+HuggingFace
+~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~huggingface.HuggingFaceTrainer
+
+.. autosummary::
+
     ~huggingface.HuggingFaceCheckpoint
+
+
+Scikit-Learn
+~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~sklearn.SklearnTrainer
+
+.. autosummary::
+
     ~sklearn.SklearnCheckpoint
+
+
+Mosaic
+~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~mosaic.MosaicTrainer
+
+
+Reinforcement Learning (RLlib)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~rl.RLTrainer
+
+.. autosummary::
+
     ~rl.RLCheckpoint

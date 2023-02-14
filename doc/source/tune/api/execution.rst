@@ -26,6 +26,10 @@ Tuner Configuration
 
     TuneConfig
 
+.. seealso::
+
+    The `Tuner` also takes in a :class:`air.RunConfig <ray.air.RunConfig>`.
+
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~
 
