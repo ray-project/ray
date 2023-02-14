@@ -87,10 +87,13 @@ class TestPPO(unittest.TestCase):
         config.training(_enable_rl_trainer_api=True)
         config.validate()
         config.freeze()
+
         trainer_runner_config = config.get_trainer_runner_config(
             SingleAgentRLModuleSpec(
+                module_class=config.rl_module_spec.module_class,
                 observation_space=policy.observation_space,
                 action_space=policy.action_space,
+                model_config=policy.config["model"],
             )
         )
         trainer_runner = trainer_runner_config.build()
