@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <boost/circular_buffer.hpp>
+#include <boost/lockfree/queue.hpp>
 #include <memory>
 #include <string>
 
@@ -26,6 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -43,7 +44,7 @@ namespace worker {
 class TaskEvent {
  public:
   /// Constructor for Profile events
-  explicit TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number);
+  explicit TaskEvent(const TaskID &task_id, const JobID &job_id, int32_t attempt_number);
 
   virtual ~TaskEvent() = default;
 
@@ -70,14 +71,14 @@ class TaskEvent {
 class TaskStatusEvent : public TaskEvent {
  public:
   explicit TaskStatusEvent(
-      TaskID task_id,
-      JobID job_id,
+      const TaskID &task_id,
+      const JobID &job_id,
       int32_t attempt_number,
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
-      absl::optional<NodeID> node_id = absl::nullopt,
-      absl::optional<WorkerID> worker_id = absl::nullopt);
+      const absl::optional<NodeID> &node_id = absl::nullopt,
+      const absl::optional<WorkerID> &worker_id = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -99,8 +100,8 @@ class TaskStatusEvent : public TaskEvent {
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.
 class TaskProfileEvent : public TaskEvent {
  public:
-  explicit TaskProfileEvent(TaskID task_id,
-                            JobID job_id,
+  explicit TaskProfileEvent(const TaskID &task_id,
+                            const JobID &job_id,
                             int32_t attempt_number,
                             const std::string &component_type,
                             const std::string &component_id,
@@ -125,6 +126,14 @@ class TaskProfileEvent : public TaskEvent {
   const int64_t start_time_;
   int64_t end_time_;
   std::string extra_data_;
+};
+
+enum TaskEventBufferCounter {
+  kNumTaskEventsStored,
+  kNumProfileTaskEventsDropped,
+  kNumStatusTaskEventsDropped,
+  kTotalTaskEventsBytesReported,
+  kTotalTaskEventsReported,
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,
@@ -206,50 +215,33 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
-      LOCKS_EXCLUDED(mutex_) override;
+      LOCKS_EXCLUDED(gcs_client_mutex_) override;
 
-  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
+  void FlushEvents(bool forced) LOCKS_EXCLUDED(gcs_client_mutex_) override;
 
-  Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
+  Status Start(bool auto_flush = true) LOCKS_EXCLUDED(gcs_client_mutex_) override;
 
-  void Stop() LOCKS_EXCLUDED(mutex_) override;
+  void Stop() LOCKS_EXCLUDED(gcs_client_mutex_) override;
 
   bool Enabled() const override;
 
-  const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
+  const std::string DebugString() LOCKS_EXCLUDED(gcs_client_mutex_) override;
 
  private:
   /// Test only functions.
-  std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
-      LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    std::vector<std::reference_wrapper<const TaskEvent>> copy;
-    for (const auto &e : buffer_) {
-      copy.push_back(std::cref(*e));
-    }
-    return copy;
-  }
+  size_t GetNumTaskEventsStored() { return num_task_events_stored_; }
 
   /// Test only functions.
-  size_t GetNumStatusTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    return num_status_task_events_dropped_;
-  }
+  size_t GetNumStatusTaskEventsDropped() { return num_status_task_events_dropped_; }
 
   /// Test only functions.
-  size_t GetNumProfileTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    return num_profile_task_events_dropped_;
-  }
+  size_t GetNumProfileTaskEventsDropped() { return num_profile_task_events_dropped_; }
 
   /// Test only functions.
-  gcs::GcsClient *GetGcsClient() {
-    absl::MutexLock lock(&mutex_);
+  gcs::GcsClient *GetGcsClient() LOCKS_EXCLUDED(gcs_client_mutex_) {
+    absl::MutexLock lock(&gcs_client_mutex_);
     return gcs_client_.get();
   }
-
-  /// Mutex guarding task_events_data_.
-  absl::Mutex mutex_;
 
   /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
@@ -263,31 +255,28 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
 
+  /// Mutex guarding gcs client pointer.
+  absl::Mutex gcs_client_mutex_;
+
   /// Client to the GCS used to push profile events to it.
-  std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
+  std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(gcs_client_mutex_);
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
-  /// Circular buffered task events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ GUARDED_BY(mutex_);
+  boost::lockfree::queue<TaskEvent *, boost::lockfree::fixed_sized<true>> buffer_;
 
-  /// Number of profile task events dropped since the last report flush.
-  size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+  CounterMapThreadSafe<TaskEventBufferCounter> stats_counters_;
 
-  /// Number of status task events dropped since the last report flush.
-  size_t num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+  /// These counters are updated in the critical path of task execution/submission.
+  std::atomic<int64_t> num_profile_task_events_dropped_ = 0;
+  std::atomic<int64_t> num_status_task_events_dropped_ = 0;
+  std::atomic<int64_t> num_task_events_stored_ = 0;
 
   /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
-
-  /// Debug stats: total number of bytes of task events sent so far to GCS.
-  uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
-
-  /// Debug stats: total number of task events sent so far to GCS.
-  uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
+  std::atomic<bool> grpc_in_progress_ = false;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);

@@ -117,17 +117,17 @@ TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
 }
 
 TEST_F(TaskEventBufferTest, TestAddEvent) {
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 
   // Test add status event
   auto task_id_1 = RandomTaskId();
   task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(task_id_1, 0));
 
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 1);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 1);
 
   // Test add profile events
   task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_1, 1));
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 2);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 2);
 }
 
 TEST_F(TaskEventBufferTest, TestFlushEvents) {
@@ -152,7 +152,7 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), num_events);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events);
 
   // Manually call flush should call GCS client's flushing grpc.
   auto task_gcs_accessor =
@@ -177,7 +177,7 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   task_event_buffer_->FlushEvents(false);
 
   // Expect no more events.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestFailedFlush) {
@@ -308,12 +308,12 @@ TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
 
   for (int i = 0; i * batch_size < num_events; i++) {
     task_event_buffer_->FlushEvents(false);
-    EXPECT_EQ(task_event_buffer_->GetAllTaskEvents().size(),
+    EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(),
               num_events - (i + 1) * batch_size);
   }
 
   // With last flush, there should be no more events in the buffer and as data.
-  EXPECT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
@@ -361,7 +361,7 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   }
 
   // Expect only limit in buffer.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), num_limit);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_limit);
 
   // Expect the reported data to match.
   auto task_gcs_accessor =
@@ -389,7 +389,7 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   task_event_buffer_->FlushEvents(false);
 
   // Expect data flushed.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
   ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), 0);
   ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), 0);
 }
