@@ -2834,7 +2834,6 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -2885,7 +2884,6 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            collate_fn=_collate_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -2977,15 +2975,22 @@ class Dataset(Generic[T]):
                     batch, dtypes=dtypes, device=device
                 )
 
-        yield from self.iter_batches(
+        block_iterator, stats = self._plan.execute_to_iterator()
+        time_start = time.perf_counter()
+
+        yield from batch_block_refs(
+            block_iterator,
+            stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format="numpy",
             drop_last=drop_last,
-            _collate_fn=collate_fn,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
+            collate_fn=collate_fn,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
+
+        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     @ConsumptionAPI
     def iter_tf_batches(

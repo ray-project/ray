@@ -1964,16 +1964,6 @@ def test_iter_batches_basic(ray_start_regular_shared):
         pd.concat(dfs, ignore_index=True)
     )
 
-    # collate_fn.
-    for batch, df in zip(
-        ds.iter_batches(
-            batch_size=None, batch_format="pandas", _collate_fn=lambda df: df + 2
-        ),
-        dfs,
-    ):
-        assert isinstance(batch, pd.DataFrame)
-        assert batch.equals(df + 2)
-
     # Prefetch.
     batches = list(
         ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
