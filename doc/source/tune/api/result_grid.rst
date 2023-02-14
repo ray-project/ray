@@ -13,6 +13,7 @@ ResultGrid (tune.ResultGrid)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     tune.ResultGrid
     tune.ResultGrid.get_best_result

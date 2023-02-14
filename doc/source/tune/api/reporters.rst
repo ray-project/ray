@@ -95,6 +95,7 @@ Reporter Interface (tune.ProgressReporter)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     ProgressReporter
     ProgressReporter.report
@@ -106,6 +107,7 @@ Tune Built-in Reporters
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     CLIReporter
     CLIReporter.add_metric_column
