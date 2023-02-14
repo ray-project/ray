@@ -1,3 +1,5 @@
+(overview-overview)=
+
 ```{include} /_includes/overview/announcement.md
 ```
 
@@ -50,12 +52,12 @@ Ray's unified compute framework comprises of three layers:
 **Scale machine learning workloads**
 ^^^
 Build ML applications with a toolkit of libraries for distributed 
-[data processing](data/dataset.rst), 
-[model training](train/train.rst), 
-[tuning](tune/index.rst), 
-[reinforcement learning](rllib/index.rst), 
-[model serving](serve/index.rst), 
-and [more](ray-more-libs/index.rst).
+[data processing](../data/dataset.rst), 
+[model training](../train/train.rst), 
+[tuning](tune/../index.rst), 
+[reinforcement learning](../rllib/index.rst), 
+[model serving](../serve/index.rst), 
+and [more](../ray-more-libs/index.rst).
 +++
 ```{link-button} ../ray-air/getting-started
 :type: ref
@@ -66,8 +68,8 @@ and [more](ray-more-libs/index.rst).
 
 **Build distributed applications**
 ^^^
-Build and run distributed applications with a [simple and flexible API](ray-core/walkthrough.rst).
-[Parallelize](ray-core/walkthrough.rst) single machine code with little to zero code changes.
+Build and run distributed applications with a [simple and flexible API](../ray-core/walkthrough.rst).
+[Parallelize](../ray-core/walkthrough.rst) single machine code with little to zero code changes.
 
 +++
 ```{link-button} ../ray-core/walkthrough
@@ -79,12 +81,12 @@ Build and run distributed applications with a [simple and flexible API](ray-core
 
 **Deploy large-scale workloads**
 ^^^
-Deploy workloads on [AWS, GCP, Azure](cluster/getting-started) or 
-[on premise](cluster/vms/user-guides/launching-clusters/on-premises).
+Deploy workloads on [AWS, GCP, Azure](../cluster/getting-started) or 
+[on premise](../cluster/vms/user-guides/launching-clusters/on-premises).
 Use Ray cluster managers to run Ray on existing
-[Kubernetes](cluster/kubernetes/index),
-[YARN](cluster/vms/user-guides/community/yarn),
-or [Slurm](cluster/vms/user-guides/community/slurm) clusters.
+[Kubernetes](../cluster/kubernetes/index),
+[YARN](../cluster/vms/user-guides/community/yarn),
+or [Slurm](../cluster/vms/user-guides/community/slurm) clusters.
 +++
 
 ```{link-button} ../cluster/getting-started
