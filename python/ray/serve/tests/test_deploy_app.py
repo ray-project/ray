@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from typing import Dict
 
 import pytest
@@ -63,6 +62,7 @@ def check_ray_stop():
         return False
     except Exception:
         return True
+
 
 @pytest.fixture(scope="function")
 def serve_client():
@@ -380,7 +380,10 @@ def test_deploy_app_update_timestamp(serve_client: ServeControllerClient):
     ]
     serve_client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
-    assert serve_client.get_serve_status().app_status.deployment_timestamp > first_deploy_time
+    assert (
+        serve_client.get_serve_status().app_status.deployment_timestamp
+        > first_deploy_time
+    )
     assert serve_client.get_serve_status().app_status.status in {
         ApplicationStatus.DEPLOYING,
         ApplicationStatus.RUNNING,
@@ -564,7 +567,9 @@ def test_controller_recover_and_deploy(serve_client: ServeControllerClient):
         lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
         == "9 pizzas please!"
     )
-    deployment_timestamp = serve_client.get_serve_status().app_status.deployment_timestamp
+    deployment_timestamp = (
+        serve_client.get_serve_status().app_status.deployment_timestamp
+    )
 
     # Delete all deployments, but don't update config
     serve_client.delete_deployments(
