@@ -158,7 +158,7 @@ def batch_blocks(
         stats=stats,
     )
 
-    if collate_fn:
+    if collate_fn is not None:
 
         def batch_fn_iter(
             iterator: Iterator[DataBatch], collate_fn: Callable[[DataBatch], DataBatch]

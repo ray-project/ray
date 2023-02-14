@@ -171,7 +171,7 @@ def convert_ndarray_batch_to_torch_tensor_batch(
 
     Returns: A (dict of) Torch Tensor(s).
     """
-    if not isinstance(ndarrays, dict):
+    if isinstance(ndarrays, np.ndarray):
         # Single-tensor case.
         if isinstance(dtypes, dict):
             if len(dtypes) != 1:

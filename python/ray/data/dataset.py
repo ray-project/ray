@@ -2832,9 +2832,9 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
         drop_last: bool = False,
-        collate_fn: Optional[Callable[[DataBatch], Any]] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -2859,7 +2859,6 @@ class Dataset(Generic[T]):
                 to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
-            collate_fn: A function to apply to each data batch before returning it.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
@@ -2886,7 +2885,7 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            collate_fn=collate_fn,
+            collate_fn=_collate_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -2964,14 +2963,14 @@ class Dataset(Generic[T]):
             convert_ndarray_batch_to_torch_tensor_batch,
         )
 
-        if collate_fn and (dtypes or device):
+        if collate_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
                 "collate_fn cannot be used with dtypes and device. It is expected that"
                 "the provided `collate_fn` will move the output Torch tensors to the"
                 "appropriate dtype and device."
             )
 
-        if not collate_fn:
+        if collate_fn is None:
 
             def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
                 convert_ndarray_batch_to_torch_tensor_batch(
@@ -2983,7 +2982,7 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format="numpy",
             drop_last=drop_last,
-            collate_fn=collate_fn,
+            _collate_fn=collate_fn,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )

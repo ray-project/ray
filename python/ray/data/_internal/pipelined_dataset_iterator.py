@@ -1,5 +1,5 @@
 import numpy as np
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
 from ray.data import Dataset
 from ray.data.block import DataBatch
@@ -59,7 +59,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         device: Optional[str] = None,
         drop_last: bool = False,
         collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], "TorchTensorBatchType"]
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,

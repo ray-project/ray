@@ -64,6 +64,17 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         assert isinstance(batch, torch.Tensor)
         assert batch.tolist() == list(range(5, 10))
 
+    # Should fail.
+    with pytest.raises(ValueError):
+        for batch in it.iter_torch_batches(collate_fn=collate_fn, dtypes=torch.float32):
+            assert isinstance(batch, torch.Tensor)
+            assert batch.tolist() == list(range(5, 10))
+
+    with pytest.raises(ValueError):
+        for batch in it.iter_torch_batches(collate_fn=collate_fn, device="cpu"):
+            assert isinstance(batch, torch.Tensor)
+            assert batch.tolist() == list(range(5, 10))
+
 
 if __name__ == "__main__":
     import sys

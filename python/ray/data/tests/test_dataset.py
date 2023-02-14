@@ -1967,7 +1967,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     # collate_fn.
     for batch, df in zip(
         ds.iter_batches(
-            batch_size=None, batch_format="pandas", collate_fn=lambda df: df + 2
+            batch_size=None, batch_format="pandas", _collate_fn=lambda df: df + 2
         ),
         dfs,
     ):
