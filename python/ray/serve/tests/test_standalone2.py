@@ -67,7 +67,13 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
 
-    yield ray.init()
+    yield ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50,
+        },
+    )
 
     ray.shutdown()
 
@@ -1350,12 +1356,18 @@ class TestServeRequestProcessingTimeoutS:
     "ray_instance",
     [
         {
+<<<<<<< HEAD
             "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
             "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+=======
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
+            "RAY_SERVE_MAX_REPLICA_FAILURE_RETRIES": "5",
+>>>>>>> 1c4cfd5cbb ([Serve] Make http retries tunable)
         },
     ],
     indirect=True,
 )
+<<<<<<< HEAD
 def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     """Test max_concurrent_queries can be honorded with long poll timeout
 
@@ -1409,6 +1421,37 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
 
+=======
+def test_http_request_number_of_retries(ray_instance):
+    """Test HTTP proxy retry requests"""
+
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return "hello"
+
+    serve.run(Model.bind())
+    assert requests.get("http://127.0.0.1:8000/").status_code == 500
+
+    def verify_metrics():
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        # Make sure http proxy retry 5 times
+        verfied = False
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_num_router_requests" in metrics:
+                assert "5.0" in metrics
+                verfied = True
+        return verfied
+
+    wait_for_condition(verify_metrics, timeout=60, retry_interval_ms=500)
+    signal_actor.send.remote()
+>>>>>>> 1c4cfd5cbb ([Serve] Make http retries tunable)
     serve.shutdown()
 
 

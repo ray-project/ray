@@ -36,7 +36,9 @@ from ray.serve._private.logging_utils import access_log_msg, configure_component
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-MAX_REPLICA_FAILURE_RETRIES = 10
+MAX_REPLICA_FAILURE_RETRIES = int(
+    os.environ.get("RAY_SERVE_MAX_REPLICA_FAILURE_RETRIES", 10)
+)
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"

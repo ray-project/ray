@@ -168,3 +168,10 @@ proper backpressure. You can increase the value in the deployment decorator; e.g
 By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried at another replica.
 
 You can set an end-to-end timeout for HTTP requests by setting the `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable. HTTP Proxies will wait for that many seconds before terminating an HTTP request and retrying it at another replica. This environment variable should be set on every node in your Ray cluster, and it cannot be updated during runtime.
+
+(serve-performance-http-retry)=
+### Set request retry times
+
+By default, Serve HTTP proxy will retry `10` times if the response is not able to be back due to failures (e.g. network disconnect, request timeout etc.).
+
+You can set number of retries based on your requirements by setting the `RAY_SERVE_MAX_REPLICA_FAILURE_RETRIES` environment variable. HTTP proxy will at most retry that times before sending task errors response to the client.
