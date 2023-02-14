@@ -169,6 +169,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             1,
             1,
             1));
+    gcs_resource_manager_nodes[id_1] = data;
   }
 
   monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
