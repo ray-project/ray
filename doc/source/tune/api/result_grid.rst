@@ -1,3 +1,4 @@
+.. _air-results-ref:
 .. _tune-analysis-docs:
 
 .. _result-grid-docstring:
@@ -12,6 +13,7 @@ ResultGrid (tune.ResultGrid)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     tune.ResultGrid
     tune.ResultGrid.get_best_result
