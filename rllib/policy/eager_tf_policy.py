@@ -763,7 +763,7 @@ def _build_eager_tf_policy(
             within this TfModelV2 class that is-a tf.keras.Model. This base model
             will be used here for the export.
             TODO (kourosh): This restriction will be resolved once we move Policy and
-             ModelV2 to the new RLTrainer/RLModule APIs.
+            ModelV2 to the new Learner/RLModule APIs.
 
             Args:
                 export_dir: Local writable directory.

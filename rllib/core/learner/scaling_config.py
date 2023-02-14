@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class TrainerScalingConfig:
+class LearnerGroupScalingConfig:
     """Configuratiom for scaling training actors.
 
     Attributes:
