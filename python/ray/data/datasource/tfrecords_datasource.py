@@ -102,7 +102,7 @@ def _get_feature_value(
     )
     # Exactly one of `bytes_list`, `float_list`, and `int64_list` should contain data.
     # Otherwise, all three should be empty lists, indicating an empty feature value.
-    assert sum(bool(value) for value in values) == 1
+    assert sum(bool(value) for value in values) <= 1
 
     if feature.HasField("bytes_list"):
         value = feature.bytes_list.value
@@ -114,10 +114,8 @@ def _get_feature_value(
         value = feature.int64_list.value
         type_ = pa.int64()
     else:
-        raise AssertionError(
-            "tf.train.Feature should have at least one value field set, "
-            "so this should never be reached."
-        )
+        value = []
+        type_ = pa.null()
     value = list(value)
     if len(value) == 1:
         # Use the value itself if the features contains a single value.

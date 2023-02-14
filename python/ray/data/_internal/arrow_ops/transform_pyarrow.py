@@ -210,23 +210,24 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                             scalar_type = arr.type
                             break
 
-                    for c_idx in range(len(col_chunked_arrays)):
-                        c = col_chunked_arrays[c_idx]
-                        if not pa.types.is_list(c.type) or not pa.types.is_null(
-                            c.type.value_type
-                        ):
-                            continue
-                        elif pa.types.is_null(c.type.value_type):
-                            if pa.types.is_list(scalar_type):
-                                # If we are dealing with a list input,
-                                # cast the array to the scalar_type found above.
-                                col_chunked_arrays[c_idx] = c.cast(scalar_type)
-                            else:
-                                # If we are dealing with a single value, construct
-                                # a new array with null values filled.
-                                col_chunked_arrays[c_idx] = pa.chunked_array(
-                                    [pa.nulls(c.length(), type=scalar_type)]
-                                )
+                    if scalar_type is not None:
+                        for c_idx in range(len(col_chunked_arrays)):
+                            c = col_chunked_arrays[c_idx]
+                            if not pa.types.is_list(c.type) or not pa.types.is_null(
+                                c.type.value_type
+                            ):
+                                continue
+                            elif pa.types.is_null(c.type.value_type):
+                                if pa.types.is_list(scalar_type):
+                                    # If we are dealing with a list input,
+                                    # cast the array to the scalar_type found above.
+                                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                                else:
+                                    # If we are dealing with a single value, construct
+                                    # a new array with null values filled.
+                                    col_chunked_arrays[c_idx] = pa.chunked_array(
+                                        [pa.nulls(c.length(), type=scalar_type)]
+                                    )
                 col = _concatenate_chunked_arrays(col_chunked_arrays)
             cols.append(col)
 
