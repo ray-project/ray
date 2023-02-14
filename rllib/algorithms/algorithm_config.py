@@ -61,6 +61,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     SampleBatchType,
 )
+from ray.tune.tune import _Config
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
@@ -115,7 +116,7 @@ def _resolve_class_path(module) -> Type:
         return getattr(module, class_name)
 
 
-class AlgorithmConfig:
+class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
