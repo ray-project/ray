@@ -127,31 +127,31 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     // Setup resource demand mocks.
     rpc::ResourcesData data;
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-                                                                            constructResourceDemand(
-                                                                                                    {
-                                                                                                      {"CPU", 0.75},
-                                                                                                    },
-                                                                                                    1,
-                                                                                                    2,
-                                                                                                    3));
+        constructResourceDemand(
+            {
+                {"CPU", 0.75},
+            },
+            1,
+            2,
+            3));
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-                                                                            constructResourceDemand(
-                                                                                                    {
-                                                                                                      {"custom", 0.25},
-                                                                                                    },
-                                                                                                    1,
-                                                                                                    1,
-                                                                                                    1));
+        constructResourceDemand(
+            {
+                {"custom", 0.25},
+            },
+            1,
+            1,
+            1));
 
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-                                                                            constructResourceDemand(
-                                                                                                    {
-                                                                                                      {"CPU", 0.75},
-                                                                                                      {"custom", 0.25},
-                                                                                                    },
-                                                                                                    1,
-                                                                                                    1,
-                                                                                                    1));
+        constructResourceDemand(
+            {
+                {"CPU", 0.75},
+                {"custom", 0.25},
+            },
+            1,
+            1,
+            1));
     gcs_resource_manager_nodes[id_1] = data;
   }
   {
@@ -171,7 +171,6 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
 
     gcs_node_manager_nodes[id_3] = Mocker::GenNodeInfo(0, "1.1.1.3", "Node1");
   }
-
 
   monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
 
@@ -202,8 +201,9 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
 
     for (const auto &request : reply.resource_requests()) {
       RAY_LOG(ERROR) << request.DebugString();
-      ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
-                ResourceRequest_ResourceRequestType_SHORT_RESERVATION);
+      ASSERT_EQ(request.resource_request_type(),
+                rpc::ResourceRequest_ResourceRequestType::
+                    ResourceRequest_ResourceRequestType_SHORT_RESERVATION);
       ASSERT_EQ(request.bundles().size(), 1);
       const auto &resources = request.bundles()[0].resources();
       if (resources.size() == 1 && resources.begin()->first == "CPU") {
