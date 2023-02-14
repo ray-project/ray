@@ -442,7 +442,7 @@ class ServeController:
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
-        _internal: bool = True,
+        _internal: bool = False,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 

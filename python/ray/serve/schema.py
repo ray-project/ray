@@ -8,6 +8,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     StatusOverview,
 )
+from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -417,7 +418,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         if "deployments" in app_config and not app_config["name"] == "":
             for idx, deployment in enumerate(app_config["deployments"]):
-                deployment["name"] = app_config["name"] + "_" + deployment["name"]
+                deployment["name"] = (
+                    app_config["name"]
+                    + DEPLOYMENT_NAME_PREFIX_SEPARATOR
+                    + deployment["name"]
+                )
                 app_config["deployments"][idx] = deployment
 
         return ServeApplicationSchema.parse_obj(app_config)
@@ -432,7 +437,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         app_config = self.dict(exclude_unset=True)
         if "deployments" in app_config and not app_config["name"] == "":
             for idx, deployment in enumerate(app_config["deployments"]):
-                prefix = app_config["name"] + "_"
+                prefix = app_config["name"] + DEPLOYMENT_NAME_PREFIX_SEPARATOR
                 # This method should not be called on any config that's not processed
                 # internally & returned by prepend_app_name_to_deployment_names
                 assert deployment["name"].startswith(prefix)
