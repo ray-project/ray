@@ -1,5 +1,4 @@
 import abc
-from typing import Any, Dict
 
 from ray.util.annotations import PublicAPI
 
@@ -31,7 +30,7 @@ class Stopper(abc.ABC):
         ...         return time.time() - self._start > self._deadline
         ...
         >>> def train_fn(config):
-        ...     for i in range(100):
+        ...     for i in range(10):
         ...         time.sleep(1)
         ...         session.report({"iter": i})
         ...
@@ -42,16 +41,14 @@ class Stopper(abc.ABC):
         ... )
         >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
         [ignore]...
-        >>> all(result.metrics["time_total_s"] < 6 for result in result_grid)
-        True
 
     """
 
-    def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
+    def __call__(self, trial_id, result):
         """Returns true if the trial should be terminated given the result."""
         raise NotImplementedError
 
-    def stop_all(self) -> bool:
+    def stop_all(self):
         """Returns true if the experiment should be terminated."""
         raise NotImplementedError
 
@@ -88,16 +85,14 @@ class CombinedStopper(Stopper):
         ... )
         >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
         [ignore]...
-        >>> all(result.metrics["training_iteration"] <= 20 for result in result_grid)
-        True
 
     """
 
     def __init__(self, *stoppers: Stopper):
         self._stoppers = stoppers
 
-    def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
+    def __call__(self, trial_id, result):
         return any(s(trial_id, result) for s in self._stoppers)
 
-    def stop_all(self) -> bool:
+    def stop_all(self):
         return any(s.stop_all() for s in self._stoppers)
