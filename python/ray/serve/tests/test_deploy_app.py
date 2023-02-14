@@ -14,30 +14,10 @@ from ray.experimental.state.api import list_actors
 
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
-
-
-@contextmanager
-def start_and_shutdown_ray_cli():
-    subprocess.check_output(
-        ["ray", "start", "--head"],
-    )
-    yield
-    subprocess.check_output(
-        ["ray", "stop", "--force"],
-    )
-
-
-@pytest.fixture()
-def client():
-    with start_and_shutdown_ray_cli():
-        ray.init(address="auto", namespace="serve")
-        client = serve.start(detached=True)
-        yield client
-        serve.shutdown()
-        ray.shutdown()
 
 
 def get_test_config() -> Dict:
@@ -77,8 +57,38 @@ def get_test_deploy_config() -> Dict:
     }
 
 
-def test_deploy_app_basic(client: ServeControllerClient):
+def check_ray_stop():
+    try:
+        requests.get("http://localhost:52365/api/ray/version")
+        return False
+    except Exception:
+        return True
 
+@pytest.fixture(scope="function")
+def client():
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+    yield serve.start(detached=True)
+    serve.shutdown()
+    ray.shutdown()
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+
+
+def test_deploy_app_basic(client: ServeControllerClient):
     config = ServeApplicationSchema.parse_obj(get_test_config())
     client.deploy_apps(config)
 
@@ -596,7 +606,7 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     ],
 )
 def test_deploy_config_update(
-    client: ServeControllerClient,
+    client,
     field_to_update: str,
     option_to_update: str,
     config_update: bool,
