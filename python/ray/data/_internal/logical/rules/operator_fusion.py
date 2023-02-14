@@ -86,22 +86,21 @@ class OperatorFusionRule(Rule):
         # their construction arguments are the same.
         # TODO(Clark): Support multiple callable classes instantiating in the same actor
         # worker.
-        if not isinstance(down_logical_op, Write):
-            if (
-                isinstance(down_logical_op._fn, CallableClass)
-                and isinstance(up_logical_op, AbstractMap)
-                and isinstance(up_logical_op._fn, CallableClass)
-                and (
-                    up_logical_op._fn != down_logical_op._fn
-                    or (
-                        up_logical_op._fn_constructor_args
-                        != down_logical_op._fn_constructor_args
-                        or up_logical_op._fn_constructor_kwargs
-                        != down_logical_op._fn_constructor_kwargs
-                    )
+        if (
+            isinstance(down_logical_op._fn, CallableClass)
+            and isinstance(up_logical_op, AbstractMap)
+            and isinstance(up_logical_op._fn, CallableClass)
+            and (
+                up_logical_op._fn != down_logical_op._fn
+                or (
+                    up_logical_op._fn_constructor_args
+                    != down_logical_op._fn_constructor_args
+                    or up_logical_op._fn_constructor_kwargs
+                    != down_logical_op._fn_constructor_kwargs
                 )
-            ):
-                return False
+            )
+        ):
+            return False
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
