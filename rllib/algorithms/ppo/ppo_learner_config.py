@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
+from ray.rllib.core.learner.learner import LearnerHPs
 
 
 @dataclass
-class PPORLTrainerHPs(RLTrainerHPs):
+class PPOLearnerHPs(LearnerHPs):
     """Hyperparameters for the PPO RL Trainer"""
 
     kl_coeff: float = 0.2
@@ -16,6 +16,6 @@ class PPORLTrainerHPs(RLTrainerHPs):
     entropy_coeff: float = 0.0
     vf_loss_coeff: float = 1.0
 
-    # experimental placeholder for things that could be part of the base RLTrainerHPs
+    # experimental placeholder for things that could be part of the base LearnerHPs
     lr_schedule: Optional[List[List[Union[int, float]]]] = None
     entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None
