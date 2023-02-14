@@ -79,6 +79,10 @@ void GcsMonitorServer::PopulateResourceDemands(
       absl::flat_hash_map<google::protobuf::Map<std::string, double>,
                           rpc::ResourceRequest *>();
   const auto &resources_report_by_node = gcs_resource_manager_->NodeResourceReportView();
+  // NOTE: The nodes returned in this loop are eventually consistent with the
+  // loop in `PopulateNodeStatuses`. This shouldn't be a problem since nodes
+  // shouldn't have resource demands when nodes are downscaled and there will
+  // always be race conditions if a node with demands dies unexpectedly.
   for (const auto &node_report_pair : resources_report_by_node) {
     for (const auto &resource_demand :
          node_report_pair.second.resource_load_by_shape().resource_demands()) {
