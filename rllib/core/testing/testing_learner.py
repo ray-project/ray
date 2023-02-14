@@ -6,7 +6,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 
 
-class BaseTestingTrainer(Learner):
+class BaseTestingLearner(Learner):
     def compile_results(
         self,
         batch: NestedDict,

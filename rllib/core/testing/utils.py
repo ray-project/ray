@@ -26,7 +26,7 @@ Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 
 @DeveloperAPI
-def get_trainer_class(framework: str) -> Type["Learner"]:
+def get_learner_class(framework: str) -> Type["Learner"]:
     if framework == "tf":
         from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
@@ -94,7 +94,7 @@ def get_learner(
     is_multi_agent: bool = False,
 ) -> "Learner":
 
-    _cls = get_trainer_class(framework)
+    _cls = get_learner_class(framework)
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
     return _cls(module_spec=spec, optimizer_config={"lr": 0.1})
 
@@ -127,7 +127,7 @@ def get_trainer_runner(
     else:
         trainer_hps = None
     learner_spec = LearnerSpec(
-        learner_class=get_trainer_class(framework),
+        learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
