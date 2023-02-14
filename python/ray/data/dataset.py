@@ -1,7 +1,6 @@
 import collections
 import itertools
 import logging
-import os
 import sys
 import time
 import html
@@ -2712,35 +2711,27 @@ class Dataset(Generic[T]):
                 datasource.on_write_failed([], e)
                 raise
         else:
+            logger.warning(
+                "The Datasource.do_write() is deprecated in "
+                "Ray 2.4 and will be removed in future release. Use "
+                "Datasource.write() instead."
+            )
+
             ctx = DatasetContext.get_current()
             blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
-
-            # TODO(ekl) remove this feature flag.
-            if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-                write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                    blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(
+                    datasource,
+                    ctx,
+                    blocks,
+                    metadata,
+                    ray_remote_args,
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
-            else:
-                logger.warning(
-                    "The Datasource.do_write() is deprecated in "
-                    "Ray 2.4 and will be removed in future release. Use "
-                    "Datasource.write() instead."
-                )
-                # Prepare write in a remote task so that in Ray client mode, we
-                # don't do metadata resolution from the client machine.
-                do_write = cached_remote_fn(
-                    _do_write, retry_exceptions=False, num_cpus=0
-                )
-                write_results: List[ObjectRef[WriteResult]] = ray.get(
-                    do_write.remote(
-                        datasource,
-                        ctx,
-                        blocks,
-                        metadata,
-                        ray_remote_args,
-                        _wrap_arrow_serialization_workaround(write_args),
-                    )
-                )
+            )
 
             progress = ProgressBar("Write Progress", len(write_results))
             try:
