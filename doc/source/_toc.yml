@@ -33,7 +33,7 @@ parts:
               - file: ray-core/examples/batch_training
               - file: ray-core/examples/automl_for_time_series
               - file: ray-core/examples/web-crawler
-          - file: ray-core/api
+          - file: ray-core/api/index
 
       - file: cluster/getting-started
         title: "Ray Clusters"
@@ -118,7 +118,7 @@ parts:
               - file: ray-air/examples/automl_with_ray_air
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
-          - file: ray-air/package-ref
+          - file: ray-air/api/api
           - file: ray-air/benchmarks
 
       - file: data/dataset
@@ -141,6 +141,7 @@ parts:
               - file: data/random-access
           - file: data/faq
           - file: data/api/api
+          - file: data/glossary
           - file: data/integrations
 
       - file: train/train
@@ -181,7 +182,7 @@ parts:
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
                 title: "Torch Data Prefetching Benchmark"
           - file: train/faq
-          - file: train/api
+          - file: train/api/api
 
       - file: tune/index
         title: Ray Tune
@@ -282,7 +283,7 @@ parts:
               - file: tune/examples/exercises
                 title: "Exercises"
           - file: tune/faq
-          - file: tune/api_docs/overview.rst
+          - file: tune/api/api.rst
 
       - file: serve/index
         title: Ray Serve
@@ -315,7 +316,7 @@ parts:
                   - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
                   - file: serve/tutorials/deployment-graph-patterns/branching_input
                   - file: serve/tutorials/deployment-graph-patterns/conditional
-          - file: serve/package-ref
+          - file: serve/api/index
 
       - file: rllib/index
         title: Ray RLlib
@@ -361,9 +362,6 @@ parts:
 
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
-        sections:
-          - file: ray-observability/index
-            title: Tools
 
       - file: ray-references/api
         title: References
