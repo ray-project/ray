@@ -2,14 +2,16 @@ import unittest
 import itertools
 
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.core.models.configs import CNNModelConfig
+from ray.rllib.core.models.configs import CNNEncoderConfig
 from ray.rllib.models.utils import get_filter_config
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT
 
 torch, nn = try_import_torch()
 
 
-class TestTorchCNN(unittest.TestCase):
-    def test_torch_cnn(self):
+class TestTorchCNNEncoder(unittest.TestCase):
+    def test_torch_cnn_encoder(self):
 
         # Input dims supported by RLlib via get_filter_config()
         inputs_dimss = [
@@ -56,7 +58,7 @@ class TestTorchCNN(unittest.TestCase):
                 f"output_dims: {output_dims}\n"
             )
 
-            config = CNNModelConfig(
+            config = CNNEncoderConfig(
                 input_dims=inputs_dims,
                 filter_specifiers=filter_specifiers,
                 filter_layer_activation=filter_layer_activation,
@@ -66,8 +68,17 @@ class TestTorchCNN(unittest.TestCase):
 
             model = config.build(framework="torch")
             print(model)
-            inputs = torch.randn(1, *inputs_dims)
-            outputs = model(inputs)
+
+            obs = torch.randn(1, *inputs_dims)
+            seq_lens = torch.tensor([1])
+            state = None
+
+            outputs = model(
+                {SampleBatch.OBS: obs, SampleBatch.SEQ_LENS: seq_lens, STATE_IN: state}
+            )
+
+            self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims))
+            self.assertEqual(outputs[STATE_OUT], None)
 
             from torchview import draw_graph
 

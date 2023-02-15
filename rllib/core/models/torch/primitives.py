@@ -1,25 +1,17 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
+
+import numpy as np
 
 from ray.rllib.models.torch.misc import SlimConv2d
 from ray.rllib.models.torch.misc import same_padding
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
 
-_, nn = try_import_torch()
+torch, nn = try_import_torch()
 
 
 class TorchMLP(nn.Module):
-    """A multi-layer perceptron.
-
-    Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
-        hidden_layer_dims: The sizes of the hidden layers.
-        output_dim: The output dimension of the network. if None, the last layer would
-            be the last hidden layer.
-        hidden_layer_activation: The activation function to use after each layer.
-        output_activation: The activation function to use for the output layer.
-    """
+    """A multi-layer perceptron."""
 
     def __init__(
         self,
@@ -29,6 +21,17 @@ class TorchMLP(nn.Module):
         hidden_layer_activation: str = "linear",
         output_activation: str = "linear",
     ):
+        """Initialize a TorchMLP object.
+
+        Args:
+            input_dim: The input dimension of the network. It cannot be None.
+            hidden_layer_dims: The sizes of the hidden layers.
+            output_dim: The output dimension of the network. if None, the last layer
+                would be the last hidden layer.
+            hidden_layer_activation: The activation function to use after each layer.
+                output_activation: The activation function to use for the output layer.
+            output_activation: The activation function to use for the output layer.
+        """
         super().__init__()
         assert input_dim > 0
         assert output_dim > 0
@@ -62,35 +65,48 @@ class TorchMLP(nn.Module):
 
 
 class TorchCNN(nn.Module):
-    """A convolutional neural network.
-
-    Attributes:
-        input_dims: The input dimensions `[width, height, depth`] of the network.
-        Cannot be None.
-        filters_layer_dims: The sizes of the hidden layers.
-        filter_layer_activation: The activation function to use after each layer.
-        output_activation: The activation function to use for the output layer.
-    """
+    """A model containing a CNN and a final linear layer."""
 
     def __init__(
         self,
-        input_dims: List[int],
+        input_dims: Union[List, Tuple] = None,
         filter_specifiers: List[List[Union[int, List]]] = None,
         filter_layer_activation: str = "relu",
-        output_activation: str = "relu",
+        output_activation: str = "linear",
+        output_dim: int = None,
     ):
+        """Initialize a TorchCNN object.
+
+        Args:
+            input_dims: The input dimension of the network. It cannot be None.
+            filter_specifiers: A list of lists, where each element of an inner list
+                contains elements of the form
+                `[number of filters, [kernel width, kernel height], stride]` to
+                specify a convolutional layer stacked in order of the outer list.
+            filter_layer_activation: The activation function to use after each layer (
+                except for the output).
+            output_activation: The activation function to use for the output layer.
+            output_dim: The output dimension are [BATCH, output_dim]. We append a final
+                convolutional layer depth-only filters that is flattened and a final
+                linear layer to achieve this.
+        """
         super().__init__()
+
+        assert len(input_dims) == 3
+        assert isinstance(output_dim, int)
         assert filter_specifiers is not None, "Must provide filter specifiers."
 
         layers = []
+        # Create some CNN layers
+        core_layers = []
 
-        # Add hidden convolutional layers first
+        # Add user-specified hidden convolutional layers first
         width, height, in_depth = input_dims
         in_size = [width, height]
-        for out_depth, kernel, stride in filter_specifiers[:-1]:
+        for out_depth, kernel, stride in filter_specifiers:
             padding, out_size = same_padding(in_size, kernel, stride)
             # TODO(Artur): Inline SlimConv2d
-            layers.append(
+            core_layers.append(
                 SlimConv2d(
                     in_depth,
                     out_depth,
@@ -103,30 +119,44 @@ class TorchCNN(nn.Module):
             in_depth = out_depth
             in_size = out_size
 
-        # Add final convolutional layer (possibly with a different activation)
-        out_depth, kernel, stride = filter_specifiers[-1]
-        padding, out_size = same_padding(in_size, kernel, stride)
-        # TODO(Artur): Inline SlimConv2d
+        core_cnn = nn.Sequential(*core_layers)
+        layers.append(core_cnn)
+
+        # Append a last convolutional layer of depth-only filters to be flattened.
+
+        # Get info of the last layer of user-specified layers
+        [width, height] = in_size
+        _, kernel, stride = filter_specifiers[-1]
+
+        in_size = (
+            int(np.ceil((width - kernel[0]) / stride)),
+            int(np.ceil((height - kernel[1]) / stride)),
+        )
+        padding, _ = same_padding(in_size, (1, 1), (1, 1))
+        # TODO(Artur): Inline SlimConv2d or use TorchCNN here
         layers.append(
             SlimConv2d(
                 in_depth,
-                out_depth,
-                kernel,
-                stride,
+                1,
+                (1, 1),
+                1,
                 padding,
-                activation_fn=output_activation,
+                activation_fn=filter_layer_activation,
             )
         )
+        layers.append(nn.Flatten())
 
-        # Make some dimensions available to upward abstractions
-        # Store [width, height, depth] of the last layer accessible
-        self.out_dims = [*out_size, out_depth]
-        # Store kernel and stride of the last layer
-        self.last_kernel = kernel
-        self.last_stride = stride
+        # Add a final linear layer to make sure that the outputs have the correct
+        # dimensionality.
+        layers.append(nn.Linear(int(width) * int(height), output_dim))
+        if output_activation not in ("linear", None):
+            activation_class = getattr(nn, output_activation, lambda: None)()
+            self.layers.append(activation_class)
 
-        # Build the model
+        # Create the cnn that potentially includes a flattened layer
         self.cnn = nn.Sequential(*layers)
 
-    def forward(self, x: TensorType) -> TensorType:
-        return self.cnn(x)
+    def forward(self, x):
+        # Permute b/c data comes in as [B, dim, dim, channels]:
+        inputs = x.permute(0, 3, 1, 2)
+        return self.cnn(inputs)

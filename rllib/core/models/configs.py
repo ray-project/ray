@@ -107,7 +107,7 @@ class MLPHeadConfig(ModelConfig):
 
 @ExperimentalAPI
 @dataclass
-class CNNModelConfig(ModelConfig):
+class CNNEncoderConfig(ModelConfig):
     """Configuration for a convolutional network.
 
     See ModelConfig for usage details.
@@ -115,20 +115,15 @@ class CNNModelConfig(ModelConfig):
     Attributes:
         input_dims: The input dimension of the network. It cannot be None.
         filter_specifiers: A list of lists, where each element of an inner list
-        contains elements of the form
-        `[number of filters, [kernel width, kernel height], stride)` to specify a
-        convolutional layer stacked in order of the outer list.
+            contains elements of the form
+            `[number of filters, [kernel width, kernel height], stride]` to specify a
+            convolutional layer stacked in order of the outer list.
         filter_layer_activation: The activation function to use after each layer (
-        except for the output).
+            except for the output).
         output_activation: The activation function to use for the output layer.
-        output_dim: The output dimension of the network. This has two possibilities:
-            1. None: Output dimensions are the ones of the last convolutional layer
-            (determined automatically - this makes spec checks redundant).
-            This results in an output tensor of shape [BATCH, w, h, c], where w,
-            h and c are width, height and depth of the last convolutional layer.
-            2. An integer: The output dimension are [BATCH, output_dim]. This
-            appends a final convolutional layer depth-only filters that is flattened
-            and a final linear layer.
+        output_dim: The output dimension are [BATCH, output_dim]. We append a final
+            convolutional layer depth-only filters that is flattened and a final linear
+            layer to achieve this.
     """
 
     input_dims: int = None
@@ -142,9 +137,9 @@ class CNNModelConfig(ModelConfig):
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.core.models.torch.cnn import TorchCNNModel
+            from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
 
-            return TorchCNNModel(self)
+            return TorchCNNEncoder(self)
 
 
 @ExperimentalAPI
