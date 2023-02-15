@@ -402,6 +402,8 @@ class BackendExecutor:
                 )
             )
 
+        self._backend.on_training_start(self.worker_group, self._backend_config)
+
         self.get_with_failure_handling(futures)
 
         # Run the training function asynchronously in its own thread.
