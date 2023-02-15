@@ -214,6 +214,7 @@ void TaskEventBufferImpl::InitTaskEventThreadBufferIfNeeded() {
   if (all_thd_buffer_.count(std::this_thread::get_id())) {
     return;
   }
+  buf_map_mutex_.AssertReaderHeld();
   buf_map_mutex_.ReaderUnlock();
   {
     buf_map_mutex_.WriterLock();
