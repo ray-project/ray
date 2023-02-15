@@ -334,7 +334,7 @@ def run_release_test(
                 command,
                 env=command_env,
                 timeout=command_timeout,
-                is_long_running=is_long_running,
+                raise_on_timeout=not is_long_running,
             )
         except (
             TestCommandError,

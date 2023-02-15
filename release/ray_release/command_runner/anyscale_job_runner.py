@@ -29,6 +29,14 @@ if TYPE_CHECKING:
 TIMEOUT_RETURN_CODE = 124
 
 
+def _get_env_str(env: Dict[str, str]) -> str:
+    if env:
+        env_str = " ".join(f"{k}={v}" for k, v in env.items()) + " "
+    else:
+        env_str = ""
+    return env_str
+
+
 class AnyscaleJobRunner(JobRunner):
     def __init__(
         self,
@@ -37,7 +45,6 @@ class AnyscaleJobRunner(JobRunner):
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
     ):
-        assert isinstance(file_manager, JobFileManager)
         super().__init__(
             cluster_manager=cluster_manager,
             file_manager=file_manager,
@@ -83,7 +90,7 @@ class AnyscaleJobRunner(JobRunner):
         return
 
     def _handle_command_output(
-        self, job_status_code: int, error: str, is_long_running: bool = False
+        self, job_status_code: int, error: str, raise_on_timeout: bool = True
     ):
         if job_status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
@@ -131,7 +138,7 @@ class AnyscaleJobRunner(JobRunner):
             raise JobNoLogsError("Could not obtain logs for the job.")
 
         if workload_status_code == TIMEOUT_RETURN_CODE:
-            if is_long_running:
+            if not raise_on_timeout:
                 # Expected - treat as success.
                 return
 
@@ -164,44 +171,42 @@ class AnyscaleJobRunner(JobRunner):
         command: str,
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
-        is_long_running: bool = False,
+        raise_on_timeout: bool = True,
     ) -> float:
         prepare_command_strs = []
         prepare_command_timeouts = []
+        # Convert the prepare commands, envs and timeouts into shell-compliant
+        # strings that can be passed to the wrapper script
         for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
             prepare_env = self.get_full_command_env(prepare_env)
-
-            if prepare_env:
-                env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
-            else:
-                env_str = ""
+            env_str = _get_env_str(prepare_env)
             prepare_command_strs.append(f"{env_str} {prepare_command}")
             prepare_command_timeouts.append(prepare_timeout)
 
-        prepare_commands = " ".join(shlex.quote(str(x)) for x in prepare_command_strs)
-        prepare_commands_timeouts = " ".join(
+        prepare_commands_shell = " ".join(
+            shlex.quote(str(x)) for x in prepare_command_strs
+        )
+        prepare_commands_timeouts_shell = " ".join(
             shlex.quote(str(x)) for x in prepare_command_timeouts
         )
 
         full_env = self.get_full_command_env(env)
+        env_str = _get_env_str(full_env)
 
-        if full_env:
-            env_str = " ".join(f"{k}={v}" for k, v in full_env.items()) + " "
-        else:
-            env_str = ""
-
-        is_long_running_str = " --test-long-running" if is_long_running else ""
+        no_raise_on_timeout_str = (
+            " --test-no-raise-on-timeout" if not raise_on_timeout else ""
+        )
         full_command = (
             f"{env_str}python anyscale_job_wrapper.py '{command}' "
-            f"--test-workload-timeout {timeout}{is_long_running_str} "
+            f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             "--metrics-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
             "--output-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.output_json)}' "
-            f"--prepare-commands {prepare_commands} "
-            f"--prepare-commands-timeouts {prepare_commands_timeouts}"
+            f"--prepare-commands {prepare_commands_shell} "
+            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
         )
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
@@ -222,7 +227,7 @@ class AnyscaleJobRunner(JobRunner):
             error = None
 
         self._handle_command_output(
-            job_status_code, error, is_long_running=is_long_running
+            job_status_code, error, raise_on_timeout=raise_on_timeout
         )
 
         return time_taken

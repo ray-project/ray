@@ -1,3 +1,10 @@
+"""
+This script will be ran on the cluster.
+
+We need to reimplement some utility functions here as it will not
+have access to the ray_release package.
+"""
+
 import argparse
 import time
 import os
@@ -112,6 +119,7 @@ def collect_metrics(time_taken: float) -> bool:
 
 # Has to be here so it can be pickled
 def _run_bash_command_subprocess(command: str, timeout: float):
+    """Ran in a multiprocessing process."""
     try:
         subprocess.run(command, check=True, timeout=timeout)
         return_code = 0
@@ -120,6 +128,7 @@ def _run_bash_command_subprocess(command: str, timeout: float):
     except subprocess.CalledProcessError as e:
         return_code = e.returncode
     print(f"Subprocess return code: {return_code}", file=sys.stderr)
+    # Exit so the return code is propagated to the outer process
     sys.exit(return_code)
 
 
@@ -139,9 +148,8 @@ def run_bash_command(workload: str, timeout: float):
     os.environ.pop("RAY_JOB_CONFIG_JSON_ENV_VAR", None)
 
     # We use multiprocessing with 'spawn' context to avoid
-    # forking (as happens when using subprocess directly),
-    # because that messes up Ray interactions and causes
-    # deadlocks.
+    # forking (as happens when using subprocess directly).
+    # Forking messes up Ray interactions and causes deadlocks.
     return_code = None
     try:
         ctx = multiprocessing.get_context("spawn")
@@ -170,46 +178,61 @@ def run_bash_command(workload: str, timeout: float):
 def run_prepare_commands(
     prepare_commands: List[str], prepare_commands_timeouts: List[float]
 ) -> Tuple[bool, List[int], float]:
+    """Run prepare commands. All commands must pass. Fails fast."""
     prepare_return_codes = []
     prepare_passed = True
     prepare_time_taken = None
-    if prepare_commands:
-        logger.info("### Starting prepare commands ###")
-        for prepare_command, timeout in zip(
-            prepare_commands, prepare_commands_timeouts
-        ):
-            command_start_time = time.monotonic()
-            prepare_return_codes.append(run_bash_command(prepare_command, timeout))
-            prepare_time_taken = time.monotonic() - command_start_time
-            return_code = prepare_return_codes[-1]
-            if return_code != 0:
-                timeout = return_code == TIMEOUT_RETURN_CODE
-                if timeout:
-                    logger.error(
-                        "Prepare command timed out. "
-                        f"Time taken: {prepare_time_taken}"
-                    )
-                else:
-                    logger.info(
-                        f"Prepare command finished with return code {return_code}. "
-                        f"Time taken: {prepare_time_taken}"
-                    )
-                logger.error("Prepare command failed.")
-                prepare_passed = False
-                break
+
+    if not prepare_commands:
+        return prepare_passed, prepare_return_codes, prepare_time_taken
+
+    logger.info("### Starting prepare commands ###")
+    for prepare_command, timeout in zip(prepare_commands, prepare_commands_timeouts):
+        command_start_time = time.monotonic()
+        prepare_return_codes.append(run_bash_command(prepare_command, timeout))
+        prepare_time_taken = time.monotonic() - command_start_time
+        return_code = prepare_return_codes[-1]
+
+        if return_code == 0:
+            continue
+
+        timed_out = return_code == TIMEOUT_RETURN_CODE
+        if timed_out:
+            logger.error(
+                "Prepare command timed out. " f"Time taken: {prepare_time_taken}"
+            )
+        else:
+            logger.info(
+                f"Prepare command finished with return code {return_code}. "
+                f"Time taken: {prepare_time_taken}"
+            )
+        logger.error("Prepare command failed.")
+        prepare_passed = False
+        break
+
     return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
 def main(
     test_workload: str,
     test_workload_timeout: float,
-    test_long_running: bool,
+    test_no_raise_on_timeout: bool,
     results_s3_uri: Optional[str],
     metrics_s3_uri: Optional[str],
     output_s3_uri: Optional[str],
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
 ):
+    """
+    This function provides extra functionality for an Anyscale Job.
+
+    1. Runs prepare commands and handles their timeouts
+    2. Runs the actual test workload and handles its timeout
+    3. Uploads test results.json
+    4. Gathers prometheus metrics
+    5. Uploads prometheus metrics.json
+    6. Uploads output.json
+    """
     logger.info("### Starting ###")
     start_time = time.monotonic()
 
@@ -219,6 +242,7 @@ def main(
             "have the same length."
         )
 
+    # Run prepare commands. All prepare commands must pass.
     (
         prepare_passed,
         prepare_return_codes,
@@ -230,16 +254,17 @@ def main(
     uploaded_metrics = False
     workload_time_taken = None
 
+    # If all prepare commands passed, run actual test workload.
     if prepare_passed:
         logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
         return_code = run_bash_command(test_workload, test_workload_timeout)
         workload_time_taken = time.monotonic() - command_start_time
 
-        timeout = return_code == TIMEOUT_RETURN_CODE
-        if timeout:
+        timed_out = return_code == TIMEOUT_RETURN_CODE
+        if timed_out:
             msg = f"Timed out. Time taken: {workload_time_taken}"
-            if test_long_running:
+            if not test_no_raise_on_timeout:
                 logger.info(msg)
             else:
                 logger.error(msg)
@@ -249,12 +274,15 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
+        # Upload results.json
         uploaded_results = run_aws_cp(
             os.environ.get("TEST_OUTPUT_JSON", None), results_s3_uri
         )
 
+        # Collect prometheus metrics
         collected_metrics = collect_metrics(workload_time_taken)
         if collected_metrics:
+            # Upload prometheus metrics
             uploaded_metrics = run_aws_cp(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
             )
@@ -280,6 +308,7 @@ def main(
     with open(output_json_file, "w") as fp:
         fp.write(output_json)
 
+    # Upload output.json
     run_aws_cp(str(output_json_file), output_s3_uri)
 
     logger.info("### Finished ###")
@@ -290,7 +319,7 @@ def main(
     print("", flush=True)
     print("", file=sys.stderr, flush=True)
 
-    if return_code == TIMEOUT_RETURN_CODE and test_long_running:
+    if return_code == TIMEOUT_RETURN_CODE and not test_no_raise_on_timeout:
         return_code = 0
     elif return_code is None:
         return_code = 1
@@ -311,9 +340,9 @@ if __name__ == "__main__":
         help="test workload timeout (set to <0 for infinite)",
     )
     parser.add_argument(
-        "--test-long-running",
+        "--test-no-raise-on-timeout",
         action="store_true",
-        help="is test long running (don't fail on timeout)",
+        help="don't fail on timeout",
     )
     parser.add_argument(
         "--results-s3-uri",

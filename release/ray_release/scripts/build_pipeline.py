@@ -52,43 +52,39 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
     tmpdir = None
 
     env = {}
-    if repo:
+    if repo and not no_clone_repo:
         # If the Ray test repo is set, we clone that repo to fetch
         # the test configuration file. Otherwise, we might be missing newly
         # added test.
-        repo = settings["ray_test_repo"]
 
-        if not no_clone_repo:
-            tmpdir = tempfile.mktemp()
+        tmpdir = tempfile.mktemp()
 
-            current_release_dir = os.path.abspath(
-                os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                )
-            )
-            clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
-            logger.info(f"Cloning test repository: {clone_cmd}")
-            try:
-                subprocess.check_output(clone_cmd, shell=True)
-            except Exception as e:
-                raise ReleaseTestCLIError(
-                    f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
-                ) from e
-            subprocess.check_output(
-                ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
-            )
+        current_release_dir = os.path.abspath(
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        )
+        clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
+        logger.info(f"Cloning test repository: {clone_cmd}")
+        try:
+            subprocess.check_output(clone_cmd, shell=True)
+        except Exception as e:
+            raise ReleaseTestCLIError(
+                f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
+            ) from e
+        subprocess.check_output(
+            ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
+        )
 
-            # We run the script again in a subprocess without entering this if again.
-            # This is necessary as we update the ray_release files. This way,
-            # the modules are reloaded and use the newest files, instead of
-            # old ones, which may not have the changes introduced on the
-            # checked out branch.
-            cmd = [sys.executable, __file__, "--no-clone-repo"]
-            if test_collection_file:
-                cmd += ["--test-collection-file", test_collection_file]
-            subprocess.run(cmd, capture_output=False, check=True)
-            return
-
+        # We run the script again in a subprocess without entering this if again.
+        # This is necessary as we update the ray_release files. This way,
+        # the modules are reloaded and use the newest files, instead of
+        # old ones, which may not have the changes introduced on the
+        # checked out branch.
+        cmd = [sys.executable, __file__, "--no-clone-repo"]
+        if test_collection_file:
+            cmd += ["--test-collection-file", test_collection_file]
+        subprocess.run(cmd, capture_output=False, check=True)
+        return
+    elif repo:
         env = {
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,

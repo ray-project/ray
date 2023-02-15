@@ -98,7 +98,7 @@ def anyscale_cluster_env_build_url(build_id: str) -> str:
 
 
 def anyscale_job_url(job_id: str) -> str:
-    return f"{ANYSCALE_HOST}" f"/o/anyscale-internal/jobs/{job_id}"
+    return f"{ANYSCALE_HOST}/o/anyscale-internal/jobs/{job_id}"
 
 
 _anyscale_sdk = None

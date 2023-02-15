@@ -78,7 +78,7 @@ class CommandRunner(abc.ABC):
         command: str,
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
-        is_long_running: bool = False,
+        raise_on_timeout: bool = True,
     ) -> float:
         """Run command."""
         raise NotImplementedError

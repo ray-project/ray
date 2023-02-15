@@ -136,7 +136,7 @@ class ClientRunner(CommandRunner):
         command: str,
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
-        is_long_running: bool = False,
+        raise_on_timeout: bool = True,
     ) -> float:
         logger.info(
             f"Running command using Ray client on cluster "
