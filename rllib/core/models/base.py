@@ -92,8 +92,29 @@ class Model(abc.ABC):
     def __init__(self, config: ModelConfig):
         self.config = config
 
-        # These should not be overridden by subclasses. Instead, get_input_spec and
-        # get_output_spec should be overridden.
+    def __init_subclass__(cls, **kwargs):
+        # Automatically add a __post_init__ method to all subclasses of Model.
+        # This method is called after the __init__ method of the subclass.
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) == cls:
+                    self.__post_init__()
+
+            return new_init
+
+        cls.__init__ = init_decorator(cls.__init__)
+
+    def __post_init__(self):
+        """Called automatically after the __init__ method of the subclasses.
+
+        The module first calls the __init__ method of the subclass, With in the
+        __init__ you should call the super().__init__ method. Then after the __init__
+        method of the subclass is called, the __post_init__ method is called.
+
+        This is a good place to do any initialization that requires access to the
+        subclass's attributes.
+        """
         self._input_spec = self.get_input_spec()
         self._output_spec = self.get_output_spec()
 
@@ -302,12 +323,10 @@ class ActorCriticEncoder(Encoder):
         if self.config.shared:
             state_in_spec = self.encoder.input_spec[STATE_IN]
         else:
-            state_in_spec = NestedDict(
-                {
-                    ACTOR: self.actor_encoder.input_spec[STATE_IN],
-                    CRITIC: self.critic_encoder.input_spec[STATE_IN],
-                }
-            )
+            state_in_spec = {
+                ACTOR: self.actor_encoder.input_spec[STATE_IN],
+                CRITIC: self.critic_encoder.input_spec[STATE_IN],
+            }
 
         return SpecDict(
             {
@@ -322,12 +341,10 @@ class ActorCriticEncoder(Encoder):
         if self.config.shared:
             state_out_spec = self.encoder.output_spec[STATE_OUT]
         else:
-            state_out_spec = NestedDict(
-                {
-                    ACTOR: self.actor_encoder.output_spec[STATE_OUT],
-                    CRITIC: self.critic_encoder.output_spec[STATE_OUT],
-                }
-            )
+            state_out_spec = {
+                ACTOR: self.actor_encoder.output_spec[STATE_OUT],
+                CRITIC: self.critic_encoder.output_spec[STATE_OUT],
+            }
 
         return SpecDict(
             {
