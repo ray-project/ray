@@ -68,6 +68,7 @@ MOCK_MODULES = [
     "datasets.load",
     "gym",
     "gym.spaces",
+    "gymnasium",
     "horovod",
     "horovod.runner",
     "horovod.runner.common",
