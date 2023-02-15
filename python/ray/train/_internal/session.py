@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
+from pathlib import Path
 from typing import Callable, Dict, Optional, Type, Union
 
 import ray
@@ -25,6 +26,7 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     TIMESTAMP,
     CHECKPOINT_METADATA_KEY,
+    LAZY_CHECKPOINT_MARKER_FILE,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
@@ -300,7 +302,7 @@ class _TrainSession:
             checkpoint
             and self.enable_lazy_checkpointing
             and checkpoint._local_path
-            and self.get_current_ip() == self.trial_info.driver_ip
+            and (Path(self.trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE).exists()
         ):
             metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
             checkpoint = str(checkpoint._local_path)
