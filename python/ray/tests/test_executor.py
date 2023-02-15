@@ -30,6 +30,15 @@ def test_remote_function_runs_on_local_instance_with_map():
             assert result == 10_000
 
 
+def test_map_zips_iterables():
+    def f(x, y):
+        return x * y
+
+    with RayExecutor() as ex:
+        futures_iter = ex.map(f, [100, 100, 100], [1, 2, 3])
+        assert list(futures_iter) == [100, 200, 300]
+
+
 def test_remote_function_map_using_max_workers():
     with RayExecutor(max_workers=3) as ex:
         time_start = time.monotonic()

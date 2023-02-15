@@ -39,7 +39,9 @@ class RayExecutor(Executor):
         max_workers:
             If max_workers=None, the work is distributed over the number of
             CPUs available in the cluster (num_cpus) , otherwise the number of
-            CPUs is limited to the value of max_workers.
+            CPUs is limited to the value of max_workers (this does not
+            necessarily limit the number of parallel tasks, which is determined
+            by how many CPUs each task uses).
 
         All additional keyword arguments are passed to ray.init()
         (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
@@ -68,19 +70,19 @@ class RayExecutor(Executor):
         self._shutdown_lock:
             This is set to True once self.shutdown() is called. Further task
             submissions are blocked.
-        self._futures:
+        self.futures:
             Futures are aggregated into this list as they are returned.
         self.__remote_fn:
             Wrapper around the remote function to be executed by Ray.
-        self.context:
+        self._context:
             Context containing settings and attributes returned after
             initialising the Ray client.
         """
 
         self._shutdown_ray: bool = shutdown_ray
         self._shutdown_lock: bool = False
-        self._futures: List[Future] = []
-        self.context: "Optional[BaseContext]" = None
+        self.futures: List[Future] = []
+        self._context: "Optional[BaseContext]" = None
 
         @ray.remote
         def remote_fn(fn: Callable[[], T]) -> T:
@@ -96,15 +98,16 @@ class RayExecutor(Executor):
                 )
             self.max_workers = max_workers
             kwargs["num_cpus"] = max_workers
-        self.context = ray.init(ignore_reinit_error=True, **kwargs)
+        self._context = ray.init(ignore_reinit_error=True, **kwargs)
 
     def submit(
         self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
     ) -> Future[T]:
         """Submits a callable to be executed with the given arguments.
 
-        Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
-        a Future instance representing the execution of the callable.
+        Schedules the callable to be executed as `fn(*args, **kwargs)` and
+        returns a Future instance representing the execution of the callable.
+        Futures are also collected in self.futures.
 
         Returns:
             A Future representing the given call.
@@ -127,7 +130,7 @@ class RayExecutor(Executor):
             .remote(fn_curried)  # type: ignore
             .future()
         )
-        self._futures.append(future)
+        self.futures.append(future)
         del fn_curried
         return future
 
@@ -151,7 +154,10 @@ class RayExecutor(Executor):
         *iterables: Iterable[Any],
         timeout: Optional[float] = None,
     ) -> Iterator[T]:
-        """Returns an iterator equivalent to `map(fn, iter)`.
+        """
+        Map a function over a series of iterables. Multiple series of iterables
+        will be zipped together, and each zipped tuple will be treated as a
+        single set of arguments.
 
         Args:
             fn: A callable that will take as many arguments as there are
@@ -168,13 +174,24 @@ class RayExecutor(Executor):
                 before the given timeout.
             Exception: If `fn(*args)` raises for any values.
 
-        Usage example:
+        Usage example 1:
 
         .. code-block:: python
 
             with RayExecutor() as ex:
                 futures = ex.map(lambda x: x * x, [100, 100, 100])
-                results = [future.result() for future in futures()]
+                results = [future.result() for future in futures]
+
+        Usage example 2:
+
+        .. code-block:: python
+
+            def f(x, y):
+                return x * y
+
+            with RayExecutor() as ex:
+                futures_iter = ex.map(f, [100, 100, 100], [1, 2, 3])
+                assert [i for i in futures_iter] == [100, 200, 300]
 
         """
         self._check_shutdown_lock()
@@ -222,17 +239,17 @@ class RayExecutor(Executor):
             self._shutdown_lock = True
 
             if cancel_futures:
-                for future in self._futures:
+                for future in self.futures:
                     _ = future.cancel()
 
             if wait:
-                for future in self._futures:
+                for future in self.futures:
                     if future.running():
                         _ = future.result()
 
             ray.shutdown()
-        del self._futures
-        self._futures = []
+        del self.futures
+        self.futures = []
 
     def _check_shutdown_lock(self) -> None:
         if self._shutdown_lock:
