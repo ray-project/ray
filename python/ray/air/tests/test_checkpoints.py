@@ -759,6 +759,13 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
 
+            # Also check that loading from dir works
+            new_checkpoint_dir = os.path.join(tmpdir, "new_checkpoint")
+            checkpoint.to_directory(new_checkpoint_dir)
+            checkpoint = Checkpoint.from_directory(new_checkpoint_dir)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
     def testDirCheckpointSetPreprocessorAsDict(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             preprocessor = DummyPreprocessor(1)
