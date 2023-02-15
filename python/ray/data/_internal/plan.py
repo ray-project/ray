@@ -168,10 +168,6 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
-
-        import pdb
-
-        pdb.set_trace()
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
