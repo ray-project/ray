@@ -195,52 +195,11 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         }
 
 
-class TorchIdentityEncoder(TorchModel, Encoder):
-    """An encoder that does nothing but passing on inputs.
-
-    We use this so that we avoid having many if/else statements in the RLModule.
-    """
-
-    def __init__(self, config: ModelConfig) -> None:
-        TorchModel.__init__(self, config)
-        Encoder.__init__(self, config)
-
-    @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
-        return SpecDict(
-            # Use the output dim as input dim because identity.
-            {
-                SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.output_dim),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
-            }
-        )
-
-    @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim),
-                STATE_OUT: None,
-            }
-        )
-
-    @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
-        )
-
-
 class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
     """An actor-critic encoder for torch."""
 
     framework = "torch"
 
     def __init__(self, config: ModelConfig) -> None:
-        # ActorCriticEncoder.__init__() has to go before TorchModel.__init__()
-        # because it adds sub-modules to this nn.Module. We there must skip the
-        # nn.Module.__init__() call in TorchModel.__init__().
-        nn.Module.__init__(self)
-        ActorCriticEncoder.__init__(self, config)
         TorchModel.__init__(self, config, skip_nn_module_init=True)
+        ActorCriticEncoder.__init__(self, config)

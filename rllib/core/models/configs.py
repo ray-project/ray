@@ -50,7 +50,7 @@ def _convert_to_lower_case_if_tf(string: str, framework: str) -> str:
     """Converts a string to lower case if the framework is torch.
 
     TensorFlow has lower-case names for activation functions, while PyTorch has
-    upper-case names.
+    camel-case names.
 
     Args:
         string: The string to convert.
@@ -223,29 +223,6 @@ class LSTMEncoderConfig(ModelConfig):
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 
             return TorchLSTMEncoder(self)
-
-
-@ExperimentalAPI
-@dataclass
-class IdentityEncoderConfig(ModelConfig):
-    """Configuration for an IdentityEncoder.
-
-    This creates a dummy encoder that does not transform the input but can be used as a
-    pass-through to heads. This can be useful if you want completely distinct heads
-    with no common structure before.
-    See ModelConfig for usage details.
-    """
-
-    @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
-        if framework == "torch":
-            from ray.rllib.core.models.torch.encoder import TorchIdentityEncoder
-
-            return TorchIdentityEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import TfIdentityEncoder
-
-            return TfIdentityEncoder(self)
 
 
 @ExperimentalAPI
