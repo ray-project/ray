@@ -10,8 +10,6 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.data.dataset import Dataset
-    from ray.data.dataset_pipeline import DatasetPipeline
     from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
@@ -53,27 +51,6 @@ class DatasetIterator(abc.ABC):
         local `DatasetIterator` from a :class:`~ray.data.Dataset`, a
         :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
     """
-
-    def _iter_batches(self, *batch_block_ref_args, **batch_block_ref_kwargs):
-        """Same as `iter_batches`, except supports the full set of arguments as `batch_block_refs`."""
-
-        dataset = self._
-        block_iterator, stats, executor = self._plan.execute_to_iterator()
-        self._current_executor = executor
-        time_start = time.perf_counter()
-
-        yield from batch_block_refs(
-            block_iterator,
-            stats=stats,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            drop_last=drop_last,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
-        )
-
-        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     @abc.abstractmethod
     def iter_batches(
@@ -271,12 +248,6 @@ class DatasetIterator(abc.ABC):
     @abc.abstractmethod
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        raise NotImplementedError
-
-    @property
-    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
-        """The :class:`~ray.data.dataset.Dataset` or
-        :class:`~ray.data.dataset.DatasetPipeline` that this object iterates over."""
         raise NotImplementedError
 
     def iter_epochs(self, max_epoch: int = -1) -> None:

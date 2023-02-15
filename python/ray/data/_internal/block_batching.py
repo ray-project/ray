@@ -3,7 +3,7 @@ import itertools
 import queue
 import sys
 import threading
-from typing import Callable, Iterator, Optional, TypeVar, Union
+from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -39,7 +39,7 @@ def batch_block_refs(
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
-    collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
+    collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
