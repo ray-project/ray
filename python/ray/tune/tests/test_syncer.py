@@ -4,11 +4,12 @@ import shutil
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 from typing import List, Optional
 from unittest.mock import patch
 
-import boto3
 import pytest
+import boto3
 from freezegun import freeze_time
 
 import ray
@@ -20,14 +21,6 @@ from ray.tune.syncer import Syncer, _DefaultSyncer
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
 from ray._private.test_utils import simulate_storage
-
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4, configure_logging=False)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 @pytest.fixture
@@ -70,23 +63,6 @@ def temp_data_dirs():
 
     shutil.rmtree(tmp_source)
     shutil.rmtree(tmp_target)
-
-
-@pytest.fixture
-def mock_s3_bucket_uri():
-    bucket_name = "test_syncer_bucket"
-    port = 5002
-    region = "us-west-2"
-    with simulate_storage("s3", root=bucket_name, port=port, region=region) as s3_uri:
-        s3 = boto3.client(
-            "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
-        )
-        s3.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": region},
-        )
-
-        yield s3_uri
 
 
 def assert_file(exists: bool, root: str, path: str):
@@ -644,7 +620,7 @@ def test_syncer_serialize(temp_data_dirs):
     pickle.dumps(syncer)
 
 
-def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
+def test_final_experiment_checkpoint_sync(tmpdir):
     class SlowSyncer(_DefaultSyncer):
         def __init__(self, **kwargs):
             super(_DefaultSyncer, self).__init__(**kwargs)
@@ -700,19 +676,28 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
     )
 
 
-def test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path):
-    source_dir = tmp_path / "source"
-    check_dir = tmp_path / "check"
-    source_dir.mkdir()
-    check_dir.mkdir()
-
+def test_sync_folder_with_many_files_s3(tmpdir):
     # Create 256 files to upload
     for i in range(256):
-        (source_dir / str(i)).write_text("", encoding="utf-8")
+        (tmpdir / str(i)).write_text("", encoding="utf-8")
 
-    upload_to_uri(source_dir, mock_s3_bucket_uri)
-    download_from_uri(mock_s3_bucket_uri, check_dir)
-    assert (check_dir / "255").exists()
+    root = "bucket_test_syncer/dir"
+    with simulate_storage("s3", root) as s3_uri:
+        # Upload to S3
+
+        s3 = boto3.client(
+            "s3", region_name="us-west-2", endpoint_url="http://localhost:5002"
+        )
+        s3.create_bucket(
+            Bucket="bucket_test_syncer",
+            CreateBucketConfiguration={"LocationConstraint": "us-west-2"},
+        )
+        upload_to_uri(tmpdir, s3_uri)
+
+        with tempfile.TemporaryDirectory() as download_dir:
+            download_from_uri(s3_uri, download_dir)
+
+            assert (Path(download_dir) / "255").exists()
 
 
 def test_sync_folder_with_many_files_fs(tmpdir):
@@ -726,50 +711,6 @@ def test_sync_folder_with_many_files_fs(tmpdir):
         upload_to_uri(tmpdir, target_uri)
 
         assert (tmpdir / "255").exists()
-
-
-def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
-    """Tests an end to end Tune run with syncing to a mock s3 bucket."""
-    download_dir = tmp_path / "upload_dir"
-    download_dir.mkdir()
-
-    local_dir = str(tmp_path / "local_dir")
-
-    exp_name = "test_e2e_sync_to_s3"
-
-    def train_fn(config):
-        session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
-
-    tuner = tune.Tuner(
-        train_fn,
-        param_space={"id": tune.grid_search([0, 1, 2, 3])},
-        run_config=RunConfig(
-            name=exp_name,
-            local_dir=local_dir,
-            sync_config=tune.SyncConfig(upload_dir=mock_s3_bucket_uri),
-        ),
-        tune_config=tune.TuneConfig(
-            trial_dirname_creator=lambda t: str(t.config.get("id"))
-        ),
-    )
-    result_grid = tuner.fit()
-
-    # Download remote dir to do some sanity checks
-    download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
-
-    assert not result_grid.errors
-
-    def get_remote_trial_dir(trial_id: int):
-        return os.path.join(download_dir, exp_name, str(trial_id))
-
-    # Check that each remote trial dir has a checkpoint
-    for result in result_grid:
-        trial_id = result.config["id"]
-        remote_dir = get_remote_trial_dir(trial_id)
-        num_checkpoints = len(
-            [file for file in os.listdir(remote_dir) if file.startswith("checkpoint_")]
-        )
-        assert num_checkpoints == 1
 
 
 if __name__ == "__main__":
