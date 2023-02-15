@@ -79,7 +79,7 @@ RUN sudo groupadd crate \
         && sudo chgrp -R crate /crate \
         && export CRATE_URL=https://cdn.crate.io/downloads/releases/cratedb/${PLATFORM}/crate-5.2.1.tar.gz \
         && curl -fSL -O ${CRATE_URL} \
-        && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/fb90674b15c6d7fac738a112458a18d72c4b5a77/config/crate.yml" \
+        && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/crate.yml" \
         && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/log4j2.properties" \
         && sudo tar -xf crate-5.2.1.tar.gz -C /crate --strip-components=1 \
         && sudo chown 1000 crate.yml \

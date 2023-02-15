@@ -153,8 +153,8 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
-                    -Cnode.master=true \
                     -Cnode.name=nexus \
+                    -Cnode.master=true \
                     -Cnode.data=false \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
@@ -162,7 +162,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cgateway.expected_data_nodes=5 \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
-                    -Cdiscovery.seed_hosts=$clusterhosts &
+                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 &
 
     #but if there are servers in the cluster but nexus lacks state data we'll recover
                        # -Cnode.master=true \
@@ -172,8 +172,8 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
-                    -Cnode.master=true \
                     -Cnode.name=nexus \
+                    -Cnode.master=true \
                     -Cnode.data=false \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
@@ -229,7 +229,7 @@ term_handler(){
 #    fi
 #    export clusterhosts=$clusterhosts
     /usr/local/bin/crash --hosts ${clusterhosts} -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
-    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'all';"
+    /usr/local/bin/crash --hosts ${clusterhosts} -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'all';"
 
 
 
