@@ -25,7 +25,7 @@ Trainer Base Classes
     ~data_parallel_trainer.DataParallelTrainer
     ~gbdt_trainer.GBDTTrainer
 
-``BaseTrainer`` Methods
+``BaseTrainer`` API
 ************************
 
 .. autosummary::
@@ -36,6 +36,22 @@ Trainer Base Classes
     ~trainer.BaseTrainer.preprocess_datasets
     ~trainer.BaseTrainer.training_loop
     ~trainer.BaseTrainer.as_trainable
+
+
+Trainer Restoration
+*******************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~trainer.BaseTrainer.restore
+
+.. note::
+
+    All trainer classes have a `restore` method which exposes the construtor arguments
+    that can be re-specified. `restore` always takes in a path pointing to the
+    directory of the experiment to be restored. See :ref:`train-framework-specific-restore`
+    for details on `restore` arguments for different AIR trainer integrations.
 
 
 Train Backend Base Classes
@@ -71,6 +87,26 @@ Ray Train Built-in Trainers
     ~sklearn.SklearnTrainer
     ~mosaic.MosaicTrainer
     ~rl.RLTrainer
+
+
+.. _train-framework-specific-restore:
+
+Restoration API for Built-in Trainers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    data_parallel_trainer.DataParallelTrainer.restore
+    gbdt_trainer.GBDTTrainer.restore
+    huggingface.HuggingFaceTrainer.restore
+
+.. note::
+
+    `TorchTrainer`, `TensorflowTrainer`, and `HorovodTrainer` fall under `DataParallelTrainer`.
+
+    `XGBoostTrainer` and `LightGBMTrainer` fall under `GBDTTrainer`.
+
 
 .. _train-framework-specific-ckpts:
 
