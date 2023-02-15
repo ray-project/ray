@@ -73,7 +73,6 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
 
     ray_address = ray_start_4_cpus.address_info["address"]
 
-    # Start run 1
     run_1_env = {
         "RAY_ADDRESS": ray_address,
         "WORKAROUND": str(int(use_workaround)),
@@ -92,7 +91,6 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
         "HANG_END_MARKER": "",
     }
 
-    # Start run 2
     run_2_env = {
         "RAY_ADDRESS": ray_address,
         "WORKAROUND": str(int(use_workaround)),
