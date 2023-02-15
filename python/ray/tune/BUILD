@@ -169,6 +169,14 @@ py_test(
 )
 
 py_test(
+    name = "test_multi_tenancy",
+    size = "medium",
+    srcs = ["tests/test_multi_tenancy.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml"],
+)
+
+py_test(
     name = "test_multinode_sync",
     size = "large",
     srcs = ["tests/test_multinode_sync.py"],
