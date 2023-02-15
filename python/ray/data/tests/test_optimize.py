@@ -374,6 +374,19 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     assert "MapBatches(<lambda>)->write" in stats, stats
 
 
+def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).randomize_block_order().map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+
+    # The randomize_block_order will switch order with the following map_batches,
+    # but not the tailing write operator.
+    assert "read->MapBatches(<lambda>)" in stats, stats
+    assert "randomize_block_order" in stats, stats
+    assert "write" in stats, stats
+
+
 def test_optimize_fuse(ray_start_regular_shared):
     context = DatasetContext.get_current()
 
