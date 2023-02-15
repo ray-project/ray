@@ -7,11 +7,11 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
+import urllib.parse
 
 import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
-from ray.air._internal.uri_utils import URI
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
@@ -359,9 +359,14 @@ class TunerInternal:
             self._run_config.name = experiment_path.name
         else:
             # Set the experiment `name` and `upload_dir` according to the URI
-            uri = URI(path_or_uri)
-            self._run_config.name = uri.name
-            self._run_config.sync_config.upload_dir = str(uri.parent)
+            parsed_uri = urllib.parse.urlparse(path_or_uri)
+            remote_path = Path(os.path.normpath(parsed_uri.netloc + parsed_uri.path))
+            upload_dir = parsed_uri._replace(
+                netloc="", path=str(remote_path.parent)
+            ).geturl()
+
+            self._run_config.name = remote_path.name
+            self._run_config.sync_config.upload_dir = upload_dir
 
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
