@@ -43,19 +43,19 @@ message ResourceRequest {
     // task). It may make sense for the autoscaler to not provision enough
     // resources to satisfy these since they could run sequentially on the same
     // node.
-    SHORT_RESERVATION = 0;
-    // A request which will hold resources for a longer period of time (like a
-    // placement group). The autoscaler should provision enough resources for
-    // all of these to run concurrently if possible.
-    LONG_RESERVATION = 1;
-    // The bundles in this reservation cannot belong on the same node. The
-    // autoscaler may need to launch multiple nodes to satisfy these bundles
-    // even if the nodes aren't completely utilized.
-    STRICT_SPREAD_RESERVATION = 2;
+    TASK_RESERVATION = 0;
+    // A strict spread placement group reservation.
+    STRICT_SPREAD_RESERVATION = 1;
+    // A soft spread placement group reservation.
+    SPREAD_RESERVATION = 2;
+    // A soft pack placement group reservation.
+    PACK_RESERVATION = 3;
+    // A strict pack reservation.
+    STRICT_PACK_RESERVATION = 4;
     // A request to provision resources, even though this request won't use
     // them. This is useful for API's like
     // `autoscaler.sdk.request_resources()`.
-    MIN_RESOURCES = 3;
+    MIN_RESOURCES = 5;
   }
 
   // The request type. See enum values for more details.
@@ -66,14 +66,9 @@ message ResourceRequest {
   // ResourceRequests of count=1 were returned.
   int32 count = 2;
 
-  // Additional information which about the request type which is not relevant
-  // for scheduling, but may still be interesting for observability. For
-  // example, details about the underlying Ray scheduling strategy.
-  string description = 3;
-
   // The bundles in this request. By default, there are no placement
   // constraints on these bundles.
-  repeated ResourceBundle bundles = 4;
+  repeated ResourceBundle bundles = 3;
 }
 
 message NodeStatus {

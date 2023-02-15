@@ -93,9 +93,8 @@ void GcsMonitorServer::PopulateResourceDemands(
         task_load_by_shape[resource_demand.shape()] = request;
         request->set_resource_request_type(
             rpc::ResourceRequest_ResourceRequestType::
-                ResourceRequest_ResourceRequestType_SHORT_RESERVATION);
+                ResourceRequest_ResourceRequestType_TASK_RESERVATION);
         request->set_count(0);
-        request->set_description("tasks/actors");
         request->add_bundles()->mutable_resources()->insert(
             resource_demand.shape().begin(), resource_demand.shape().end());
       } else {

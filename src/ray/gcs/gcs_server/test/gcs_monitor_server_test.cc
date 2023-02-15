@@ -203,7 +203,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
       RAY_LOG(ERROR) << request.DebugString();
       ASSERT_EQ(request.resource_request_type(),
                 rpc::ResourceRequest_ResourceRequestType::
-                    ResourceRequest_ResourceRequestType_SHORT_RESERVATION);
+                    ResourceRequest_ResourceRequestType_TASK_RESERVATION);
       ASSERT_EQ(request.bundles().size(), 1);
       const auto &resources = request.bundles()[0].resources();
       if (resources.size() == 1 && resources.begin()->first == "CPU") {
