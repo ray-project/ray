@@ -1,8 +1,8 @@
+import pytest
 import subprocess
 import sys
-from pathlib import Path
 
-import pytest
+from pathlib import Path
 
 import ray
 
@@ -128,3 +128,9 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
         assert run_1.wait() == 0
     else:
         assert run_1.wait() != 0
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
