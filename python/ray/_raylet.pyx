@@ -463,7 +463,7 @@ cdef prepare_args_internal(
                     (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function
 
         else:
-            if arg == DUMMY_TYPE:
+            if type(arg) is bytes and arg == DUMMY_TYPE:
                 global dummy_type_serialized_arg
                 if dummy_type_serialized_arg is None:
                     # Cache the serialized dummy arg.
