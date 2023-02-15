@@ -104,38 +104,36 @@ To configure the computation resources for your `BatchPredictor`, you have to se
 
 Here are some examples:
 
-**1. Use CPUs for Batch prediction:**
+**1. Use multiple CPUs for Batch Prediction:**
 
-- Scale from 1 to 4 workers, depending on the dataset size.
+- If `num_gpus_per_worker` not specified, use CPUs for batch prediction by default.
 
-- Each worker has 3 CPUs for inference.
-
-.. literalinclude:: doc_code/predictors.py
-    :language: python
-    :start-after: __configure_batch_predictor_1_start__
-    :end-before: __configure_batch_predictor_1_end__
-
-**2. Use GPUs for Batch prediction:**
-
-- Scale from 1 to inf workers if no min/max values are provided.
-
-- Each with 1 GPU and 1 CPU (by default).
+- Two workers with 3 CPUs each.
 
 .. literalinclude:: doc_code/predictors.py
     :language: python
-    :start-after: __configure_batch_predictor_2_start__
-    :end-before: __configure_batch_predictor_2_end__
+    :start-after: __configure_batch_predictor_cpu_only_start__
+    :end-before: __configure_batch_predictor_cpu_only_end__
 
-**3. Use a fixed number of workers:**
+**2. Use multiple GPUs for Batch prediction:**
 
-- Use exactly 2 workers by setting `max_scoring_workers` and `max_scoring_workers` the same.
-
-- Also use GPUs for inference.
+- Two workers, each with 1 GPU and 1 CPU (by default).
 
 .. literalinclude:: doc_code/predictors.py
     :language: python
-    :start-after: __configure_batch_predictor_3_start__
-    :end-before: __configure_batch_predictor_3_end__
+    :start-after: __configure_batch_predictor_gpu_only_start__
+    :end-before: __configure_batch_predictor_gpu_only_end__
+
+**3. Configure Auto-scaling:**
+
+- Scale from 1 to 4 workers, depending on your dataset size and cluster resources.
+
+- If no min/max values are provided, `BatchPredictor` will scale from 1 to inf workers by default.
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_scaling_start__
+    :end-before: __configure_batch_predictor_scaling_end__
 
 
 

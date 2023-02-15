@@ -77,35 +77,37 @@ print("Final accuracy: ", correct.mean(on="correct"))
 # __compute_accuracy_end__
 
 
-# __configure_batch_predictor_1_start__
-predictions = batch_predictor.predict(
-    ds,
-    feature_columns=["feature_1"],
-    min_scoring_workers=1,
-    max_scoring_workers=4,
-    num_cpus_per_worker=3,
-)
-# __configure_batch_predictor_1_end__
-
-# __configure_batch_predictor_2_start__
-
-predictions = batch_predictor.predict(
-    ds,
-    feature_columns=["feature_1"],
-    num_gpus_per_worker=1,
-)
-# __configure_batch_predictor_2_end__
-
-# __configure_batch_predictor_3_start__
+# __configure_batch_predictor_cpu_only_start__
 predictions = batch_predictor.predict(
     ds,
     feature_columns=["feature_1"],
     min_scoring_workers=2,
     max_scoring_workers=2,
     num_cpus_per_worker=3,
+)
+# __configure_batch_predictor_cpu_only_end__
+
+# __configure_batch_predictor_gpu_only_start__
+
+predictions = batch_predictor.predict(
+    ds,
+    feature_columns=["feature_1"],
+    min_scoring_workers=2,
+    max_scoring_workers=2,
     num_gpus_per_worker=1,
 )
-# __configure_batch_predictor_3_end__
+# __configure_batch_predictor_gpu_only_end__
+
+# __configure_batch_predictor_scaling_start__
+predictions = batch_predictor.predict(
+    ds,
+    feature_columns=["feature_1"],
+    min_scoring_workers=1,
+    max_scoring_workers=4,
+    num_cpus_per_worker=3,
+    num_gpus_per_worker=1,
+)
+# __configure_batch_predictor_scaling_end__
 
 # __pipelined_prediction_start__
 import pandas as pd
