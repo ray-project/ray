@@ -791,8 +791,8 @@ The reasons for this are:
    One job could run all its trials at the same time, while the other job waits
    for a long time until it gets resources to run the first trial.
 2. If it is easy to start a new Ray cluster on your infrastructure, there is often
-   no benefit from a cost perspective of running one big cluster versus multiple smaller
-   clusters. For instance, running one cluster of 32 instances incurs virtually the same
+   no cost benefit to running one large cluster instead of multiple smaller
+   clusters. For instance, running one cluster of 32 instances incurs almost the same
    cost as running 4 clusters with 8 instances each.
 3. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
    trials from job B on the same node are impacted. In practice, it's hard
