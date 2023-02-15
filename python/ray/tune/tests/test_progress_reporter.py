@@ -22,7 +22,7 @@ from ray.tune.progress_reporter import (
     _max_len,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
