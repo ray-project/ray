@@ -126,8 +126,8 @@ class RayExecutor(Executor):
         fn_curried = partial(fn, *args, **kwargs)
 
         future = (
-            self.__remote_fn.options(name=fn.__name__)
-            .remote(fn_curried)  # type: ignore
+            self.__remote_fn.options(name=fn.__name__)  # type: ignore
+            .remote(fn_curried)
             .future()
         )
         self.futures.append(future)
@@ -153,6 +153,7 @@ class RayExecutor(Executor):
         fn: Callable[..., T],
         *iterables: Iterable[Any],
         timeout: Optional[float] = None,
+        chunksize: int = 1,
     ) -> Iterator[T]:
         """
         Map a function over a series of iterables. Multiple series of iterables
@@ -164,6 +165,8 @@ class RayExecutor(Executor):
                 passed iterables.
             timeout: The maximum number of seconds to wait. If None, then there
                 is no limit on the wait time.
+            chunksize: chunksize has no effect and is included merely to retain
+                the same type as super().map()
 
         Returns:
             An iterator equivalent to: `map(func, *iterables)` but the calls may
