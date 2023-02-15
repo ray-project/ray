@@ -222,6 +222,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Test only functions.
   std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
       LOCKS_EXCLUDED(mutex_) {
+    GatherThreadBuffer();
     absl::MutexLock lock(&mutex_);
     std::vector<std::reference_wrapper<const TaskEvent>> copy;
     for (const auto &e : buffer_) {
@@ -248,8 +249,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
+  void GatherThreadBuffer();
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
+  /// Mutex guarding task_events_data_.
+  absl::Mutex buf_map_mutex_;
 
   /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
@@ -271,6 +276,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Circular buffered task events.
   boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ GUARDED_BY(mutex_);
+
+  /// Per thread buffer.
+  absl::flat_hash_map<std::thread::id,
+                      std::shared_ptr<std::vector<std::unique_ptr<TaskEvent>>>>
+      all_thd_buffer_ GUARDED_BY(buf_map_mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;

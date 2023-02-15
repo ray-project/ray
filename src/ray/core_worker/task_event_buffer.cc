@@ -150,6 +150,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
                                        report_interval_ms,
                                        "CoreWorker.deadline_timer.flush_task_events");
+  // periodical_runner_.RunFnPeriodically([this] { GatherThreadBuffer(); },
+  //                                      report_interval_ms / 10,
+  //                                      "CoreWorker.deadline_timer.gather_buffer");
   return Status::OK();
 }
 
@@ -181,23 +184,68 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
   if (!enabled_) {
     return;
   }
-  absl::MutexLock lock(&mutex_);
+  {
+    buf_map_mutex_.ReaderLock();
+    if (!all_thd_buffer_.count(std::this_thread::get_id())) {
+      buf_map_mutex_.ReaderUnlock();
+      {
+        buf_map_mutex_.WriterLock();
+        auto inserted = all_thd_buffer_.insert(
+            {std::this_thread::get_id(),
+             std::make_shared<std::vector<std::unique_ptr<TaskEvent>>>()});
+        RAY_CHECK(inserted.second);
+        buf_map_mutex_.WriterUnlock();
+      }
+      buf_map_mutex_.ReaderLock();
+    }
 
-  if (buffer_.full()) {
-    const auto &to_evict = buffer_.front();
-    if (to_evict->IsProfileEvent()) {
-      num_profile_task_events_dropped_++;
-    } else {
-      num_status_task_events_dropped_++;
+    buf_map_mutex_.AssertReaderHeld();
+
+    auto buf_itr = all_thd_buffer_.find(std::this_thread::get_id());
+
+    RAY_CHECK(buf_itr != all_thd_buffer_.end());
+    buf_itr->second->push_back(std::move(task_event));
+    buf_map_mutex_.ReaderUnlock();
+  }
+}
+
+void TaskEventBufferImpl::GatherThreadBuffer() {
+  std::vector<std::shared_ptr<std::vector<std::unique_ptr<TaskEvent>>>> all_bufs;
+  {
+    absl::WriterMutexLock lock(&buf_map_mutex_);
+    for (auto &[thd, thd_buf] : all_thd_buffer_) {
+      auto to_swap = std::make_shared<std::vector<std::unique_ptr<TaskEvent>>>();
+      all_bufs.push_back(thd_buf);
+      thd_buf = to_swap;
     }
   }
-  buffer_.push_back(std::move(task_event));
+
+  // Add them to the circular buffers.
+  {
+    absl::MutexLock lock(&mutex_);
+    for (auto &buf : all_bufs) {
+      for (auto &event : *buf) {
+        if (buffer_.full()) {
+          const auto &to_evict = buffer_.front();
+          if (to_evict->IsProfileEvent()) {
+            num_profile_task_events_dropped_++;
+          } else {
+            num_status_task_events_dropped_++;
+          }
+        }
+        buffer_.push_back(std::move(event));
+      }
+    }
+  }
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (!enabled_) {
     return;
   }
+
+  GatherThreadBuffer();
+
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
   std::vector<std::unique_ptr<TaskEvent>> to_send;
