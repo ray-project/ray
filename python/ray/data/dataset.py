@@ -2971,7 +2971,7 @@ class Dataset(Generic[T]):
         if collate_fn is None:
 
             def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-                convert_ndarray_batch_to_torch_tensor_batch(
+                return convert_ndarray_batch_to_torch_tensor_batch(
                     batch, dtypes=dtypes, device=device
                 )
 
