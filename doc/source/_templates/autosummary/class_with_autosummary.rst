@@ -15,6 +15,7 @@
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
+   :show-inheritance:
 
    {% block methods %}
    {% if methods %}
@@ -24,7 +25,7 @@
       :toctree:
 
    {% for item in methods %}
-      {{ item | filter_out_undoc_members(name, module) }}
+      {{ item | filter_out_undoc_class_members(name, module) }}
    {%- endfor %}
 
    {% endif %}
