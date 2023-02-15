@@ -12,7 +12,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Tuple,
     Union,
 )
 import warnings
@@ -33,7 +32,7 @@ from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.util import _is_tensor_schema
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U, TensorflowFeatureTypeSpec
+from ray.data.dataset import Dataset, T, U
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
@@ -1106,28 +1105,26 @@ class DatasetPipeline(Generic[T]):
 
     def to_tf(
         self,
+        feature_columns: Union[str, List[str]],
+        label_columns: Union[str, List[str]],
         *,
-        output_signature: Union[
-            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
-        ],
-        label_column: Optional[str] = None,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], Dict[str, List[str]]]
-        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
         output batches from the pipeline"""
         return Dataset.to_tf(
             self,
-            output_signature=output_signature,
-            label_column=label_column,
             feature_columns=feature_columns,
+            label_columns=label_columns,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
         )
 
     def to_torch(
