@@ -735,7 +735,7 @@ def test_sync_folder_with_many_files_fs(tmpdir):
 def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
     """Tests an end to end Tune run with syncing to a mock s3 bucket.
     This test includes the restoration path as well to make sure that
-    ."""
+    files are synced down correctly."""
     download_dir = tmp_path / "upload_dir"
     download_dir.mkdir()
 
