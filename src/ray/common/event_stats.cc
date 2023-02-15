@@ -234,3 +234,33 @@ std::string EventTracker::StatsString() const {
   stats_stream << event_stats_stream.rdbuf();
   return stats_stream.str();
 }
+
+static EventTracker global_event_tracker_ = EventTracker();
+
+std::shared_ptr<StatsHandle> RecordStartExec(const std::string &name) {
+  auto stats = global_event_tracker_.GetOrCreate(name);
+  {
+    absl::MutexLock lock(&(stats->mutex));
+    stats->stats.cum_count++;
+    ++stats->stats.curr_count;
+  }
+
+  return std::make_shared<StatsHandle>(
+      name, absl::GetCurrentTimeNanos(), std::move(stats), nullptr);
+}
+
+void RecordEndExec(std::shared_ptr<StatsHandle> handle) {
+  int64_t curr_count;
+  auto execution_time_ns = absl::GetCurrentTimeNanos() - handle->start_time;
+  {
+    auto &stats = handle->handler_stats;
+    absl::MutexLock lock(&(stats->mutex));
+    // Event-specific execution stats.
+    stats->stats.cum_execution_time += execution_time_ns;
+    // Event-specific current count.
+    curr_count = --stats->stats.curr_count;
+  }
+  ray::stats::STATS_operation_run_time_ns.Record(execution_time_ns, handle->event_name);
+  ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
+  handle->execution_recorded = true;
+}
