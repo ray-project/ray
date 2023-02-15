@@ -136,6 +136,7 @@ def _set_torch_distributed_env_vars():
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Makes sure Hugging Face Accelerate uses the correct device
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(get_device())

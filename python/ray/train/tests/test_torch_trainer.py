@@ -386,6 +386,8 @@ def test_torch_env_vars(ray_start_4_cpus):
         assert os.environ["RANK"] == str(session.get_world_rank())
         assert os.environ["LOCAL_WORLD_SIZE"] == str(session.get_local_world_size())
         assert os.environ["WORLD_SIZE"] == str(session.get_world_size())
+        assert os.environ["NODE_RANK"] == str(session.get_node_rank())
+
         assert os.environ["ACCELERATE_TORCH_DEVICE"] == str(train.torch.get_device())
 
     num_workers = 1
