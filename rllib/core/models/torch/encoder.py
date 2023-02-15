@@ -153,9 +153,5 @@ class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
     framework = "torch"
 
     def __init__(self, config: ModelConfig) -> None:
-        # ActorCriticEncoder.__init__() has to go before TorchModel.__init__()
-        # because it adds sub-modules to this nn.Module. We there must skip the
-        # nn.Module.__init__() call in TorchModel.__init__().
-        nn.Module.__init__(self)
-        ActorCriticEncoder.__init__(self, config)
         TorchModel.__init__(self, config, skip_nn_module_init=True)
+        ActorCriticEncoder.__init__(self, config)

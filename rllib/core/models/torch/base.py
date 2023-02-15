@@ -68,8 +68,7 @@ class TorchModel(nn.Module, Model, abc.ABC):
                 already to avoid deleting sub-modules that were added between the two
                 nn.Module.__init__ calls.
         """
-        if not skip_nn_module_init:
-            nn.Module.__init__(self)
+        nn.Module.__init__(self)
         Model.__init__(self, config)
 
         # Raise errors if forward method is not decorated to check specs.
