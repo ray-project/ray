@@ -54,7 +54,9 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
     The second error comes up when the second run finishes fully and its objects
     are garbage collected. In this case, the first run tries to find the trainable
     registered by run 2, but this will fail lookup because the objects have been
-    removed already. We test both scenarios using the ``exit_same`` parameter.
+    removed already. Note that these objects are the ones registered with
+    ``tune.with_parameters()`` (not the global registry store).
+    We test both scenarios using the ``exit_same`` parameter.
 
     NOTE: If we get around to resolving the registry issue (e.g. with unique keys)
     the test where we expect the assertion error can be removed! I.e. we can remove
