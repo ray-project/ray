@@ -11,7 +11,7 @@ from ray._private.test_utils import wait_for_condition
 @pytest.fixture
 def monitor_stub(ray_start_regular_shared):
     channel = grpc.insecure_channel(ray_start_regular_shared["gcs_address"])
-        
+
     return monitor_pb2_grpc.MonitorGcsServiceStub(channel)
 
 
@@ -56,7 +56,6 @@ def test_scheduling_status(monitor_stub):
     ray.wait([actor.ready.remote() for actor in cpu_actors])
     print("done")
 
-
     def condition():
         request = monitor_pb2.GetSchedulingStatusRequest()
         response = monitor_stub.GetSchedulingStatus(request)
@@ -65,7 +64,10 @@ def test_scheduling_status(monitor_stub):
 
         shapes = [{"CPU": 1}, {"GPU": 1}]
         for request in response.resource_requests:
-            if request.resource_request_type != monitor_pb2.ResourceRequest.TASK_RESERVATION:
+            if (
+                request.resource_request_type
+                != monitor_pb2.ResourceRequest.TASK_RESERVATION
+            ):
                 return False
             if request.count != 2:
                 return False
@@ -93,7 +95,7 @@ def test_drain_and_kill_node(monitor_stub_with_cluster):
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
-    wait_for_condition(lambda : count_live_nodes() == 2)
+    wait_for_condition(lambda: count_live_nodes() == 2)
 
     node_ids = {node["NodeID"] for node in ray.nodes()}
     worker_nodes = node_ids - {head_node}
@@ -107,15 +109,8 @@ def test_drain_and_kill_node(monitor_stub_with_cluster):
     response = monitor_stub.DrainAndKillNode(request)
 
     assert response.drained_nodes == request.node_ids
-    wait_for_condition(lambda : count_live_nodes() == 1)
+    wait_for_condition(lambda: count_live_nodes() == 1)
 
     response = monitor_stub.DrainAndKillNode(request)
     assert response.drained_nodes == request.node_ids
-    wait_for_condition(lambda : count_live_nodes() == 1)
-
-
-
-
-
-    
-    
+    wait_for_condition(lambda: count_live_nodes() == 1)
