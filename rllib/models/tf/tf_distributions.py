@@ -242,6 +242,15 @@ class TfDeterministic(Distribution):
         shape = sample_shape + self.loc.shape
         return tf.ones(shape, dtype=self.loc) * self.loc
 
+    def rsample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs,
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        raise NotImplementedError
+
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
         raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
