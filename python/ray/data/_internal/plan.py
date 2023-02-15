@@ -611,9 +611,12 @@ class ExecutionPlan:
         self._stages_before_snapshot = []
 
     def stats(self) -> DatasetStats:
-        """Return stats for this plan, forcing execution if needed."""
+        """Return stats for this plan.
+
+        If the plan isn't executed, an empty stats object will be returned.
+        """
         if not self._snapshot_stats:
-            self.execute()
+            return DatasetStats(stages={}, parent=None)
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
