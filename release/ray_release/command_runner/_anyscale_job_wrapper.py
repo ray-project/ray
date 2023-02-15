@@ -313,6 +313,8 @@ def main(
     run_aws_cp(str(output_json_file), output_s3_uri)
 
     logger.info("### Finished ###")
+    # This will be read by the AnyscaleJobRunner on the buildkite runner
+    # if output.json cannot be obtained from S3
     logger.info(f"### JSON |{output_json}| ###")
 
     # Flush buffers
