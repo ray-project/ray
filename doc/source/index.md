@@ -14,7 +14,7 @@
 **Getting started**
 ^^^^^^^^^^^^^^^
 
-Learn how to install Ray, compute an example with the Ray Core API, and use the Ray's ML libraries.
+Learn how to install Ray, compute an example with the Ray Core API, and use Ray's ML libraries.
 
 +++
 
