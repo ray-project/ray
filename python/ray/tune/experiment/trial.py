@@ -14,6 +14,7 @@ import uuid
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
@@ -601,7 +602,7 @@ class Trial:
         return str(uuid.uuid4().hex)[:8]
 
     @property
-    def remote_checkpoint_dir(self):
+    def remote_checkpoint_dir(self) -> str:
         """This is the **per trial** remote checkpoint dir.
 
         This is different from **per experiment** remote checkpoint dir.
@@ -609,9 +610,8 @@ class Trial:
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
         if not self.sync_config.upload_dir or not self.experiment_dir_name:
             return None
-        return os.path.join(
-            self.sync_config.upload_dir, self.experiment_dir_name, self.relative_logdir
-        )
+        uri = URI(self.sync_config.upload_dir)
+        return str(uri / self.experiment_dir_name / self.relative_logdir)
 
     @property
     def uses_cloud_checkpointing(self):
