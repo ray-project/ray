@@ -5,6 +5,13 @@ This section covers a list of available monitoring and debugging tools and featu
 
 This documentation only covers the high-level description of available tools and features. For more details, see :ref:`Ray Observability <observability>`.
 
+Dashboard (Web UI)
+------------------
+Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
+through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
+
+See :ref:`Ray Dashboard <ray-dashboard>` for more details.
+
 Application Logging
 -------------------
 By default, all stdout and stderr of tasks and actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``).
@@ -78,13 +85,6 @@ The following command will list all the actors from the cluster.
     1  f36758a9f8871a9ca993b1d201000000  Actor                 96955  ALIVE
 
 See :ref:`Ray State API <state-api-overview-ref>` for more details.
-
-Dashboard (Web UI)
-------------------
-Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
-through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
-
-See :ref:`Ray Dashboard <ray-dashboard>` for more details.
 
 Debugger
 --------
