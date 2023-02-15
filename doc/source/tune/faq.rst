@@ -774,3 +774,61 @@ API should be used to get the path for saving trial-specific outputs.
     accessing paths relative to the original working directory. This environment
     variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
     used instead.
+
+
+.. _tune-multi-tenancy:
+
+How can I run multiple Ray Tune jobs on the same cluster at the same time (multi tenancy)?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, please acknowledge that running multiple Ray Tune runs on the same cluster at the same
+time is not officially supported. This means we do not test this workflow and we recommend
+using a separate cluster for every tuning job.
+
+The reasons for this are:
+
+1. When multiple Ray Tune jobs run at the same time, they compete for resources.
+   One job could run all its trials at the same time, while the other job waits
+   for a long time until it gets resources to even run one trial.
+2. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
+   trials from job B on the same node will suffer from it. In practice it's hard
+   to reason about these conditions from the logs if something goes wrong.
+3. Some internal implementations in Ray Tune actually assume that you only have one job
+   running at the same time. This can lead to conflicts.
+
+Especially the third point is a common problem when running concurrent tuning jobs. Symptoms
+are for instance that trials from job A use parameters specified in job B, leading to unexpected
+results.
+
+The technical reason for this is that Ray Tune uses a cluster-global key-value store to store trainables.
+If two tuning jobs use a trainable (or Ray AIR trainer) with the same name, the second job will overwrite
+this trainable. Trials from the first job that are started after the second job started will then use
+this overwritten trainable - leading to problems if captured variables are used (as is the case e.g. in
+most Ray AIR trainers).
+
+Workaround
+''''''''''
+
+We are working on resolving the issue of conflicting trainables in concurrent tuning jobs. Until this
+is resolved, the main workaround you can use is to give each trainable class a unique name.
+
+For Ray AIR trainers this could look like this:
+
+.. code-block:: python
+
+    import uuid
+    from ray.train.torch import TorchTrainer
+
+    TorchTrainer.__name__ = "TorchTrainer_" + uuid.uuid4().hex[:8]
+
+    trainer = TorchTrainer(
+        # ...
+    )
+
+Then the separate Ray Tune jobs will all have their own trainable which will not conflict with
+each other.
+
+The disadvantage of this approach is that resuming is a bit more complicated. If you want to resume
+a run, you will have to use the same unique trainable name again before calling ``Trainer.restore()``.
+This means you'll likely have to store the trainable name somewhere, as we're not updating this automatically
+(yet).
