@@ -30,6 +30,7 @@
    {% endif %}
    {% endblock %}
 
+
    {% block attributes %}
    {% if attributes %}
    .. rubric:: {{ _('Attributes') }}
@@ -38,7 +39,7 @@
       :toctree:
 
    {% for item in attributes %}
-      {{ name }}.{{ item }}
+      ~{{ name }}.{{ item }}
    {%- endfor %}
 
    {% endif %}
