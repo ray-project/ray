@@ -758,7 +758,7 @@ def test_run_graph_task_uses_zero_cpus():
 
     config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
     config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_app(config)
+    client.deploy_apps(config)
 
     with pytest.raises(RuntimeError):
         wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)

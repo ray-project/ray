@@ -168,7 +168,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 ),
             )
 
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         return Response()
 
