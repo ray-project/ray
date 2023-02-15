@@ -401,7 +401,7 @@ class Trial:
         # If Trainable returns resources, do not allow manual override via
         # `resources_per_trial` by the user.
         if default_resources and self._default_placement_group_factory:
-            raise ValueError(
+            raise TuneError(
                 "Resources for {} have been automatically set to {} "
                 "by its `default_resource_request()` method. Please "
                 "clear the `resources_per_trial` option.".format(
@@ -410,7 +410,9 @@ class Trial:
             )
 
         self.placement_group_factory = (
-            default_resources or resource_dict_to_pg_factory()
+            default_resources
+            or self._default_placement_group_factory
+            or resource_dict_to_pg_factory()
         )
 
     def _get_default_result_or_future(self) -> Optional[dict]:
