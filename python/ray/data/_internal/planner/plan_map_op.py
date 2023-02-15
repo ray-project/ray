@@ -24,7 +24,7 @@ from ray.data._internal.planner.write import generate_write_fn
 from ray.data.block import Block, CallableClass
 
 
-def _plan_map_op(
+def _plan_udf_map_op(
     op: AbstractUDFMap, input_physical_dag: PhysicalOperator
 ) -> MapOperator:
     """Get the corresponding physical operators DAG for AbstractUDFMap operators.
