@@ -11,7 +11,7 @@
 ---
 <img src="images/getting_started.svg" alt="getting_started" height="40px">
 
-**Getting Started**
+**Getting started**
 ^^^^^^^^^^^^^^^
 
 Learn how to install Ray, compute an example with the Ray Core API, and use the Ray's ML libraries.
@@ -19,12 +19,12 @@ Learn how to install Ray, compute an example with the Ray Core API, and use the 
 +++
 
 {link-badge}`ray-overview/index.html,"Overview",cls=badge-light`
-{link-badge}`ray-overview/getting-started.html,"Getting Started",cls=badge-light`
+{link-badge}`ray-overview/getting-started.html,"Getting started",cls=badge-light`
 
 ---
 <img src="images/user_guide.svg" alt="user_guide" height="40px">
 
-**User Guides**
+**User guides**
 ^^^^^^^^^^^
 
 
@@ -48,7 +48,7 @@ The reference assumes familiarity with the key concepts.
 
 +++
 
-{link-badge}`ray-references/api.html,"API Reference",cls=badge-light`
+{link-badge}`ray-references/api.html,"API reference",cls=badge-light`
 
 ---
 <img src="images/contribute.svg" alt="contribute" height="40px">
@@ -60,7 +60,7 @@ Find information about Ray's internals, and how to debug or profile Ray, fix a b
 
 +++
 
-{link-badge}`https://docs.ray.io/en/master/ray-contribute/getting-involved.html,"Developer Guides",cls=badge-light`
+{link-badge}`https://docs.ray.io/en/master/ray-contribute/getting-involved.html,"Developer guides",cls=badge-light`
 
 ````
 
@@ -77,7 +77,3 @@ If you're interested in contributing to Ray, see the
 or the
 [latest version of our contributing guide](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
-
-
-```{image} https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
-```
