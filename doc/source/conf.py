@@ -299,7 +299,7 @@ def filter_out_undoc_members(item, class_name, module_name):
     module = import_module(module_name)
     cls = getattr(module, class_name)
     if getattr(cls, item).__doc__:
-        return f"{class_name}.{item}"
+        return f"~{class_name}.{item}"
     else:
         return ""
 
