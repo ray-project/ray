@@ -180,15 +180,15 @@ class TfDiagGaussian(TfDistribution):
 
     @override(TfDistribution)
     def logp(self, value: TensorType) -> TensorType:
-        return super().logp(value).sum(-1)
+        return tf.math.reduce_sum(super().logp(value), axis=-1)
 
     @override(TfDistribution)
     def entropy(self) -> TensorType:
-        return super().entropy().sum(-1)
+        return tf.math.reduce_sum(super().entropy(), axis=-1)
 
     @override(TfDistribution)
     def kl(self, other: "TfDistribution") -> TensorType:
-        return super().kl(other).sum(-1)
+        return tf.math.reduce_sum(super().kl(other), axis=-1)
 
     @staticmethod
     @override(Distribution)
