@@ -208,7 +208,6 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
-        import pdb; pdb.set_trace()
         if batch_format == "native":
             warnings.warn(
                 "The 'native' batch format has been renamed 'default'.",
@@ -1177,7 +1176,6 @@ class DatasetPipeline(Generic[T]):
         Returns:
             Iterator over the datasets outputted from this pipeline.
         """
-        #import pdb; pdb.set_trace()
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
