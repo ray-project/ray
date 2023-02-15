@@ -105,7 +105,7 @@ Your data must be a :ref:`supported format <data-compatibility>`, to use Ray Dat
 Alternative solutions exist for less common cases: 
 
 #. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
-#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models. 
+#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`). 
 
 .. TODO
   Add link to many model training blog.
