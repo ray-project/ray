@@ -1,5 +1,6 @@
 """
-This script will be ran on the cluster.
+This script provides extra functionality for Anyscale Jobs tests.
+It will be ran on the cluster.
 
 We need to reimplement some utility functions here as it will not
 have access to the ray_release package.
