@@ -44,6 +44,10 @@ class StreamingExecutor(Executor, threading.Thread):
         self._global_info: Optional[ProgressBar] = None
         self._output_info: Optional[ProgressBar] = None
 
+        # The executor can be shutdown while still running.
+        self._shutdown_lock = threading.RLock()
+        self._shutdown = False
+
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
         # generator `yield`s.
@@ -86,6 +90,15 @@ class StreamingExecutor(Executor, threading.Thread):
                     yield item
                 item = self._output_node.get_output_blocking()
         finally:
+            self.shutdown()
+
+    def shutdown(self):
+        with self._shutdown_lock:
+            if self._shutdown:
+                return
+            self._shutdown = True
+            # Give the scheduling loop some time to finish processing.
+            self.join(timeout=2.0)
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
@@ -104,7 +117,7 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         try:
             # Run scheduling loop until complete.
-            while self._scheduling_loop_step(self._topology):
+            while self._scheduling_loop_step(self._topology) and not self._shutdown:
                 pass
         except Exception as e:
             # Propagate it to the result iterator.

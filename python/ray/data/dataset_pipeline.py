@@ -1341,3 +1341,6 @@ class DatasetPipeline(Generic[T]):
                 uuid = self._get_uuid() or ds._get_uuid()
             ds._set_uuid(f"{uuid}_{i:06}")
             write_fn(ds)
+
+    def _synchronize_progress_bar(self):
+        pass
