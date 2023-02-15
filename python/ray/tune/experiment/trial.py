@@ -289,6 +289,14 @@ class Trial:
         self.stopping_criterion = stopping_criterion or {}
 
         self._setup_default_resource = _setup_default_resource
+
+        if placement_group_factory and not isinstance(
+            placement_group_factory, PlacementGroupFactory
+        ):
+            placement_group_factory = resource_dict_to_pg_factory(
+                placement_group_factory
+            )
+
         self._default_placement_group_factory = placement_group_factory
         # Will be created in create_placement_group_factory().
         self.placement_group_factory = None
@@ -410,8 +418,11 @@ class Trial:
             )
 
         self.placement_group_factory = (
+            # default_resource_request
             default_resources
+            # resources_per_trial
             or self._default_placement_group_factory
+            # cpu=1
             or resource_dict_to_pg_factory()
         )
 
