@@ -1,7 +1,7 @@
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPModelConfig
+from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig
 from ray.rllib.utils import override
 
 
@@ -51,10 +51,10 @@ class PPOCatalog(Catalog):
         else:
             pi_output_dim = action_space.shape[0] * 2
 
-        self.pi_head_config = MLPModelConfig(
+        self.pi_head_config = MLPHeadConfig(
             input_dim=latent_dim, hidden_layer_dims=[32], output_dim=pi_output_dim
         )
-        self.vf_head_config = MLPModelConfig(
+        self.vf_head_config = MLPHeadConfig(
             input_dim=latent_dim, hidden_layer_dims=[32], output_dim=1
         )
 

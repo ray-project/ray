@@ -46,18 +46,36 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     return decorator
 
 
+def _convert_to_lower_case_if_tf(string: str, framework: str) -> str:
+    """Converts a string to lower case if the framework is torch.
+
+    TensorFlow has lower-case names for activation functions, while PyTorch has
+    upper-case names.
+
+    Args:
+        string: The string to convert.
+        framework: The framework to check.
+
+    Returns:
+        The converted string.
+    """
+    if framework != "torch":
+        return string.lower()
+    return string
+
+
 @ExperimentalAPI
 @dataclass
-class MLPModelConfig(ModelConfig):
+class MLPHeadConfig(ModelConfig):
     """Configuration for a fully connected network.
 
     See ModelConfig for usage details.
 
-    Atributes:
+    Attributes:
         input_dim: The input dimension of the network. It cannot be None.
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer (
-        except for the output).
+            except for the output).
         output_activation: The activation function to use for the output layer.
     """
 
@@ -68,40 +86,52 @@ class MLPModelConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
+        # Activation functions in TF are lower case
+        self.output_activation = _convert_to_lower_case_if_tf(
+            self.output_activation, framework
+        )
+        self.hidden_layer_activation = _convert_to_lower_case_if_tf(
+            self.hidden_layer_activation, framework
+        )
+
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchMLPModel
+            from ray.rllib.core.models.torch.mlp import TorchMLPHead
 
-            return TorchMLPModel(self)
+            return TorchMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfMLPModel
+            from ray.rllib.core.models.tf.mlp import TfMLPHead
 
-            # Activation functions in TF are lower case
-            self.output_activation = self.output_activation.lower()
-            self.hidden_layer_activation = self.hidden_layer_activation.lower()
-
-            return TfMLPModel(self)
+            return TfMLPHead(self)
 
 
 @ExperimentalAPI
 @dataclass
-class MLPEncoderConfig(MLPModelConfig):
+class MLPEncoderConfig(MLPHeadConfig):
     """Configuration for an MLP that acts as an encoder.
+
+    Although it inherits from MLPHeadConfig, it does not output an MLPHead.
+    This inheritance is solely to unify the configuration options between MLPEncoders
+    and MLPHeads.
 
     See ModelConfig for usage details.
     """
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
+        # Activation functions in TF are lower case
+        self.output_activation = _convert_to_lower_case_if_tf(
+            self.output_activation, framework
+        )
+        self.hidden_layer_activation = _convert_to_lower_case_if_tf(
+            self.hidden_layer_activation, framework
+        )
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
         else:
             from ray.rllib.core.models.tf.encoder import TfMLPEncoder
-
-            # Activation functions in TF are lower case
-            self.output_activation = self.output_activation.lower()
-            self.hidden_layer_activation = self.hidden_layer_activation.lower()
 
             return TfMLPEncoder(self)
 
@@ -122,11 +152,11 @@ class LSTMEncoderConfig(ModelConfig):
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
         view_requirements_dict: The view requirements to use if anything else than
-        observation_space or action_space is to be encoded. This signifies an
-        anvanced use case.
-        get_tokenizer_config: A callable that returns a ModelConfig to build
-        tokenizers for observations, actions and other spaces that might be present
-        in the view_requirements_dict.
+            observation_space or action_space is to be encoded. This signifies an
+            advanced use case.
+        get_tokenizer_config: A callable that takes a gym.Space and a dict and
+            returns a ModelConfig to build tokenizers for observations, actions and
+            other spaces that might be present in the view_requirements_dict.
 
     """
 
@@ -150,11 +180,13 @@ class LSTMEncoderConfig(ModelConfig):
 
 @ExperimentalAPI
 @dataclass
-class IdentityConfig(ModelConfig):
-    """Configuration for an IdentityEncoder
+class IdentityEncoderConfig(ModelConfig):
+    """Configuration for an IdentityEncoder.
 
     This creates a dummy encoder that does not transform the input but can be used as a
-    pass-through to heads. See ModelConfig for usage details.
+    pass-through to heads. This can be useful if you want completely distinct heads
+    with no common structure before.
+    See ModelConfig for usage details.
     """
 
     @_framework_implemented()

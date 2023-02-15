@@ -3,6 +3,8 @@ Tune Execution (tune.Tuner)
 
 .. _tune-run-ref:
 
+.. _air-tuner-ref:
+
 Tuner
 -----
 
@@ -10,6 +12,7 @@ Tuner
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Tuner
     Tuner.fit

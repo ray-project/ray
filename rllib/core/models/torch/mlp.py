@@ -1,7 +1,10 @@
-from ray.rllib.core.models.base import ModelConfig
+from typing import Union
+
 from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.torch.base import TorchModel
+from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -9,7 +12,7 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-class TorchMLPModel(TorchModel, nn.Module):
+class TorchMLPHead(TorchModel, nn.Module):
     def __init__(self, config: ModelConfig) -> None:
         nn.Module.__init__(self)
         TorchModel.__init__(self, config)
@@ -22,8 +25,13 @@ class TorchMLPModel(TorchModel, nn.Module):
             output_activation=config.output_activation,
         )
 
-        self.input_spec = TorchTensorSpec("b, h", h=self.config.input_dim)
-        self.output_spec = TorchTensorSpec("b, h", h=self.config.output_dim)
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return TorchTensorSpec("b, h", h=self.config.input_dim)
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return TorchTensorSpec("b, h", h=self.config.output_dim)
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:

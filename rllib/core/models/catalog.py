@@ -1,6 +1,6 @@
 import gymnasium as gym
 from ray.rllib.core.models.configs import (
-    MLPModelConfig,
+    MLPHeadConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
 )
@@ -145,7 +145,7 @@ class Catalog:
             hidden_layer_dims = model_config["fcnet_hiddens"]
 
             activation = model_config["fcnet_activation"]
-            return MLPModelConfig(
+            return MLPHeadConfig(
                 input_dim=input_dim,
                 hidden_layer_dims=hidden_layer_dims[:-1],
                 hidden_layer_activation=activation,

@@ -3,7 +3,7 @@
 Anti-pattern: Calling ray.get unnecessarily harms performance
 =============================================================
 
-**TLDR:** Avoid calling :ref:`ray.get() <ray-get-ref>` unnecessarily for intermediate steps. Work with object references directly, and only call ``ray.get()`` at the end to get the final result.
+**TLDR:** Avoid calling :func:`ray.get() <ray.get>` unnecessarily for intermediate steps. Work with object references directly, and only call ``ray.get()`` at the end to get the final result.
 
 When ``ray.get()`` is called, objects must be transferred to the worker/node that calls ``ray.get()``. If you don't need to manipulate the object, you probably don't need to call ``ray.get()`` on it!
 

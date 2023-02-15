@@ -29,15 +29,6 @@ class Spec(abc.ABC):
 
 
 @DeveloperAPI
-class DummySpec(Spec):
-    """A dummy spec that does not validate anything."""
-
-    @override(Spec)
-    def validate(self, data: Any) -> None:
-        pass
-
-
-@DeveloperAPI
 class TypeSpec(Spec):
     """A base class that checks the type of the input data.
 

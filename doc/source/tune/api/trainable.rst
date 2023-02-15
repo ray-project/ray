@@ -270,20 +270,13 @@ session (Function API)
 .. currentmodule:: ray
 
 .. autosummary::
-    :toctree: doc/
 
     air.session.report
-    :noindex:
     air.session.get_checkpoint
-    :noindex:
     air.session.get_trial_name
-    :noindex:
     air.session.get_trial_id
-    :noindex:
     air.session.get_trial_resources
-    :noindex:
     air.session.get_trial_dir
-    :noindex:
 
 .. _tune-trainable-docstring:
 
@@ -292,6 +285,7 @@ Trainable (Class API)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     tune.Trainable
     tune.Trainable.setup
