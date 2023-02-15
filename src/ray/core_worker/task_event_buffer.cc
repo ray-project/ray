@@ -237,26 +237,25 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
   }
 
   // Aggregate, convert to rpc::TaskEvent, and add to the sending circular buffer.
+  absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
+  for (auto &buf : all_status_bufs) {
+    for (auto &event : *buf) {
+      auto rpc_event =
+          agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
+      event.ToRpcTaskEvents(&rpc_event);
+    }
+  }
+
+  for (auto &buf : all_profile_bufs) {
+    for (auto &event : *buf) {
+      auto &rpc_event =
+          agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
+      event.ToRpcTaskEvents(&rpc_event);
+    }
+  }
+
   {
     absl::MutexLock lock(&mutex_);
-    // Aggregate and convert.
-    absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
-    for (auto &buf : all_status_bufs) {
-      for (auto &event : *buf) {
-        auto rpc_event =
-            agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
-        event.ToRpcTaskEvents(&rpc_event);
-      }
-    }
-
-    for (auto &buf : all_profile_bufs) {
-      for (auto &event : *buf) {
-        auto &rpc_event =
-            agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
-        event.ToRpcTaskEvents(&rpc_event);
-      }
-    }
-
     // Add to CB to stage for sending.
     for (auto &[_task_attempt, event] : agg_task_events) {
       buffer_.push_back(std::move(event));
