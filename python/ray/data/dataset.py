@@ -3305,7 +3305,16 @@ class Dataset(Generic[T]):
                 Call this method if you need more flexibility.
 
         """  # noqa: E501
-        
+
+        return self.iterator().to_tf(
+            feature_columns=feature_columns,
+            label_columns=label_columns,
+            prefetch_blocks=prefetch_blocks,
+            drop_last=drop_last,
+            batch_size=batch_size,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_dask(

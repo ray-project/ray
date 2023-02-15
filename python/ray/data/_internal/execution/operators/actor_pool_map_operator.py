@@ -278,7 +278,7 @@ class ActorPoolMapOperator(MapOperator):
 
 class _MapWorker:
     """An actor worker for MapOperator."""
-    
+
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 

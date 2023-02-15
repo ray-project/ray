@@ -1,7 +1,9 @@
 import abc
+import numpy as np
 import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.block import DataBatch
 from ray.util.annotations import PublicAPI
 
@@ -234,7 +236,7 @@ class DatasetIterator(abc.ABC):
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
-        
+
         from ray.air._internal.tensorflow_utils import (
             get_type_spec,
             convert_ndarray_to_tf_tensor,
@@ -245,22 +247,22 @@ class DatasetIterator(abc.ABC):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        base_dataset = self._
+        base_dataset = self._base_dataset_or_pipeline
 
-        if self.dataset_format() == BlockFormat.SIMPLE:
+        if base_dataset.dataset_format() == BlockFormat.SIMPLE:
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
                 "flexible `iter_batches` in place of `to_tf`."
             )
 
-        if self._is_tensor_dataset():
+        if base_dataset._is_tensor_dataset():
             raise NotImplementedError(
                 "`to_tf` doesn't support single-column tensor datasets. Call the "
                 "more-flexible `iter_batches` instead."
             )
 
-        schema = self.schema()
+        schema = base_dataset.schema()
         valid_columns = schema.names
 
         def validate_column(column: str) -> None:
