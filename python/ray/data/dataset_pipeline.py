@@ -1345,5 +1345,5 @@ class DatasetPipeline(Generic[T]):
             ds._set_uuid(f"{uuid}_{i:06}")
             write_fn(ds)
 
-    def _shutdown_current_executor(self):
+    def _synchronize_progress_bar(self):
         pass

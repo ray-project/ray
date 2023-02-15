@@ -2127,7 +2127,7 @@ class Dataset(Generic[T]):
             output.append(row)
             if len(output) >= limit:
                 break
-        self._shutdown_current_executor()
+        self._synchronize_progress_bar()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -2155,7 +2155,7 @@ class Dataset(Generic[T]):
                         limit
                     )
                 )
-        self._shutdown_current_executor()
+        self._synchronize_progress_bar()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4022,7 +4022,9 @@ class Dataset(Generic[T]):
         Returns:
             A list of references to this dataset's blocks.
         """
-        return self._plan.execute().get_blocks()
+        blocks = self._plan.execute().get_blocks()
+        self._synchronize_progress_bar()
+        return blocks
 
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
@@ -4451,8 +4453,11 @@ class Dataset(Generic[T]):
                 "can be very slow. Consider using `.map_batches()` instead."
             )
 
-    def _shutdown_current_executor(self):
-        """Cleanly shutdown the current executor.
+    def _synchronize_progress_bar(self):
+        """Flush progress bar output by shutting down the current executor.
+
+        This should be called at the end of all blocking APIs (e.g., `take`), but not
+        async APIs (e.g., `iter_batches`).
 
         The streaming executor runs in a separate generator / thread, so it is
         possible the shutdown logic runs even after a call to retrieve rows from the
