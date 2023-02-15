@@ -26,7 +26,6 @@ class PipelinedDatasetIterator(DatasetIterator):
         if self._epoch_iterator is None:
             self._epoch_iterator = self._base_dataset_pipeline.iter_epochs()
 
-        # The epoch iterator will always have 1 dataset.
         ds = next(self._epoch_iterator)
         return ds
 
