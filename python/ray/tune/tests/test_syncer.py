@@ -87,8 +87,10 @@ def mock_s3_bucket_uri():
             Bucket=bucket_name,
             CreateBucketConfiguration={"LocationConstraint": region},
         )
-
+        # Disable server HTTP request logging
+        logging.getLogger("werkzeug").setLevel(logging.WARNING)
         yield s3_uri
+        logging.getLogger("werkzeug").setLevel(logging.INFO)
 
 
 def assert_file(exists: bool, root: str, path: str):
@@ -731,7 +733,9 @@ def test_sync_folder_with_many_files_fs(tmpdir):
 
 
 def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
-    """Tests an end to end Tune run with syncing to a mock s3 bucket."""
+    """Tests an end to end Tune run with syncing to a mock s3 bucket.
+    This test includes the restoration path as well to make sure that
+    ."""
     download_dir = tmp_path / "upload_dir"
     download_dir.mkdir()
 
@@ -741,6 +745,7 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
 
     def train_fn(config):
         session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
+        raise RuntimeError
 
     tuner = tune.Tuner(
         train_fn,
@@ -756,10 +761,16 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
     )
     result_grid = tuner.fit()
 
+    assert result_grid.errors
+
+    shutil.rmtree(local_dir)  # Rely on sync-down from cloud
+    tuner = tune.Tuner.restore(
+        str(URI(mock_s3_bucket_uri) / exp_name), resume_errored=True
+    )
+    result_grid = tuner.fit()
+
     # Download remote dir to do some sanity checks
     download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
-
-    assert not result_grid.errors
 
     def get_remote_trial_dir(trial_id: int):
         return os.path.join(download_dir, exp_name, str(trial_id))
@@ -771,7 +782,8 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
         num_checkpoints = len(
             [file for file in os.listdir(remote_dir) if file.startswith("checkpoint_")]
         )
-        assert num_checkpoints == 1
+        assert result.metrics["training_iteration"] == 2
+        assert num_checkpoints == 2  # 1 before restore + 1 after
 
 
 if __name__ == "__main__":
