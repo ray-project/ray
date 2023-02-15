@@ -231,8 +231,8 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
   {
     absl::WriterMutexLock lock(&buf_map_mutex_);
     for (auto &[thd, thd_buf] : all_thd_buffer_) {
-      all_status_bufs.push_back(std::move(thd_buf.ResetStatusEventBuffer()));
-      all_profile_bufs.push_back(std::move(thd_buf.ResetProfileEventBuffer()));
+      all_status_bufs.push_back(thd_buf.ResetStatusEventBuffer());
+      all_profile_bufs.push_back(thd_buf.ResetProfileEventBuffer());
     }
   }
 
