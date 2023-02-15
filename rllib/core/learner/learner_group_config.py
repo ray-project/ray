@@ -2,44 +2,44 @@ from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.core.rl_trainer.rl_trainer import (
-    RLTrainerSpec,
-    RLTrainerHPs,
+from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.learner.learner import (
+    LearnerSpec,
+    LearnerHPs,
     FrameworkHPs,
 )
 from ray.rllib.utils.from_config import NotProvided
 
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer import RLTrainer
+    from ray.rllib.core.learner import Learner
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
 
 
 # TODO (Kourosh): We should make all configs come from a standard base class that
 # defines the general interfaces for validation, from_dict, to_dict etc.
-class TrainerRunnerConfig:
-    """Configuration object for TrainerRunner."""
+class LearnerGroupConfig:
+    """Configuration object for LearnerGroup."""
 
-    def __init__(self, cls: Type[TrainerRunner] = None) -> None:
+    def __init__(self, cls: Type[LearnerGroup] = None) -> None:
 
-        # Define the default TrainerRunner class
-        self.trainer_runner_class = cls or TrainerRunner
+        # Define the default LearnerGroup class
+        self.learner_group_class = cls or LearnerGroup
 
         # `self.module()`
         self.module_spec = None
 
-        # `self.trainer()`
-        self.trainer_class = None
+        # `self.learner()`
+        self.learner_class = None
         self.optimizer_config = None
-        self.rl_trainer_hps = RLTrainerHPs()
+        self.learner_hps = LearnerHPs()
 
         # `self.resources()`
-        self.num_gpus_per_trainer_worker = 0
-        self.num_cpus_per_trainer_worker = 1
-        self.num_trainer_workers = 1
+        self.num_gpus_per_learner_worker = 0
+        self.num_cpus_per_learner_worker = 1
+        self.num_learner_workers = 1
 
         # TODO (Avnishn): We should come back and revise how to specify algorithm
         # resources this is a stop gap solution for now so that users can specify the
@@ -55,14 +55,14 @@ class TrainerRunnerConfig:
 
         if self.module_spec is None:
             raise ValueError(
-                "Cannot initialize an RLTrainer without the module specs. "
+                "Cannot initialize an Learner without the module specs. "
                 "Please provide the specs via .module(module_spec)."
             )
 
-        if self.trainer_class is None:
+        if self.learner_class is None:
             raise ValueError(
-                "Cannot initialize an RLTrainer without an RLTrainer. Please provide "
-                "the RLTrainer class with .trainer(trainer_class=MyTrainerClass)."
+                "Cannot initialize an Learner without an Learner class. Please provide "
+                "the Learner class with .learner(learner_class=MyTrainerClass)."
             )
 
         if self.optimizer_config is None:
@@ -70,32 +70,32 @@ class TrainerRunnerConfig:
             # TODO (Kourosh): Change the optimizer config to a dataclass object.
             self.optimizer_config = {"lr": 1e-3}
 
-    def build(self) -> TrainerRunner:
+    def build(self) -> LearnerGroup:
         self.validate()
 
-        scaling_config = TrainerScalingConfig(
-            num_workers=self.num_trainer_workers,
-            num_gpus_per_worker=self.num_gpus_per_trainer_worker,
-            num_cpus_per_worker=self.num_cpus_per_trainer_worker,
+        scaling_config = LearnerGroupScalingConfig(
+            num_workers=self.num_learner_workers,
+            num_gpus_per_worker=self.num_gpus_per_learner_worker,
+            num_cpus_per_worker=self.num_cpus_per_learner_worker,
             local_gpu_idx=self.local_gpu_idx,
         )
 
         framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
 
-        rl_trainer_spec = RLTrainerSpec(
-            rl_trainer_class=self.trainer_class,
+        learner_spec = LearnerSpec(
+            learner_class=self.learner_class,
             module_spec=self.module_spec,
             optimizer_config=self.optimizer_config,
-            trainer_scaling_config=scaling_config,
-            trainer_hyperparameters=self.rl_trainer_hps,
+            learner_scaling_config=scaling_config,
+            learner_hyperparameters=self.learner_hps,
             framework_hyperparameters=framework_hps,
         )
 
-        return self.trainer_runner_class(rl_trainer_spec)
+        return self.learner_group_class(learner_spec)
 
     def framework(
         self, eager_tracing: Optional[bool] = NotProvided
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
@@ -104,7 +104,7 @@ class TrainerRunnerConfig:
     def module(
         self,
         module_spec: Optional[ModuleSpec] = NotProvided,
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
         if module_spec is not NotProvided:
             self.module_spec = module_spec
@@ -113,36 +113,36 @@ class TrainerRunnerConfig:
 
     def resources(
         self,
-        num_trainer_workers: Optional[int] = NotProvided,
-        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
-        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_learner_workers: Optional[int] = NotProvided,
+        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
-    ) -> "TrainerRunnerConfig":
+    ) -> "LearnerGroupConfig":
 
-        if num_trainer_workers is not NotProvided:
-            self.num_trainer_workers = num_trainer_workers
-        if num_gpus_per_trainer_worker is not NotProvided:
-            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
-        if num_cpus_per_trainer_worker is not NotProvided:
-            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
+        if num_learner_workers is not NotProvided:
+            self.num_learner_workers = num_learner_workers
+        if num_gpus_per_learner_worker is not NotProvided:
+            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
+        if num_cpus_per_learner_worker is not NotProvided:
+            self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
 
         return self
 
-    def trainer(
+    def learner(
         self,
         *,
-        trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
+        learner_class: Optional[Type["Learner"]] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
-        rl_trainer_hps: Optional[RLTrainerHPs] = NotProvided,
-    ) -> "TrainerRunnerConfig":
+        learner_hps: Optional[LearnerHPs] = NotProvided,
+    ) -> "LearnerGroupConfig":
 
-        if trainer_class is not NotProvided:
-            self.trainer_class = trainer_class
+        if learner_class is not NotProvided:
+            self.learner_class = learner_class
         if optimizer_config is not NotProvided:
             self.optimizer_config = optimizer_config
-        if rl_trainer_hps is not NotProvided:
-            self.rl_trainer_hps = rl_trainer_hps
+        if learner_hps is not NotProvided:
+            self.learner_hps = learner_hps
 
         return self
