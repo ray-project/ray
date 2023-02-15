@@ -171,7 +171,10 @@ py_test(
 py_test(
     name = "test_multi_tenancy",
     size = "medium",
-    srcs = ["tests/test_multi_tenancy.py"],
+    srcs = [
+        "tests/test_multi_tenancy.py",
+        "tests/_test_multi_tenancy_run.py"
+    ],
     deps = [":tune_lib"],
     tags = ["team:ml"],
 )
