@@ -22,6 +22,7 @@ from typing import (
 )
 
 from ray.air import CheckpointConfig
+from ray.air._internal.uri_utils import URI
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -443,14 +444,8 @@ class Experiment:
     def remote_checkpoint_dir(self) -> Optional[str]:
         if not self.sync_config.upload_dir or not self.dir_name:
             return None
-
-        # NOTE: `upload_dir` can contain query strings. For example:
-        # 's3://bucket?scheme=http&endpoint_override=localhost%3A9000'.
-        if "?" in self.sync_config.upload_dir:
-            path, query = self.sync_config.upload_dir.split("?")
-            return os.path.join(path, self.dir_name) + "?" + query
-
-        return os.path.join(self.sync_config.upload_dir, self.dir_name)
+        uri = URI(self.sync_config.upload_dir)
+        return str(uri / self.dir_name)
 
     @property
     def run_identifier(self):
