@@ -790,45 +790,20 @@ The reasons for this are:
 1. When multiple Ray Tune jobs run at the same time, they compete for resources.
    One job could run all its trials at the same time, while the other job waits
    for a long time until it gets resources to run the first trial.
-2. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
+2. If it is easy to start a new Ray cluster on your infrastructure, there is often
+   no benefit from a cost perspective of running one big cluster versus multiple smaller
+   clusters. For instance, running one cluster of 32 instances incurs virtually the same
+   cost as running 4 clusters with 8 instances each.
+3. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
    trials from job B on the same node are impacted. In practice, it's hard
    to reason about these conditions from the logs if something goes wrong.
-3. Some internal implementations in Ray Tune assume that you only have one job
+4. Some internal implementations in Ray Tune assume that you only have one job
    running at a time. This can lead to conflicts.
 
-The third reason is especially problematic when you run concurrent tuning jobs. For instance, a symptom is when
-trials from job A use parameters specified in job B, lead to unexpected
+The fourth reason is especially problematic when you run concurrent tuning jobs. For instance,
+a symptom is when trials from job A use parameters specified in job B, leading to unexpected
 results.
 
-This occurs because Ray Tune uses a cluster-global key-value store to store trainables.
-If two tuning jobs use a trainable (or Ray AIR trainer) with the same name, the second job overwrites
-the trainable. Trials from the first job that start after the second job starts will then use
-the overwritten trainable, leading to problems if captured variables are used (as is the case in
-most Ray AIR trainers).
-
-Workaround
-''''''''''
-
-We are working on resolving the issue of conflicting trainables in concurrent tuning jobs. Until this
-is resolved, the main workaround you can use is to give each trainable class a unique name.
-
-For Ray AIR trainers this could look like this:
-
-.. code-block:: python
-
-    import uuid
-    from ray.train.torch import TorchTrainer
-
-    TorchTrainer.__name__ = "TorchTrainer_" + uuid.uuid4().hex[:8]
-
-    trainer = TorchTrainer(
-        # ...
-    )
-
-Each Ray Tune jobs has its own trainable and does not conflict with
-others.
-
-This approach has the disadvantage of complicating the process of resuming. To resume
-a run, use the same unique trainable name again before calling ``Trainer.restore()``.
-You have to store the trainable name, because we're not updating it automatically
-(yet).
+If you run into this problem, please refer to
+[this github issue](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976)
+for more context and a workaround.
