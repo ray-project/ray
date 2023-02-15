@@ -203,8 +203,9 @@ class BaseTrainer(abc.ABC):
         .. code-block:: python
 
             import os
-            from ray.train.torch import TorchTrainer
             from ray import tune
+            from ray.data.preprocessors import BatchMapper
+            from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
             upload_dir = "s3://bucket"
@@ -217,23 +218,23 @@ class BaseTrainer(abc.ABC):
 
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
 
-            def train_loop_per_worker(config):
-                pass
+            # Define some dummy classes/objects for demonstration purposes
+            class CustomTrainer(BaseTrainer):
+                def training_loop(self):
+                    pass
 
-            train_loop_config = {"obj_ref": large_data_ref}
+            preprocessor = BatchMapper(lambda x: x)
 
-            if TorchTrainer.can_restore(experiment_dir):
-                trainer = TorchTrainer.restore(
+            if CustomTrainer.can_restore(experiment_dir):
+                trainer = CustomTrainer.restore(
                     experiment_dir,
-                    train_loop_per_worker=train_loop_per_worker,
-                    train_loop_config=train_loop_config,
                     datasets=datasets,
                 )
             else:
-                trainer = TorchTrainer(
-                    train_loop_per_worker,
-                    train_loop_config,
+                trainer = CustomTrainer(
                     datasets=datasets,
+                    preprocessor=preprocessor,
+                    scaling_config=air.ScalingConfig(num_workers=2, use_gpu=False),
                     run_config=air.RunConfig(
                         name=experiment_name,
                         sync_config=tune.SyncConfig(upload_dir=upload_dir),
