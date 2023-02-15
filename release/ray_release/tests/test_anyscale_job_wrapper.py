@@ -42,7 +42,7 @@ def test_prepare_commands_validation(tmpdir):
         main(
             test_workload="exit 0",
             test_workload_timeout=10,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=["exit 0"],
             prepare_commands_timeouts=[],
             **s3_kwargs
@@ -51,7 +51,7 @@ def test_prepare_commands_validation(tmpdir):
         main(
             test_workload="exit 0",
             test_workload_timeout=10,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=[],
             prepare_commands_timeouts=[1],
             **s3_kwargs
@@ -64,7 +64,7 @@ def test_end_to_end(tmpdir):
         main(
             test_workload="exit 0",
             test_workload_timeout=10,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=[],
             prepare_commands_timeouts=[],
             **s3_kwargs
@@ -80,7 +80,7 @@ def test_end_to_end_prepare_commands(tmpdir):
         main(
             test_workload="exit 0",
             test_workload_timeout=10,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=["exit 0", "exit 0"],
             prepare_commands_timeouts=[1, 1],
             **s3_kwargs
@@ -96,7 +96,7 @@ def test_end_to_end_long_running(tmpdir):
         main(
             test_workload="sleep 10",
             test_workload_timeout=1,
-            test_long_running=True,
+            test_no_raise_on_timeout=True,
             prepare_commands=[],
             prepare_commands_timeouts=[],
             **s3_kwargs
@@ -112,7 +112,7 @@ def test_end_to_end_timeout(tmpdir):
         main(
             test_workload="sleep 10",
             test_workload_timeout=1,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=[],
             prepare_commands_timeouts=[],
             **s3_kwargs
@@ -128,7 +128,7 @@ def test_end_to_end_prepare_timeout(tmpdir):
         main(
             test_workload="exit 0",
             test_workload_timeout=10,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=["exit 0", "sleep 10"],
             prepare_commands_timeouts=[1, 1],
             **s3_kwargs
@@ -145,7 +145,7 @@ def test_end_to_end_failure(tmpdir, long_running):
         main(
             test_workload="exit 1",
             test_workload_timeout=1,
-            test_long_running=long_running,
+            test_no_raise_on_timeout=long_running,
             prepare_commands=[],
             prepare_commands_timeouts=[],
             **s3_kwargs
@@ -161,7 +161,7 @@ def test_end_to_end_prepare_failure(tmpdir):
         main(
             test_workload="exit 0",
             test_workload_timeout=10,
-            test_long_running=False,
+            test_no_raise_on_timeout=False,
             prepare_commands=["exit 0", "exit 1"],
             prepare_commands_timeouts=[1, 1],
             **s3_kwargs
