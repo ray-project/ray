@@ -283,18 +283,29 @@ session (Function API)
 Trainable (Class API)
 ---------------------
 
+Constructor
+~~~~~~~~~~~
+
 .. autosummary::
     :toctree: doc/
     :template: autosummary/class_with_autosummary.rst
 
-    tune.Trainable
-    tune.Trainable.setup
-    tune.Trainable.save_checkpoint
-    tune.Trainable.load_checkpoint
-    tune.Trainable.step
-    tune.Trainable.reset_config
-    tune.Trainable.cleanup
-    tune.Trainable.default_resource_request
+    ~tune.Trainable
+
+
+Trainable Methods to Implement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~tune.Trainable.setup
+    ~tune.Trainable.save_checkpoint
+    ~tune.Trainable.load_checkpoint
+    ~tune.Trainable.step
+    ~tune.Trainable.reset_config
+    ~tune.Trainable.cleanup
+    ~tune.Trainable.default_resource_request
 
 
 .. _tune-util-ref:

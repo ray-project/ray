@@ -334,6 +334,10 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :template: autosummary/class_with_autosummary.rst
 
     Searcher
+
+.. autosummary::
+    :toctree: doc/
+
     Searcher.suggest
     Searcher.save
     Searcher.restore
