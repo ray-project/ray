@@ -1,6 +1,7 @@
 import fnmatch
 import os
 import urllib.parse
+from pathlib import Path
 from pkg_resources import packaging
 from typing import List, Optional, Tuple
 
@@ -34,6 +35,25 @@ except (ImportError, ModuleNotFoundError):
     _CustomGCSHandler = None
 
 from ray import logger
+
+
+def _pyarrow_fs_copy_files(
+    source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
+):
+    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
+        destination_filesystem, pyarrow.fs.S3FileSystem
+    ):
+        # Workaround multi-threading issue with pyarrow
+        # https://github.com/apache/arrow/issues/32372
+        kwargs.setdefault("use_threads", False)
+
+    return pyarrow.fs.copy_files(
+        source,
+        destination,
+        source_filesystem=source_filesystem,
+        destination_filesystem=destination_filesystem,
+        **kwargs,
+    )
 
 
 def _assert_pyarrow_installed():
@@ -105,10 +125,26 @@ def get_fs_and_path(
         fs = _cached_fs[cache_key]
         return fs, path
 
+    # In case of hdfs filesystem, if uri does not have the netloc part below will
+    # fail with hdfs access error.  For example 'hdfs:///user_folder/...' will
+    # fail, while only 'hdfs://namenode_server/user_foler/...' will work
+    # we consider the two cases of uri: short_hdfs_uri or other_uri,
+    # other_uri includes long hdfs uri and other filesystem uri, like s3 or gcp
+    # filesystem. Two cases of imported module of fsspec: yes or no. So we need
+    # to handle 4 cases:
+    # (uri,             fsspec)
+    # (short_hdfs_uri,  yes) --> use fsspec
+    # (short_hdfs_uri,  no) --> return None and avoid init pyarrow
+    # (other_uri,       yes) --> try pyarrow, if throw use fsspec
+    # (other_uri,       no) --> try pyarrow, if throw return None
+    short_hdfs_uri = parsed.scheme == "hdfs" and parsed.netloc == ""
     try:
-        fs, path = pyarrow.fs.FileSystem.from_uri(uri)
-        _cached_fs[cache_key] = fs
-        return fs, path
+        if short_hdfs_uri and not fsspec:
+            return None, None
+        if not short_hdfs_uri:
+            fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+            _cached_fs[cache_key] = fs
+            return fs, path
     except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
         if not fsspec:
@@ -198,9 +234,9 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
 
     if filelock:
         with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-            pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+            _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
     else:
-        pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+        _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
 def upload_to_uri(
@@ -217,7 +253,7 @@ def upload_to_uri(
         )
 
     if not exclude:
-        pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+        _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
         return
 
     # Else, walk and upload
@@ -246,7 +282,8 @@ def _upload_to_uri_with_exclude(
             full_source_path = os.path.normpath(os.path.join(local_path, candidate))
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
-            pyarrow.fs.copy_files(
+            _ensure_directory(str(Path(full_target_path).parent))
+            _pyarrow_fs_copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
 

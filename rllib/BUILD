@@ -1133,6 +1133,14 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo_rl_module.py"]
 )
 
+
+py_test(
+    name = "test_ppo_learner",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
+)
+
 # PPO Reproducibility
 py_test(
     name = "test_repro_ppo",
@@ -1844,32 +1852,46 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer_runner",
+    name = "test_rl_module_specs",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
+)
+
+py_test(
+    name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
-    srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
+    srcs = ["core/learner/tests/test_learner_group.py"]
 )
 
 py_test(
-    name = "test_trainer_runner_config",
+    name = "test_learner_group_config",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_trainer/tests/test_trainer_runner_config.py"]
+    srcs = ["core/learner/tests/test_learner_group_config.py"]
 )
 
 py_test(
-    name = "test_rl_trainer",
+    name = "test_learner",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
+    srcs = ["core/learner/tests/test_learner.py"]
 )
 
-# TODO (Kourosh): to be removed in favor of test_rl_trainer.py
+# TODO (Kourosh): to be removed in favor of test_learner.py
 py_test(
-    name = "test_torch_rl_trainer",
+    name = "test_torch_learner",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_trainer/torch/tests/test_torch_rl_trainer.py"]
+    srcs = ["core/learner/torch/tests/test_torch_learner.py"]
+)
+
+py_test(
+    name = "test_bc_algorithm",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/testing/tests/test_bc_algorithm.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1973,14 +1995,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/specs/tests/test_spec_dict.py"]
-)
-
-# test TorchVectorEncoder
-py_test(
-    name = "test_torch_vector_encoder",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/torch/encoders/tests/test_torch_vector_encoder.py"]
 )
 
 
@@ -3838,6 +3852,44 @@ py_test(
         "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
     ]
+)
+
+# --------------------------------------------------------------------
+# examples/learner directory
+#
+# 
+# Description: These are RLlib tests for the new multi-gpu enabled 
+# training stack via Learners.
+#
+# NOTE: Add tests alphabetically to this list.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "examples/learner/multi_agent_cartpole_ppo_torch",
+    main = "examples/learner/multi_agent_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
+    args = ["--as-test", "--framework=torch", "--num-gpus=0"]
+)
+
+py_test(
+    name = "examples/learner/multi_agent_cartpole_ppo_torch_gpu",
+    main = "examples/learner/multi_agent_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
+    args = ["--as-test", "--framework=torch", "--num-gpus=1"]
+)
+
+
+py_test(
+    name = "examples/learner/multi_agent_cartpole_ppo_torch_multi_gpu",
+    main = "examples/learner/multi_agent_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
+    size = "medium",
+    srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
+    args = ["--as-test", "--framework=torch", "--num-gpus=2"]
 )
 
 # --------------------------------------------------------------------

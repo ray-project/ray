@@ -29,18 +29,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-    if args.server_address is not None:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(configure_logging=False)
+
+    ray.init(configure_logging=False)
 
     # This will do a grid search over the `activation` parameter. This means
     # that each of the two values (`relu` and `tanh`) will be sampled once

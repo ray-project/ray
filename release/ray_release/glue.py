@@ -2,7 +2,7 @@ import os
 import time
 from typing import Optional, List
 
-from ray_release.alerts.handle import handle_result
+from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
@@ -172,6 +172,8 @@ def run_release_test(
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
 
     pipeline_exception = None
+    # non critical for some tests. So separate it from the general one.
+    fetch_result_exception = None
     try:
         setup_signal_handling()
         # Load configs
@@ -332,9 +334,9 @@ def run_release_test(
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
-            logger.error("Could not fetch results for test command")
-            logger.exception(e)
+            logger.exception(f"Could not fetch results for test command: {e}")
             command_results = {}
+            fetch_result_exception = e
 
         # Postprocess result:
         if "last_update" in command_results:
@@ -368,7 +370,7 @@ def run_release_test(
     try:
         last_logs = command_runner.get_last_logs()
     except Exception as e:
-        logger.error(f"Error fetching logs: {e}")
+        logger.exception(f"Error fetching logs: {e}")
         last_logs = "No logs could be retrieved."
 
     result.last_logs = last_logs
@@ -378,7 +380,7 @@ def run_release_test(
         try:
             cluster_manager.terminate_cluster(wait=False)
         except Exception as e:
-            logger.error(f"Could not terminate cluster: {e}")
+            logger.exception(f"Could not terminate cluster: {e}")
 
     reset_signal_handling()
 
@@ -389,12 +391,15 @@ def run_release_test(
     os.chdir(old_wd)
 
     if not pipeline_exception:
-        buildkite_group(":mag: Interpreting results")
-        # Only handle results if we didn't run into issues earlier
-        try:
-            handle_result(test, result)
-        except Exception as e:
-            pipeline_exception = e
+        if require_result(test) and fetch_result_exception:
+            pipeline_exception = fetch_result_exception
+        else:
+            buildkite_group(":mag: Interpreting results")
+            # Only handle results if we didn't run into issues earlier
+            try:
+                handle_result(test, result)
+            except Exception as e:
+                pipeline_exception = e
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
@@ -411,7 +416,7 @@ def run_release_test(
         try:
             reporter.report_result(test, result)
         except Exception as e:
-            logger.error(f"Error reporting results via {type(reporter)}: {e}")
+            logger.exception(f"Error reporting results via {type(reporter)}: {e}")
 
     if pipeline_exception:
         raise pipeline_exception

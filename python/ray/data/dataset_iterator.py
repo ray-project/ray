@@ -9,6 +9,9 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from ray.data.dataset import Dataset
+    from ray.data.dataset_pipeline import DatasetPipeline
+    from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
 if sys.version_info >= (3, 8):
@@ -238,6 +241,12 @@ class DatasetIterator(abc.ABC):
         """Returns a string containing execution timing information."""
         raise NotImplementedError
 
+    @property
+    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
+        """The :class:`~ray.data.dataset.Dataset` or
+        :class:`~ray.data.dataset.DatasetPipeline` that this object iterates over."""
+        raise NotImplementedError
+
     def iter_epochs(self, max_epoch: int = -1) -> None:
         raise DeprecationWarning(
             "If you are using AIR, note that session.get_dataset_shard() "
@@ -247,9 +256,13 @@ class DatasetIterator(abc.ABC):
             "iter_torch_batches(), or to_tf()."
         )
 
-    @abc.abstractmethod
-    def _with_backward_compat(self) -> "DatasetIterator":
+    def _to_train_iterator(self) -> "TrainDatasetIterator":
         """
-        Provide backwards compatibility for AIR users.
+        Convert this DatasetIterator to one that is specific
+        to Ray Train Trainers.
+
+        The Train-specific iterator has training specific logic,
+        for example, automatically moving batches to GPU when GPU training
+        is enabled.
         """
         raise NotImplementedError

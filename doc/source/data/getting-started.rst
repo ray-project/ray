@@ -4,113 +4,148 @@ Getting Started
 ===============
 
 A Ray :class:`Dataset <ray.data.Dataset>` is a distributed data collection. It holds
-a list of Ray object references pointing to distributed data *blocks*, and has APIs
-for distributed data loading and processing. Each block holds an ordered collection
-of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
-(when creating from or transforming to tabular or tensor data) or a Python list (for non-tabular Python objects).
+references to distributed data *blocks*, and exposes APIs for loading and processing
+data.
 
-In this tutorial you will learn how to:
+Install Ray Data
+----------------
 
-- Create and save a Ray ``Dataset``.
-- Transform a ``Dataset``.
-- Pass a ``Dataset`` to Ray tasks/actors and access the data inside.
+To install Ray Data, run:
 
-.. tip::
+.. code-block:: console
 
-   Run ``pip install "ray[data]"`` to get started!
+    $ pip install 'ray[data]'
 
-Creating and Saving Datasets
-----------------------------
+To learn more about installing Ray and its libraries, read
+:ref:`Installing Ray <installation>`.
 
-You can create a Dataset from Python objects. These objects can be held inside
-Dataset as the plain Python objects (where the schema is a Python type), or as
-Arrow records (in which case their schema is Arrow).
+Create a dataset
+----------------
 
-.. literalinclude:: ./doc_code/quick_start.py
-   :language: python
-   :start-after: __create_from_python_begin__
-   :end-before: __create_from_python_end__
+Create datasets from on-disk files, Python objects, and cloud storage services like S3.
+Ray reads from any `filesystem supported by Arrow
+<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
-Datasets can also be created from files on local disk or remote datasources such as S3.
-Any filesystem `supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
-can be used to specify file locations. See more at :ref:`Creating Datasets <creating_datasets>`.
+.. testcode::
 
-.. literalinclude:: ./doc_code/quick_start.py
-   :language: python
-   :start-after: __create_from_files_begin__
-   :end-before: __create_from_files_end__
+    import ray
 
-Once you have a Dataset (potentially after transformation), you can save it to local
-or remote storage in desired format using methods such as :meth:`~ray.data.Dataset.write_csv`,
-:meth:`~ray.data.Dataset.write_json`, and :meth:`~ray.data.Dataset.write_parquet`.
-See more at :ref:`Saving Datasets <saving_datasets>`.
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
-.. literalinclude:: ./doc_code/quick_start.py
-   :language: python
-   :start-after: __save_dataset_begin__
-   :end-before: __save_dataset_end__
+    dataset.show(limit=1)
 
-See the :ref:`Creating Datasets <creating_datasets>` and :ref:`Saving Datasets
-<saving_datasets>` guides for more details on how to create and save datasets.
+.. testoutput::
+
+    {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
 
-Transforming Datasets
+To learn more about creating datasets, read
+:ref:`Creating datasets <creating_datasets>`.
+
+Transform the dataset
 ---------------------
 
-Once you have a :class:`~ray.data.Dataset`, you can transform it by applying a
-:ref:`user-defined function <transform_datasets_writing_udfs>`, which produces another
-:class:`~ray.data.Dataset`. Under the hood, the transformation is executed in parallel
-for performance at scale.
+Apply :ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) to
+transform datasets. Ray executes transformations in parallel for performance at scale.
 
-.. literalinclude:: ./doc_code/quick_start.py
-   :language: python
-   :start-after: __data_transform_begin__
-   :end-before: __data_transform_end__
+.. testcode::
 
-.. tip::
+    import pandas as pd
 
-    Datasets also provide the convenience transformation methods :meth:`~ray.data.Dataset.map`, 
-    :meth:`~ray.data.Dataset.flat_map`, and :meth:`~ray.data.Dataset.filter`, which are not 
-    vectorized (slower than :meth:`~ray.data.Dataset.map_batches`), but may be useful for development.
+    # Find rows with spepal length < 5.5 and petal length > 3.5.
+    def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
+        return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
 
-These transformations are composable. You can further apply transformations on the
-output Dataset, forming a chain of transformations to express more complex logic.
+    transformed_dataset = dataset.map_batches(transform_batch)
+    print(transformed_dataset)
 
-By default, transformations are executed using Ray tasks.
-For transformations that require setup, you may want to use Ray actors by specifying
-``compute=ray.data.ActorPoolStrategy(min, max)`` and Ray will use an autoscaling
-actor pool of ``min`` to ``max`` actors to execute your transforms. This will cache
-the stateful setup at the actor creation time, which is particularly useful if the
-setup is expensive.
+.. testoutput::
 
-See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
-on transforming datasets.
+    MapBatches(transform_batch)
+    +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
 
-Accessing and exchanging datasets
----------------------------------
+To learn more about transforming datasets, read
+:ref:`Transforming datasets <transforming_datasets>`.
 
-Datasets can be passed to Ray tasks or actors and accessed with
-:meth:`~ray.data.Dataset.iter_batches` or
-:meth:`~ray.data.Dataset.iter_rows`.
-This does not incur a copy, since the blocks of the Dataset are passed by reference
-as Ray objects:
+Consume the dataset
+-------------------
 
-.. literalinclude:: ./doc_code/quick_start.py
-   :language: python
-   :start-after: __data_access_begin__
-   :end-before: __data_access_end__
+Pass datasets to Ray tasks or actors, and access records with methods like
+:meth:`~ray.data.Dataset.iter_batches`.
 
-Datasets can be split up into disjoint sub-datasets.
-Locality-aware splitting is supported if you pass in a list of actor handles to the
-:meth:`~ray.data.Dataset.split` function along with the number of desired
-splits.
-This is a common pattern useful for loading and splitting data between distributed
-training actors:
+.. tabbed:: Local
 
-.. literalinclude:: ./doc_code/quick_start.py
-   :language: python
-   :start-after: __dataset_split_begin__
-   :end-before: __dataset_split_end__
+    .. testcode::
 
-See the :ref:`Consuming Datasets guide <consuming_datasets>` for an in-depth guide
-on accessing and exchanging datasets.
+        batches = transformed_dataset.iter_batches(batch_size=8)
+        print(next(iter(batches)))
+
+    .. testoutput::
+        :options: +NORMALIZE_WHITESPACE
+
+           sepal length (cm)  ...  target
+        0                5.2  ...       1
+        1                5.4  ...       1
+        2                4.9  ...       2
+
+        [3 rows x 5 columns]
+
+.. tabbed:: Tasks
+
+   .. testcode::
+
+        @ray.remote
+        def consume(dataset: ray.data.Dataset) -> int:
+            num_batches = 0
+            for batch in dataset.iter_batches(batch_size=8):
+                num_batches += 1
+            return num_batches
+
+        ray.get(consume.remote(transformed_dataset))
+
+.. tabbed:: Actors
+
+    .. testcode::
+
+        @ray.remote
+        class Worker:
+
+            def train(self, shard) -> int:
+                for batch in shard.iter_batches(batch_size=8):
+                    pass
+                return shard.count()
+
+        workers = [Worker.remote() for _ in range(4)]
+        shards = transformed_dataset.split(n=4, locality_hints=workers)
+        ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+
+
+To learn more about consuming datasets, read
+:ref:`Consuming datasets <consuming_datasets>`.
+
+Save the dataset
+----------------
+
+Call methods like :meth:`~ray.data.Dataset.write_parquet` to save datasets to local
+or remote filesystems.
+
+.. testcode::
+
+    import os
+
+    transformed_dataset.write_parquet("iris")
+
+    print(os.listdir("iris"))
+
+.. testoutput::
+    :options: +ELLIPSIS
+
+    ['..._000000.parquet']
+
+
+To learn more about saving datasets, read :ref:`Saving datasets <saving_datasets>`.
+
+Next Steps
+----------
+
+* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
