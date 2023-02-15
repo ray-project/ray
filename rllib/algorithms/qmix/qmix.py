@@ -83,7 +83,7 @@ class QMixConfig(SimpleQConfig):
         # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
         # alternative `learn_on_loaded_batch` alternative for the GPU.
         # TODO: This hack will be resolved once we move all algorithms to the new
-        #  RLModule/RLTrainer APIs.
+        #  RLModule/Learner APIs.
         self.simple_optimizer = True
 
         # Override some of AlgorithmConfig's default values with QMix-specific values.
