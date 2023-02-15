@@ -97,3 +97,9 @@ while HANG_END_MARKER and Path(HANG_END_MARKER).exists():
 # Put assertions last, so we don't finish early because of failures
 assert sorted([result.metrics["param"] for result in results]) == VALS
 assert [result.metrics["fixed"] for result in results] == [FIXED_VAL, FIXED_VAL]
+
+if USE_WORKAROUND:
+    from ray.experimental.internal_kv import _internal_kv_del
+    from ray.tune.registry import _make_key, TRAINABLE_CLASS
+
+    _internal_kv_del(_make_key("global", TRAINABLE_CLASS, DataParallelTrainer.__name__))
