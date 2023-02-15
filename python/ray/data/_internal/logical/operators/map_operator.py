@@ -25,7 +25,7 @@ class AbstractMap(LogicalOperator):
     def __init__(
         self,
         name: str,
-        input_op: LogicalOperator,
+        input_op: Optional[LogicalOperator] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -36,7 +36,7 @@ class AbstractMap(LogicalOperator):
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op] if input_op else [])
         self._ray_remote_args = ray_remote_args or {}
 
 
