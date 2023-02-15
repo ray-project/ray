@@ -10,7 +10,9 @@ from ray.rllib.models.experimental.encoder import STATE_OUT
 from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
 from ray.rllib.models.experimental.tf.primitives import TfMLP
 from ray.rllib.models.tf.tf_distributions import (
-    TfCategorical, TfDiagGaussian, TfDeterministic
+    TfCategorical,
+    TfDiagGaussian,
+    TfDeterministic,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -75,7 +77,6 @@ class PPOTfRLModule(TfRLModule):
             SampleBatch.VF_PREDS,
         ]
 
-
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
         output = {}
@@ -119,12 +120,11 @@ class PPOTfRLModule(TfRLModule):
             scale = tf.math.exp(log_std)
             action_dist = TfDiagGaussian(loc=loc, scale=scale)
             output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
-            
+
         output[SampleBatch.ACTION_DIST] = action_dist
 
         return output
 
-    
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
         output = {}
@@ -153,7 +153,6 @@ class PPOTfRLModule(TfRLModule):
         output["entropy"] = entropy
 
         return output
-
 
     @classmethod
     @override(TfRLModule)

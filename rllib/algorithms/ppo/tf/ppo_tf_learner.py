@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping, Any
+from typing import Mapping
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -65,19 +65,25 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         surrogate_loss = tf.minimum(
             batch[Postprocessing.ADVANTAGES] * logp_ratio,
             batch[Postprocessing.ADVANTAGES]
-            * tf.clip_by_value(logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param),
+            * tf.clip_by_value(
+                logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param
+            ),
         )
 
         # Compute a value function loss.
         if self.hps.use_critic:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
-            vf_loss = tf.math.squared_difference(value_fn_out, batch[Postprocessing.VALUE_TARGETS])
+            vf_loss = tf.math.squared_difference(
+                value_fn_out, batch[Postprocessing.VALUE_TARGETS]
+            )
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, self.hps.vf_clip_param)
             mean_vf_loss = tf.reduce_mean(vf_loss_clipped)
         # Ignore the value function.
         else:
             value_fn_out = tf.constant(0.0, dtype=surrogate_loss.dtype)
-            vf_loss_clipped = mean_vf_loss = tf.constant(0.0, dtype=surrogate_loss.dtype)
+            vf_loss_clipped = mean_vf_loss = tf.constant(
+                0.0, dtype=surrogate_loss.dtype
+            )
 
         total_loss = tf.reduce_mean(
             -surrogate_loss
@@ -100,4 +106,3 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             "mean_entropy": mean_entropy,
             "mean_kl_loss": mean_kl_loss,
         }
-

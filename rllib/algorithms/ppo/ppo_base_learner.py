@@ -1,4 +1,3 @@
-
 from typing import Mapping, Any
 
 from ray.rllib.core.learner.learner import Learner
@@ -6,7 +5,6 @@ from ray.rllib.utils.annotations import override
 
 
 class PPOBaseLearner(Learner):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -28,7 +26,6 @@ class PPOBaseLearner(Learner):
         self.kl_coeff = self.hps.kl_coeff
         self.kl_target = self.hps.kl_target
 
-    
     @override(Learner)
     def additional_update_per_module(
         self, module_id: str, sampled_kl_values: dict, timestep: int

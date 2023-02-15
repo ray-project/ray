@@ -9,7 +9,6 @@ import ray.rllib.algorithms.ppo as ppo
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 from ray.rllib.evaluation.postprocessing import (
@@ -85,7 +84,7 @@ class TestPPO(unittest.TestCase):
                     lambda x: torch.as_tensor(x).float(), train_batch
                 )
             else:
-                # tf 
+                # tf
                 train_batch = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
