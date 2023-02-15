@@ -111,6 +111,13 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
         buffer.sample(1)
 
+    .. testoutput::
+
+        True
+
+    `True` is not the output of the above testcode, but an artifact of unexpected
+    behaviour of sphinx doctests.
+    (see https://github.com/ray-project/ray/pull/32477#discussion_r1106776101)
     """
 
     def __init__(
