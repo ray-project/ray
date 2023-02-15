@@ -14,3 +14,10 @@ def test_backwards_compatibility():
     pipeline = dataset.repeat(1)
     iterator = TrainDatasetIterator(PipelinedDatasetIterator(pipeline))
     assert iterator.count() == 1
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
