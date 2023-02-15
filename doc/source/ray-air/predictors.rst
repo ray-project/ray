@@ -104,10 +104,39 @@ To configure the computation resources for your `BatchPredictor`, you have to se
 
 Here are some examples:
 
+**1. Use CPUs for Batch prediction:**
+
+- Scale from 1 to 4 workers, depending on the dataset size.
+
+- Each worker has 3 CPUs for inference.
+
 .. literalinclude:: doc_code/predictors.py
     :language: python
-    :start-after: __configure_batch_predictor_start__
-    :end-before: __configure_batch_predictor_end__
+    :start-after: __configure_batch_predictor_1_start__
+    :end-before: __configure_batch_predictor_1_end__
+
+**2. Use GPUs for Batch prediction:**
+
+- Scale from 1 to inf workers if no min/max values are provided.
+
+- Each with 1 GPU and 1 CPU (by default).
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_2_start__
+    :end-before: __configure_batch_predictor_2_end__
+
+**3. Use a fixed number of workers:**
+
+- Use exactly 2 workers by setting `max_scoring_workers` and `max_scoring_workers` the same.
+
+- Also use GPUs for inference.
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_3_start__
+    :end-before: __configure_batch_predictor_3_end__
+
 
 
 Batch Inference Examples
