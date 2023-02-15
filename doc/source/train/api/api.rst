@@ -68,9 +68,6 @@ PyTorch
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
-
-.. autosummary::
-
     ~train.torch.TorchCheckpoint
 
 
@@ -97,9 +94,6 @@ Tensorflow/Keras
 
     ~train.tensorflow.TensorflowTrainer
     ~train.tensorflow.TensorflowConfig
-
-.. autosummary::
-
     ~train.tensorflow.TensorflowCheckpoint
 
 
@@ -133,10 +127,6 @@ XGBoost
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
-
-
-.. autosummary::
-
     ~train.xgboost.XGBoostCheckpoint
 
 
@@ -147,10 +137,6 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
-
-
-.. autosummary::
-
     ~train.lightgbm.LightGBMCheckpoint
 
 
@@ -161,9 +147,6 @@ HuggingFace
     :toctree: doc/
 
     ~train.huggingface.HuggingFaceTrainer
-
-.. autosummary::
-
     ~train.huggingface.HuggingFaceCheckpoint
 
 
@@ -174,9 +157,6 @@ Scikit-Learn
     :toctree: doc/
 
     ~train.sklearn.SklearnTrainer
-
-.. autosummary::
-
     ~train.sklearn.SklearnCheckpoint
 
 
@@ -196,7 +176,4 @@ Reinforcement Learning (RLlib)
     :toctree: doc/
 
     ~train.rl.RLTrainer
-
-.. autosummary::
-
     ~train.rl.RLCheckpoint
