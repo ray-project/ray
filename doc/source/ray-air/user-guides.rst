@@ -96,3 +96,18 @@ Please also see the :ref:`Ray Tune environment variables <tune-env-vars>`.
 - **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
   including internal code paths. Otherwise, abbreviated tracebacks that only show user code
   are printed. Defaults to 0 (disabled).
+
+.. _air-multi-tenancy:
+
+Running multiple AIR jobs concurrently on one cluster
+-----------------------------------------------------
+Running multiple AIR training or tuning jobs at the same
+time on one cluster is not officially supported.
+This means that we don't test this workflow
+and generally encourage to use multiple smaller clusters
+instead.
+
+If you still want to do this, please refer to
+the
+:ref:`Ray Tune multi-tenancy docs <tune-multi-tenancy>`
+for potential pitfalls.
