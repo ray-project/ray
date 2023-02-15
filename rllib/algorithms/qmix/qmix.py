@@ -93,10 +93,8 @@ class QMixConfig(SimpleQConfig):
         self.target_network_update_freq = 500
         self.num_steps_sampled_before_learning_starts = 1000
         self.replay_buffer_config = {
+            # QMix only supports the vanilla ReplayBuffer
             "type": "ReplayBuffer",
-            # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
-            "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
             # Choosing `fragments` here makes it so that the buffer stores entire
@@ -222,6 +220,9 @@ class QMixConfig(SimpleQConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        assert self.replay_buffer_config["type"] == "ReplayBuffer", \
+            "Qmix supports only the vanilla ReplayBuffer."
 
         if self.framework_str != "torch":
             raise ValueError(
