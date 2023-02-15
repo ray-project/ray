@@ -64,7 +64,7 @@ def test_remote_function_runs_on_specified_instance(call_ray_start):
     with RayExecutor(address=call_ray_start) as ex:
         result = ex.submit(lambda x: x * x, 100).result()
         assert result == 10_000
-        assert ex.context.address_info["address"] == call_ray_start
+        assert ex._context.address_info["address"] == call_ray_start
 
 
 def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
@@ -72,7 +72,7 @@ def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
         futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
             assert result == 10_000
-        assert ex.context.address_info["address"] == call_ray_start
+        assert ex._context.address_info["address"] == call_ray_start
 
 
 def test_map_times_out():
