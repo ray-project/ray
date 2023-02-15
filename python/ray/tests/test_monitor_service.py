@@ -80,6 +80,8 @@ def test_scheduling_status(monitor_stub):
 
     wait_for_condition(condition)
 
+    del gpu_actors
+
 
 def count_live_nodes():
     s = sum(1 for node in ray.nodes() if node["Alive"])
