@@ -36,13 +36,56 @@ def get_new_event_loop():
 def sync_to_async(func):
     """Convert a blocking function to async function"""
 
-    if inspect.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
         return func
 
     async def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def async_gen_to_gen(async_gen, async_runner):
+    """Convert async generator to a regular Python generator.
+
+    Args:
+        async_gen: An async generator that we wish to convert to a regular Python
+            generator. This async generator will be executed via the provided
+            async runner.
+        async_runner: A callable that takes a coroutine function, creates a coroutine,
+            and runs it on the appropriate event loop.
+    Returns:
+        A generator that yields the data from the provided async generator, in the
+        calling thread.
+    """
+    # Convert generator to async iterator.
+    ait = async_gen.__aiter__()
+
+    async def get_next():
+        # Awaits for and returns the next object from the async iterator.
+        try:
+            obj = await ait.__anext__()
+            done = False
+
+        except StopAsyncIteration:
+            obj = None
+            # Signal that the async generator has been exhausted.
+            done = True
+
+        return done, obj
+
+    # Consume the async generator, yielding each object from this outer regular Python
+    # generator.
+    while True:
+        # Run the coroutine on an event loop and get the result, which is the next
+        # object yielded from the underlying async generator.
+        done, obj = async_runner(get_next)
+
+        if done:
+            # Async generator is exhausted, so we're done.
+            break
+
+        yield obj
 
 
 try:

@@ -514,6 +514,40 @@ def _inject_tracing_into_class(_cls):
 
         return _resume_span
 
+    def async_gen_span_wrapper(method: Callable[..., Any]) -> Any:
+        async def _resume_span(
+            self: Any,
+            *_args: Any,
+            _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+            **_kwargs: Any,
+        ) -> Any:
+            """
+            Wrap the user's function with a function that
+            will extract the trace context
+            """
+            # If tracing feature flag is not on, perform a no-op
+            if not _is_tracing_enabled() or _ray_trace_ctx is None:
+                async for out in method(self, *_args, **_kwargs):
+                    yield out
+            else:
+                tracer = _opentelemetry.trace.get_tracer(__name__)
+
+                # Retrieves the context from the _ray_trace_ctx dictionary we
+                # injected, or starts a new context
+                with _use_context(
+                    _DictPropagator.extract(_ray_trace_ctx)
+                ), tracer.start_as_current_span(
+                    _actor_span_consumer_name(self.__class__.__name__, method.__name__),
+                    kind=_opentelemetry.trace.SpanKind.CONSUMER,
+                    attributes=_actor_hydrate_span_args(
+                        self.__class__.__name__, method.__name__
+                    ),
+                ):
+                    async for out in method(self, *_args, **_kwargs):
+                        yield out
+
+        return _resume_span
+
     methods = inspect.getmembers(_cls, is_function_or_method)
     for name, method in methods:
         # Skip tracing for staticmethod or classmethod, because these method
@@ -548,6 +582,9 @@ def _inject_tracing_into_class(_cls):
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))
+        elif inspect.isasyncgenfunction(method):
+            # If the method was an async generator, use asyn generator span
+            wrapped_method = wraps(method)(async_gen_span_wrapper(method))
         else:
             wrapped_method = wraps(method)(span_wrapper(method))
 

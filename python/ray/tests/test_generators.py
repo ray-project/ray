@@ -42,11 +42,23 @@ def test_generator_oom(ray_start_regular):
     )
 
 
-@pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize("execution", ["tasks", "actors", "async_actors"])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
+def test_generator_returns(ray_start_regular, execution, store_in_plasma):
     remote_generator_fn = None
-    if use_actors:
+    if execution == "tasks":
+
+        @ray.remote
+        def generator(num_returns, store_in_plasma):
+            for i in range(num_returns):
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
+
+        remote_generator_fn = generator
+
+    elif execution == "actors":
 
         @ray.remote
         class Generator:
@@ -62,17 +74,26 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
 
         g = Generator.remote()
         remote_generator_fn = g.generator
+
+    elif execution == "async_actors":
+
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            async def generator(self, num_returns, store_in_plasma):
+                for i in range(num_returns):
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
+
     else:
-
-        @ray.remote(max_retries=0)
-        def generator(num_returns, store_in_plasma):
-            for i in range(num_returns):
-                if store_in_plasma:
-                    yield np.ones(1_000_000, dtype=np.int8) * i
-                else:
-                    yield [i]
-
-        remote_generator_fn = generator
+        raise AssertionError("Unhandled execution case in test")
 
     # Check cases when num_returns does not match the number of values returned
     # by the generator.
@@ -115,11 +136,25 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
     )
 
 
-@pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize("execution", ["tasks", "actors", "async_actors"])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_errors(ray_start_regular, use_actors, store_in_plasma):
+def test_generator_errors(ray_start_regular, execution, store_in_plasma):
     remote_generator_fn = None
-    if use_actors:
+
+    if execution == "tasks":
+
+        @ray.remote(max_retries=0)
+        def generator(num_returns, store_in_plasma):
+            for i in range(num_returns - 2):
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
+            raise Exception("error")
+
+        remote_generator_fn = generator
+
+    elif execution == "actors":
 
         @ray.remote
         class Generator:
@@ -136,18 +171,27 @@ def test_generator_errors(ray_start_regular, use_actors, store_in_plasma):
 
         g = Generator.remote()
         remote_generator_fn = g.generator
+
+    elif execution == "async_actors":
+
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            async def generator(self, num_returns, store_in_plasma):
+                for i in range(num_returns - 2):
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
+                raise Exception("error")
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
+
     else:
-
-        @ray.remote(max_retries=0)
-        def generator(num_returns, store_in_plasma):
-            for i in range(num_returns - 2):
-                if store_in_plasma:
-                    yield np.ones(1_000_000, dtype=np.int8) * i
-                else:
-                    yield [i]
-            raise Exception("error")
-
-        remote_generator_fn = generator
+        raise AssertionError("Unhandled execution case in test")
 
     ref1, ref2, ref3 = remote_generator_fn.options(num_returns=3).remote(
         3, store_in_plasma
@@ -216,10 +260,10 @@ def test_dynamic_generator_retry_exception(ray_start_regular, store_in_plasma):
         assert ray.get(ref)[0] == i
 
 
-@pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize("execution", ["tasks", "actors", "async_actors"])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
-    if use_actors:
+def test_dynamic_generator(ray_start_regular, execution, store_in_plasma):
+    if execution == "tasks":
 
         @ray.remote(num_returns="dynamic")
         def dynamic_generator(num_returns, store_in_plasma):
@@ -230,7 +274,8 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
                     yield [i]
 
         remote_generator_fn = dynamic_generator
-    else:
+
+    elif execution == "actors":
 
         @ray.remote
         class Generator:
@@ -246,6 +291,26 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
 
         g = Generator.remote()
         remote_generator_fn = g.generator
+
+    elif execution == "async_actors":
+
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            async def generator(self, num_returns, store_in_plasma):
+                for i in range(num_returns):
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
+
+    else:
+        raise AssertionError("Unhandled execution case in test")
 
     @ray.remote
     def read(gen):

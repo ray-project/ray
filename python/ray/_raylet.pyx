@@ -135,7 +135,9 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray._private.async_compat import sync_to_async, get_new_event_loop
+from ray._private.async_compat import (
+    sync_to_async, get_new_event_loop, async_gen_to_gen
+)
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
@@ -772,9 +774,15 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
+                def predicate(obj):
+                    return (
+                        inspect.iscoroutinefunction(obj)
+                        or inspect.isasyncgenfunction(obj)
+                    )
+
                 if len(inspect.getmembers(
                         actor.__class__,
-                        predicate=inspect.iscoroutinefunction)) == 0:
+                        predicate=predicate)) == 0:
                     error_message = (
                         "Failed to create actor. The failure reason "
                         "is that you set the async flag, but the actor does not "
@@ -795,7 +803,23 @@ cdef void execute_task(
                 # transport with max_concurrency flag.
                 increase_recursion_limit()
 
-                if inspect.iscoroutinefunction(function.method):
+                # Handle async generator case.
+                if inspect.isasyncgenfunction(function.method):
+                    # Create the async generator.
+                    generator = function(actor, *arguments, **kwarguments)
+
+                    def async_runner(async_func):
+                        # Takes a coroutine function and runs it on the correct event
+                        # loop.
+                        return core_worker.run_async_func_in_event_loop(
+                                async_func,
+                                function_descriptor,
+                                name_of_concurrency_group_to_execute
+                            )
+
+                    # Convert async generator to regular Python generator.
+                    return async_gen_to_gen(generator, async_runner)
+                elif inspect.iscoroutinefunction(function.method):
                     async_function = function
                 else:
                     # Just execute the method if it's ray internal method.
@@ -908,7 +932,10 @@ cdef void execute_task(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
-                if returns[0].size() == 1 and not inspect.isgenerator(outputs):
+                if returns[0].size() == 1 and not (
+                    inspect.isgenerator(outputs)
+                    or inspect.isasyncgen(outputs)
+                ):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
                     outputs = (outputs,)
@@ -929,7 +956,10 @@ cdef void execute_task(
                     print(actor_magic_token, file=sys.stderr, end="")
 
             if (returns[0].size() > 0 and
-                    not inspect.isgenerator(outputs) and
+                    not (
+                        inspect.isgenerator(outputs)
+                        or inspect.isasyncgen(outputs)
+                    ) and
                     len(outputs) != int(returns[0].size())):
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
@@ -939,11 +969,14 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:store_outputs"):
                 num_returns = returns[0].size()
                 if dynamic_returns != NULL:
-                    if not inspect.isgenerator(outputs):
+                    if not (
+                        inspect.isgenerator(outputs) or inspect.isasyncgen(outputs)
+                    ):
                         raise ValueError(
                                 "Functions with "
                                 "@ray.remote(num_returns=\"dynamic\" must return a "
                                 "generator")
+
                     task_exception = True
 
                     execute_dynamic_generator_and_store_task_outputs(
