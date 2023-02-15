@@ -19,6 +19,10 @@ Constructor Options
     :template: autosummary/class_with_autosummary.rst
 
     predictor.Predictor
+
+.. autosummary::
+    :toctree: doc/
+
     predictor.Predictor.from_checkpoint
     predictor.Predictor.from_pandas_udf
 

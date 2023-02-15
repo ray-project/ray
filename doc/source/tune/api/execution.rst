@@ -15,6 +15,10 @@ Tuner
     :template: autosummary/class_with_autosummary.rst
 
     Tuner
+
+.. autosummary::
+    :toctree: doc/
+
     Tuner.fit
     Tuner.get_results
 
@@ -28,7 +32,7 @@ Tuner Configuration
 
 .. seealso::
 
-    The `Tuner` also takes in a :class:`air.RunConfig <ray.air.RunConfig>`.
+    The `Tuner` constructor also takes in a :class:`air.RunConfig <ray.air.RunConfig>`.
 
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~
