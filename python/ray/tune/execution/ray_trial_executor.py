@@ -16,7 +16,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.air import Checkpoint, AcquiredResources, ResourceRequest
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
+from ray.air.constants import (
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+)
 from ray.air.execution import ResourceManager
 from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
@@ -46,6 +49,7 @@ DEFAULT_ENV_VARS = {
     "PL_DISABLE_FORK": "1"
 }
 ENV_VARS_TO_PROPAGATE = {
+    DISABLE_LAZY_CHECKPOINTING_ENV,
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
     "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
