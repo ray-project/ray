@@ -54,6 +54,26 @@ def test_torch_conversion(ray_start_regular_shared):
         assert batch["value"].tolist() == list(range(5))
 
 
+def test_torch_conversion_pipeline(ray_start_regular_shared):
+    ds = ray.data.range_table(5).repeat(2)
+    it = ds.iterator()
+
+    # First epoch.
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch["value"], torch.Tensor)
+        assert batch["value"].tolist() == list(range(5))
+
+    # Second epoch.
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch["value"], torch.Tensor)
+        assert batch["value"].tolist() == list(range(5))
+
+    # Fails on third iteration.
+    with pytest.raises(StopIteration):
+        for batch in it.iter_torch_batches():
+            pass
+
+
 def test_torch_conversion_collate_fn(ray_start_regular_shared):
     def collate_fn(batch: Dict[str, np.ndarray]):
         return torch.as_tensor(batch["value"] + 5)
