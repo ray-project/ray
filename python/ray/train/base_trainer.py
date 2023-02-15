@@ -626,13 +626,14 @@ class BaseTrainer(abc.ABC):
 
             # Get the checkpoint from the Tune session, and use it to initialize
             # the restored trainer.
-            # This handles recovery from both trial-level and experiment-level failures.
+            # This handles both worker-level and cluster-level restoration
+            # of the Train experiment.
             checkpoint = session.get_checkpoint()
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
-                # Always load the preprocessor from checkpoint
-                # Unless we are restoring the experiment and have passed in a new
-                # preprocessor
+                # Always load the preprocessor from an available checkpoint
+                # Unless we are restoring the experiment and have explicitly
+                # passed in a new preprocessor
                 if not (restored and trainer.preprocessor):
                     trainer.preprocessor = checkpoint.get_preprocessor()
 
