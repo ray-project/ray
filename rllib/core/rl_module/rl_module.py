@@ -45,6 +45,14 @@ class SingleAgentRLModuleSpec:
     model_config: Optional[Dict[str, Any]] = None
 
     def build(self) -> "RLModule":
+
+        if self.observation_space is None:
+            raise ValueError("Observation space must be specified.")
+        if self.action_space is None:
+            raise ValueError("Action space must be specified.")
+        if self.model_config is None:
+            raise ValueError("Model config must be specified.")
+
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
@@ -325,7 +333,7 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during training called from the trainer. This method should
+        """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.
 
         Args:
