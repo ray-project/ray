@@ -23,12 +23,12 @@ class PipelinedDatasetIterator(DatasetIterator):
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset_pipeline})"
 
-    def _get_next_dataset(self) -> "Dataset":
+    def _get_next_dataset(self) -> "DatasetPipeline":
         if self._epoch_iterator is None:
             self._epoch_iterator = self._base_dataset_pipeline.iter_epochs()
 
         # The epoch iterator will always have 1 dataset.
-        ds = next(next(self._epoch_iterator).iter_datasets())
+        ds = next(self._epoch_iterator)
         return ds
 
     def iter_batches(
@@ -93,16 +93,17 @@ class PipelinedDatasetIterator(DatasetIterator):
         local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         ds = self._get_next_dataset()
-        return Dataset.to_tf(
-            ds,
-            feature_columns,
-            label_columns,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
-        )
+        return ds.to_tf(feature_columns, label_columns)
+        # return Dataset.to_tf(
+        #     ds,
+        #     feature_columns,
+        #     label_columns,
+        #     prefetch_blocks=prefetch_blocks,
+        #     batch_size=batch_size,
+        #     drop_last=drop_last,
+        #     local_shuffle_buffer_size=local_shuffle_buffer_size,
+        #     local_shuffle_seed=local_shuffle_seed,
+        # )
 
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()
