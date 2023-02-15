@@ -481,7 +481,7 @@ def test_dashboard_module_decorator(enable_test_module):
 import os
 import ray.dashboard.utils as dashboard_utils
 
-os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
+os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
 head_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardHeadModule)
 agent_cls_list = dashboard_utils.get_all_modules(
