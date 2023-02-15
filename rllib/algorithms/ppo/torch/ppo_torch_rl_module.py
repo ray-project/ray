@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Mapping, Any
 
 import gymnasium as gym
-import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
@@ -190,11 +189,14 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -240,11 +242,14 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -303,11 +308,14 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)

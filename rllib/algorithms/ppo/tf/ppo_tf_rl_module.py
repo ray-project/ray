@@ -1,7 +1,6 @@
 from typing import Mapping, Any
 
 import gymnasium as gym
-import tree
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
@@ -97,11 +96,14 @@ class PPOTfRLModule(TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -142,11 +144,14 @@ class PPOTfRLModule(TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -185,12 +190,16 @@ class PPOTfRLModule(TfRLModule):
         policy and the new policy during training.
         """
         output = {}
+
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
