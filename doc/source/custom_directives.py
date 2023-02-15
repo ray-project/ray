@@ -69,6 +69,8 @@ MOCK_MODULES = [
     "gym",
     "gym.spaces",
     "gymnasium",
+    "gymnasium.spaces",
+    "gymnasium.envs",
     "horovod",
     "horovod.runner",
     "horovod.runner.common",
