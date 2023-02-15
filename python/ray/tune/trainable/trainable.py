@@ -591,10 +591,10 @@ class Trainable:
         if not self.sync_config.sync_artifacts:
             return False
 
-        if self._last_artifact_sync_iter == self.iteration:
-            # No need to sync again, if we have already synced this iteration.
-            return False
-        self._last_artifact_sync_iter = self.iteration
+        # if self._last_artifact_sync_iter == self.iteration:
+        #     # No need to sync again, if we have already synced this iteration.
+        #     return False
+        # self._last_artifact_sync_iter = self.iteration
         with warn_if_slow(
             name="trial_artifact_cloud_upload",
             message=(
@@ -706,7 +706,7 @@ class Trainable:
     def _maybe_load_from_cloud(
         self, remote_dir: str, local_dir: str, exclude: List[str] = None
     ) -> bool:
-        if not self.uses_cloud_checkpointing:
+        if not self.uses_cloud_checkpointing or not list_at_uri(remote_dir):
             return False
 
         syncer = self.sync_config.syncer
@@ -795,13 +795,13 @@ class Trainable:
                 could not be found.
 
         """
+        print(f"[Restore -- START] trial {self.config['id']}")
+
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
 
         synced_from_cloud = self._maybe_load_checkpoint_from_cloud(checkpoint_path)
-        if synced_from_cloud:
-            self._maybe_load_artifacts_from_cloud()
 
         if not synced_from_cloud and (
             # If a checkpoint source IP is given
@@ -865,6 +865,14 @@ class Trainable:
 
         # Actually load checkpoint
         self.load_checkpoint(to_load)
+
+        # Then, download artifacts from cloud if applicable
+        print(
+            f"[DEBUGGING] restore remote_checkpoint_dir for trial {self.config['id']}=",
+            self.remote_checkpoint_dir,
+        )
+        if synced_from_cloud:
+            self._maybe_load_artifacts_from_cloud()
 
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
@@ -963,7 +971,8 @@ class Trainable:
         reset actor behavior for the new config."""
         # Save artifacts one last time, if this actor has been swapped to a
         # different trial.
-        self._maybe_save_artifacts_to_cloud()
+        if remote_checkpoint_dir != self.remote_checkpoint_dir:
+            self._maybe_save_artifacts_to_cloud()
 
         self.config = new_config
 
