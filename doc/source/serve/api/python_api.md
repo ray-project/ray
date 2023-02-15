@@ -27,6 +27,10 @@
    :template: autosummary/class_with_autosummary.rst
 
    serve.handle.RayServeHandle
+
+.. autosummary::
+   :toctree: doc/
+
    serve.handle.RayServeHandle.remote
    serve.handle.RayServeHandle.options
 ```

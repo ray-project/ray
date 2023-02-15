@@ -338,6 +338,10 @@ TrialScheduler Interface
     :template: autosummary/class_with_autosummary.rst
 
     TrialScheduler
+
+.. autosummary::
+    :toctree: doc/
+
     TrialScheduler.choose_trial_to_run
     TrialScheduler.on_trial_result
     TrialScheduler.on_trial_complete

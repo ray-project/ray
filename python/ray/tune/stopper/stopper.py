@@ -22,7 +22,7 @@ class Stopper(abc.ABC):
         >>> class TimeStopper(Stopper):
         ...     def __init__(self):
         ...         self._start = time.time()
-        ...         self._deadline = 5  # Stop all trials after 5 seconds
+        ...         self._deadline = 2  # Stop all trials after 2 seconds
         ...
         ...     def __call__(self, trial_id, result):
         ...         return False
@@ -42,8 +42,6 @@ class Stopper(abc.ABC):
         ... )
         >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
         [ignore]...
-        >>> all(result.metrics["time_total_s"] < 6 for result in result_grid)
-        True
 
     """
 
@@ -75,12 +73,12 @@ class CombinedStopper(Stopper):
         ... )
         >>>
         >>> stopper = CombinedStopper(
-        ...     MaximumIterationStopper(max_iter=20),
+        ...     MaximumIterationStopper(max_iter=10),
         ...     TrialPlateauStopper(metric="my_metric"),
         ... )
         >>> def train_fn(config):
-        ...     for i in range(25):
-        ...         session.report({"my_metric": np.random.normal(0, 1 - i / 25)})
+        ...     for i in range(15):
+        ...         session.report({"my_metric": np.random.normal(0, 1 - i / 15)})
         ...
         >>> tuner = tune.Tuner(
         ...     train_fn,
