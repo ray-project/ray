@@ -3576,6 +3576,7 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    type: anyscale_job
 
 
 - name: microbenchmark_staging
@@ -3594,6 +3595,7 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    type: anyscale_job
 
 
 - name: microbenchmark_38
@@ -3611,6 +3613,7 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    type: anyscale_job
 
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
