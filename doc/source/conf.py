@@ -150,7 +150,12 @@ language = None
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ["_build"]
+# Also helps resolve warnings about documents not included in any toctree.
+exclude_patterns = [
+    "_build",
+    "source/workflows/api/doc/ray.workflow.*",
+    "source/serve/api/doc/ray.serve.*",
+]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
