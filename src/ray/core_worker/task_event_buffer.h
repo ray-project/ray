@@ -319,8 +319,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   boost::circular_buffer<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
 
   /// Per thread buffer.
-  absl::flat_hash_map<std::thread::id, TaskEventThreadBuffer> all_thd_buffer_
-      GUARDED_BY(buf_map_mutex_);
+  absl::flat_hash_map<std::thread::id, TaskEventThreadBuffer> all_thd_buffer_;
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
