@@ -297,7 +297,7 @@ Exceptions
 .. autoclass:: ray.exceptions.CrossLanguageError
    :members:
 
-RayExecutor
+ray.util.concurrent.futures.RayExecutor
 -----------
 
 .. autoclass:: ray.util.RayExecutor
