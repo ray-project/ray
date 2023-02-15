@@ -533,6 +533,120 @@ class TestServeApplicationSchema:
             ],
         }
 
+    def test_prepend_app_name_to_deployment_names(self):
+        config = ServeApplicationSchema.parse_obj(
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+                "deployments": [
+                    {
+                        "name": "alice",
+                        "num_replicas": 2,
+                    },
+                    {
+                        "name": "bob",
+                        "num_replicas": 3,
+                    },
+                ],
+            }
+        )
+        transformed_config = ServeApplicationSchema.parse_obj(
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+                "deployments": [
+                    {
+                        "name": "app1_alice",
+                        "num_replicas": 2,
+                    },
+                    {
+                        "name": "app1_bob",
+                        "num_replicas": 3,
+                    },
+                ],
+            }
+        )
+        assert transformed_config == config.prepend_app_name_to_deployment_names()
+
+    def test_remove_app_name_from_deployment_names(self):
+        config_dict = {
+            "name": "app1",
+            "route_prefix": "/app1",
+            "import_path": "module.graph",
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+
+        # Applying prepend_app_name_to_deployment_names then
+        # remove_app_name_from_deployment_names should give original config
+        config = ServeApplicationSchema.parse_obj(config_dict)
+        transformed_config = config.prepend_app_name_to_deployment_names()
+        assert config == transformed_config.remove_app_name_from_deployment_names()
+
+        malformed_config = ServeApplicationSchema.parse_obj(
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+                "deployments": [
+                    {
+                        "name": "app1_alice",
+                        "num_replicas": 2,
+                    },
+                    {
+                        "name": "bob",
+                        "num_replicas": 3,
+                    },
+                ],
+            }
+        )
+
+        # If the deployment names don't have app name as a prefix, should raise error
+        with pytest.raises(AssertionError):
+            malformed_config.remove_app_name_from_deployment_names()
+        with pytest.raises(AssertionError):
+            config.remove_app_name_from_deployment_names()
+
+
+class TestServeDeploySchema:
+    def test_serve_application_to_deploy_config(self):
+        app_config_dict = {
+            "import_path": "module.graph",
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                    "route_prefix": "/A",
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+        app_config = ServeApplicationSchema.parse_obj(app_config_dict)
+        deploy_config = app_config.to_deploy_schema()
+
+        assert deploy_config.applications[0].name == ""
+        assert deploy_config.dict(exclude_unset=True) == {
+            "host": "1.1.1.1",
+            "port": 7470,
+            "applications": [app_config_dict],
+        }
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):

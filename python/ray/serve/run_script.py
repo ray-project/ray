@@ -84,7 +84,7 @@ def main():
 
     try:
         if is_config:
-            client.deploy_app(config, _blocking=args.gradio)
+            client.deploy_apps(config, _blocking=args.gradio)
             cli_logger.success("Submitted deploy config successfully.")
             if args.gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
