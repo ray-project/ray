@@ -18,7 +18,6 @@ from ray.util.placement_group import (
     remove_placement_group,
 )
 from ray.util.serialization import deregister_serializer, register_serializer
-from ray.util.ray_executor import RayExecutor
 
 
 @PublicAPI(stability="beta")
@@ -66,5 +65,4 @@ __all__ = [
     "register_serializer",
     "deregister_serializer",
     "list_named_actors",
-    "RayExecutor",
 ]

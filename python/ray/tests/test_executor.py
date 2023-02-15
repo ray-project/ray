@@ -1,7 +1,7 @@
 import os
 import sys
 import pytest
-from ray.util.ray_executor import RayExecutor
+from ray.util.concurrent.futures.ray_executor import RayExecutor
 import time
 from concurrent.futures import (
     ThreadPoolExecutor,

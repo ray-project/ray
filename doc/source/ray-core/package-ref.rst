@@ -298,7 +298,7 @@ Exceptions
    :members:
 
 ray.util.concurrent.futures.RayExecutor
------------
+---------------------------------------
 
-.. autoclass:: ray.util.RayExecutor
+.. autoclass:: ray.util.concurrent.futures.RayExecutor
    :members:
