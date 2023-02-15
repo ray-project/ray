@@ -615,6 +615,113 @@ ray submit cluster.yaml example.py --start
 
 `````
 
+## Debugging and Monitoring Ray Quick Start
+
+You can use built-in observability tools to monitor and debug Ray applications and clusters.
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
+:animate: fade-in-slide-down
+
+Ray dashboard provides a visual interface that displays real-time system metrics, node-level resource monitoring, job profiling, and task visualizations. The dashboard is designed to help users understand the performance of their Ray applications and identify potential issues.
+
+```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/Dashboard-overview.png
+:align: center
+```
+
+````{note}
+To get started with ray dashboard install the Ray default installation as follows.
+
+```bash
+pip install "ray[default]"
+```
+````
+
+```{link-button} ../ray-core/ray-dashboard
+:type: ref
+:text: Learn more about Ray Dashboard.
+:classes: btn-outline-primary btn-block
+```
+
+`````
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray State APIs: CLI to access cluster states
+:animate: fade-in-slide-down
+
+Ray state APIs allow users to conveniently access the current state (snapshot) of Ray through CLI or Python SDK.
+
+````{note}
+To get started with ray state API install the Ray default installation as follows.
+
+```bash
+pip install "ray[default]"
+```
+````
+
+Run the following code.
+
+```{code-block} python
+
+    import ray
+    import time
+
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    def task_running_300_seconds():
+        print("Start!")
+        time.sleep(300)
+    
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            print("Actor created")
+    
+    # Create 2 tasks
+    tasks = [task_running_300_seconds.remote() for _ in range(2)]
+
+    # Create 2 actors
+    actors = [Actor.remote() for _ in range(2)]
+
+    ray.get(tasks)
+
+```
+
+See the summarized statistics of Ray tasks using ``ray summary tasks``.
+
+```{code-block} bash
+
+    ray summary tasks
+
+```
+
+```{code-block} text
+
+    ======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
+    Stats:
+    ------------------------------------
+    total_actor_scheduled: 2
+    total_actor_tasks: 0
+    total_tasks: 2
+
+
+    Table (group by func_name):
+    ------------------------------------
+        FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
+    0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
+    1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
+
+```
+
+```{link-button} ../ray-observability/state/state-api
+:type: ref
+:text: Learn more about Ray State APIs
+:classes: btn-outline-primary btn-block
+```
+
+`````
+
+
+
 
 ```{include} learn-more.md
 ```

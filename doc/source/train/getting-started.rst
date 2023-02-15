@@ -179,3 +179,9 @@ Here are examples for some of the commonly used trainers:
         :end-before: __tf_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
+
+
+Next Steps
+----------
+
+* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`.

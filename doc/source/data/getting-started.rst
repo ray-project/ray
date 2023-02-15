@@ -144,3 +144,8 @@ or remote filesystems.
 
 
 To learn more about saving datasets, read :ref:`Saving datasets <saving_datasets>`.
+
+Next Steps
+----------
+
+* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
