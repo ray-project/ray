@@ -114,7 +114,9 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
 
     script_path = Path(__file__).parent / "_test_multi_tenancy_run.py"
 
-    run_1 = subprocess.Popen([sys.executable, script_path], env=run_1_env)
+    run_1 = subprocess.Popen(
+        [sys.executable, script_path], env=run_1_env, stderr=subprocess.PIPE
+    )
     print("Started run 1:", run_1.pid)
 
     run_2 = subprocess.Popen([sys.executable, script_path], env=run_2_env)
@@ -126,6 +128,13 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
         assert run_1.wait() == 0
     else:
         assert run_1.wait() != 0
+
+        stderr = run_1.stderr.read().decode()
+
+        if not exit_same:
+            assert "OwnerDiedError" in stderr, stderr
+        else:
+            assert "AssertionError" in stderr, stderr
 
 
 if __name__ == "__main__":
