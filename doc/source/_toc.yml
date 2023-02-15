@@ -362,9 +362,6 @@ parts:
 
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
-        sections:
-          - file: ray-observability/index
-            title: Tools
 
       - file: ray-references/api
         title: References

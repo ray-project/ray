@@ -400,6 +400,13 @@ class Executor:
         """
         raise NotImplementedError
 
+    def shutdown(self):
+        """Shutdown an executor, which may still be running.
+
+        This should interrupt execution and clean up any used resources.
+        """
+        pass
+
     def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far.
 
