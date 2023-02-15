@@ -302,12 +302,10 @@ class ActorCriticEncoder(Encoder):
         if self.config.shared:
             state_in_spec = self.encoder.input_spec[STATE_IN]
         else:
-            state_in_spec = NestedDict(
-                {
-                    ACTOR: self.actor_encoder.input_spec[STATE_IN],
-                    CRITIC: self.critic_encoder.input_spec[STATE_IN],
-                }
-            )
+            state_in_spec = {
+                ACTOR: self.actor_encoder.input_spec[STATE_IN],
+                CRITIC: self.critic_encoder.input_spec[STATE_IN],
+            }
 
         return SpecDict(
             {
@@ -322,12 +320,10 @@ class ActorCriticEncoder(Encoder):
         if self.config.shared:
             state_out_spec = self.encoder.output_spec[STATE_OUT]
         else:
-            state_out_spec = NestedDict(
-                {
-                    ACTOR: self.actor_encoder.output_spec[STATE_OUT],
-                    CRITIC: self.critic_encoder.output_spec[STATE_OUT],
-                }
-            )
+            state_out_spec = {
+                ACTOR: self.actor_encoder.output_spec[STATE_OUT],
+                CRITIC: self.critic_encoder.output_spec[STATE_OUT],
+            }
 
         return SpecDict(
             {
