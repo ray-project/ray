@@ -141,6 +141,7 @@ parts:
               - file: data/random-access
           - file: data/faq
           - file: data/api/api
+          - file: data/glossary
           - file: data/integrations
 
       - file: train/train
