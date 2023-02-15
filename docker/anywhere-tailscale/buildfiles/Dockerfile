@@ -1,5 +1,5 @@
 ARG IMAGETYPE=cpu
-FROM rayproject/ray:2.2.0-py38-$IMAGETYPE
+FROM rayproject/ray-ml:2.2.0-py38-$IMAGETYPE
 ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         MODIN_ENGINE=ray \
         MODIN_RAY_CLUSTER=True \
@@ -21,11 +21,11 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS" \
         PATH=/crate/bin/:$PATH \
         CRATE_HEAP_SIZE="5G" \
-        IPv6=false \
-        DISABLE_IPV6=true \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true \
         SQLALCHEMY_SILENCE_UBER_WARNING=1
+#        IPv6=false \
+#        DISABLE_IPV6=true \
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
 
@@ -38,10 +38,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 RUN $HOME/anaconda3/bin/pip install -q --no-cache-dir -U pip \
     pandas \
-    auto-sklearn \
-    pandas_datareader \
     'dask==2022.2.0' \
-    modin[dask] \
     modin[ray] \
     'ray>=2.2.0' \
     fredapi \
@@ -51,9 +48,12 @@ RUN $HOME/anaconda3/bin/pip install -q --no-cache-dir -U pip \
     datetime \
     icecream \
     geojson \
-    sqlalchemy \
+    tsfresh \
     crate[sqlalchemy] \
-    alpaca_py
+    alpaca_py \
+    auto-sklearn \
+    pandas_datareader \
+    yfinance
 
     # dask version compatible with ray and modin
 
