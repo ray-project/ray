@@ -108,7 +108,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
                 )
     for batch in ds.iter_batches():
         pass
-    stats = canonicalize(ds.stats())
+    stats = canonicalize(ds.fully_executed().stats())
 
     if context.new_execution_backend:
         assert (
@@ -177,7 +177,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
-    stats = canonicalize(ds.stats())
+    stats = canonicalize(ds.fully_executed().stats())
     assert (
         stats
         == """Stage N read->random_shuffle: executed in T
@@ -222,35 +222,35 @@ Stage N repartition: executed in T
 def test_dataset_stats_repartition(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.repartition(1, shuffle=False)
-    stats = ds.stats()
+    stats = ds.fully_executed().stats()
     assert "repartition" in stats, stats
 
 
 def test_dataset_stats_union(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.union(ds)
-    stats = ds.stats()
+    stats = ds.fully_executed().stats()
     assert "union" in stats, stats
 
 
 def test_dataset_stats_zip(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.zip(ds)
-    stats = ds.stats()
+    stats = ds.fully_executed().stats()
     assert "zip" in stats, stats
 
 
 def test_dataset_stats_sort(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.sort()
-    stats = ds.stats()
+    stats = ds.fully_executed().stats()
     assert "sort_map" in stats, stats
     assert "sort_reduce" in stats, stats
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(range(10))
-    stats = ds.stats()
+    stats = ds.fully_executed().stats()
     assert "from_items" in stats, stats
 
 
@@ -260,7 +260,7 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(1000, parallelism=10)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
-    stats = canonicalize(ds.stats())
+    stats = canonicalize(ds.fully_executed().stats())
     if context.new_execution_backend:
         assert (
             stats
@@ -295,7 +295,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
     dses = ds.split_at_indices([49])
     dses = [ds.map(lambda x: x + 1) for ds in dses]
     for ds_ in dses:
-        stats = canonicalize(ds_.stats())
+        stats = canonicalize(ds_.fully_executed().stats())
 
         if context.new_execution_backend:
             assert (
