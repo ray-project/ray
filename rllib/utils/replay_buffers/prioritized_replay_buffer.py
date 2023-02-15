@@ -29,6 +29,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         alpha: float = 1.0,
+        beta: float = None,
         **kwargs
     ):
         """Initializes a PrioritizedReplayBuffer instance.
@@ -41,12 +42,18 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
+            beta: The default value of beta to use. This is useful if beta is
+                not given as an argument of PrioritizedReplayBuffer.sample().
+                Any value passed to PrioritizedReplayBuffer.sample() will override
+                this value.
             ``**kwargs``: Forward compatibility kwargs.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
         assert alpha > 0
         self._alpha = alpha
+        assert beta is None or beta > 0
+        self._default_beta = beta
 
         # Segment tree must have capacity that is a power of 2
         it_capacity = 1
@@ -93,7 +100,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(
-        self, num_items: int, beta: float, **kwargs
+        self, num_items: int, beta: float = None, **kwargs
     ) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
 
@@ -123,6 +130,19 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
         """
+        if beta is None:
+            # Use default beta given in constructor.
+            beta = self._default_beta
+
+            if beta is None:
+                raise ValueError(
+                    "beta must be given as an argument of "
+                    "PrioritizedReplayBuffer.sample() or set with the "
+                    "argument `beta` when initializing"
+                    "PrioritizedReplayBuffer. This is commonly done by "
+                    "providing it in the replay buffer config."
+                )
+
         assert beta >= 0.0
 
         if len(self) == 0:
