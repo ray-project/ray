@@ -27,11 +27,11 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
     This is how we schedule the runs:
 
     - We have two runs. Every run starts two trials.
-    - Run 1 will start 1 trial immediately. This trial will be started with
+    - Run 1 starts 1 trial immediately. This trial starts with
       the correct parameters for the script. The trial hangs until the file
       ``run_2_finished`` is deleted.
-    - Run 2 will start as soon as the 1st trial of Run 1 is running (by waiting
-      until ``run_1_running`` file is deleted by that trial). It will overwrite
+    - Run 2 starts as soon as the first trial of Run 1 runs (by waiting
+      until the ``run_1_running`` file is deleted by that trial). It will overwrite
       the global registry trainable with the same name!
     - Run 2 will finish both trials. The script should finish with the expected
       parameters.
@@ -44,9 +44,9 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
 
     When no workaround is used, we expect an assertion error (if ``exit_same=True``,
     see below), otherwise a KeyError (because a trial failed).
-    When the workaround is used, we expect everything to run fine.
+    When the workaround is used, we expect everything to run without error.
 
-    NOTE: There are two errors that can come up with registry conflicts: First,
+    NOTE: Two errors can occur with registry conflicts. First,
     the trainable can be overwritten which will be captured e.g. when a fixed value
     is included in the trainable. The second trial of run 1 will then have a wrong
     parameter and report a wrong metric (from run 2).

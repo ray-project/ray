@@ -778,7 +778,7 @@ API should be used to get the path for saving trial-specific outputs.
 
 .. _tune-multi-tenancy:
 
-How can I run multiple Ray Tune jobs on the same cluster at the same time (multi tenancy)?
+How can I run multiple Ray Tune jobs on the same cluster at the same time (multi-tenancy)?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Running multiple Ray Tune runs on the same cluster at the same
