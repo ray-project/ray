@@ -394,9 +394,11 @@ class TunerInternal:
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
-        path = Path(restore_path)
-        download_from_uri(str(path / _TRAINABLE_PKL), str(tempdir / _TRAINABLE_PKL))
-        download_from_uri(str(path / _TUNER_PKL), str(tempdir / _TUNER_PKL))
+        restore_uri = URI(restore_path)
+        download_from_uri(
+            str(restore_uri / _TRAINABLE_PKL), str(tempdir / _TRAINABLE_PKL)
+        )
+        download_from_uri(str(restore_uri / _TUNER_PKL), str(tempdir / _TUNER_PKL))
         return True, str(tempdir)
 
     def _process_scaling_config(self) -> None:
