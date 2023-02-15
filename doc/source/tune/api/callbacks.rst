@@ -22,6 +22,10 @@ Callback Initialization and Setup
     :template: autosummary/class_with_autosummary.rst
 
     Callback
+
+.. autosummary::
+    :toctree: doc/
+
     Callback.setup
 
 

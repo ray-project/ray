@@ -23,11 +23,22 @@ Tune Syncing Configuration
 Remote Storage Syncer Interface (tune.Syncer)
 ---------------------------------------------
 
+Constructor
+~~~~~~~~~~~
+
 .. autosummary::
     :toctree: doc/
     :template: autosummary/class_with_autosummary.rst
 
     Syncer
+
+
+Syncer Methods to Implement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
     Syncer.sync_up
     Syncer.sync_down
     Syncer.delete
