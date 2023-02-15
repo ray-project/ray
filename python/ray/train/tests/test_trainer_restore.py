@@ -100,9 +100,11 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     with pytest.raises(RayTaskError):
         result = trainer.fit()
 
-    # Explicit shutdown. Otherwise, object references may still be used
-    # ray.shutdown()
-    # ray.init(num_cpus=4)
+    # Include an explicit cluster shutdown.
+    # Otherwise, the previously registered object references will still exist,
+    # and the test may trivially pass.
+    ray.shutdown()
+    ray.init(num_cpus=4)
 
     train_fn, train_loop_config = create_train_fn_and_config()
     datasets = {"train": ray.data.from_items([{"feature": i} for i in range(10)])}

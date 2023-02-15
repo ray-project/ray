@@ -547,12 +547,10 @@ class BaseTrainer(abc.ABC):
         param_space = self._extract_fields_for_tuner_param_space()
 
         if self._restore_path:
-            # TODO(justinvyu): Pass in the new param_space once possible
-            # This is because some fields get extracted to the Tuner and will
-            # overwrite new ones from Trainer.restore.
             tuner = Tuner.restore(
                 self._restore_path,
                 trainable=trainable,
+                param_space=param_space,
                 resume_unfinished=True,
                 resume_errored=True,
             )
