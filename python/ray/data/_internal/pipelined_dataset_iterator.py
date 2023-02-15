@@ -105,6 +105,10 @@ class PipelinedDatasetIterator(DatasetIterator):
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()
 
+    @property
+    def _base_dataset_or_pipeline(self) -> "DatasetPipeline":
+        return self._base_dataset_pipeline
+
     def _to_train_iterator(self) -> "TrainDatasetIterator":
         from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
