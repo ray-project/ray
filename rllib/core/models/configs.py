@@ -136,6 +136,14 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
+        # Activation functions in TF are lower case
+        self.output_activation = _convert_to_lower_case_if_tf(
+            self.output_activation, framework
+        )
+        self.filter_layer_activation = _convert_to_lower_case_if_tf(
+            self.filter_layer_activation, framework
+        )
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
 

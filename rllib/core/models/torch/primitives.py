@@ -96,6 +96,12 @@ class TorchCNN(nn.Module):
         assert isinstance(output_dim, int)
         assert filter_specifiers is not None, "Must provide filter specifiers."
 
+        filter_layer_activation = get_activation_fn(
+            filter_layer_activation, framework="torch"
+        )
+
+        output_activation = get_activation_fn(output_activation, framework="torch")
+
         layers = []
         # Create some CNN layers
         core_layers = []
@@ -149,9 +155,8 @@ class TorchCNN(nn.Module):
         # Add a final linear layer to make sure that the outputs have the correct
         # dimensionality.
         layers.append(nn.Linear(int(width) * int(height), output_dim))
-        if output_activation not in ("linear", None):
-            activation_class = getattr(nn, output_activation, lambda: None)()
-            self.layers.append(activation_class)
+        if output_activation is not None:
+            layers.append(output_activation())
 
         # Create the cnn that potentially includes a flattened layer
         self.cnn = nn.Sequential(*layers)

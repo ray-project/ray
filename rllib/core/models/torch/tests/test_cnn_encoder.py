@@ -80,13 +80,6 @@ class TestTorchCNNEncoder(unittest.TestCase):
             self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims))
             self.assertEqual(outputs[STATE_OUT], None)
 
-            from torchview import draw_graph
-
-            model_graph = draw_graph(model, input_size=(1, *inputs_dims), device="meta")
-            model_graph.visual_graph.render(directory="cnn-output", view=True)
-
-            self.assertEqual(outputs.shape, (1, output_dims))
-
 
 if __name__ == "__main__":
     import pytest
