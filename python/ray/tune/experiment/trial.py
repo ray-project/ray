@@ -417,6 +417,11 @@ class Trial:
                 )
             )
 
+        if default_resources and not isinstance(
+            default_resources, PlacementGroupFactory
+        ):
+            default_resources = resource_dict_to_pg_factory(default_resources)
+
         self.placement_group_factory = (
             # default_resource_request
             default_resources
