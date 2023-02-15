@@ -259,7 +259,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
 
  private:
-  void InitTaskEventThreadBufferIfNeeded();
+  void InitTaskEventThreadBufferIfNeeded() NO_THREAD_SAFETY_ANALYSIS;
   /// Test only functions.
   // std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
   //     LOCKS_EXCLUDED(mutex_) {
