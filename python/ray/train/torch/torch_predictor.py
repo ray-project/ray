@@ -121,6 +121,7 @@ class TorchPredictor(DLPredictor):
 
             .. testcode::
 
+                import numpy as np
                 import torch
                 from ray.train.torch import TorchPredictor
 
