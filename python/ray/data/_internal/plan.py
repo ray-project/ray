@@ -38,6 +38,7 @@ from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data._internal.execution.interfaces import Executor
 
 
 # Scheduling strategy can be inherited from prev stage if not specified.
@@ -183,7 +184,14 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = capitalize(stage.name)
+                # The stage representation should be in "<stage-name>(...)" format,
+                # e.g. "MapBatches(my_udf)".
+                #
+                # TODO(chengsu): create a class to represent stage name to make it less
+                # fragile to parse.
+                stage_str = stage.name.split("(")
+                stage_str[0] = capitalize(stage_str[0])
+                stage_name = "(".join(stage_str)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
@@ -452,7 +460,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -464,7 +472,7 @@ class ExecutionPlan:
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
-            Tuple of iterator over output blocks and Dataset stats.
+            Tuple of iterator over output blocks and the executor.
         """
 
         ctx = DatasetContext.get_current()
@@ -472,6 +480,7 @@ class ExecutionPlan:
             return (
                 self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
                 self._snapshot_stats,
+                None,
             )
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -494,7 +503,7 @@ class ExecutionPlan:
         except StopIteration:
             pass
         self._snapshot_stats = executor.get_stats()
-        return block_iter, self._snapshot_stats
+        return block_iter, self._snapshot_stats, executor
 
     def execute(
         self,
@@ -1170,7 +1179,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
             reorder_buf.append(s)
         else:
             # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage):
+            if isinstance(s, AllToAllStage) or s.name == "write":
                 output.extend(reorder_buf)
                 reorder_buf = []
             output.append(s)

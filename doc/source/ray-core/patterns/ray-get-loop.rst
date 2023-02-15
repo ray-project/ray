@@ -3,7 +3,7 @@
 Anti-pattern: Calling ray.get in a loop harms parallelism
 =========================================================
 
-**TLDR:** Avoid calling :ref:`ray.get() <ray-get-ref>` in a loop since it's a blocking call; use ``ray.get()`` only for the final result.
+**TLDR:** Avoid calling :func:`ray.get() <ray.get>` in a loop since it's a blocking call; use ``ray.get()`` only for the final result.
 
 A call to ``ray.get()`` fetches the results of remotely executed functions. However, it is a blocking call, which means that it always waits until the requested result is available.
 If you call ``ray.get()`` in a loop, the loop will not continue to run until the call to ``ray.get()`` is resolved.
