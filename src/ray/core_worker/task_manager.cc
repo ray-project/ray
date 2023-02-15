@@ -901,7 +901,7 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
   if (!task_event_buffer_.Enabled()) {
     return;
   }
-  auto task_event = std::make_unique<worker::TaskStatusEvent>(
+  auto task_event = worker::TaskStatusEvent(
       spec.TaskId(),
       spec.JobId(),
       attempt_number,
@@ -911,7 +911,7 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
       node_id,
       worker_id);
 
-  task_event_buffer_.AddTaskEvent(std::move(task_event));
+  task_event_buffer_.AddTaskStatusEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

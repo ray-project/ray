@@ -180,61 +180,86 @@ void TaskEventBufferImpl::Stop() {
 
 bool TaskEventBufferImpl::Enabled() const { return enabled_; }
 
-void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
+void TaskEventBufferImpl::AddTaskProfileEvent(TaskProfileEvent e) {
   if (!enabled_) {
     return;
   }
-  {
-    buf_map_mutex_.ReaderLock();
-    if (!all_thd_buffer_.count(std::this_thread::get_id())) {
-      buf_map_mutex_.ReaderUnlock();
-      {
-        buf_map_mutex_.WriterLock();
-        auto inserted = all_thd_buffer_.insert(
-            {std::this_thread::get_id(),
-             std::make_shared<std::vector<std::unique_ptr<TaskEvent>>>()});
-        RAY_CHECK(inserted.second);
-        buf_map_mutex_.WriterUnlock();
-      }
-      buf_map_mutex_.ReaderLock();
-    }
+  buf_map_mutex_.ReaderLock();
+  InitTaskEventThreadBufferIfNeeded();
+  buf_map_mutex_.AssertReaderHeld();
 
-    buf_map_mutex_.AssertReaderHeld();
+  auto buf_itr = all_thd_buffer_.find(std::this_thread::get_id());
 
-    auto buf_itr = all_thd_buffer_.find(std::this_thread::get_id());
+  RAY_CHECK(buf_itr != all_thd_buffer_.end());
+  buf_itr->second.AddTaskProfileEvent(std::move(e));
+  buf_map_mutex_.ReaderUnlock();
+}
 
-    RAY_CHECK(buf_itr != all_thd_buffer_.end());
-    buf_itr->second->push_back(std::move(task_event));
-    buf_map_mutex_.ReaderUnlock();
+void TaskEventBufferImpl::AddTaskStatusEvent(TaskStatusEvent e) {
+  if (!enabled_) {
+    return;
   }
+  buf_map_mutex_.ReaderLock();
+  InitTaskEventThreadBufferIfNeeded();
+  buf_map_mutex_.AssertReaderHeld();
+
+  auto buf_itr = all_thd_buffer_.find(std::this_thread::get_id());
+
+  RAY_CHECK(buf_itr != all_thd_buffer_.end());
+  buf_itr->second.AddTaskStatusEvent(std::move(e));
+  buf_map_mutex_.ReaderUnlock();
+}
+
+void TaskEventBufferImpl::InitTaskEventThreadBufferIfNeeded() {
+  if (all_thd_buffer_.count(std::this_thread::get_id())) {
+    return;
+  }
+  buf_map_mutex_.ReaderUnlock();
+  {
+    buf_map_mutex_.WriterLock();
+    auto inserted =
+        all_thd_buffer_.insert({std::this_thread::get_id(), TaskEventThreadBuffer()});
+    RAY_CHECK(inserted.second);
+    buf_map_mutex_.WriterUnlock();
+  }
+  buf_map_mutex_.ReaderLock();
 }
 
 void TaskEventBufferImpl::GatherThreadBuffer() {
-  std::vector<std::shared_ptr<std::vector<std::unique_ptr<TaskEvent>>>> all_bufs;
+  std::vector<std::unique_ptr<std::vector<TaskStatusEvent>>> all_status_bufs;
+  std::vector<std::unique_ptr<std::vector<TaskProfileEvent>>> all_profile_bufs;
   {
     absl::WriterMutexLock lock(&buf_map_mutex_);
     for (auto &[thd, thd_buf] : all_thd_buffer_) {
-      auto to_swap = std::make_shared<std::vector<std::unique_ptr<TaskEvent>>>();
-      all_bufs.push_back(thd_buf);
-      thd_buf = to_swap;
+      all_status_bufs.push_back(std::move(thd_buf.ResetStatusEventBuffer()));
+      all_profile_bufs.push_back(std::move(thd_buf.ResetProfileEventBuffer()));
     }
   }
 
-  // Add them to the circular buffers.
+  // Aggregate, convert to rpc::TaskEvent, and add to the sending circular buffer.
   {
     absl::MutexLock lock(&mutex_);
-    for (auto &buf : all_bufs) {
+    // Aggregate and convert.
+    absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
+    for (auto &buf : all_status_bufs) {
       for (auto &event : *buf) {
-        if (buffer_.full()) {
-          const auto &to_evict = buffer_.front();
-          if (to_evict->IsProfileEvent()) {
-            num_profile_task_events_dropped_++;
-          } else {
-            num_status_task_events_dropped_++;
-          }
-        }
-        buffer_.push_back(std::move(event));
+        auto rpc_event =
+            agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
+        event.ToRpcTaskEvents(&rpc_event);
       }
+    }
+
+    for (auto &buf : all_profile_bufs) {
+      for (auto &event : *buf) {
+        auto &rpc_event =
+            agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
+        event.ToRpcTaskEvents(&rpc_event);
+      }
+    }
+
+    // Add to CB to stage for sending.
+    for (auto &[_task_attempt, event] : agg_task_events) {
+      buffer_.push_back(std::move(event));
     }
   }
 }
@@ -248,7 +273,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
 
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
-  std::vector<std::unique_ptr<TaskEvent>> to_send;
+  std::vector<rpc::TaskEvents> to_send;
   to_send.reserve(RayConfig::instance().task_events_send_batch_size());
 
   {
@@ -295,12 +320,13 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_status_event_to_send = 0;
   for (auto &task_event : to_send) {
     auto events_by_task = data->add_events_by_task();
-    if (task_event->IsProfileEvent()) {
-      num_profile_event_to_send++;
-    } else {
-      num_status_event_to_send++;
-    }
-    task_event->ToRpcTaskEvents(events_by_task);
+    events_by_task->Swap(&task_event);
+
+    // if (task_event->IsProfileEvent()) {
+    //   num_profile_event_to_send++;
+    // } else {
+    //   num_status_event_to_send++;
+    // }
   }
   size_t data_size = data->ByteSizeLong();
 

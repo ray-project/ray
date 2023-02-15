@@ -44,7 +44,7 @@ class ProfileEvent {
   TaskEventBuffer &task_event_buffer_;
 
   // The underlying event.
-  std::unique_ptr<TaskProfileEvent> event_ = nullptr;
+  TaskProfileEvent event_;
 };
 
 }  // namespace worker

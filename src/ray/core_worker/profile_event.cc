@@ -25,26 +25,28 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
                            WorkerContext &worker_context,
                            const std::string &node_ip_address,
                            const std::string &event_name)
-    : task_event_buffer_(task_event_buffer) {
-  const auto &task_spec = worker_context.GetCurrentTask();
-  event_.reset(new TaskProfileEvent(worker_context.GetCurrentTaskID(),
-                                    worker_context.GetCurrentJobID(),
-                                    task_spec == nullptr ? 0 : task_spec->AttemptNumber(),
-                                    WorkerTypeString(worker_context.GetWorkerType()),
-                                    worker_context.GetWorkerID().Binary(),
-                                    node_ip_address,
-                                    event_name,
-                                    absl::GetCurrentTimeNanos()));
-}
+    : task_event_buffer_(task_event_buffer),
+      event_(worker_context.GetCurrentTaskID(),
+             worker_context.GetCurrentJobID(),
+             worker_context.GetCurrentTask() == nullptr
+                 ? 0
+                 : worker_context.GetCurrentTask()->AttemptNumber(),
+             WorkerTypeString(worker_context.GetWorkerType()),
+             worker_context.GetWorkerID().Binary(),
+             node_ip_address,
+             event_name,
+             absl::GetCurrentTimeNanos()
+
+      ) {}
 
 ProfileEvent::~ProfileEvent() {
-  event_->SetEndTime(absl::GetCurrentTimeNanos());
+  event_.SetEndTime(absl::GetCurrentTimeNanos());
   // Add task event to the task event buffer
-  task_event_buffer_.AddTaskEvent(std::move(event_));
+  task_event_buffer_.AddTaskProfileEvent(std::move(event_));
 }
 
 void ProfileEvent::SetExtraData(const std::string &extra_data) {
-  event_->SetExtraData(extra_data);
+  event_.SetExtraData(extra_data);
 }
 
 }  // namespace worker

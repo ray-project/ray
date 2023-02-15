@@ -33,6 +33,11 @@ namespace core {
 
 namespace worker {
 
+class TaskEventBufferImpl;
+class TaskEventThreadBuffer;
+
+using TaskAttempt = std::pair<TaskID, int32_t>;
+
 /// A  wrapper class that will be converted to rpc::TaskEvents
 ///
 /// This will be created by CoreWorker and stored in TaskEventBuffer, and
@@ -84,6 +89,7 @@ class TaskStatusEvent : public TaskEvent {
   bool IsProfileEvent() const override { return false; }
 
  private:
+  friend class TaskEventBufferImpl;
   /// The task status change if it's a status change event.
   const rpc::TaskStatus task_status_ = rpc::TaskStatus::NIL;
   /// The time when the task status change happens.
@@ -117,6 +123,8 @@ class TaskProfileEvent : public TaskEvent {
   void SetExtraData(const std::string &extra_data) { extra_data_ = extra_data; }
 
  private:
+  // TODO
+  friend class TaskEventBufferImpl;
   /// The below fields mirror rpc::ProfileEvent
   const std::string component_type_;
   const std::string component_id_;
@@ -125,6 +133,34 @@ class TaskProfileEvent : public TaskEvent {
   const int64_t start_time_;
   int64_t end_time_;
   std::string extra_data_;
+};
+
+class TaskEventThreadBuffer {
+ public:
+  TaskEventThreadBuffer()
+      : status_events_(std::make_unique<std::vector<TaskStatusEvent>>()),
+        profile_events_(std::make_unique<std::vector<TaskProfileEvent>>()) {}
+
+  void AddTaskStatusEvent(TaskStatusEvent e) { status_events_->push_back(std::move(e)); }
+  void AddTaskProfileEvent(TaskProfileEvent e) {
+    profile_events_->push_back(std::move(e));
+  }
+
+  std::unique_ptr<std::vector<TaskStatusEvent>> ResetStatusEventBuffer() {
+    auto new_buffer = std::make_unique<std::vector<TaskStatusEvent>>();
+    new_buffer.swap(status_events_);
+    return new_buffer;
+  }
+
+  std::unique_ptr<std::vector<TaskProfileEvent>> ResetProfileEventBuffer() {
+    auto new_buffer = std::make_unique<std::vector<TaskProfileEvent>>();
+    new_buffer.swap(profile_events_);
+    return new_buffer;
+  }
+
+ private:
+  std::unique_ptr<std::vector<TaskStatusEvent>> status_events_;
+  std::unique_ptr<std::vector<TaskProfileEvent>> profile_events_;
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,
@@ -151,7 +187,8 @@ class TaskEventBuffer {
   /// Add a task event to be reported.
   ///
   /// \param task_events Task events.
-  virtual void AddTaskEvent(std::unique_ptr<TaskEvent> task_event) = 0;
+  virtual void AddTaskStatusEvent(TaskStatusEvent event) = 0;
+  virtual void AddTaskProfileEvent(TaskProfileEvent event) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
   ///
@@ -205,8 +242,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
-      LOCKS_EXCLUDED(mutex_) override;
+  // void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
+  //     LOCKS_EXCLUDED(mutex_) override;
+
+  void AddTaskStatusEvent(TaskStatusEvent e) override;
+  void AddTaskProfileEvent(TaskProfileEvent e) override;
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
 
@@ -219,17 +259,18 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
 
  private:
+  void InitTaskEventThreadBufferIfNeeded();
   /// Test only functions.
-  std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
-      LOCKS_EXCLUDED(mutex_) {
-    GatherThreadBuffer();
-    absl::MutexLock lock(&mutex_);
-    std::vector<std::reference_wrapper<const TaskEvent>> copy;
-    for (const auto &e : buffer_) {
-      copy.push_back(std::cref(*e));
-    }
-    return copy;
-  }
+  // std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
+  //     LOCKS_EXCLUDED(mutex_) {
+  //   GatherThreadBuffer();
+  //   absl::MutexLock lock(&mutex_);
+  //   std::vector<std::reference_wrapper<const TaskEvent>> copy;
+  //   for (const auto &e : buffer_) {
+  //     copy.push_back(std::cref(*e));
+  //   }
+  //   return copy;
+  // }
 
   /// Test only functions.
   size_t GetNumStatusTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
@@ -275,12 +316,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
 
   /// Per thread buffer.
-  absl::flat_hash_map<std::thread::id,
-                      std::shared_ptr<std::vector<std::unique_ptr<TaskEvent>>>>
-      all_thd_buffer_ GUARDED_BY(buf_map_mutex_);
+  absl::flat_hash_map<std::thread::id, TaskEventThreadBuffer> all_thd_buffer_
+      GUARDED_BY(buf_map_mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;

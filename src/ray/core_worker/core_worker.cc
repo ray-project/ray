@@ -389,14 +389,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     // Add the driver task info.
     if (task_event_buffer_->Enabled()) {
       const auto spec = builder.Build();
-      auto task_event = std::make_unique<worker::TaskStatusEvent>(
-          task_id,
-          spec.JobId(),
-          /* attempt_number */ 0,
-          rpc::TaskStatus::RUNNING,
-          /* timestamp */ absl::GetCurrentTimeNanos(),
-          std::make_shared<const TaskSpecification>(spec));
-      task_event_buffer_->AddTaskEvent(std::move(task_event));
+      auto task_event =
+          worker::TaskStatusEvent(task_id,
+                                  spec.JobId(),
+                                  /* attempt_number */ 0,
+                                  rpc::TaskStatus::RUNNING,
+                                  /* timestamp */ absl::GetCurrentTimeNanos(),
+                                  std::make_shared<const TaskSpecification>(spec));
+      task_event_buffer_->AddTaskStatusEvent(std::move(task_event));
     }
   }
 
@@ -681,13 +681,13 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
-    auto task_event = std::make_unique<worker::TaskStatusEvent>(
-        worker_context_.GetCurrentTaskID(),
-        worker_context_.GetCurrentJobID(),
-        /* attempt_number */ 0,
-        rpc::TaskStatus::FINISHED,
-        /* timestamp */ absl::GetCurrentTimeNanos());
-    task_event_buffer_->AddTaskEvent(std::move(task_event));
+    auto task_event =
+        worker::TaskStatusEvent(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetCurrentJobID(),
+                                /* attempt_number */ 0,
+                                rpc::TaskStatus::FINISHED,
+                                /* timestamp */ absl::GetCurrentTimeNanos());
+    task_event_buffer_->AddTaskStatusEvent(std::move(task_event));
   }
 
   // Force task state events push before exiting the worker.
