@@ -24,7 +24,7 @@
       :toctree:
 
    {% for item in methods %}
-      {{ name }}.{{ item }}
+      {{ item | filter_out_undoc_members(name, module) }}
    {%- endfor %}
 
    {% endif %}
