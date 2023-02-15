@@ -249,7 +249,7 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
     ds.write_tfrecords(tmp_path)
 
     # Read the TFRecords.
-    readback_ds = ray.data.read_tfrecords(tmp_path, parallelism=1)
+    readback_ds = ray.data.read_tfrecords(tmp_path)
     assert ds.take() == readback_ds.take()
 
 

@@ -213,11 +213,9 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                     if scalar_type is not None:
                         for c_idx in range(len(col_chunked_arrays)):
                             c = col_chunked_arrays[c_idx]
-                            if not pa.types.is_list(c.type) or not pa.types.is_null(
+                            if pa.types.is_list(c.type) and pa.types.is_null(
                                 c.type.value_type
                             ):
-                                continue
-                            elif pa.types.is_null(c.type.value_type):
                                 if pa.types.is_list(scalar_type):
                                     # If we are dealing with a list input,
                                     # cast the array to the scalar_type found above.

@@ -100,8 +100,8 @@ def _get_feature_value(
         feature.HasField("float_list"),
         feature.HasField("bytes_list"),
     )
-    # Exactly one of `bytes_list`, `float_list`, and `int64_list` should contain data.
-    # Otherwise, all three should be empty lists, indicating an empty feature value.
+    # At most one of `bytes_list`, `float_list`, and `int64_list` contains data.
+    # If none contain data, this indicates an empty feature value.
     assert sum(bool(value) for value in values) <= 1
 
     if feature.HasField("bytes_list"):
