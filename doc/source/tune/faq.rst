@@ -781,29 +781,29 @@ API should be used to get the path for saving trial-specific outputs.
 How can I run multiple Ray Tune jobs on the same cluster at the same time (multi tenancy)?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-First, please acknowledge that running multiple Ray Tune runs on the same cluster at the same
-time is not officially supported. This means we do not test this workflow and we recommend
-using a separate cluster for every tuning job.
+Running multiple Ray Tune runs on the same cluster at the same
+time is not officially supported. We do not test this workflow and we recommend
+using a separate cluster for each tuning job.
 
 The reasons for this are:
 
 1. When multiple Ray Tune jobs run at the same time, they compete for resources.
    One job could run all its trials at the same time, while the other job waits
-   for a long time until it gets resources to even run one trial.
+   for a long time until it gets resources to run the first trial.
 2. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
-   trials from job B on the same node will suffer from it. In practice it's hard
+   trials from job B on the same node are impacted. In practice, it's hard
    to reason about these conditions from the logs if something goes wrong.
-3. Some internal implementations in Ray Tune actually assume that you only have one job
-   running at the same time. This can lead to conflicts.
+3. Some internal implementations in Ray Tune assume that you only have one job
+   running at a time. This can lead to conflicts.
 
-Especially the third point is a common problem when running concurrent tuning jobs. Symptoms
-are for instance that trials from job A use parameters specified in job B, leading to unexpected
+The third reason is especially problematic when you run concurrent tuning jobs. For instance, a symptom is when
+trials from job A use parameters specified in job B, lead to unexpected
 results.
 
-The technical reason for this is that Ray Tune uses a cluster-global key-value store to store trainables.
-If two tuning jobs use a trainable (or Ray AIR trainer) with the same name, the second job will overwrite
-this trainable. Trials from the first job that are started after the second job started will then use
-this overwritten trainable - leading to problems if captured variables are used (as is the case e.g. in
+This occurs because Ray Tune uses a cluster-global key-value store to store trainables.
+If two tuning jobs use a trainable (or Ray AIR trainer) with the same name, the second job overwrites
+the trainable. Trials from the first job that start after the second job starts will then use
+the overwritten trainable, leading to problems if captured variables are used (as is the case in
 most Ray AIR trainers).
 
 Workaround
@@ -825,10 +825,10 @@ For Ray AIR trainers this could look like this:
         # ...
     )
 
-Then the separate Ray Tune jobs will all have their own trainable which will not conflict with
-each other.
+Each Ray Tune jobs has its own trainable and does not conflict with
+others.
 
-The disadvantage of this approach is that resuming is a bit more complicated. If you want to resume
-a run, you will have to use the same unique trainable name again before calling ``Trainer.restore()``.
-This means you'll likely have to store the trainable name somewhere, as we're not updating this automatically
+This approach has the disadvantage of complicating the process of resuming. To resume
+a run, use the same unique trainable name again before calling ``Trainer.restore()``.
+You have to store the trainable name, because we're not updating it automatically
 (yet).
