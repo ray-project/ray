@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from ray.data.dataset import Dataset
+    from ray.data.dataset_pipeline import DatasetPipeline
     from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
@@ -237,6 +239,12 @@ class DatasetIterator(abc.ABC):
     @abc.abstractmethod
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
+        raise NotImplementedError
+
+    @property
+    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
+        """The :class:`~ray.data.dataset.Dataset` or
+        :class:`~ray.data.dataset.DatasetPipeline` that this object iterates over."""
         raise NotImplementedError
 
     def iter_epochs(self, max_epoch: int = -1) -> None:

@@ -87,6 +87,10 @@ class BulkDatasetIterator(DatasetIterator):
     def stats(self) -> str:
         return self._base_dataset.stats()
 
+    @property
+    def _base_dataset_or_pipeline(self) -> "Dataset":
+        return self._base_dataset
+
     def _to_train_iterator(self) -> "TrainDatasetIterator":
         from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
