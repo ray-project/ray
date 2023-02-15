@@ -3,7 +3,7 @@
 ```{include} /_includes/overview/announcement.md
 ```
 
-# Common ML workloads
+# ML workloads with Ray
 Explore the ways that Ray helps to build AI applications.
 
 ## Batch inference on CPUs and GPUs
