@@ -76,6 +76,14 @@ py_test(
 )
 
 py_test(
+    name = "batch_prediction_gpu",
+    size = "medium",
+    srcs = ["source/ray-air/doc_code/predictors.py"],
+    tags = ["exclusive", "team:ml"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
+py_test(
     name = "batch_training",
     size = "medium",
     main = "test_myst_doc.py",
@@ -183,7 +191,10 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
-    exclude = ["source/ray-air/doc_code/hf_trainer.py"],  # Too large
+    exclude = [
+        "source/ray-air/doc_code/hf_trainer.py",  # Too large
+        "source/ray-air/doc_code/predictor.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
