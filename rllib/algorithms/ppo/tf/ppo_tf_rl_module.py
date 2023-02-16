@@ -242,6 +242,7 @@ class PPOTfRLModule(TfRLModule):
         post_fcnet_hiddens = model_config["post_fcnet_hiddens"]
         post_fcnet_activation = model_config["post_fcnet_activation"]
         use_lstm = model_config["use_lstm"]
+        shared_encoder = model_config["vf_share_layers"]
 
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
@@ -260,10 +261,12 @@ class PPOTfRLModule(TfRLModule):
                 hidden_layer_dims=fcnet_hiddens[:-1],
                 hidden_layer_activation=fcnet_activation,
                 output_dim=fcnet_hiddens[-1],
+                output_activation=fcnet_activation,
             )
 
         encoder_config = ActorCriticEncoderConfig(
-            base_encoder_config=base_encoder_config
+            base_encoder_config=base_encoder_config,
+            shared=shared_encoder,
         )
 
         pi_config = MLPHeadConfig(
@@ -274,7 +277,7 @@ class PPOTfRLModule(TfRLModule):
         )
         vf_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=post_fcnet_hiddens + [1],
+            hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
         )
