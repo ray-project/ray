@@ -15,8 +15,9 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     JobBrokenError,
     FetchResultError,
-    JobTerminatedError,
+    JobTerminatedBeforeStartError,
     JobNoLogsError,
+    JobTerminatedError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
@@ -97,8 +98,16 @@ class AnyscaleJobRunner(JobRunner):
 
         if job_status_code == -3:
             raise JobTerminatedError(
-                "Job entered 'TERMINATED' state (terminated manually, nodes "
-                "could not have been provisioned or Ray was stopped):"
+                "Job entered 'TERMINATED' state (it was terminated "
+                "manually or Ray was stopped):"
+                f"\n{error}\n"
+            )
+
+        if job_status_code == -4:
+            raise JobTerminatedBeforeStartError(
+                "Job entered 'TERMINATED' state before it started "
+                "(most likely due to inability to provision required nodes; "
+                "otherwise it was terminated manually or Ray was stopped):"
                 f"\n{error}\n"
             )
 
