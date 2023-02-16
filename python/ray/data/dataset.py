@@ -1,7 +1,6 @@
 import collections
 import itertools
 import logging
-import os
 import sys
 import time
 import html
@@ -42,11 +41,13 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapRows,
     MapBatches,
+    Write,
 )
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
+from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
@@ -146,6 +147,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data._internal.execution.interfaces import Executor
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -253,6 +255,9 @@ class Dataset(Generic[T]):
 
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
+
+        # Handle to currently running executor for this Dataset.
+        self._current_executor: Optional["Executor"] = None
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
@@ -2135,6 +2140,7 @@ class Dataset(Generic[T]):
             output.append(row)
             if len(output) >= limit:
                 break
+        self._synchronize_progress_bar()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -2162,6 +2168,7 @@ class Dataset(Generic[T]):
                         limit
                     )
                 )
+        self._synchronize_progress_bar()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -2687,24 +2694,30 @@ class Dataset(Generic[T]):
             )
 
         if hasattr(datasource, "write"):
-            # If the write operator succeeds, the resulting Dataset is a list of
-            # WriteResult (one element per write task). Otherwise, an error will
-            # be raised. The Datasource can handle execution outcomes with the
-            # on_write_complete() and on_write_failed().
-            def transform(blocks: Iterable[Block], ctx, fn) -> Iterable[Block]:
-                return [[datasource.write(blocks, ctx, **write_args)]]
-
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    transform,
+                    generate_write_fn(datasource, **write_args),
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
                 )
             )
+
+            logical_plan = self._logical_plan
+            if logical_plan is not None:
+                write_op = Write(
+                    logical_plan.dag,
+                    datasource,
+                    ray_remote_args=ray_remote_args,
+                    **write_args,
+                )
+                logical_plan = LogicalPlan(write_op)
+
             try:
-                self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
+                self._write_ds = Dataset(
+                    plan, self._epoch, self._lazy, logical_plan
+                ).fully_executed()
                 datasource.on_write_complete(
                     ray.get(self._write_ds._plan.execute().get_blocks())
                 )
@@ -2712,35 +2725,27 @@ class Dataset(Generic[T]):
                 datasource.on_write_failed([], e)
                 raise
         else:
+            logger.warning(
+                "The Datasource.do_write() is deprecated in "
+                "Ray 2.4 and will be removed in future release. Use "
+                "Datasource.write() instead."
+            )
+
             ctx = DatasetContext.get_current()
             blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
-
-            # TODO(ekl) remove this feature flag.
-            if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-                write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                    blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(
+                    datasource,
+                    ctx,
+                    blocks,
+                    metadata,
+                    ray_remote_args,
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
-            else:
-                logger.warning(
-                    "The Datasource.do_write() is deprecated in "
-                    "Ray 2.4 and will be removed in future release. Use "
-                    "Datasource.write() instead."
-                )
-                # Prepare write in a remote task so that in Ray client mode, we
-                # don't do metadata resolution from the client machine.
-                do_write = cached_remote_fn(
-                    _do_write, retry_exceptions=False, num_cpus=0
-                )
-                write_results: List[ObjectRef[WriteResult]] = ray.get(
-                    do_write.remote(
-                        datasource,
-                        ctx,
-                        blocks,
-                        metadata,
-                        ray_remote_args,
-                        _wrap_arrow_serialization_workaround(write_args),
-                    )
-                )
+            )
 
             progress = ProgressBar("Write Progress", len(write_results))
             try:
@@ -2874,7 +2879,8 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator, stats = self._plan.execute_to_iterator()
+        block_iterator, stats, executor = self._plan.execute_to_iterator()
+        self._current_executor = executor
         time_start = time.perf_counter()
 
         yield from batch_block_refs(
@@ -4027,7 +4033,9 @@ class Dataset(Generic[T]):
         Returns:
             A list of references to this dataset's blocks.
         """
-        return self._plan.execute().get_blocks()
+        blocks = self._plan.execute().get_blocks()
+        self._synchronize_progress_bar()
+        return blocks
 
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
@@ -4455,6 +4463,21 @@ class Dataset(Generic[T]):
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."
             )
+
+    def _synchronize_progress_bar(self):
+        """Flush progress bar output by shutting down the current executor.
+
+        This should be called at the end of all blocking APIs (e.g., `take`), but not
+        async APIs (e.g., `iter_batches`).
+
+        The streaming executor runs in a separate generator / thread, so it is
+        possible the shutdown logic runs even after a call to retrieve rows from the
+        dataset has finished. Explicit shutdown avoids this, which can clobber console
+        output (https://github.com/ray-project/ray/issues/32414).
+        """
+        if self._current_executor:
+            self._current_executor.shutdown()
+            self._current_executor = None
 
 
 def _get_size_bytes(block: Block) -> int:
