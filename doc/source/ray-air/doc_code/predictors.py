@@ -105,7 +105,6 @@ predictions = batch_predictor.predict(
     min_scoring_workers=1,
     max_scoring_workers=4,
     num_cpus_per_worker=3,
-    num_gpus_per_worker=1,
 )
 # __configure_batch_predictor_scaling_end__
 
