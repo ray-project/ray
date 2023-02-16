@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Mapping, Any
 
 import gymnasium as gym
-import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
@@ -61,7 +60,7 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
             only has an effect is using the default fully connected net.
     """
 
-    encoder_config: MLPEncoderConfig = None
+    encoder_config: ActorCriticEncoderConfig = None
     pi_config: MLPHeadConfig = None
     vf_config: MLPHeadConfig = None
     free_log_std: bool = False
@@ -111,11 +110,12 @@ class PPOTorchRLModule(TorchRLModule):
     ) -> "PPOTorchRLModule":
         # TODO: use the new catalog to perform this logic and construct the final config
 
-        activation = model_config["fcnet_activation"]
-
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
-        free_log_std = model_config["free_log_std"]
+        fcnet_activation = model_config["fcnet_activation"]
+        post_fcnet_hiddens = model_config["post_fcnet_hiddens"]
+        post_fcnet_activation = model_config["post_fcnet_activation"]
+        shared_encoder = model_config["vf_share_layers"]
 
         if model_config["use_lstm"]:
             base_encoder_config = LSTMEncoderConfig(
@@ -129,23 +129,25 @@ class PPOTorchRLModule(TorchRLModule):
             base_encoder_config = MLPEncoderConfig(
                 input_dim=obs_dim,
                 hidden_layer_dims=fcnet_hiddens[:-1],
-                hidden_layer_activation=activation,
+                hidden_layer_activation=fcnet_activation,
                 output_dim=fcnet_hiddens[-1],
+                output_activation=fcnet_activation,
             )
 
         encoder_config = ActorCriticEncoderConfig(
-            base_encoder_config=base_encoder_config
+            base_encoder_config=base_encoder_config,
+            shared=shared_encoder,
         )
 
         pi_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=[32],
-            hidden_layer_activation="relu",
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
         )
         vf_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=[32, 1],
-            hidden_layer_activation="relu",
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
         )
 
         assert isinstance(
@@ -166,17 +168,19 @@ class PPOTorchRLModule(TorchRLModule):
             encoder_config=encoder_config,
             pi_config=pi_config,
             vf_config=vf_config,
-            free_log_std=free_log_std,
+            free_log_std=model_config["free_log_std"],
         )
 
         module = PPOTorchRLModule(config_)
         return module
 
-    def get_initial_state(self) -> NestedDict:
-        if hasattr(self.encoder, "get_initial_state"):
-            return self.encoder.get_initial_state()
-        else:
-            return NestedDict({})
+    # TODO(Artur): Comment in again as soon as we support RNNs from Polciy side
+    # @override(RLModule)
+    # def get_initial_state(self) -> NestedDict:
+    #     if hasattr(self.encoder, "get_initial_state"):
+    #         return self.encoder.get_initial_state()
+    #     else:
+    #         return NestedDict({})
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
@@ -190,11 +194,14 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -240,11 +247,14 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -303,11 +313,14 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: torch.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = torch.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)

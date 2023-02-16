@@ -1,7 +1,6 @@
 from typing import Mapping, Any
 
 import gymnasium as gym
-import tree
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
@@ -61,6 +60,14 @@ class PPOTfRLModule(TfRLModule):
             gym.spaces.Discrete,
         )
 
+    # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
+    # @override(RLModule)
+    # def get_initial_state(self) -> NestedDict:
+    #     if hasattr(self.encoder, "get_initial_state"):
+    #         return self.encoder.get_initial_state()
+    #     else:
+    #         return NestedDict({})
+
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
         if self._is_discrete:
@@ -97,11 +104,14 @@ class PPOTfRLModule(TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -142,11 +152,14 @@ class PPOTfRLModule(TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -185,12 +198,16 @@ class PPOTfRLModule(TfRLModule):
         policy and the new policy during training.
         """
         output = {}
+
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -227,11 +244,13 @@ class PPOTfRLModule(TfRLModule):
     ) -> "PPOTfRLModule":
         # TODO: use the new catalog to perform this logic and construct the final config
 
-        activation = model_config["fcnet_activation"]
-
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
+        fcnet_activation = model_config["fcnet_activation"]
+        post_fcnet_hiddens = model_config["post_fcnet_hiddens"]
+        post_fcnet_activation = model_config["post_fcnet_activation"]
         use_lstm = model_config["use_lstm"]
+        shared_encoder = model_config["vf_share_layers"]
 
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
@@ -248,23 +267,27 @@ class PPOTfRLModule(TfRLModule):
             base_encoder_config = MLPEncoderConfig(
                 input_dim=obs_dim,
                 hidden_layer_dims=fcnet_hiddens[:-1],
-                hidden_layer_activation=activation,
+                hidden_layer_activation=fcnet_activation,
                 output_dim=fcnet_hiddens[-1],
+                output_activation=fcnet_activation,
             )
 
         encoder_config = ActorCriticEncoderConfig(
-            base_encoder_config=base_encoder_config
+            base_encoder_config=base_encoder_config,
+            shared=shared_encoder,
         )
 
         pi_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=[32],
-            hidden_layer_activation="relu",
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
+            output_activation="linear",
         )
         vf_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=[32, 1],
-            hidden_layer_activation="relu",
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
+            output_activation="linear",
         )
 
         assert isinstance(

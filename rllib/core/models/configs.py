@@ -59,7 +59,7 @@ def _convert_to_lower_case_if_tf(string: str, framework: str) -> str:
     Returns:
         The converted string.
     """
-    if framework != "torch":
+    if framework != "torch" and string is not None:
         return string.lower()
     return string
 

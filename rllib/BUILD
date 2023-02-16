@@ -1859,6 +1859,13 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/tf/tests/test_mlp_head.py"]
+)
+
+py_test(
     name = "test_torch_cnn_encoder",
     tags = ["team:rllib", "core", "models"],
     size = "small",

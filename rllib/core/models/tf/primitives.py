@@ -84,7 +84,7 @@ class TfMLP(tf.Module):
         assert input_dim is not None, "Input dimension must not be None"
         assert output_dim is not None, "Output dimension must not be None"
         layers = []
-        hidden_layer_activation = hidden_layer_activation.lower()
+
         # input = tf.keras.layers.Dense(input_dim, activation=activation)
         layers.append(tf.keras.Input(shape=(input_dim,)))
         for i in range(len(hidden_layer_dims)):
@@ -94,9 +94,10 @@ class TfMLP(tf.Module):
                 )
             )
         if output_activation != "linear":
-            output_activation = get_activation_fn(output_activation, framework="torch")
+            output_activation = get_activation_fn(output_activation, framework="tf")
             final_layer = tf.keras.layers.Dense(
-                output_dim, activation=output_activation
+                output_dim,
+                activation=output_activation,
             )
         else:
             final_layer = tf.keras.layers.Dense(output_dim)
