@@ -386,7 +386,6 @@ Status RedisContext::PingPort(const std::string &address, int port) {
 
 Status RedisContext::Connect(const std::string &address,
                              int port,
-                             bool sharding,
                              const std::string &password,
                              bool enable_ssl) {
   RAY_CHECK(!context_);

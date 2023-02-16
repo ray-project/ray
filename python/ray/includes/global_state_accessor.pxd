@@ -65,7 +65,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                          const std::string& password,
                          bool use_ssl,
                          const std::string& key) {
-      RedisClientOptions options(host, port, password, false, use_ssl);
+      RedisClientOptions options(host, port, password, use_ssl);
       auto cli = std::make_unique<RedisClient>(options);
 
       instrumented_io_context io_service;
@@ -86,7 +86,7 @@ cdef extern from * namespace "ray::gcs" nogil:
         return false;
       }
 
-      auto context = cli->GetShardContext(key);
+      auto context = cli->GetContext();
       auto cmd = std::vector<std::string>{"DEL", key};
       auto reply = context->RunArgvSync(cmd);
       if(reply->ReadAsInteger() == 1) {

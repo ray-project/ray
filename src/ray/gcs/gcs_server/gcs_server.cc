@@ -110,7 +110,6 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
                             config_.redis_password,
-                            config_.enable_sharding_conn,
                             config_.enable_redis_ssl);
 }
 
@@ -741,7 +740,7 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        main_service_, redis_client_->GetPrimaryContext(), []() {
+        main_service_, redis_client_->GetContext(), []() {
           RAY_LOG(FATAL) << "Redis failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
