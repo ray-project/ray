@@ -461,6 +461,7 @@ class QMixTorchPolicy(TorchPolicy):
         mask_elems = mask.sum().item()
         stats = {
             "loss": loss_out.item(),
+            "td_error": masked_td_error / mask_elems,
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() / mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,

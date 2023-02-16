@@ -21,6 +21,72 @@ from ray.util import log_once
 logger = logging.getLogger(__name__)
 
 
+def _get_batch_indices(batch: SampleBatchType, num_sequences: int) -> np.ndarray:
+    # Get the replay buffer row indices that make up the `train_batch`.
+    batch_indices = batch.get("batch_indexes")
+
+    if SampleBatch.SEQ_LENS in batch:
+        # Batch_indices are represented per column, in order to update
+        # priorities, we need one index per td_error
+        _batch_indices = []
+
+        # Sequenced batches have been zero padded to max_seq_len.
+        # Depending on how batches are split during learning, not all
+        # sequences have an associated td_error (trailing ones missing).
+        if batch.zero_padded:
+            seq_lens = num_sequences * [batch.max_seq_len]
+        else:
+            seq_lens = batch[SampleBatch.SEQ_LENS][:num_sequences]
+
+        # Go through all indices by sequence that they represent and shrink
+        # them to one index per sequences
+        sequence_sum = 0
+        for seq_len in seq_lens:
+            _batch_indices.append(batch_indices[sequence_sum])
+            sequence_sum += seq_len
+        batch_indices = np.array(_batch_indices)
+
+    return batch_indices
+
+
+def _no_td_error_in_train_results_from_policy(
+    td_error: np.ndarray, policy_id: str
+) -> bool:
+    if td_error is None:
+        if log_once("no_td_error_in_train_results_from_policy_{}".format(policy_id)):
+            logger.warning(
+                "Trying to update priorities for policy with id `{}` in "
+                "prioritized replay buffer without providing td_errors in "
+                "train_results. Priority update for this policy is being "
+                "skipped.".format(policy_id)
+            )
+        return False
+
+
+def _no_batch_indices_in_train_result_for_policy(
+    batch_indices: np.ndarray, policy_id: str
+) -> bool:
+    if batch_indices is None:
+        if log_once("no_batch_indices_in_train_result_for_policy_{}".format(policy_id)):
+            logger.warning(
+                "Trying to update priorities for policy with id `{}` in "
+                "prioritized replay buffer without providing batch_indices in "
+                "train_batch. Priority update for this policy is being "
+                "skipped.".format(policy_id)
+            )
+        return False
+
+
+def _try_transform_batch_indices_to_td_error_dimensions(
+    batch_indices, td_error, replay_buffer
+):
+    if len(batch_indices) != len(td_error):
+        T = replay_buffer.replay_sequence_length
+        assert len(batch_indices) > len(td_error) and len(batch_indices) % T == 0
+        batch_indices = batch_indices.reshape([-1, T])[:, 0]
+        assert len(batch_indices) == len(td_error)
+
+
 @DeveloperAPI
 def update_priorities_in_replay_buffer(
     replay_buffer: ReplayBuffer,
@@ -59,63 +125,21 @@ def update_priorities_in_replay_buffer(
             # arrays directly (instead of e.g. a torch array).
             policy_batch.set_get_interceptor(None)
             # Get the replay buffer row indices that make up the `train_batch`.
-            batch_indices = policy_batch.get("batch_indexes")
+            batch_indices = _get_batch_indices(
+                batch=policy_batch, num_sequences=len(td_error)
+            )
 
-            if SampleBatch.SEQ_LENS in policy_batch:
-                # Batch_indices are represented per column, in order to update
-                # priorities, we need one index per td_error
-                _batch_indices = []
-
-                # Sequenced batches have been zero padded to max_seq_len.
-                # Depending on how batches are split during learning, not all
-                # sequences have an associated td_error (trailing ones missing).
-                if policy_batch.zero_padded:
-                    seq_lens = len(td_error) * [policy_batch.max_seq_len]
-                else:
-                    seq_lens = policy_batch[SampleBatch.SEQ_LENS][: len(td_error)]
-
-                # Go through all indices by sequence that they represent and shrink
-                # them to one index per sequences
-                sequence_sum = 0
-                for seq_len in seq_lens:
-                    _batch_indices.append(batch_indices[sequence_sum])
-                    sequence_sum += seq_len
-                batch_indices = np.array(_batch_indices)
-
-            if td_error is None:
-                if log_once(
-                    "no_td_error_in_train_results_from_policy_{}".format(policy_id)
-                ):
-                    logger.warning(
-                        "Trying to update priorities for policy with id `{}` in "
-                        "prioritized replay buffer without providing td_errors in "
-                        "train_results. Priority update for this policy is being "
-                        "skipped.".format(policy_id)
-                    )
+            if _no_td_error_in_train_results_from_policy(td_error, policy_id):
                 continue
 
-            if batch_indices is None:
-                if log_once(
-                    "no_batch_indices_in_train_result_for_policy_{}".format(policy_id)
-                ):
-                    logger.warning(
-                        "Trying to update priorities for policy with id `{}` in "
-                        "prioritized replay buffer without providing batch_indices in "
-                        "train_batch. Priority update for this policy is being "
-                        "skipped.".format(policy_id)
-                    )
+            if _no_batch_indices_in_train_result_for_policy(batch_indices, policy_id):
                 continue
 
             #  Try to transform batch_indices to td_error dimensions
-            if len(batch_indices) != len(td_error):
-                T = replay_buffer.replay_sequence_length
-                assert (
-                    len(batch_indices) > len(td_error) and len(batch_indices) % T == 0
-                )
-                batch_indices = batch_indices.reshape([-1, T])[:, 0]
-                assert len(batch_indices) == len(td_error)
+            _try_transform_batch_indices_to_td_error_dimensions(
+                batch_indices, td_error, replay_buffer
+            )
             prio_dict[policy_id] = (batch_indices, td_error)
-
         # Make the actual buffer API call to update the priority weights on all
         # policies.
         replay_buffer.update_priorities(prio_dict)

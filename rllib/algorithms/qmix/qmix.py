@@ -292,6 +292,14 @@ class QMix(SimpleQ):
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
+            # Update replay buffer priorities.
+            update_priorities_in_replay_buffer(
+                self.local_replay_buffer,
+                self.config,
+                train_batch,
+                train_results,
+            )
+
             # Update target network every `target_network_update_freq` sample steps.
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             if cur_ts - last_update >= self.config.target_network_update_freq:
