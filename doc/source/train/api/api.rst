@@ -206,6 +206,9 @@ Restoration API for Built-in Trainers
     :toctree: doc/
 
     train.data_parallel_trainer.DataParallelTrainer.restore
+
+.. autosummary::
+
     train.huggingface.HuggingFaceTrainer.restore
 
 .. note::
