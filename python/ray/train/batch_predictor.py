@@ -101,6 +101,9 @@ class BatchPredictor:
     ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 
+        .. note::
+            In Ray 2.4, `BatchPredictor` is lazy by default. You must use on of the Datasets consumption APIs, such as iterating through the output, to trigger execution of prediction.
+
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
             feature_columns: List of columns in the preprocessed dataset to use for
