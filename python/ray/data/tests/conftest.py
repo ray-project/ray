@@ -338,6 +338,18 @@ def enable_optimizer():
     ctx.optimizer_enabled = original_optimizer
 
 
+@pytest.fixture
+def enable_streaming_executor():
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    use_streaming_executor = ctx.use_streaming_executor
+    ctx.new_execution_backend = True
+    ctx.use_streaming_executor = True
+    yield
+    ctx.new_execution_backend = original_backend
+    ctx.use_streaming_executor = use_streaming_executor
+
+
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):

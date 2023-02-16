@@ -52,7 +52,10 @@ def execute_to_legacy_block_iterator(
     Returns:
         The output as a block iterator.
     """
-    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if DatasetContext.get_current().optimizer_enabled:
+        dag, stats = get_execution_plan(plan._logical_plan).dag, None
+    else:
+        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundle_iter = executor.execute(dag, initial_stats=stats)
 
     for bundle in bundle_iter:
