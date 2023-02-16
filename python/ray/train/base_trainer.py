@@ -278,7 +278,7 @@ class BaseTrainer(abc.ABC):
 
         with open(trainer_state_path, "rb") as fp:
             original_trainer = pickle.load(fp)
-        if not isinstance(original_trainer, cls):
+        if type(original_trainer) is not cls:
             raise ValueError(
                 f"Invalid trainer type. Cannot restore a trainer of type "
                 f"{type(original_trainer)} with `{cls.__name__}.restore`. "
