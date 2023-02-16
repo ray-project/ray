@@ -61,7 +61,8 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       };
-  kv_instance_->MultiGet(request.namespace_(), request.keys(), std::move(callback));
+  std::vector<std::string> keys(request.keys().begin(), request.keys().end());
+  kv_instance_->MultiGet(request.namespace_(), keys, std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVPut(
