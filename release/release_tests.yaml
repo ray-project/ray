@@ -565,7 +565,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  env: staging
+  env: staging_v2
 
   frequency: nightly
   team: core
@@ -583,7 +583,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  env: staging
+  env: staging_v2
 
   frequency: nightly
   team: core
@@ -601,7 +601,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  env: staging
+  env: staging_v2
 
   frequency: nightly
   team: core
@@ -619,32 +619,35 @@
 #######################
 # XGBoost release tests
 #######################
-- name: xgboost_train_small
-  group: XGBoost
-  working_dir: xgboost_tests
 
-  legacy:
-    test_name: train_small
-    test_suite: xgboost_tests
+# It seems like the consensus is that we can deprecate this test.
 
-  frequency: nightly
-  team: ml
-  env: staging
+# - name: xgboost_train_small
+#   group: XGBoost
+#   working_dir: xgboost_tests
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+#   legacy:
+#     test_name: train_small
+#     test_suite: xgboost_tests
 
-  run:
-    timeout: 600
-    script: python workloads/train_small.py
+#   frequency: nightly
+#   team: ml
+#   env: staging_v2
 
-    wait_for_nodes:
-      num_nodes: 4
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_small.yaml
 
-    type: client
+#   run:
+#     timeout: 600
+#     script: python workloads/train_small.py
 
-  alert: xgboost_tests
+#     wait_for_nodes:
+#       num_nodes: 4
+
+#     type: anyscale_job
+
+#   alert: xgboost_tests
 
 - name: xgboost_train_moderate
   group: XGBoost
@@ -864,31 +867,34 @@
 #######################
 # LightGBM tests
 #######################
-- name: lightgbm_train_small
-  group: LightGBM tests
-  working_dir: lightgbm_tests
 
-  legacy:
-    test_name: train_small
-    test_suite: lightgbm_tests
+# It seems like the consensus is that we can deprecate this test.
 
-  frequency: nightly
-  team: ml
-  env: staging
+# - name: lightgbm_train_small
+#   group: LightGBM tests
+#   working_dir: lightgbm_tests
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+#   legacy:
+#     test_name: train_small
+#     test_suite: lightgbm_tests
 
-  run:
-    timeout: 600
-    script: python workloads/train_small.py
-    wait_for_nodes:
-      num_nodes: 4
+#   frequency: nightly
+#   team: ml
+#   env: staging_v2
 
-    type: client
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_cpu_small.yaml
 
-  alert: default
+#   run:
+#     timeout: 600
+#     script: python workloads/train_small.py
+#     wait_for_nodes:
+#       num_nodes: 4
+
+#     type: anyscale_job
+
+#   alert: default
 
 - name: lightgbm_train_moderate
   group: LightGBM tests
@@ -1061,7 +1067,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: horovod/app_config.yaml
@@ -1073,7 +1079,7 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1087,7 +1093,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
@@ -1099,7 +1105,7 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1113,7 +1119,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: train/app_config.yaml
@@ -1125,7 +1131,7 @@
     script: python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1139,7 +1145,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: train/app_config.yaml
@@ -1151,7 +1157,7 @@
     script: python train/train_torch_linear_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1165,7 +1171,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: xgboost/app_config_gpu.yaml
@@ -1176,7 +1182,7 @@
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1190,7 +1196,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: xgboost/app_config_gpu_master.yaml
@@ -1201,7 +1207,7 @@
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1215,7 +1221,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: ray-lightning/app_config.yaml
@@ -1227,7 +1233,7 @@
     script: python ray-lightning/ray_lightning_user_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1241,7 +1247,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: ray-lightning/app_config_master.yaml
@@ -1253,7 +1259,7 @@
     script: python ray-lightning/ray_lightning_user_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1267,7 +1273,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1279,7 +1285,7 @@
     script: python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
-    type: client
+    type: anyscale_job
 
   alert: default
 
@@ -1506,7 +1512,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1517,7 +1523,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    type: client
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 4
@@ -1737,7 +1743,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: torch_tune_serve_app_config.yaml
@@ -1746,7 +1752,7 @@
   run:
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
-    type: client
+    type: anyscale_job
     wait_for_nodes:
       num_nodes: 2
 
@@ -1772,7 +1778,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/actor_deaths.py
     long_running: true
 
@@ -1793,7 +1798,7 @@
 
   frequency: weekly
   team: rllib
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_3.yaml
@@ -1823,7 +1828,7 @@
 
   frequency: weekly
   team: rllib
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
@@ -1856,7 +1861,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/many_actor_tasks.py
     long_running: true
 
@@ -1883,7 +1887,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
 
@@ -1906,7 +1909,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: many_ppo.yaml
@@ -1942,7 +1945,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/many_tasks.py
     long_running: true
 
@@ -1969,7 +1971,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
 
@@ -1996,7 +1997,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/node_failures.py
     long_running: true
 
@@ -2017,14 +2017,13 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/pbt.py
     long_running: true
 
@@ -2051,7 +2050,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/serve.py
     long_running: true
 
@@ -2081,7 +2079,6 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
     script: python workloads/serve_failure.py
     long_running: true
 
@@ -2132,7 +2129,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
@@ -2309,30 +2306,32 @@
 
   alert: default
 
-- name: runtime_env_rte_ray_client
-  group: Runtime env tests
-  working_dir: runtime_env_tests
+# It seems like the consensus is that this should be tested in CI, and not in a nightly test.
 
-  legacy:
-    test_name: rte_ray_client
-    test_suite: runtime_env_tests
+# - name: runtime_env_rte_ray_client
+#   group: Runtime env tests
+#   working_dir: runtime_env_tests
 
-  frequency: nightly
-  team: serve
+#   legacy:
+#     test_name: rte_ray_client
+#     test_suite: runtime_env_tests
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: rte_minimal.yaml
+#   frequency: nightly
+#   team: serve
 
-  run:
-    timeout: 600
-    script: python workloads/rte_ray_client.py
-    wait_for_nodes:
-      num_nodes: 1
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: rte_minimal.yaml
 
-    type: client
+#   run:
+#     timeout: 600
+#     script: python workloads/rte_ray_client.py
+#     wait_for_nodes:
+#       num_nodes: 1
 
-  alert: default
+#     type: anyscale_job
+
+#   alert: default
 
 
 ########################
@@ -2643,7 +2642,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2673,7 +2672,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2696,7 +2695,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2718,7 +2717,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2742,7 +2741,7 @@
 
 #  frequency: nightly
 #  team: rllib
-#  env: staging
+#  env: staging_v2
 
 #  cluster:
 #    cluster_env: app_config.yaml
@@ -2751,7 +2750,7 @@
 #  run:
 #    timeout: 18000
 #    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=torch
-#    type: sdk_command
+#    type: anyscale_job
 #    file_manager: job
 
 #  alert: default
@@ -2769,7 +2768,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2792,7 +2791,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2814,7 +2813,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2839,7 +2838,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2861,7 +2860,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2883,7 +2882,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2905,7 +2904,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -2933,7 +2932,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2955,7 +2954,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -2978,7 +2977,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3001,7 +3000,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3027,7 +3026,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3050,7 +3049,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3073,7 +3072,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3096,7 +3095,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3119,7 +3118,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3145,7 +3144,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3171,7 +3170,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3194,7 +3193,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3220,7 +3219,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3243,7 +3242,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3266,7 +3265,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3288,7 +3287,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3314,7 +3313,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3337,7 +3336,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3360,7 +3359,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3383,7 +3382,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3405,7 +3404,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3428,7 +3427,7 @@
 
   frequency: nightly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3451,7 +3450,7 @@
 
   frequency: weekly
   team: rllib
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -3487,7 +3486,7 @@
 
   frequency: nightly
   team: core
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
@@ -3508,7 +3507,7 @@
 
   frequency: nightly
   team: core
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
@@ -3516,12 +3515,12 @@
   run:
     timeout: 7200
     script: python stress_tests/test_placement_group.py
-    type: sdk_command
+    type: anyscale_job
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
-  env: staging
+  env: staging_v2
   legacy:
     test_name: decision_tree_autoscaling_20_runs
     test_suite: nightly_tests
@@ -3545,7 +3544,7 @@
 
   frequency: nightly
   team: core
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
@@ -3561,7 +3560,7 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
-  env: prod
+  env: staging_v2
 
   python: "3.7"
 
@@ -3583,7 +3582,7 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
-  env: staging
+  env: staging_v2
 
   python: "3.7"
 
@@ -3676,7 +3675,7 @@
 
   frequency: nightly
   team: core
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: stress_tests/state_api_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
@@ -3760,7 +3759,7 @@
 
   frequency: nightly
   team: core
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
@@ -3943,7 +3942,7 @@
 #    wait_for_nodes:
 #      num_nodes: 251
 #
-#    type: sdk_command
+#    type: anyscale_job
 #    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
@@ -3991,7 +3990,7 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
-  env: staging
+  env: staging_v2
   legacy:
     test_name: single_node
     test_suite: benchmark_tests
@@ -4158,7 +4157,7 @@
 - name: many_nodes
   group: core-scalability-test
   working_dir: benchmarks
-  env: staging
+  env: staging_v2
 
   legacy:
     test_name: many_nodes
@@ -4505,7 +4504,7 @@
 - name: pipelined_ingestion_1500_gb
   group: data-tests
   working_dir: nightly_tests/dataset
-  env: prod
+  env: staging_v2
   legacy:
     test_name: pipelined_ingestion_1500_gb
     test_suite: dataset_test
@@ -4742,7 +4741,7 @@
     prepare: ' python setup_chaos.py --node-kill-interval 300'
     script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
       915 --debug
-    type: sdk_command
+    type: anyscale_job
 
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
