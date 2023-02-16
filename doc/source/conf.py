@@ -212,6 +212,9 @@ linkcheck_ignore = [
     # 403 Client Error: Forbidden for url.
     # They ratelimit bots.
     "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+
+    # Returning 522s intermittently.
+    "https://lczero.org/",
 ]
 
 # -- Options for HTML output ----------------------------------------------
