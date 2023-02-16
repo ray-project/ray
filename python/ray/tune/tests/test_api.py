@@ -32,7 +32,6 @@ from ray.tune.experiment import Experiment
 from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import _noop_logger_creator
-from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
     DONE,
@@ -260,7 +259,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class B(Trainable):
             @classmethod
             def default_resource_request(cls, config):
-                return Resources(cpu=config["cpu"], gpu=config["gpu"])
+                return PlacementGroupFactory(
+                    [{"CPU": config["cpu"], "GPU": config["gpu"]}]
+                )
 
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
