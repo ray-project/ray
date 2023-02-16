@@ -34,6 +34,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
 from ray.data.context import DatasetContext
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
@@ -501,7 +502,8 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor.get_stats(), executor
+        self._snapshot_stats = executor.get_stats()
+        return block_iter, self._snapshot_stats, executor
 
     def execute(
         self,
@@ -522,22 +524,31 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         if not ray.available_resources().get("CPU"):
-            logger.get_logger().warning(
-                "Warning: The Ray cluster currently does not have "
-                "any available CPUs. The Dataset job will hang unless more CPUs "
-                "are freed up. A common reason is that cluster resources are "
-                "used by Actors or Tune trials; see the following link "
-                "for more details: "
-                "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
-            )
+            if log_once("cpu_warning"):
+                logger.get_logger().warning(
+                    "Warning: The Ray cluster currently does not have "
+                    "any available CPUs. The Dataset job will hang unless more CPUs "
+                    "are freed up. A common reason is that cluster resources are "
+                    "used by Actors or Tune trials; see the following link "
+                    "for more details: "
+                    "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+                )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
+                )
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
 
-                executor = BulkExecutor(copy.deepcopy(context.execution_options))
+                if context.use_streaming_executor:
+                    executor = StreamingExecutor(
+                        copy.deepcopy(context.execution_options)
+                    )
+                else:
+                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -609,13 +620,16 @@ class ExecutionPlan:
         self._stages_before_snapshot = []
 
     def stats(self) -> DatasetStats:
-        """Return stats for this plan, forcing execution if needed."""
-        self.execute()
+        """Return stats for this plan.
+
+        If the plan isn't executed, an empty stats object will be returned.
+        """
+        if not self._snapshot_stats:
+            return DatasetStats(stages={}, parent=None)
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
-        self.execute()
-        return self._snapshot_stats.to_summary()
+        return self.stats().to_summary()
 
     def _should_clear_input_blocks(
         self,
