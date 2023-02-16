@@ -10,7 +10,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import AbstractAll
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.planner.plan_all_to_all_op import _plan_all_to_all_op
-from ray.data._internal.planner.plan_map_op import _plan_udf_map_op
+from ray.data._internal.planner.plan_udf_map_op import _plan_udf_map_op
 from ray.data._internal.planner.plan_read_op import _plan_read_op
 
 
