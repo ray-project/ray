@@ -262,14 +262,10 @@ public class ServeControllerClient {
     long start = System.currentTimeMillis();
     List<DeploymentStatusInfo> deploymentStatuses = null;
     while (System.currentTimeMillis() - start < timeoutS * 1000) {
-      StatusOverview statusOverview = getServeStatus();
-      if (statusOverview == null
-          || statusOverview.getDeploymentStatuses() == null
-          || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList() == null
-          || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList().isEmpty()) {
+      deploymentStatuses = getAllDeploymentStatuses();
+      if (deploymentStatuses.isEmpty()) {
         return;
       }
-      deploymentStatuses = statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList();
       LOGGER.debug("Waiting for shutdown, {} deployments still alive.", deploymentStatuses.size());
       try {
         Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
@@ -376,6 +372,18 @@ public class ServeControllerClient {
                 .remote()
                 .get(),
         DeploymentStatusInfo::parseFrom);
+  }
+
+  private List<DeploymentStatusInfo> getAllDeploymentStatuses() {
+    List<DeploymentStatusInfo> deploymentStatuses = new ArrayList<>();
+
+    List<byte[]> statusesBytes = (List<byte[]>)
+      ((PyActorHandle) controller).task(PyActorMethod.of("get_all_deployment_statuses")).remote().get();
+
+    for (byte[] statusBytes : statusesBytes) {
+      deploymentStatuses.add(ServeProtoUtil.bytesToProto(statusBytes, DeploymentStatusInfo::parseFrom));
+    }
+    return deploymentStatuses
   }
 
   public BaseActorHandle getController() {
