@@ -17,7 +17,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats
 
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
@@ -153,8 +152,7 @@ def build_streaming_topology(
             op_state.initialize_progress_bar(i)
             i += 1
 
-    # TODO: fill out stats.
-    return topology, DatasetStats(stages={}, parent=None)
+    return topology
 
 
 def process_completed_tasks(topology: Topology) -> None:
