@@ -278,9 +278,6 @@ class BaseTrainer(abc.ABC):
 
         with open(trainer_state_path, "rb") as fp:
             original_trainer = pickle.load(fp)
-        import ipdb
-
-        ipdb.set_trace()
         if not isinstance(original_trainer, cls):
             raise ValueError(
                 f"Invalid trainer type. Cannot restore a trainer of type "
