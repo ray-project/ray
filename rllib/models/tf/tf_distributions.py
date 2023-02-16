@@ -151,7 +151,7 @@ class TfDiagGaussian(TfDistribution):
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
         >>> # scale is None
-        >>> m = Normal(loc=[0.0, 1.0])
+        >>> m = TfDistribution(loc=[0.0, 1.0])
         >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
         tensor([0.1046, 0.6120])
 
