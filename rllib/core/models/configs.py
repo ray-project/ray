@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Callable, Dict
+from typing import List, Callable, Dict, Union
 from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
 
@@ -83,6 +83,7 @@ class MLPHeadConfig(ModelConfig):
     hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
     hidden_layer_activation: str = "relu"
     output_activation: str = "linear"
+    output_dim: int = None
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
@@ -102,6 +103,51 @@ class MLPHeadConfig(ModelConfig):
             from ray.rllib.core.models.tf.mlp import TfMLPHead
 
             return TfMLPHead(self)
+
+
+@ExperimentalAPI
+@dataclass
+class CNNEncoderConfig(ModelConfig):
+    """Configuration for a convolutional network.
+
+    See ModelConfig for usage details.
+
+    Attributes:
+        input_dims: The input dimension of the network. It cannot be None.
+        filter_specifiers: A list of lists, where each element of an inner list
+            contains elements of the form
+            `[number of filters, [kernel width, kernel height], stride]` to specify a
+            convolutional layer stacked in order of the outer list.
+        filter_layer_activation: The activation function to use after each layer (
+            except for the output).
+        output_activation: The activation function to use for the output layer.
+        output_dim: The output dimension are [BATCH, output_dim]. We append a final
+            convolutional layer depth-only filters that is flattened and a final linear
+            layer to achieve this.
+    """
+
+    input_dims: int = None
+    filter_specifiers: List[List[Union[int, List]]] = field(
+        default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
+    )
+    filter_layer_activation: str = "relu"
+    output_activation: str = "linear"
+    output_dim: int = None
+
+    @_framework_implemented(tf2=False)
+    def build(self, framework: str = "torch") -> Model:
+        # Activation functions in TF are lower case
+        self.output_activation = _convert_to_lower_case_if_tf(
+            self.output_activation, framework
+        )
+        self.filter_layer_activation = _convert_to_lower_case_if_tf(
+            self.filter_layer_activation, framework
+        )
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
+
+            return TorchCNNEncoder(self)
 
 
 @ExperimentalAPI
@@ -169,6 +215,7 @@ class LSTMEncoderConfig(ModelConfig):
     action_space: gym.Space = None
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
+    output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:

@@ -1,0 +1,76 @@
+digraph {
+	graph [size="12,12"]
+	node [align=left fontname=monospace fontsize=10 height=0.2 ranksep=0.1 shape=box style=filled]
+	10783439216 [label="
+ (1, 1)" fillcolor=darkolivegreen1]
+	10800071728 [label=AddmmBackward0]
+	10800072160 -> 10800071728
+	10783425536 [label="cnn.3.bias
+ (1)" fillcolor=lightblue]
+	10783425536 -> 10800072160
+	10800072160 [label=AccumulateGrad]
+	10800072112 -> 10800071728
+	10800072112 [label=ReshapeAliasBackward0]
+	10800071008 -> 10800072112
+	10800071008 [label=ConvolutionBackward0]
+	10800073648 -> 10800071008
+	10800073648 [label=ConstantPadNdBackward0]
+	10800072976 -> 10800073648
+	10800072976 [label=ConvolutionBackward0]
+	10800073216 -> 10800072976
+	10800073216 [label=ConstantPadNdBackward0]
+	10800074032 -> 10800073216
+	10800074032 [label=ConvolutionBackward0]
+	10800073264 -> 10800074032
+	10800073264 [label=ConstantPadNdBackward0]
+	10800073120 -> 10800073264
+	10800073120 [label=ConvolutionBackward0]
+	10800071584 -> 10800073120
+	10783358816 [label="cnn.0.cnn.0._model.1.weight
+ (16, 3, 24, 32)" fillcolor=lightblue]
+	10783358816 -> 10800071584
+	10800071584 [label=AccumulateGrad]
+	10800073168 -> 10800073120
+	10783358896 [label="cnn.0.cnn.0._model.1.bias
+ (16)" fillcolor=lightblue]
+	10783358896 -> 10800073168
+	10800073168 [label=AccumulateGrad]
+	10800072880 -> 10800074032
+	10783424736 [label="cnn.0.cnn.1._model.1.weight
+ (32, 16, 6, 6)" fillcolor=lightblue]
+	10783424736 -> 10800072880
+	10800072880 [label=AccumulateGrad]
+	10800073360 -> 10800074032
+	10783424816 [label="cnn.0.cnn.1._model.1.bias
+ (32)" fillcolor=lightblue]
+	10783424816 -> 10800073360
+	10800073360 [label=AccumulateGrad]
+	10800074128 -> 10800072976
+	10783425056 [label="cnn.0.cnn.2._model.1.weight
+ (256, 32, 9, 9)" fillcolor=lightblue]
+	10783425056 -> 10800074128
+	10800074128 [label=AccumulateGrad]
+	10800073408 -> 10800072976
+	10783425136 [label="cnn.0.cnn.2._model.1.bias
+ (256)" fillcolor=lightblue]
+	10783425136 -> 10800073408
+	10800073408 [label=AccumulateGrad]
+	10800072928 -> 10800071008
+	10783425296 [label="cnn.1._model.1.weight
+ (1, 256, 1, 1)" fillcolor=lightblue]
+	10783425296 -> 10800072928
+	10800072928 [label=AccumulateGrad]
+	10800070960 -> 10800071008
+	10783425376 [label="cnn.1._model.1.bias
+ (1)" fillcolor=lightblue]
+	10783425376 -> 10800070960
+	10800070960 [label=AccumulateGrad]
+	10800072208 -> 10800071728
+	10800072208 [label=TBackward0]
+	10800073456 -> 10800072208
+	10783425456 [label="cnn.3.weight
+ (1, 81)" fillcolor=lightblue]
+	10783425456 -> 10800073456
+	10800073456 [label=AccumulateGrad]
+	10800071728 -> 10783439216
+}

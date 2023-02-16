@@ -1866,6 +1866,13 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_cnn_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_cnn_encoder.py"]
+)
+
+py_test(
     name = "test_torch_mlp_encoder",
     tags = ["team:rllib", "core", "models"],
     size = "small",

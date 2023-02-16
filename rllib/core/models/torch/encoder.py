@@ -13,7 +13,7 @@ from ray.rllib.core.models.base import (
 )
 from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
@@ -61,6 +61,54 @@ class TorchMLPEncoder(TorchModel, Encoder):
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
                 STATE_OUT: inputs[STATE_IN],
+            }
+        )
+
+
+class TorchCNNEncoder(TorchModel, Encoder):
+    """A CNN encoder for images."""
+
+    def __init__(self, config: ModelConfig) -> None:
+        TorchModel.__init__(self, config)
+        Encoder.__init__(self, config)
+
+        self.cnn = TorchCNN(
+            input_dims=config.input_dims,
+            filter_specifiers=config.filter_specifiers,
+            filter_layer_activation=config.filter_layer_activation,
+            output_activation=config.output_activation,
+            output_dim=config.output_dim,
+        )
+
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return SpecDict(
+            {
+                SampleBatch.OBS: TorchTensorSpec(
+                    "b, w, h, d",
+                    w=self.config.input_dims[0],
+                    h=self.config.input_dims[1],
+                    d=self.config.input_dims[2],
+                ),
+                STATE_IN: None,
+                SampleBatch.SEQ_LENS: None,
+            }
+        )
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return SpecDict(
+            {
+                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim),
+                STATE_OUT: None,
+            }
+        )
+
+    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+        return NestedDict(
+            {
+                ENCODER_OUT: self.cnn(input_dict[SampleBatch.OBS]),
+                STATE_OUT: input_dict[STATE_IN],
             }
         )
 
