@@ -435,7 +435,7 @@ message InternalKVMultiGetReply {
   GcsStatus status = 1;
   // The key-value pairs that are found. Bytes cannot be used as a key in a map, so
   // we use a string instead.
-  map<string, bytes> values = 2;
+  map<string, bytes> results = 2;
 }
 
 message InternalKVPutRequest {

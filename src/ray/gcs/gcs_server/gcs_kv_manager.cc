@@ -47,20 +47,21 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
     rpc::InternalKVMultiGetRequest request,
     rpc::InternalKVMultiGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto status = ValidateKey(request.prefix());
-  if (!status.ok()) {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  } else {
-    auto callback = [reply, send_reply_callback](std::vector<std::string> keys,
-                                                 std::vector<std::string> values) {
-      for (size_t i = 0; i < keys.size(); i++) {
-        reply->add_keys(keys[i]);
-        reply->add_values(values[i]);
-      }
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    };
-    kv_instance_->MultiGet(request.namespace_(), request.keys(), std::move(callback));
+  for (auto &key : request.keys()) {
+    auto status = ValidateKey(key);
+    if (!status.ok()) {
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      return;
+    }
   }
+  auto callback =
+      [reply, send_reply_callback](std::unordered_map<std::string, std::string> results) {
+        for (auto &result : results) {
+          (*reply->mutable_results())[result.first] = result.second;
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      };
+  kv_instance_->MultiGet(request.namespace_(), request.keys(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVPut(
