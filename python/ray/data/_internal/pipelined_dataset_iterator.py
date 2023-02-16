@@ -17,7 +17,6 @@ class PipelinedDatasetIterator(DatasetIterator):
     ):
         self._base_dataset_pipeline = base_dataset_pipeline
         self._epoch_iterator = None
-        self._to_tf_called = False
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset_pipeline})"
