@@ -37,8 +37,8 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
       parameters.
     - Run 2 then deletes the ``run_2_finished`` marker, allowing Run 1 trial 1
       to continue training. When training finishes, the second trial launches.
-      This second trial then uses the overwritten trainable, that is, the wrong parameters
-      unless you use the workaround.
+      This second trial then uses the overwritten trainable, that is, the wrong
+      parameters unless you use the workaround.
     - Run 1 finally finishes, and we compare the expected results with the actual
       results.
 
