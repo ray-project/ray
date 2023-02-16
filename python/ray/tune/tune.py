@@ -26,7 +26,11 @@ from ray.tune.progress_reporter import (
     _stream_client_output,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.registry import (
+    get_trainable_cls,
+    is_function_trainable,
+    _unregister_trainables,
+)
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
@@ -833,6 +837,8 @@ def run(
             "saved. You can continue running this experiment by passing "
             "`resume=True` to `tune.run()`"
         )
+
+    _unregister_trainables()
 
     return ExperimentAnalysis(
         experiment_checkpoint,
