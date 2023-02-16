@@ -1512,12 +1512,11 @@
 
   frequency: nightly
   team: ml
-  env: staging_v2
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
     autosuspend_mins: 60
 
   run:
@@ -4292,8 +4291,7 @@
   run:
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
-    # Works fine as an anyscale job
-    # type: anyscale_job
+
 
 - name: parquet_metadata_resolution
   group: data-tests
@@ -4312,8 +4310,6 @@
     # Expect the test to finish around 40 seconds.
     timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
-    # Works fine as an anyscale job
-    # type: anyscale_job
 
 
 - name: dataset_random_access
@@ -4332,8 +4328,6 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
-    # Works fine as an anyscale job
-    # type: anyscale_job
 
 
 - name: pipelined_data_ingest_benchmark
@@ -4497,8 +4491,6 @@
     script: python pipelined_training.py --epochs 1
     wait_for_nodes:
       num_nodes: 15
-    # Works fine as an anyscale job
-    # type: anyscale_job
 
 
 - name: pipelined_ingestion_1500_gb
@@ -4519,8 +4511,6 @@
     timeout: 9600
     script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
       --debug
-    # Works fine as an anyscale job
-    # type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 21
