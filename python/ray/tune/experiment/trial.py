@@ -35,7 +35,6 @@ from ray.tune.result import (
     TRIAL_ID,
     DEBUG_METRICS,
 )
-from ray.tune.resources import Resources
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
@@ -167,11 +166,11 @@ class _TrialInfo:
         return self._trial_id
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> PlacementGroupFactory:
         return self._trial_resources
 
     @trial_resources.setter
-    def trial_resources(self, new_resources: Union[Resources, PlacementGroupFactory]):
+    def trial_resources(self, new_resources: PlacementGroupFactory):
         self._trial_resources = new_resources
 
 
@@ -185,23 +184,6 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
             f"trial dirname '{relative_logdir_old}' already exists."
         )
     return relative_logdir
-
-
-def _to_pg_factory(
-    resources: Optional[Resources],
-    placement_group_factory: Optional[PlacementGroupFactory],
-) -> PlacementGroupFactory:
-    """Outputs resources requirement in the form of PGF.
-
-    In case that `placement_group_factory` is None, `resources` will be
-    converted to PGF. If this is unsuccessful, an error will be raised.
-
-    """
-    if not placement_group_factory:
-        if not resources:
-            resources = Resources(cpu=1, gpu=0)
-        placement_group_factory = resource_dict_to_pg_factory(resources)
-    return placement_group_factory
 
 
 @DeveloperAPI
@@ -259,7 +241,6 @@ class Trial:
         local_dir: Optional[str] = DEFAULT_RESULTS_DIR,
         evaluated_params: Optional[Dict] = None,
         experiment_tag: str = "",
-        resources: Optional[Resources] = None,
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         experiment_dir_name: Optional[str] = None,
@@ -309,7 +290,14 @@ class Trial:
         self.stopping_criterion = stopping_criterion or {}
 
         self._setup_default_resource = _setup_default_resource
-        self._resources = resources
+
+        if placement_group_factory and not isinstance(
+            placement_group_factory, PlacementGroupFactory
+        ):
+            placement_group_factory = resource_dict_to_pg_factory(
+                placement_group_factory
+            )
+
         self._default_placement_group_factory = placement_group_factory
         # Will be created in create_placement_group_factory().
         self.placement_group_factory = None
@@ -412,8 +400,8 @@ class Trial:
         trainable_cls = self.get_trainable_cls()
         if not trainable_cls or not self._setup_default_resource:
             # Create placement group factory using default resources.
-            self.placement_group_factory = _to_pg_factory(
-                self._resources, self._default_placement_group_factory
+            self.placement_group_factory = (
+                self._default_placement_group_factory or resource_dict_to_pg_factory()
             )
             return
 
@@ -421,28 +409,27 @@ class Trial:
 
         # If Trainable returns resources, do not allow manual override via
         # `resources_per_trial` by the user.
-        if default_resources:
-            if self._resources or self._default_placement_group_factory:
-                raise ValueError(
-                    "Resources for {} have been automatically set to {} "
-                    "by its `default_resource_request()` method. Please "
-                    "clear the `resources_per_trial` option.".format(
-                        trainable_cls, default_resources
-                    )
+        if default_resources and self._default_placement_group_factory:
+            raise TuneError(
+                "Resources for {} have been automatically set to {} "
+                "by its `default_resource_request()` method. Please "
+                "clear the `resources_per_trial` option.".format(
+                    trainable_cls, default_resources
                 )
+            )
 
-            if isinstance(default_resources, PlacementGroupFactory):
-                default_placement_group_factory = default_resources
-                resources = None
-            else:
-                default_placement_group_factory = None
-                resources = default_resources
-        else:
-            default_placement_group_factory = self._default_placement_group_factory
-            resources = self._resources
+        if default_resources and not isinstance(
+            default_resources, PlacementGroupFactory
+        ):
+            default_resources = resource_dict_to_pg_factory(default_resources)
 
-        self.placement_group_factory = _to_pg_factory(
-            resources, default_placement_group_factory
+        self.placement_group_factory = (
+            # default_resource_request
+            default_resources
+            # resources_per_trial
+            or self._default_placement_group_factory
+            # cpu=1
+            or resource_dict_to_pg_factory()
         )
 
     def _get_default_result_or_future(self) -> Optional[dict]:
@@ -638,7 +625,6 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=None,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             sync_config=self.sync_config,
@@ -663,9 +649,7 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def update_resources(
-        self, resources: Union[Dict, Resources, PlacementGroupFactory]
-    ):
+    def update_resources(self, resources: Union[dict, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -676,15 +660,11 @@ class Trial:
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
 
-        placement_group_factory = None
-        if isinstance(resources, PlacementGroupFactory):
-            placement_group_factory = resources
-        elif isinstance(resources, dict):
-            resources = Resources(**resources)
+        placement_group_factory = resources
+        if isinstance(resources, dict):
+            placement_group_factory = resource_dict_to_pg_factory(resources)
 
-        self.placement_group_factory = _to_pg_factory(
-            resources, placement_group_factory
-        )
+        self.placement_group_factory = placement_group_factory
 
         self.invalidate_json_state()
 

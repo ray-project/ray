@@ -379,8 +379,7 @@ def get_trial_id():
 def get_trial_resources():
     """Trial resources for the corresponding trial.
 
-    Will be a PlacementGroupFactory if trial uses those,
-    otherwise a Resources instance.
+    Will be a PlacementGroupFactory.
 
     For function API use only.
     """
