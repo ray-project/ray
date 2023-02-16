@@ -56,10 +56,15 @@ class _DatasetStatsBuilder:
     called with the final blocks of the new dataset, the time delta is
     saved as part of the stats."""
 
-    def __init__(self, stage_name: str, parent: "DatasetStats"):
+    def __init__(
+        self,
+        stage_name: str,
+        parent: "DatasetStats",
+        override_start_time: Optional[float],
+    ):
         self.stage_name = stage_name
         self.parent = parent
-        self.start_time = time.perf_counter()
+        self.start_time = override_start_time or time.perf_counter()
 
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
@@ -197,7 +202,7 @@ class DatasetStats:
         self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
-        self.parents: List["DatasetStats"] = parent
+        self.parents: List["DatasetStats"] = parent or []
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -222,9 +227,11 @@ class DatasetStats:
     def stats_actor(self):
         return _get_or_create_stats_actor()
 
-    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+    def child_builder(
+        self, name: str, override_start_time: Optional[float] = None
+    ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
-        return _DatasetStatsBuilder(name, self)
+        return _DatasetStatsBuilder(name, self, override_start_time)
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
@@ -351,11 +358,11 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
-        out += str(self.iter_stats)
         if self.extra_metrics:
             indent = "\t" if stage_stats_summary.is_substage else ""
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+        out += str(self.iter_stats)
         return out
 
     def get_total_wall_time(self) -> float:
