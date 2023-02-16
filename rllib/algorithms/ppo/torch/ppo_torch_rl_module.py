@@ -110,11 +110,11 @@ class PPOTorchRLModule(TorchRLModule):
     ) -> "PPOTorchRLModule":
         # TODO: use the new catalog to perform this logic and construct the final config
 
-        activation = model_config["fcnet_activation"]
-
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
-        free_log_std = model_config["free_log_std"]
+        fcnet_activation = model_config["fcnet_activation"]
+        post_fcnet_hiddens = model_config["post_fcnet_hiddens"]
+        post_fcnet_activation = model_config["post_fcnet_activation"]
 
         if model_config["use_lstm"]:
             base_encoder_config = LSTMEncoderConfig(
@@ -128,7 +128,7 @@ class PPOTorchRLModule(TorchRLModule):
             base_encoder_config = MLPEncoderConfig(
                 input_dim=obs_dim,
                 hidden_layer_dims=fcnet_hiddens[:-1],
-                hidden_layer_activation=activation,
+                hidden_layer_activation=fcnet_activation,
                 output_dim=fcnet_hiddens[-1],
             )
 
@@ -138,13 +138,15 @@ class PPOTorchRLModule(TorchRLModule):
 
         pi_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=[32],
-            hidden_layer_activation="relu",
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
+            output_activation="linear",
         )
         vf_config = MLPHeadConfig(
             input_dim=base_encoder_config.output_dim,
-            hidden_layer_dims=[32, 1],
-            hidden_layer_activation="relu",
+            hidden_layer_dims=post_fcnet_hiddens + [1],
+            hidden_layer_activation=post_fcnet_activation,
+            output_activation="linear",
         )
 
         assert isinstance(
@@ -165,7 +167,7 @@ class PPOTorchRLModule(TorchRLModule):
             encoder_config=encoder_config,
             pi_config=pi_config,
             vf_config=vf_config,
-            free_log_std=free_log_std,
+            free_log_std=model_config["free_log_std"],
         )
 
         module = PPOTorchRLModule(config_)
