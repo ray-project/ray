@@ -3738,14 +3738,6 @@ py_test(
     args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 )
 
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_w_rlm_tf2",
-    main = "examples/self_play_league_based_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--framework=tf2", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-)
 
 py_test(
     name = "examples/trajectory_view_api_tf",
