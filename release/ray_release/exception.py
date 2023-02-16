@@ -145,8 +145,12 @@ class JobBrokenError(ReleaseTestError):
     exit_code = ExitCode.ANYSCALE_ERROR
 
 
-class JobTerminatedError(ReleaseTestError):
+class JobTerminatedBeforeStartError(ReleaseTestError):
     exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
+
+
+class JobTerminatedError(ReleaseTestError):
+    exit_code = ExitCode.ANYSCALE_ERROR
 
 
 class JobStartupFailed(ClusterStartupFailed):
