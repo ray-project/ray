@@ -71,7 +71,7 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for fw in framework_iterator(config, ("tf2")):
+        for fw in framework_iterator(config, ("tf2", "torch")):
             trainer = config.build()
             policy = trainer.get_policy()
 
@@ -91,13 +91,14 @@ class TestPPO(unittest.TestCase):
 
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
-            config.training(_enable_learner_api=True)
-            config.validate()
-            config.freeze()
+            algo_config = config.copy(copy_frozen=False)
+            algo_config.training(_enable_learner_api=True)
+            algo_config.validate()
+            algo_config.freeze()
 
-            learner_group_config = config.get_learner_group_config(
+            learner_group_config = algo_config.get_learner_group_config(
                 SingleAgentRLModuleSpec(
-                    module_class=config.rl_module_spec.module_class,
+                    module_class=algo_config.rl_module_spec.module_class,
                     observation_space=policy.observation_space,
                     action_space=policy.action_space,
                     model_config=policy.config["model"],
