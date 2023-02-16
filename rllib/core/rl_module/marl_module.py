@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 
@@ -235,37 +235,24 @@ class MultiAgentRLModule(RLModule):
         return self._rl_modules[module_id]
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return self._get_specs_for_modules("output_specs_train")
+    def output_specs_train(self) -> SpecType:
+        return []
 
     @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return self._get_specs_for_modules("output_specs_inference")
+    def output_specs_inference(self) -> SpecType:
+        return []
 
     @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return self._get_specs_for_modules("output_specs_exploration")
+    def output_specs_exploration(self) -> SpecType:
+        return []
 
     @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        return self._get_specs_for_modules("input_specs_train")
+    def _default_input_specs(self) -> SpecType:
+        """Multi-agent RLModule should not check the input specs.
 
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return self._get_specs_for_modules("input_specs_inference")
-
-    @override(RLModule)
-    def input_specs_exploration(self) -> SpecDict:
-        return self._get_specs_for_modules("input_specs_exploration")
-
-    def _get_specs_for_modules(self, method_name: str) -> SpecDict:
-        """Returns a ModelSpec from the given method_name for all modules."""
-        return SpecDict(
-            {
-                module_id: getattr(module, f"_{method_name}")
-                for module_id, module in self._rl_modules.items()
-            }
-        )
+        The underlying single-agent RLModules will check the input specs.
+        """
+        return []
 
     @override(RLModule)
     def _forward_train(
