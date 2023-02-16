@@ -160,13 +160,11 @@ def batch_blocks(
 
     if collate_fn is not None:
 
-        def batch_fn_iter(
-            iterator: Iterator[DataBatch], collate_fn: Callable[[DataBatch], DataBatch]
-        ) -> Iterator[DataBatch]:
+        def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
             for batch in iterator:
                 yield collate_fn(batch)
 
-        batch_iter = batch_fn_iter(batch_iter, collate_fn)
+        batch_iter = batch_fn_iter(batch_iter)
 
     if prefetch_batches > 0:
         batch_iter = _make_async_gen(batch_iter, prefetch_buffer_size=prefetch_batches)
