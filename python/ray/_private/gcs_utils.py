@@ -6,7 +6,7 @@ import inspect
 import os
 import asyncio
 from functools import wraps
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import grpc
 
@@ -299,6 +299,24 @@ class GcsClient:
             )
 
     @_auto_reconnect
+    def internal_kv_multi_get(
+        self,
+        keys: List[bytes],
+        namespace: Optional[bytes],
+        timeout: Optional[float] = None,
+    ) -> Dict[bytes, bytes]:
+        logger.debug(f"internal_kv_multi_get {keys!r} {namespace!r}")
+        req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
+        reply = self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
+        if reply.status.code == GcsCode.OK:
+            return dict(zip(reply.keys, reply.values))
+        else:
+            raise RuntimeError(
+                f"Failed to get values for keys {keys!r} "
+                f"due to error {reply.status.message}"
+            )
+
+    @_auto_reconnect
     def internal_kv_put(
         self,
         key: bytes,
@@ -470,6 +488,24 @@ class GcsAioClient:
         else:
             raise RuntimeError(
                 f"Failed to get value for key {key!r} "
+                f"due to error {reply.status.message}"
+            )
+
+    @_auto_reconnect
+    async def internal_kv_multi_get(
+        self,
+        keys: List[bytes],
+        namespace: Optional[bytes],
+        timeout: Optional[float] = None,
+    ) -> Dict[bytes, bytes]:
+        logger.debug(f"internal_kv_multi_get {keys!r} {namespace!r}")
+        req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
+        reply = await self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
+        if reply.status.code == GcsCode.OK:
+            return dict(zip(keys, reply.values))
+        else:
+            raise RuntimeError(
+                f"Failed to get values for keys {keys!r} "
                 f"due to error {reply.status.message}"
             )
 

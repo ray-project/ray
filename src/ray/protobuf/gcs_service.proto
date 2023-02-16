@@ -426,6 +426,18 @@ message InternalKVGetReply {
   bytes value = 2;
 }
 
+message InternalKVMultiGetRequest {
+  repeated bytes keys = 1;
+  bytes namespace = 2;
+}
+
+message InternalKVMultiGetReply {
+  GcsStatus status = 1;
+  // The key-value pairs that are found. Bytes cannot be used as a key in a map, so
+  // we use a string instead.
+  map<string, bytes> values = 2;
+}
+
 message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
@@ -472,6 +484,7 @@ message InternalKVKeysReply {
 // Service for KV storage
 service InternalKVGcsService {
   rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVMultiGet(InternalKVMultiGetRequest) returns (InternalKVMultiGetReply);
   rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
