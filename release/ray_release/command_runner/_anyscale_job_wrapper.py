@@ -265,7 +265,7 @@ def main(
         timed_out = return_code == TIMEOUT_RETURN_CODE
         if timed_out:
             msg = f"Timed out. Time taken: {workload_time_taken}"
-            if not test_no_raise_on_timeout:
+            if test_no_raise_on_timeout:
                 logger.info(msg)
             else:
                 logger.error(msg)
@@ -322,7 +322,7 @@ def main(
     print("", flush=True)
     print("", file=sys.stderr, flush=True)
 
-    if return_code == TIMEOUT_RETURN_CODE and not test_no_raise_on_timeout:
+    if return_code == TIMEOUT_RETURN_CODE and test_no_raise_on_timeout:
         return_code = 0
     elif return_code is None:
         return_code = 1
