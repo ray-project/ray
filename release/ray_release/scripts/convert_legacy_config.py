@@ -75,7 +75,7 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
 
         test["run"]["type"] = "sdk_command" if not use_connect else "client"
         if not use_connect:
-            test["run"]["file_manager"] = "job"
+            test["run"]["file_manager"] = "anyscale_job"
 
         test["alert"] = alert
 
