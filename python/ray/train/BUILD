@@ -281,6 +281,14 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_iterator",
+    size = "small",
+    srcs = ["tests/test_dataset_iterator.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
@@ -506,7 +514,7 @@ py_test(
 
 py_test(
     name = "test_torch_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_torch_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]

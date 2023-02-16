@@ -73,6 +73,14 @@ class Backend(metaclass=Singleton):
         """Logic for shutting down the backend."""
         pass
 
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: BackendConfig
+    ):
+        """Logic ran right before training is started.
+
+        Session API is available at this point."""
+        pass
+
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``encode_data`` is deprecated."""
