@@ -150,9 +150,6 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
                                        report_interval_ms,
                                        "CoreWorker.deadline_timer.flush_task_events");
-  // periodical_runner_.RunFnPeriodically([this] { GatherThreadBuffer(); },
-  //                                      report_interval_ms / 10,
-  //                                      "CoreWorker.deadline_timer.gather_buffer");
   return Status::OK();
 }
 

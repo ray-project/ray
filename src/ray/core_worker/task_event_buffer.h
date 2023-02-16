@@ -148,12 +148,14 @@ class TaskEventThreadBuffer {
 
   std::unique_ptr<std::vector<TaskStatusEvent>> ResetStatusEventBuffer() {
     auto new_buffer = std::make_unique<std::vector<TaskStatusEvent>>();
+    new_buffer->reserve(RayConfig::instance().task_events_send_batch_size());
     new_buffer.swap(status_events_);
     return new_buffer;
   }
 
   std::unique_ptr<std::vector<TaskProfileEvent>> ResetProfileEventBuffer() {
     auto new_buffer = std::make_unique<std::vector<TaskProfileEvent>>();
+    new_buffer->reserve(RayConfig::instance().task_events_send_batch_size());
     new_buffer.swap(profile_events_);
     return new_buffer;
   }
