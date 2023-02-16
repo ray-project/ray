@@ -3304,7 +3304,7 @@ py_test(
     name = "examples/multi_agent_custom_policy_tf",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--stop-reward=80"]
 )
@@ -3313,7 +3313,7 @@ py_test(
     name = "examples/multi_agent_custom_policy_torch",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
 )
@@ -3322,7 +3322,7 @@ py_test(
     name = "examples/multi_agent_custom_policy_w_rlm_torch",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
 )
@@ -3332,7 +3332,7 @@ py_test(
     name = "examples/multi_agent_custom_policy_w_rlm_tf2",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=tf2", "--stop-reward=80"]
 )
@@ -3708,7 +3708,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--stop-iters=2", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
 )
 
 py_test(
@@ -3717,7 +3717,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf2", "--env=connect_four", "--win-rate-threshold=0.9", "--stop-iters=2", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
+    args = ["--framework=tf2", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
 )
 
 py_test(
