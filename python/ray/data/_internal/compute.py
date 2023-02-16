@@ -104,7 +104,6 @@ class TaskPoolStrategy(ComputeStrategy):
             map_block = cached_remote_fn(_map_block_split).options(
                 num_returns="dynamic", **remote_args
             )
-            # TODO(scott): for all _apply calls, generate a useful name and pass it here
             refs = [
                 map_block.remote(
                     block_fn,

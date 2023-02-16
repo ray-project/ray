@@ -1109,7 +1109,8 @@ def _rewrite_read_stage(
     for read_task in in_blocks._tasks:
         blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
-        src_read_fn_names.append(read_task.src_read_fn_name)
+        if read_task.src_read_fn_name is not None:
+            src_read_fn_names.append(read_task.src_read_fn_name)
     block_list = BlockList(
         blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
     )
