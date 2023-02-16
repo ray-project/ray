@@ -6,6 +6,7 @@ _, tf, _ = try_import_tf()
 
 def make_time_major(
     tensor: Union[tf.Tensor, List[tf.Tensor]],
+    *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
     drop_last: bool = False,
@@ -14,19 +15,21 @@ def make_time_major(
 
     Args:
         tensor: A tensor or list of tensors to swap the axis of.
-            NOTE: The tensor(s) must flattened along the batch axis.
-        trajectory_len: The length of the trajectory being transformed.
-        recurrent_seq_len: Sequence lengths if recurrent or None
+            NOTE: Each tensor must have the shape [B * T] where B is the batch size and
+            T is the trajectory length.
+        trajectory_len: The length of each trajectory being transformed.
+            If None then `recurrent_seq_len` must be set.
+        recurrent_seq_len: Sequence lengths if recurrent.
+            If None then `trajectory_len` must be set.
         drop_last: A bool indicating whether to drop the last
-        trajectory item.
+            trajectory item.
 
     Note: Either `trajectory_len` or `recurrent_seq_len` must be set. `trajectory_len`
         should be used in cases where tensor is not produced from a
         RNN/recurrent module. `recurrent_seq_len` should be used in those cases instead.
 
     Returns:
-        res: A tensor with swapped axes or a list of tensors with
-        swapped axes.
+        A tensor with swapped axes or a list of tensors with swapped axes.
     """
     if isinstance(tensor, list):
         return [
@@ -34,8 +37,8 @@ def make_time_major(
             for _tensor in tensor
         ]
 
-    assert bool(trajectory_len) != bool(
-        recurrent_seq_len
+    assert (trajectory_len != recurrent_seq_len) and (
+        trajectory_len is None or recurrent_seq_len is None
     ), "Either trajectory_len or recurrent_seq_len must be set."
 
     if recurrent_seq_len:
@@ -54,24 +57,16 @@ def make_time_major(
     return res
 
 
-def get_log_rhos(target_action_log_probs, behaviour_action_log_probs):
-    """With the selected log_probs for multi-discrete actions of behaviour
-    and target policies we compute the log_rhos for calculating the vtrace."""
-    t = tf.stack(target_action_log_probs)
-    b = tf.stack(behaviour_action_log_probs)
-    log_rhos = tf.reduce_sum(t - b, axis=-1)
-    return log_rhos
-
-
 def vtrace_tf2(
-    target_action_log_probs,
-    behaviour_action_log_probs,
-    discounts,
-    rewards,
-    values,
-    bootstrap_value,
-    clip_rho_threshold=1.0,
-    clip_pg_rho_threshold=1.0,
+    *,
+    target_action_log_probs: tf.Tensor,
+    behaviour_action_log_probs: tf.Tensor,
+    discounts: tf.Tensor,
+    rewards: tf.Tensor,
+    values: tf.Tensor,
+    bootstrap_value: tf.Tensor,
+    clip_rho_threshold: Union[float, tf.Tensor] = 1.0,
+    clip_pg_rho_threshold: Union[float, tf.Tensor] = 1.0,
 ):
     r"""V-trace for softmax policies.
 
@@ -93,7 +88,7 @@ def vtrace_tf2(
     Args:
         target_action_log_probs: Action log probs from the target policy. A float32
             tensor of shape [T, B].
-        behaviour_action_log_probs: Action log probs from the target behavior policy. A
+        behaviour_action_log_probs: Action log probs from the behaviour policy. A
             float32 tensor of shape [T, B].
         discounts: A float32 tensor of shape [T, B] with the discount encountered
             when following the behaviour policy.
@@ -109,7 +104,7 @@ def vtrace_tf2(
         clip_pg_rho_threshold: A scalar float32 tensor with the clipping threshold
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
-    log_rhos = get_log_rhos(target_action_log_probs, behaviour_action_log_probs)
+    log_rhos = target_action_log_probs - behaviour_action_log_probs
 
     discounts = tf.convert_to_tensor(discounts, dtype=tf.float32)
     rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
