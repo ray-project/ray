@@ -131,12 +131,12 @@ class TorchDiagGaussian(TorchDistribution):
 
     Example::
         >>> loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
-        >>> m = TorchDiaggaussian(loc=loc, scale=scale)
+        >>> m = TorchDiagGaussian(loc=loc, scale=scale)
         >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
         >>> # scale is None
-        >>> m = TorchDiaggaussian(loc=torch.tensor([0.0, 1.0]))
+        >>> m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
         >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
         tensor([0.1046, 0.6120])
 
