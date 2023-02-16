@@ -100,7 +100,7 @@ Please also see the :ref:`Ray Tune environment variables <tune-env-vars>`.
 .. _air-multi-tenancy:
 
 Running multiple AIR jobs concurrently on a single cluster
------------------------------------------------------
+----------------------------------------------------------
 Running multiple AIR training or tuning jobs at the same
 time on a single cluster is not officially supported.
 We don't test this workflow
