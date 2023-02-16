@@ -219,11 +219,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(
-        self,
-        read_fn: Callable[[], Iterable[Block]],
-        metadata: BlockMetadata,
-    ):
+    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
 
