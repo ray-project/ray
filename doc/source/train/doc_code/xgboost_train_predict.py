@@ -32,4 +32,5 @@ predictions = batch_predictor.predict(
     batch_size=8,
     min_scoring_workers=2,
 )
+predictions.show()
 # __batch_predict_end__

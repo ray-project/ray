@@ -57,13 +57,16 @@ def main(data_size_gb: int, smoke_test: bool = False):
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-    predictor.predict(
+    predictions = predictor.predict(
         dataset,
         num_gpus_per_worker=int(not smoke_test),
         min_scoring_workers=1,
         max_scoring_workers=1 if smoke_test else int(ray.cluster_resources()["GPU"]),
         batch_size=512,
     )
+    for _ in predictions.iter_batches():
+        pass
+
     total_time_s = round(time.time() - start, 2)
 
     # For structured output integration with internal tooling
