@@ -231,12 +231,25 @@ public class CrossLanguageInvocationTest extends BaseTest {
   public void testCallingCppActor() {
     String actorName = "actor_name";
     CppActorHandle actor =
-        Ray.actor(CppActorClass.of("CreateCounter", "Counter")).setName(actorName).remote();
+        Ray.actor(CppActorClass.of("RAY_FUNC(Counter::FactoryCreate)", "Counter"))
+            .setName(actorName)
+            .remote();
     ObjectRef<Integer> res = actor.task(CppActorMethod.of("Plus1", Integer.class)).remote();
     Assert.assertEquals(res.get(), Integer.valueOf(1));
     ObjectRef<byte[]> b =
         actor.task(CppActorMethod.of("GetBytes", byte[].class), "C++ Worker").remote();
     Assert.assertEquals(b.get(), "C++ Worker".getBytes());
+
+    ObjectRef<byte[]> b2 =
+        actor.task(CppActorMethod.of("echoBytes", byte[].class), "C++ Worker".getBytes()).remote();
+    Assert.assertEquals(b2.get(), "C++ Worker".getBytes());
+
+    ObjectRef<byte[]> b3 =
+        actor.task(CppActorMethod.of("echoBytes", byte[].class), new byte[0]).remote();
+    Assert.assertEquals(b3.get(), new byte[0]);
+
+    ObjectRef<byte[]> b4 = actor.task(CppActorMethod.of("echoBytes", byte[].class), null).remote();
+    Assert.assertThrows(CrossLanguageException.class, () -> b4.get());
 
     // Test get cpp actor by actor name.
     Optional<CppActorHandle> optional = Ray.getActor(actorName);

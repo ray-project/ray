@@ -52,6 +52,17 @@ TEST(RayClusterModeXLangTest, JavaInvocationTest) {
       named_actor_handle.Task(ray::JavaActorMethod<int>{"getValue"}).Remote();
   EXPECT_EQ(0, *named_actor_obj1.Get());
 
+  std::vector<std::byte> bytes = {std::byte{1}, std::byte{2}, std::byte{3}};
+  auto ref_bytes = java_class_actor_handle
+                       .Task(ray::JavaActorMethod<std::vector<std::byte>>{"echoBytes"})
+                       .Remote(bytes);
+  EXPECT_EQ(*ref_bytes.Get(), bytes);
+
+  auto ref_bytes2 = java_class_actor_handle
+                        .Task(ray::JavaActorMethod<std::vector<std::byte>>{"echoBytes"})
+                        .Remote(std::vector<std::byte>());
+  EXPECT_EQ(*ref_bytes2.Get(), std::vector<std::byte>());
+
   // Test get other java actor by actor name.
   auto ref_1 =
       java_class_actor_handle.Task(ray::JavaActorMethod<std::string>{"createChildActor"})
@@ -63,6 +74,14 @@ TEST(RayClusterModeXLangTest, JavaInvocationTest) {
   ray::ActorHandleXlang &child_actor = *child_actor_optional;
   auto ref_2 = child_actor.Task(ray::JavaActorMethod<int>{"getValue"}).Remote();
   EXPECT_EQ(0, *ref_2.Get());
+
+  auto ref_3 =
+      child_actor.Task(ray::JavaActorMethod<std::string>{"echo"}).Remote("C++ worker");
+  EXPECT_EQ("C++ worker", *ref_3.Get());
+
+  auto ref_4 = child_actor.Task(ray::JavaActorMethod<std::vector<std::byte>>{"echoBytes"})
+                   .Remote(bytes);
+  EXPECT_EQ(*ref_4.Get(), bytes);
 }
 
 TEST(RayClusterModeXLangTest, GetXLangActorByNameTest) {
