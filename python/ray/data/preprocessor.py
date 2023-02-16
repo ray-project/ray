@@ -141,7 +141,7 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        transformed_ds = self._transform(dataset)
+        transformed_ds = self._transform(dataset).fully_executed()
         self._transform_stats = transformed_ds.stats()
         return transformed_ds
 

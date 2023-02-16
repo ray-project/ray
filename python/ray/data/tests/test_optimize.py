@@ -317,7 +317,12 @@ def test_optimize_reorder(ray_start_regular_shared):
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
-    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map)
+    ds = (
+        ray.data.range(10)
+        .randomize_block_order()
+        .map_batches(dummy_map)
+        .fully_executed()
+    )
     expect_stages(
         ds,
         2,
@@ -329,6 +334,7 @@ def test_optimize_reorder(ray_start_regular_shared):
         .randomize_block_order()
         .repartition(10)
         .map_batches(dummy_map)
+        .fully_executed()
     )
     expect_stages(
         ds2,

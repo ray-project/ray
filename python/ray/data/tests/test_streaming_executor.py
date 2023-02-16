@@ -43,7 +43,7 @@ def test_build_streaming_topology():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, _ = build_streaming_topology(o3, ExecutionOptions())
+    topo = build_streaming_topology(o3, ExecutionOptions())
     assert len(topo) == 3, topo
     assert o1 in topo, topo
     assert not topo[o1].inqueues, topo
@@ -67,7 +67,7 @@ def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    topo, _ = build_streaming_topology(o2, ExecutionOptions())
+    topo = build_streaming_topology(o2, ExecutionOptions())
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
@@ -101,7 +101,7 @@ def test_select_operator_to_run():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt)
 
     # Test empty.
     assert (
@@ -180,7 +180,7 @@ def test_debug_dump_topology():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt)
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo)
 
@@ -199,7 +199,7 @@ def test_validate_topology():
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(4, 4),
     )
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt)
     _validate_topology(topo, ExecutionResources())
     _validate_topology(topo, ExecutionResources(cpu=20))
     _validate_topology(topo, ExecutionResources(gpu=0))
@@ -264,7 +264,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
     )
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt)
     topo[o2].outqueue.append("dummy1")
     o1.num_active_work_refs = MagicMock(return_value=2)
     assert (
@@ -297,10 +297,10 @@ def test_configure_output_locality():
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(1, 1),
     )
-    topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
+    build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
     assert o2._ray_remote_args.get("scheduling_strategy") is None
     assert o3._ray_remote_args.get("scheduling_strategy") == "SPREAD"
-    topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
+    build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
     assert isinstance(
         o2._ray_remote_args["scheduling_strategy"], NodeAffinitySchedulingStrategy
     )
