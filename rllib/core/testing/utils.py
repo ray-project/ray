@@ -1,17 +1,21 @@
 from collections import defaultdict
 from typing import Type, Union, TYPE_CHECKING
 
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec, FrameworkHPs
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import convert_to_numpy
+# from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+# from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
+# from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec, FrameworkHPs
+# from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+# from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+# from ray.rllib.policy.sample_batch import SampleBatch
+# from ray.rllib.utils.annotations import DeveloperAPI
+# from ray.rllib.utils.framework import try_import_tf
+# from ray.rllib.utils.numpy import convert_to_numpy
 
-_, tf, _ = try_import_tf()
+# _, tf, _ = try_import_tf()
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
@@ -24,7 +28,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
 
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+    from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.rl_module import RLModule
 
 
@@ -32,15 +36,15 @@ Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 
 @DeveloperAPI
-def get_trainer_class(framework: str) -> Type["RLTrainer"]:
+def get_learner_class(framework: str) -> Type["Learner"]:
     if framework == "tf":
-        from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
+        from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
-        return BCTfRLTrainer
+        return BCTfLearner
     elif framework == "torch":
-        from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
+        from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 
-        return BCTorchRLTrainer
+        return BCTorchLearner
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 
@@ -66,7 +70,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         module_class=get_module_class(framework),
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config={"hidden_dim": 32},
+        model_config={"fcnet_hiddens": [32]},
     )
 
     if is_multi_agent:
@@ -94,26 +98,26 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 
 @DeveloperAPI
-def get_rl_trainer(
+def get_learner(
     framework: str,
     env: "gym.Env",
     is_multi_agent: bool = False,
-) -> "RLTrainer":
+) -> "Learner":
 
-    _cls = get_trainer_class(framework)
+    _cls = get_learner_class(framework)
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
     return _cls(module_spec=spec, optimizer_config={"lr": 0.1})
 
 
 @DeveloperAPI
-def get_trainer_runner(
+def get_learner_group(
     framework: str,
     env: "gym.Env",
-    scaling_config: TrainerScalingConfig,
+    scaling_config: LearnerGroupScalingConfig,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
-) -> TrainerRunner:
-    """Construct a trainer runner for testing.
+) -> LearnerGroup:
+    """Construct a learner_group for testing.
 
     Args:
         framework: The framework used for training.
@@ -125,35 +129,35 @@ def get_trainer_runner(
             optimizations.
 
     Returns:
-        A trainer runner.
+        A learner_group.
 
     """
     if framework == "tf":
-        trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
+        learner_hps = FrameworkHPs(eager_tracing=eager_tracing)
     else:
-        trainer_hps = None
-    rl_trainer_spec = RLTrainerSpec(
-        rl_trainer_class=get_trainer_class(framework),
+        learner_hps = None
+    learner_spec = LearnerSpec(
+        learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": 0.1},
-        trainer_scaling_config=scaling_config,
-        trainer_hyperparameters=trainer_hps,
+        learner_scaling_config=scaling_config,
+        learner_hyperparameters=learner_hps,
     )
-    runner = TrainerRunner(rl_trainer_spec)
+    lg = LearnerGroup(learner_spec)
 
-    return runner
+    return lg
 
 
 @DeveloperAPI
-def add_module_to_runner_or_trainer(
+def add_module_to_learner_or_learner_group(
     framework: str,
     env: "gym.Env",
     module_id: str,
-    runner_or_trainer: Union[TrainerRunner, "RLTrainer"],
+    learner_group_or_learner: Union[LearnerGroup, "Learner"],
 ):
-    runner_or_trainer.add_module(
+    learner_group_or_learner.add_module(
         module_id=module_id,
         module_spec=get_module_spec(framework, env, is_multi_agent=False),
         optimizer_cls=get_optimizer_default_class(framework),

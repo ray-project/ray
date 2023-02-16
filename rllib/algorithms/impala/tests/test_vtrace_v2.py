@@ -3,12 +3,13 @@ import numpy as np
 
 from gymnasium.spaces import Box, Discrete
 
-from ray.rllib.algorithms.impala.tf.impala_rl_trainer import (
+from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import (
     vtrace_tf2,
-    get_log_rhos,
     make_time_major,
 )
-from ray.rllib.algorithms.impala.tests.test_vtrace import _ground_truth_calculation
+from ray.rllib.algorithms.impala.tests.test_vtrace import (
+    _ground_truth_vtrace_calculation,
+)
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check
@@ -26,7 +27,15 @@ def flatten_batch_and_time_dim(t):
 
 class TestVtraceRLModule(unittest.TestCase):
     def test_vtrace_tf2(self):
-        """Tests V-trace against ground truth data calculated."""
+        """Tests V-trace-v2 against ground truth data calculated.
+
+        The v2 vtrace is optimized for the least amount of flops. The math
+        in the implementation looks nothing like the math in the paper.
+
+        There is a ground truth implementation that we used to test our original impl
+        against. This test checks that the new implementation still matches the gt.
+
+        """
 
         # we can test against any trajectory length or batch size and it won't matter
         trajectory_len = 5
@@ -51,10 +60,14 @@ class TestVtraceRLModule(unittest.TestCase):
         ]
 
         behavior_log_probs = tf.stack(
-            tf.nest.map_structure(lambda v: behavior_dist.logp(v), dummy_action_batch)
+            tf.nest.map_structure(
+                lambda v: tf.squeeze(behavior_dist.logp(v)), dummy_action_batch
+            )
         )
         target_log_probs = tf.stack(
-            tf.nest.map_structure(lambda v: target_dist.logp(v), dummy_action_batch)
+            tf.nest.map_structure(
+                lambda v: tf.squeeze(target_dist.logp(v)), dummy_action_batch
+            )
         )
 
         value_fn_space_w_time = Box(-1.0, 1.0, (batch_size, trajectory_len), np.float32)
@@ -76,19 +89,20 @@ class TestVtraceRLModule(unittest.TestCase):
 
         # convert to time major dimension
         behavior_log_probs_time_major = make_time_major(
-            flatten_batch_and_time_dim(behavior_log_probs), trajectory_len
+            flatten_batch_and_time_dim(behavior_log_probs),
+            trajectory_len=trajectory_len,
         )
         target_log_probs_time_major = make_time_major(
-            flatten_batch_and_time_dim(target_log_probs), trajectory_len
+            flatten_batch_and_time_dim(target_log_probs), trajectory_len=trajectory_len
         )
         discounts_time_major = make_time_major(
-            flatten_batch_and_time_dim(discounts), trajectory_len
+            flatten_batch_and_time_dim(discounts), trajectory_len=trajectory_len
         )
         rewards_time_major = make_time_major(
-            flatten_batch_and_time_dim(rewards), trajectory_len
+            flatten_batch_and_time_dim(rewards), trajectory_len=trajectory_len
         )
         values_time_major = make_time_major(
-            flatten_batch_and_time_dim(values), trajectory_len
+            flatten_batch_and_time_dim(values), trajectory_len=trajectory_len
         )
 
         output_tf2_vtrace = vtrace_tf2(
@@ -102,11 +116,9 @@ class TestVtraceRLModule(unittest.TestCase):
             clip_pg_rho_threshold=clip_pg_rho_threshold,
         )
 
-        log_rhos = get_log_rhos(
-            target_log_probs_time_major, behavior_log_probs_time_major
-        )
+        log_rhos = target_log_probs_time_major - behavior_log_probs_time_major
 
-        ground_truth_v = _ground_truth_calculation(
+        ground_truth_v = _ground_truth_vtrace_calculation(
             discounts=discounts_time_major.numpy(),
             log_rhos=log_rhos.numpy(),
             rewards=rewards_time_major.numpy(),
