@@ -68,7 +68,7 @@ scikit-learn==1.0.2; python_version < '3.11'
 smart_open[s3]==6.2.0
 tqdm==4.64.1
 testfixtures==7.0.0
-werkzeug==2.1.2
+werkzeug==2.2.3
 xlrd==2.0.1
 memray; platform_system != "Windows" and sys_platform != "darwin"
 
