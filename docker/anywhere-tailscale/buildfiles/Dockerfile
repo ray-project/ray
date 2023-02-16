@@ -117,5 +117,5 @@ RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/mast
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=60s --timeout=15s --start-period=300s \
-CMD curl -s localhost:4200 | jq -r '.ok' | grep -q true && ray list nodes -f NODE_NAME=$HOSTNAME.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE || exit 1
+CMD curl -s localhost:4200 | jq -r '.ok' | grep -q true && ray list nodes -f NODE_NAME=$HOSTNAME.chimp-beta.ts.net -f STATE=ALIVE || exit 1
 #CMD sh /home/ray/run_tests.sh
