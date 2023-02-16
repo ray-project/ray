@@ -69,7 +69,7 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
             truncated[i] = False
             info[i] = {}
         terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncteds) == len(self.agents)
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
         return obs, rew, terminated, truncated, info
 
 
@@ -152,10 +152,16 @@ if __name__ == "__main__":
         )
     )
 
-    tune.Tuner(
+    results = tune.Tuner(
         args.run,
         run_config=air.RunConfig(
             stop=stop,
         ),
         param_space=config,
     ).fit()
+
+    if not results:
+        raise ValueError(
+            "No results returned from tune.run(). Something must have gone wrong."
+        )
+    ray.shutdown()

@@ -3343,7 +3343,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
-    args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing"]
+    args = ["--stop-iters=4", "--framework=tf2"]
 )
 
 py_test(
