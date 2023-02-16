@@ -90,6 +90,9 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
             # if values are types or tuple of types, convert to TypeSpec
             if isinstance(spec[key], (type, tuple)):
                 spec[key] = TypeSpec(spec[key])
+            elif isinstance(spec[key], list):
+                # this enables nested conversion of none-canonical formats
+                spec[key] = convert_to_canonical_format(spec[key])
         return spec
 
     if isinstance(spec, type):
