@@ -1681,7 +1681,7 @@
 
   frequency: nightly
   team: ml
-  env: staging_v2
+  env: staging
 
   cluster:
     cluster_env: app_config.yaml
@@ -1690,7 +1690,8 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    type: anyscale_job
+    # Not an anyscale_job as it fails due to extra overhead
+    type: job
 
   alert: tune_tests
 
