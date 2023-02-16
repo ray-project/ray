@@ -79,6 +79,11 @@ Repartition has two modes:
 
 Datasets shuffle can scale to processing hundreds of terabytes of data. See the :ref:`Performance Tips Guide <shuffle_performance_tips>` for an in-depth guide on shuffle performance.
 
+Execution mode
+==============
+
+Most Datasets operations are lazily executed. Operations won't be executed until the dataset is consumed or :meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` is called to manually trigger execution. See the :ref:`Execution Section <datasets_execution>` for more details.
+
 Fault tolerance
 ===============
 

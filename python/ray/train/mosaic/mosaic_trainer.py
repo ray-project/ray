@@ -1,12 +1,10 @@
 import inspect
-import os
 from typing import TYPE_CHECKING, Callable, Dict, Optional
 import warnings
 
 from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
 
-from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
@@ -203,12 +201,6 @@ class MosaicTrainer(TorchTrainer):
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
-
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
-    os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Replace Composer's Loggers with RayLogger
     ray_logger = RayLogger(keys=config.pop("log_keys", []))

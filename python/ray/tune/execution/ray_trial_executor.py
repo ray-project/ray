@@ -16,7 +16,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.air import Checkpoint, AcquiredResources, ResourceRequest
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
+from ray.air.constants import (
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+)
 from ray.air.execution import ResourceManager
 from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
@@ -46,6 +49,7 @@ DEFAULT_ENV_VARS = {
     "PL_DISABLE_FORK": "1"
 }
 ENV_VARS_TO_PROPAGATE = {
+    DISABLE_LAZY_CHECKPOINTING_ENV,
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
     "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
@@ -157,8 +161,7 @@ class _ExecutorEventType(Enum):
     SAVING_RESULT = 4
     RESTORING_RESULT = 5
     STOP_RESULT = 6  # Internally to executor only.
-    ERROR = 7  # This is to signal to TrialRunner that there is an error.
-    YIELD = 8  # Yielding back to TrialRunner's main event loop.
+    YIELD = 7  # Yielding back to TrialRunner's main event loop.
 
 
 class _ExecutorEvent:
@@ -800,7 +803,11 @@ class RayTrialExecutor:
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset.remote(extra_config, logger_creator),
+                        trainable.reset.remote(
+                            extra_config,
+                            logger_creator=logger_creator,
+                            remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                        ),
                         timeout=DEFAULT_GET_TIMEOUT,
                     )
                 except GetTimeoutError:
@@ -1295,37 +1302,29 @@ class RayTrialExecutor:
             else:
                 trial = trial_or_acquired_resources
                 assert isinstance(trial, Trial)
+                assert result_type in (
+                    _ExecutorEventType.TRAINING_RESULT,
+                    _ExecutorEventType.SAVING_RESULT,
+                    _ExecutorEventType.RESTORING_RESULT,
+                )
                 try:
                     future_result = ray.get(ready_future)
                     # For local mode
                     if isinstance(future_result, _LocalWrapper):
                         future_result = future_result.unwrap()
-                    if result_type in (
-                        _ExecutorEventType.TRAINING_RESULT,
-                        _ExecutorEventType.SAVING_RESULT,
-                        _ExecutorEventType.RESTORING_RESULT,
-                    ):
-                        logger.debug(f"Returning [{result_type}] for trial {trial}")
-                        return _ExecutorEvent(
-                            result_type,
-                            trial,
-                            result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
-                        )
-                    else:
-                        raise TuneError(f"Unexpected future type - [{result_type}]")
-                except RayTaskError as e:
+                    logger.debug(f"Returning [{result_type}] for trial {trial}")
                     return _ExecutorEvent(
-                        _ExecutorEventType.ERROR,
+                        result_type,
                         trial,
-                        result={_ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
+                        result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
                     )
-                except Exception:
+                except Exception as e:
                     return _ExecutorEvent(
-                        _ExecutorEventType.ERROR,
+                        result_type,
                         trial,
                         result={
-                            _ExecutorEvent.KEY_EXCEPTION: _TuneNoNextExecutorEventError(
-                                traceback.format_exc()
-                            )
+                            _ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()
+                            if isinstance(e, RayTaskError)
+                            else _TuneNoNextExecutorEventError(traceback.format_exc())
                         },
                     )
