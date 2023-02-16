@@ -56,25 +56,78 @@ def test_asyncio_actor_same_thread(ray_start_regular_shared):
     assert sync_id == async_id
 
 
-def test_asyncio_actor_concurrency(ray_start_regular_shared):
-    @ray.remote
-    class RecordOrder:
-        def __init__(self):
-            self.history = []
+@pytest.mark.parametrize("use_generators", [False, True])
+def test_asyncio_actor_concurrency_ref_tracking(
+    ray_start_regular_shared, use_generators
+):
+    if use_generators:
 
-        async def do_work(self):
-            self.history.append("STARTED")
-            # Force a context switch
-            await asyncio.sleep(0)
-            self.history.append("ENDED")
+        @ray.remote
+        class RecordOrder:
+            async def do_work(self, call):
+                # Force a context switch
+                await asyncio.sleep(0)
+                yield call
 
-        def get_history(self):
-            return self.history
+    else:
+
+        @ray.remote
+        class RecordOrder:
+            async def do_work(self, call):
+                # Force a context switch
+                await asyncio.sleep(0)
+                return call
+
+    num_calls = 100
+
+    a = RecordOrder.options(max_concurrency=100).remote()
+    calls = ray.get([a.do_work.remote(i) for i in range(num_calls)])
+    # Check that the output refs correspond to the sent task.
+    assert calls == list(range(num_calls))
+
+
+@pytest.mark.parametrize("use_generators", [False, True])
+def test_asyncio_actor_concurrency_limited(ray_start_regular_shared, use_generators):
+    if use_generators:
+
+        @ray.remote
+        class RecordOrder:
+            def __init__(self):
+                self.history = []
+
+            async def do_work(self, call):
+                self.history.append("STARTED")
+                # Force a context switch
+                await asyncio.sleep(0)
+                self.history.append("ENDED")
+                yield call
+
+            def get_history(self):
+                return self.history
+
+    else:
+
+        @ray.remote
+        class RecordOrder:
+            def __init__(self):
+                self.history = []
+
+            async def do_work(self, call):
+                self.history.append("STARTED")
+                # Force a context switch
+                await asyncio.sleep(0)
+                self.history.append("ENDED")
+                return call
+
+            def get_history(self):
+                return self.history
 
     num_calls = 10
 
     a = RecordOrder.options(max_concurrency=1).remote()
-    ray.get([a.do_work.remote() for _ in range(num_calls)])
+    calls = ray.get([a.do_work.remote(i) for i in range(num_calls)])
+    # Check that the output refs correspond to the sent task.
+    assert calls == list(range(num_calls))
     history = ray.get(a.get_history.remote())
 
     # We only care about ordered start-end-start-end sequence because
