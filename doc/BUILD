@@ -76,14 +76,6 @@ py_test(
 )
 
 py_test(
-    name = "batch_prediction_gpu",
-    size = "medium",
-    srcs = ["source/ray-air/doc_code/predictors.py"],
-    tags = ["exclusive", "team:ml"],
-    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
-)
-
-py_test(
     name = "batch_training",
     size = "medium",
     main = "test_myst_doc.py",
@@ -221,4 +213,17 @@ py_test_run_all_subdirectory(
     exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
+)
+
+
+# --------------
+# Run GPU tests
+# --------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/predictor.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )
