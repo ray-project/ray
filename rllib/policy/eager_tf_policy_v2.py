@@ -940,12 +940,9 @@ class EagerTFPolicyV2(Policy):
 
         # Clip gradients if needed.
         if self.config["grad_clip"]:
-            if self.config["_tf_policy_handles_more_than_one_loss"]:
-                grads, grads_and_vars = [
-                    apply_grad_clipping(g, g_and_v, self.config["grad_clip"])
-                    for g, g_and_v in zip(grads, grads_and_vars)
-                ]
-            else:
+            # Policies with more than one loss have to implement their
+            # own clipping.
+            if not self.config["_tf_policy_handles_more_than_one_loss"]:
                 grads, grads_and_vars = apply_grad_clipping(
                     grads, grads_and_vars, self.config["grad_clip"]
                 )

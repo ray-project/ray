@@ -757,12 +757,9 @@ class TFPolicy(Policy):
             self._grads = [g for (g, _) in self._grads_and_vars]
 
         if self.config["grad_clip"]:
-            if self.config["_tf_policy_handles_more_than_one_loss"]:
-                self._grads, self._grads_and_vars = [
-                    apply_grad_clipping(g, g_and_v, self.config["grad_clip"])
-                    for g, g_and_v in zip(self._grads, self._grads_and_vars)
-                ]
-            else:
+            # Policies with more than one loss have to implement their
+            # own gradient clipping.
+            if not self.config["_tf_policy_handles_more_than_one_loss"]:
                 self._grads, self._grads_and_vars = apply_grad_clipping(
                     self._grads, self._grads_and_vars, self.config["grad_clip"]
                 )
