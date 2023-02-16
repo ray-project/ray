@@ -202,28 +202,27 @@ class BaseTrainer(abc.ABC):
 
         .. code-block:: python
 
-            import os
-            from ray import tune
-            from ray.data.preprocessors import BatchMapper
+            # custom_trainer.py
             from ray.train.trainer import BaseTrainer
 
-            experiment_name = "unique_experiment_name"
-            upload_dir = "s3://bucket"
-            experiment_dir = os.path.join(upload_dir, experiment_name)
-
-            # Pretend this is a large object that's been loaded
-            large_data = {}
-            # Use an object reference to share this object across the cluster
-            large_data_ref = ray.put(large_dataset)
-
-            datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
-
-            # Define some dummy classes/objects for demonstration purposes
             class CustomTrainer(BaseTrainer):
                 def training_loop(self):
                     pass
 
-            preprocessor = BatchMapper(lambda x: x)
+        .. code-block:: python
+
+            import os
+            from ray import air
+            from ray.data.preprocessors import BatchMapper
+            # Import our BaseTrainer subclass from the other file
+            from custom_trainer import CustomTrainer
+
+            experiment_name = "unique_experiment_name"
+            local_dir = "~/ray_results"
+            experiment_dir = os.path.join(local_dir, experiment_name)
+
+            datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
+            preprocessor = BatchMapper(lambda x: x, batch_format="numpy")
 
             if CustomTrainer.can_restore(experiment_dir):
                 trainer = CustomTrainer.restore(
@@ -234,17 +233,16 @@ class BaseTrainer(abc.ABC):
                 trainer = CustomTrainer(
                     datasets=datasets,
                     preprocessor=preprocessor,
-                    scaling_config=air.ScalingConfig(num_workers=2, use_gpu=False),
                     run_config=air.RunConfig(
                         name=experiment_name,
-                        sync_config=tune.SyncConfig(upload_dir=upload_dir),
-                        # Tip: Add trial-level fault-tolerance on top.
+                        local_dir=local_dir,
+                        # Tip: You can also enable retries on failure for
+                        # worker-level fault tolerance
                         failure_config=air.FailureConfig(max_failures=3),
                     ),
                 )
 
             result = trainer.fit()
-
 
         Args:
             path: The path to the experiment directory of the training run to restore.
@@ -280,7 +278,10 @@ class BaseTrainer(abc.ABC):
 
         with open(trainer_state_path, "rb") as fp:
             original_trainer = pickle.load(fp)
-        if type(original_trainer) != cls:
+        import ipdb
+
+        ipdb.set_trace()
+        if not isinstance(original_trainer, cls):
             raise ValueError(
                 f"Invalid trainer type. Cannot restore a trainer of type "
                 f"{type(original_trainer)} with `{cls.__name__}.restore`. "

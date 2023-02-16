@@ -27,22 +27,62 @@ you can initialize the ``Trainer`` with ``resources_per_worker`` specified in ``
    currently assume each worker is allocated exactly 1 GPU. The partial GPU and multi GPU use-cases
    can still be run with Ray Train today without these functions.
 
+.. _train-restore-faq:
+
 How do I restore a Ray Train experiment?
 ----------------------------------------
 
-Trainers offer a `restore` method that can be used to resume training
-that was interrupted due to one of the following reasons:
+A Train experiment may be interrupted due to one of the following reasons:
 
-- The experiment was manuallly interrupted (e.g., Ctrl+C, or pre-empted head node instance).
+- The experiment was manually interrupted (e.g., Ctrl+C, or pre-empted head node instance).
 - The head node crashed (e.g., OOM or some other runtime error).
 - The entire cluster went down (e.g., network error affecting all nodes).
 
-Since this works for any of Ray Train's built-in trainers,
+In these cases, a Trainer :ref:`can be restored <trainer-restore>` for the experiment to resume.
+
+Since this is applicable to all of Ray Train's built-in trainers,
 we'll use `FrameworkTrainer` to refer to a generic trainer for the remainder of this answer.
+
+To restore an experiment, first find the experiment directory that your previous
+run was saved to. If you saved locally, this will look like ``{local_dir}/{name}``,
+where ``local_dir`` may be ``~/ray_results``, and ``name`` is something
+like ``FrameworkTrainer_2023-xxx``.
+
+Note that these are the same parameters that you pass through :class:`~ray.air.RunConfig`.
+
+.. code-block:: python
+
+    datasets = {"train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])}
+
+    restored_trainer = FrameworkTrainer.restore(
+        path="~/ray_results/FrameworkTrainer_2023-02-15_00-46-58",
+        datasets=datasets,
+    )
+
+It's also possible to restore from a remote path (e.g., from an experiment directory
+stored in a s3 bucket).
+
+.. code-block:: python
+
+    datasets = {"train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])}
+
+    restored_trainer = FrameworkTrainer.restore(
+        path="s3://results-bucket/FrameworkTrainer_2023-02-15_00-46-58",
+        datasets=datasets,
+    )
+
+.. note::
+
+    `FrameworkTrainer.restore` may allow more parameters to be re-specified depending
+    on which trainer you're using. See :ref:`train-framework-specific-restore` for more details.
+
+
+Single Script for Automatic Restoration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Adding the branching logic below will allow you to run the same script after the interrupt,
 picking up training from where you left on the previous run. Notice that we use the
-:meth:`FrameworkTrainer.can_restore <ray.trainer.BaseTrainer.can_restore>` utility method
+:meth:`FrameworkTrainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
 to determine the existence/validity of the given experiment directory.
 
 .. code-block:: python
@@ -81,13 +121,13 @@ to determine the existence/validity of the given experiment directory.
 
 .. note::
 
-    `FrameworkTrainer.restore` is different from `FrameworkTrainer(..., resume_from_checkpoint=...)`.
+    `FrameworkTrainer.restore` is different from
+    :class:`FrameworkTrainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`.
     `resume_from_checkpoint` is meant to be used to start a *new* Train experiment,
     which writes results to a new directory and starts over from iteration 0.
 
-    `FrameworkTrainer.restore` is meant to provide experiment fault-tolerance
-    to continue an existing experiment. When using `restore`, new results will
-    continue to be appended to existing logs.
+    `FrameworkTrainer.restore` is used to continue an existing experiment, where
+    new results will continue to be appended to existing logs.
 
 
 My multi-node PyTorch GPU training is hanging or giving me obscure NCCL errors. What do I do?

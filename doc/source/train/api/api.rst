@@ -187,14 +187,15 @@ Ray Train Experiment Restoration
 .. autosummary::
     :toctree: doc/
 
-    ~trainer.BaseTrainer.restore
+    train.trainer.BaseTrainer.restore
 
 .. note::
 
-    All trainer classes have a `restore` method which exposes the construtor arguments
-    that can be re-specified. `restore` always takes in a path pointing to the
-    directory of the experiment to be restored. See :ref:`train-framework-specific-restore`
-    for details on `restore` arguments for different AIR trainer integrations.
+    All trainer classes have a `restore` method that takes in a path
+    pointing to the directory of the experiment to be restored.
+    `restore` also exposes a subset of construtor arguments that can be re-specified.
+    See :ref:`train-framework-specific-restore`
+    below for details on `restore` arguments for different AIR trainer integrations.
 
 .. _train-framework-specific-restore:
 
@@ -204,12 +205,18 @@ Restoration API for Built-in Trainers
 .. autosummary::
     :toctree: doc/
 
-    data_parallel_trainer.DataParallelTrainer.restore
-    gbdt_trainer.GBDTTrainer.restore
-    huggingface.HuggingFaceTrainer.restore
+    train.data_parallel_trainer.DataParallelTrainer.restore
+    train.huggingface.HuggingFaceTrainer.restore
 
 .. note::
 
-    `TorchTrainer`, `TensorflowTrainer`, and `HorovodTrainer` fall under `DataParallelTrainer`.
-    `XGBoostTrainer` and `LightGBMTrainer` fall under `GBDTTrainer`.
+    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
+    can take in the same parameters as their parent class's
+    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
 
+    Unless otherwise specified, other trainers will accept the same parameters as
+    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
+
+.. seealso::
+
+    See :ref:`train-restore-faq` for more details on when and how trainer restore should be used.
