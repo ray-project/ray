@@ -185,7 +185,7 @@ py_test_run_all_subdirectory(
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
-        "source/ray-air/doc_code/predictor.py",
+        "source/ray-air/doc_code/predictors.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -222,7 +222,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/ray-air/doc_code/predictor.py"],
+    include = ["source/ray-air/doc_code/predictors.py"],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
