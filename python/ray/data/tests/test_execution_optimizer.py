@@ -576,6 +576,24 @@ def test_aggregate_e2e(
         assert row.as_pydict() == {"value": idx, "count()": 1}
 
 
+def test_streaming_executor(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(100, parallelism=4)
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.filter(lambda x: x > 0)
+    ds = ds.random_shuffle()
+    ds = ds.map_batches(lambda x: x)
+
+    result = []
+    for batch in ds.iter_batches(batch_size=3):
+        assert len(batch) == 3, batch
+        result.extend(batch)
+    assert sorted(result) == list(range(1, 100)), result
+
+
 if __name__ == "__main__":
     import sys
 
