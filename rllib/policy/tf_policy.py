@@ -26,7 +26,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices
+from ray.rllib.utils.tf_utils import apply_grad_clipping, get_gpu_devices
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     LocalOptimizer,
@@ -747,7 +747,7 @@ class TFPolicy(Policy):
                 g_and_v = [(g, v) for (g, v) in group if g is not None]
                 self._grads_and_vars.append(g_and_v)
                 self._grads.append([g for (g, _) in g_and_v])
-        # Only one optimizer and and loss term.
+        # Only one optimizer and loss term.
         else:
             self._grads_and_vars = [
                 (g, v)
@@ -757,13 +757,15 @@ class TFPolicy(Policy):
             self._grads = [g for (g, _) in self._grads_and_vars]
 
         if self.config["grad_clip"]:
-            grads = tf.vectorized_map(
-                lambda x: tf.clip_by_global_norm(x, self.config["grad_clip"])[0], grads
-            ) 
-            grads_and_vars = [
-                [(g_clip, v) for g_clip, _, v in zip(g, g_and_v)]
-                for g, g_and_v in zip(grads, grads_and_vars)
-            ]
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
+                self._grads, self._grads_and_vars = [
+                    apply_grad_clipping(g, g_and_v, self.config["grad_clip"])
+                    for g, g_and_v in zip(self._grads, self._grads_and_vars)
+                ]
+            else:
+                self._grads, self._grads_and_vars = apply_grad_clipping(
+                    self._grads, self._grads_and_vars, self.config["grad_clip"]
+                )
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(

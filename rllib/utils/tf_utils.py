@@ -28,6 +28,51 @@ tf1, tf, tfv = try_import_tf()
 
 
 @PublicAPI
+def apply_grad_clipping(
+    grads: Union[ModelGradients, List[ModelGradients]],
+    grads_and_vars: Union[ModelGradients, List[ModelGradients]],
+    clip_value: float,
+) -> List[TensorType]:
+    """Applies gradient clipping to a list of gradients.
+
+    Gradient clipping is performd by using the global norm over all
+    gradients in the list. As described by Pascanu et al. (2012) this
+    is the corrct way of gradient clipping.
+
+    As the global norm is infinity all entries of the clipped gradients
+    are set to NaN by TensorFlow to signal that an error occurred. To
+    avoid that this influences the whole training process of an RL
+    algorithm the NaN valus get converted into 0.0 by this funciton, i.e.
+    training can continue, but the gradients at this step have no influence
+    on the weights.
+
+        Args:
+            grads: List of gradients (for each variable ne gradient).
+            grads_and_vars: List of gradient, variable tuples. This has to
+                be updated after clipping and this function does so.
+            clip_value: The clipping ratio for the global norm clipping.
+                Usually this is the `grad_clip` hyperparameter of the algorithm.
+
+        Returns:
+            The updated grads and grads_and_vars after clipping.
+    """
+    grads, _ = tf.clip_by_global_norm(grads, clip_value, name="grad_clip")
+
+    # If the global_norm is inf -> All grads will be NaN. Stabilize this
+    # here by setting them to 0.0. This will simply ignore destructive loss
+    # calculations.
+    grads_chkd = []
+    for g in grads:
+        if g is not None:
+            grads_chkd.append(tf.where(tf.math.is_nan(g), tf.zeros_like(g), g))
+        else:
+            grads_chkd.append(None)
+    grads_and_vars = [(g, g_and_v[1]) for g, g_and_v in zip(grads, grads_and_vars)]
+
+    return grads, grads_and_vars
+
+
+@PublicAPI
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 
