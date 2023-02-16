@@ -6,8 +6,6 @@ colorama
 colorful
 # Newer versions of fairscale do not support Python 3.6 even though they still have wheels for it.
 # Have to manually pin it: https://github.com/facebookresearch/fairscale/issues/962
-fairscale; python_version >= '3.7'
-fairscale<=0.4.0; python_version < '3.7'
 filelock
 flask
 flatbuffers
@@ -15,29 +13,18 @@ fastapi
 jsonschema
 mock
 numpy
-scikit-image
 pandas
 pickle5
 pillow
 pyarrow
 pydantic < 1.10.0
 pyyaml
-scikit-optimize
 redis
 starlette
 tabulate
 uvicorn==0.16.0
 werkzeug
 wandb
-tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
-tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-datasets
-torch
-torchvision
-transformers
-
-# Train
-mxnet==1.8.0.post0
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
