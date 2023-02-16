@@ -102,7 +102,7 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 cu118 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
