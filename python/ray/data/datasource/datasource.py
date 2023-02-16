@@ -131,25 +131,25 @@ class Datasource(Generic[T]):
         from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
         from ray.data.datasource.binary_datasource import BinaryDatasource
 
-        if isinstance(cls, ParquetDatasource):
+        if cls == ParquetDatasource:
             return "ReadParquet"
-        if isinstance(cls, ParquetBaseDatasource):
+        if cls == ParquetBaseDatasource:
             return "ReadParquetBulk"
-        if isinstance(cls, CSVDatasource):
+        if cls == CSVDatasource:
             return "ReadCSV"
-        if isinstance(cls, MongoDatasource):
+        if cls == MongoDatasource:
             return "ReadMongo"
-        if isinstance(cls, ImageDatasource):
+        if cls == ImageDatasource:
             return "ReadImage"
-        if isinstance(cls, JSONDatasource):
+        if cls == JSONDatasource:
             return "ReadJSON"
-        if isinstance(cls, TextDatasource):
+        if cls == TextDatasource:
             return "ReadText"
-        if isinstance(cls, NumpyDatasource):
+        if cls == NumpyDatasource:
             return "ReadNumpy"
-        if isinstance(cls, TFRecordDatasource):
+        if cls == TFRecordDatasource:
             return "ReadTFRecord"
-        if isinstance(cls, BinaryDatasource):
+        if cls == BinaryDatasource:
             return "ReadBinary"
         return f"Read{cls.__name__}"
 
