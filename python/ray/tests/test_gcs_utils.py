@@ -62,11 +62,11 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
     assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
-        b"A": b"B",
-        b"B": b"C",
+        "A": b"B",
+        "B": b"C",
     }
     assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
-    assert gcs_utils._called_freq["internal_kv_multi_get"] == 2
+    assert gcs_utils._called_freq["internal_kv_multi_get"] == 3
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
@@ -120,8 +120,8 @@ async def test_kv_basic_aio(ray_start_regular):
     assert await gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert await gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
     assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
-        b"A": b"B",
-        b"B": b"C",
+        "A": b"B",
+        "B": b"C",
     }
     assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
 
