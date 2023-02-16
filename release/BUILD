@@ -319,6 +319,13 @@ py_test(
 )
 
 py_test(
+    name = "test_anyscale_job_wrapper",
+    tags = ["team:ci", "release_unit"],
+    size = "small",
+    srcs = ["ray_release/tests/test_anyscale_job_wrapper.py"]
+)
+
+py_test(
     name = "test_buildkite",
     tags = ["team:ci", "release_unit"],
     size = "small",
