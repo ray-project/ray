@@ -34,7 +34,7 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
-def _ground_truth_calculation(
+def _ground_truth_vtrace_calculation(
     discounts: np.ndarray,
     log_rhos: np.ndarray,
     rewards: np.ndarray,
@@ -44,6 +44,15 @@ def _ground_truth_calculation(
     clip_pg_rho_threshold: float,
 ):
     """Calculates the ground truth for V-trace in Python/Numpy.
+
+    NOTE:
+    The discount, log_rhos, rewards, values, and bootstrap_value are all assumed to
+    come from trajectories of experience. Typically batches of trajectories could be
+    thought of as having the shape [B, T] where B is the batch dimension, and T is
+    the timestep dimension. Computing vtrace returns requires that the data is time
+    major, meaning that it has the shape [T, B]. One can use a function like
+    `make_time_major` to properly format their discount, log_rhos, rewards, values,
+    and bootstrap_value before calling _ground_truth_vtrace_calculation.
 
     Args:
         discounts: Array of shape [T*B] of discounts. T is the lenght of the trajectory
@@ -185,7 +194,7 @@ class VtraceTest(unittest.TestCase):
             if sess:
                 output = sess.run(output)
 
-            gt_vs, gt_pg_advantags = _ground_truth_calculation(**values)
+            gt_vs, gt_pg_advantags = _ground_truth_vtrace_calculation(**values)
             check(output.vs, gt_vs)
             check(output.pg_advantages, gt_pg_advantags)
 

@@ -3,11 +3,13 @@ import numpy as np
 
 from gymnasium.spaces import Box, Discrete
 
-from ray.rllib.algorithms.impala.tf.impala_rl_trainer import (
+from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import (
     vtrace_tf2,
     make_time_major,
 )
-from ray.rllib.algorithms.impala.tests.test_vtrace import _ground_truth_calculation
+from ray.rllib.algorithms.impala.tests.test_vtrace import (
+    _ground_truth_vtrace_calculation,
+)
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check
@@ -25,7 +27,15 @@ def flatten_batch_and_time_dim(t):
 
 class TestVtraceRLModule(unittest.TestCase):
     def test_vtrace_tf2(self):
-        """Tests V-trace against ground truth data calculated."""
+        """Tests V-trace-v2 against ground truth data calculated.
+
+        The v2 vtrace is optimized for the least amount of flops. The math
+        in the implementation looks nothing like the math in the paper.
+
+        There is a ground truth implementation that we used to test our original impl
+        against. This test checks that the new implementation still matches the gt.
+
+        """
 
         # we can test against any trajectory length or batch size and it won't matter
         trajectory_len = 5
@@ -108,7 +118,7 @@ class TestVtraceRLModule(unittest.TestCase):
 
         log_rhos = target_log_probs_time_major - behavior_log_probs_time_major
 
-        ground_truth_v = _ground_truth_calculation(
+        ground_truth_v = _ground_truth_vtrace_calculation(
             discounts=discounts_time_major.numpy(),
             log_rhos=log_rhos.numpy(),
             rewards=rewards_time_major.numpy(),
