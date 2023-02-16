@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKI
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
@@ -614,7 +615,7 @@ class Trainable:
         rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
             self.logdir, checkpoint_path
         )
-        external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
+        external_uri = str(URI(self.remote_checkpoint_dir) / rel_checkpoint_dir)
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
         path_existed_before = os.path.exists(local_dir)
 
