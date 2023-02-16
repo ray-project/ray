@@ -322,11 +322,6 @@ def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
-    # Env vars necessary for HF to setup DDP
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
