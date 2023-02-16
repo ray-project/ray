@@ -795,8 +795,6 @@ class Trainable:
                 could not be found.
 
         """
-        print(f"[Restore -- START] trial {self.config['id']}")
-
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
@@ -867,10 +865,6 @@ class Trainable:
         self.load_checkpoint(to_load)
 
         # Then, download artifacts from cloud if applicable
-        print(
-            f"[DEBUGGING] restore remote_checkpoint_dir for trial {self.config['id']}=",
-            self.remote_checkpoint_dir,
-        )
         if synced_from_cloud:
             self._maybe_load_artifacts_from_cloud()
 

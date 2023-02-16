@@ -496,8 +496,14 @@ def test_artifact_syncing_with_actor_reuse(
     class MyResettableClassWithArtifacts(MyResettableClass):
         """Helper class that implements `reset_config` and also saves artifacts."""
 
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._should_raise = False
+            self._failure_message = ""
+
         def step(self) -> dict:
-            print(f"\n[Step] for trial {self.config.get('id')}")
+            if self._should_raise:
+                raise RuntimeError(self._failure_message)
             result = super().step()
             # Mock some artifact logging (appending to a log)
             with open(os.path.join(self.logdir, "artifact.txt"), "a") as f:
@@ -505,7 +511,6 @@ def test_artifact_syncing_with_actor_reuse(
             return result
 
         def reset(self, *args, **kwargs):
-            print(f"\n[Resetting] for trial {self.config.get('id')}")
             return super().reset(*args, **kwargs)
 
         def load_checkpoint(self, *args, **kwargs):
@@ -516,11 +521,18 @@ def test_artifact_syncing_with_actor_reuse(
             remote_trial_dir = os.path.join(tmp_target, exp_name, str(trial_id))
             assert self.remote_checkpoint_dir == "file://" + remote_trial_dir
 
-            # Check the artifact contents
+            # Check the artifact contents of the current trial being restored
             artifact_path = os.path.join(remote_trial_dir, "artifact.txt")
             with open(artifact_path, "r") as f:
                 artifact_data = f.read()
-            assert artifact_data.split("\n")[:-1] == [str(trial_id)] * self.iteration
+            artifact_data = artifact_data.split("\n")[:-1]
+            expected = [str(trial_id)] * self.iteration
+            self._should_raise = artifact_data != expected
+            if self._should_raise:
+                self._failure_message = (
+                    "Failing! `artifact.txt` is out of sync. "
+                    f"Expected {expected}, but got {artifact_data}."
+                )
 
     caplog.clear()
     with caplog.at_level(logging.WARNING):
