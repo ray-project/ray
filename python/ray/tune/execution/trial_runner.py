@@ -11,6 +11,7 @@ import warnings
 import ray
 from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air._internal.uri_utils import URI
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.experiment_state import (
@@ -292,7 +293,7 @@ class TrialRunner:
     @property
     def _remote_checkpoint_dir(self):
         if self._sync_config.upload_dir and self._experiment_dir_name:
-            return os.path.join(self._sync_config.upload_dir, self._experiment_dir_name)
+            return str(URI(self._sync_config.upload_dir) / self._experiment_dir_name)
         return None
 
     @classmethod
