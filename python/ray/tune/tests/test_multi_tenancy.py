@@ -32,35 +32,35 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
       ``run_2_finished`` is deleted.
     - Run 2 starts as soon as the first trial of Run 1 runs (by waiting
       until the ``run_1_running`` file is deleted by that trial). It will overwrite
-      the global registry trainable with the same name!
-    - Run 2 will finish both trials. The script should finish with the expected
+      the global registry trainable with the same name.
+    - Run 2 finishes both trials. The script finishes with the expected
       parameters.
-    - Run 2 will then delete the ``run_2_finished`` marker, allowing Run 1 trial 1
-      to continue training. Training will finish, and the second trial will be launched.
-      THIS TRIAL will then use the overwritten trainable, i.e. wrong parameters! At
-      least unless the workaround is used.
+    - Run 2 then deletes the ``run_2_finished`` marker, allowing Run 1 trial 1
+      to continue training. When training finishes, the second trial launches.
+      This second trial then uses the overwritten trainable, that is, the wrong parameters
+      unless you use the workaround.
     - Run 1 finally finishes, and we compare the expected results with the actual
       results.
 
-    When no workaround is used, we expect an assertion error (if ``exit_same=True``,
+    When you don't use the workaround, expect an assertion error (if ``exit_same=True``,
     see below), otherwise a KeyError (because a trial failed).
     When the workaround is used, we expect everything to run without error.
 
     NOTE: Two errors can occur with registry conflicts. First,
-    the trainable can be overwritten which will be captured e.g. when a fixed value
-    is included in the trainable. The second trial of run 1 will then have a wrong
-    parameter and report a wrong metric (from run 2).
+    the trainable can be overwritten and captured, for example, when a fixed value
+    is included in the trainable. The second trial of run 1 then has a wrong
+    parameter and reports a wrong metric (from run 2).
 
-    The second error comes up when the second run finishes fully and its objects
+    The second error occurs when the second run finishes fully and its objects
     are garbage collected. In this case, the first run tries to find the trainable
-    registered by run 2, but this will fail lookup because the objects have been
-    removed already. Note that these objects are the ones registered with
+    registered by run 2, but fails lookup because the objects have been
+    removed already. Note that these objects are registered with
     ``tune.with_parameters()`` (not the global registry store).
     We test both scenarios using the ``exit_same`` parameter.
 
-    NOTE: If we get around to resolving the registry issue (e.g. with unique keys)
-    the test where we expect the assertion error can be removed! I.e. we can remove
-    the parametrization and the workaround and just assert that no conflict comes up!
+    NOTE: If we resolve the registry issue (for example, with unique keys)
+    you can remove the test that expects the assertion error. We can remove
+    the parametrization and the workaround and assert that no conflict occurs.
     """
     # Create file markers
     run_1_running = tmpdir / "run_1_running"
