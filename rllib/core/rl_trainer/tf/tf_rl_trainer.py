@@ -25,7 +25,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -183,7 +183,7 @@ class TfRLTrainer(RLTrainer):
             # TODO (Avnish): converting to tf tensor and then from nested dict back to
             # dict will most likely hit us in perf. But let's go with this for now.
             minibatch = self.convert_batch_to_tf_tensor(minibatch)
-            update_outs = self._update_fn(minibatch.asdict())
+            update_outs = self._update_fn(minibatch)
             loss = update_outs["loss"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
@@ -215,6 +215,18 @@ class TfRLTrainer(RLTrainer):
             variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
             gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
             optim.apply_gradients(zip(gradient_list, variable_list))
+
+    @override(RLTrainer)
+    def postprocess_gradients(
+        self, gradients_dict: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        grad_clip = self.optimizer_config.get("grad_clip", None)
+        assert isinstance(grad_clip, (int, float, type(None))), (
+            "grad_clip must be a number")
+        if grad_clip is not None:
+            for k, v in gradients_dict.items():
+                gradients_dict[k] = tf.clip_by_value(v, -grad_clip, grad_clip)
+        return gradients_dict
 
     @override(RLTrainer)
     def add_module(
@@ -267,10 +279,14 @@ class TfRLTrainer(RLTrainer):
         # tf.function. This messes with input spec checking. Other fields of
         # the sample batch are possibly modified by tf.function which may lead
         # to unwanted consequences. We'll need to further investigate this.
-        batch = NestedDict(batch.policy_batches)
-        for key, value in batch.items():
-            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        return batch
+        ma_batch = dict(batch.policy_batches)
+        for pid, batch in ma_batch.items():
+            for key, value in batch.items():
+                if key != SampleBatch.INFOS and key != SampleBatch.ACTION_DIST:
+                    batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+            ma_batch[pid] = dict(batch)
+        ma_batch = NestedDict(ma_batch)
+        return ma_batch
 
     def get_weights(self) -> Mapping[str, Any]:
         # TODO (Kourosh) Implement this.

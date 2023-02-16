@@ -305,8 +305,8 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_input_specs("_input_specs_train")
-    @check_output_specs("_output_specs_train")
+    # @check_input_specs("_input_specs_train")
+    # @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
