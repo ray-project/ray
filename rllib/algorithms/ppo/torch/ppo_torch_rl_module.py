@@ -174,11 +174,13 @@ class PPOTorchRLModule(TorchRLModule):
         module = PPOTorchRLModule(config_)
         return module
 
-    def get_initial_state(self) -> NestedDict:
-        if hasattr(self.encoder, "get_initial_state"):
-            return self.encoder.get_initial_state()
-        else:
-            return NestedDict({})
+    # TODO(Artur): Comment in again as soon as we support RNNs from Polciy side
+    # @override(RLModule)
+    # def get_initial_state(self) -> NestedDict:
+    #     if hasattr(self.encoder, "get_initial_state"):
+    #         return self.encoder.get_initial_state()
+    #     else:
+    #         return NestedDict({})
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:

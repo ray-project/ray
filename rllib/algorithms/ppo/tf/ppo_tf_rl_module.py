@@ -60,6 +60,14 @@ class PPOTfRLModule(TfRLModule):
             gym.spaces.Discrete,
         )
 
+    # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
+    # @override(RLModule)
+    # def get_initial_state(self) -> NestedDict:
+    #     if hasattr(self.encoder, "get_initial_state"):
+    #         return self.encoder.get_initial_state()
+    #     else:
+    #         return NestedDict({})
+
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
         if self._is_discrete:
