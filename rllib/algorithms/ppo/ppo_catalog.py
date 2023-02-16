@@ -50,11 +50,8 @@ class PPOCatalog(Catalog):
             "This simple PPOModule only supports Discrete and Box action space.",
         )
 
-        latent_dim = self.encoder_config.output_dim
-
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
-            output_dim=latent_dim,
             base_encoder_config=self.encoder_config,
             shared=self.model_config["vf_share_layers"],
         )

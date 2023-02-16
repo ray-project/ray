@@ -178,8 +178,8 @@ class Catalog:
 
         The following input spaces lead to the following configs:
         - 1D-Box: MLPEncoderConfig
+        - 3D-Box: CNNEncoderConfig
         # TODO (Artur): Support more spaces here
-        # - 3D-Box: CNNEncoderConfig
         # ...
 
         Furthermore, this method can provide LSTMEncoderConfigs and
