@@ -1,5 +1,5 @@
 import inspect
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
 
 from composer.trainer import Trainer
