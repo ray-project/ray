@@ -10,6 +10,7 @@ head_node_type:
         - DeviceName: /dev/sda1
           Ebs:
               VolumeSize: 300
+              DeleteOnTermination: true
 
 worker_node_types:
     - name: worker_node
