@@ -774,3 +774,36 @@ API should be used to get the path for saving trial-specific outputs.
     accessing paths relative to the original working directory. This environment
     variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
     used instead.
+
+
+.. _tune-multi-tenancy:
+
+How can I run multiple Ray Tune jobs on the same cluster at the same time (multi-tenancy)?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Running multiple Ray Tune runs on the same cluster at the same
+time is not officially supported. We do not test this workflow and we recommend
+using a separate cluster for each tuning job.
+
+The reasons for this are:
+
+1. When multiple Ray Tune jobs run at the same time, they compete for resources.
+   One job could run all its trials at the same time, while the other job waits
+   for a long time until it gets resources to run the first trial.
+2. If it is easy to start a new Ray cluster on your infrastructure, there is often
+   no cost benefit to running one large cluster instead of multiple smaller
+   clusters. For instance, running one cluster of 32 instances incurs almost the same
+   cost as running 4 clusters with 8 instances each.
+3. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
+   trials from job B on the same node are impacted. In practice, it's hard
+   to reason about these conditions from the logs if something goes wrong.
+4. Some internal implementations in Ray Tune assume that you only have one job
+   running at a time. This can lead to conflicts.
+
+The fourth reason is especially problematic when you run concurrent tuning jobs. For instance,
+a symptom is when trials from job A use parameters specified in job B, leading to unexpected
+results.
+
+Please refer to
+[this github issue](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976)
+for more context and a workaround.
