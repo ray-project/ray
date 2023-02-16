@@ -60,7 +60,7 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
             only has an effect is using the default fully connected net.
     """
 
-    encoder_config: MLPEncoderConfig = None
+    encoder_config: ActorCriticEncoderConfig = None
     pi_config: MLPHeadConfig = None
     vf_config: MLPHeadConfig = None
     free_log_std: bool = False
