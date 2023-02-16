@@ -1,6 +1,5 @@
 from typing import Mapping, Any
 
-import tree
 from ray.rllib.algorithms.ppo.ppo_rl_module_base import PPORLModuleBase
 
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
@@ -29,6 +28,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
         # TODO(Artur): After unifying ActorCriticEncoder, move this to PPORLModuleBase
         assert isinstance(self.encoder, TfActorCriticEncoder)
+
+    # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
+    # @override(RLModule)
+    # def get_initial_state(self) -> NestedDict:
+    #     if hasattr(self.encoder, "get_initial_state"):
+    #         return self.encoder.get_initial_state()
+    #     else:
+    #         return NestedDict({})
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
@@ -66,11 +73,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -111,11 +121,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -156,11 +169,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        batch[STATE_IN] = tree.map_structure(
-            lambda x: tf.stack([x] * len(batch[SampleBatch.OBS])),
-            self.encoder.get_initial_state(),
-        )
-        batch[SampleBatch.SEQ_LENS] = tf.ones(len(batch[SampleBatch.OBS]))
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)

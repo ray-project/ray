@@ -2,16 +2,12 @@
 
 Ray Dashboard
 =============
-Ray's built-in dashboard provides metrics, charts, and other features that help
-Ray users to understand Ray clusters and libraries.
+Ray provides a web-based dashboard for monitoring and debugging Ray applications.
+The dashboard provides a visual representation of the system state, allowing users to track the performance 
+of their applications and troubleshoot issues.
 
-The dashboard lets you:
-
-- View cluster metrics including time-series visualizations.
-- See errors and exceptions at a glance.
-- View logs across many machines.
-- See all your ray jobs and the logs for those jobs.
-- See your ray actors and their logs
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/Dashboard-overview.png
+    :align: center
 
 Getting Started
 ---------------

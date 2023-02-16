@@ -128,7 +128,8 @@ class TestPPO(unittest.TestCase):
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
         fwd_fns = ["forward_exploration", "forward_inference"]
-        lstm = [False, True]
+        # TODO(Artur): Re-enable LSTM
+        lstm = [False]
         config_combinations = [frameworks, env_names, fwd_fns, lstm]
         for config in itertools.product(*config_combinations):
             fw, env_name, fwd_fn, lstm = config
@@ -160,7 +161,8 @@ class TestPPO(unittest.TestCase):
         # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
-        lstm = [False, True]
+        # TODO(Artur): Re-enable LSTM
+        lstm = [False]
         config_combinations = [frameworks, env_names, lstm]
         for config in itertools.product(*config_combinations):
             fw, env_name, lstm = config

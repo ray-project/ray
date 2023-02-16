@@ -37,6 +37,19 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config=model_config,
         )
+        assert isinstance(
+            observation_space, gym.spaces.Box
+        ), "This simple PPOModule only supports Box observation space."
+
+        assert len(observation_space.shape) in (
+            1,
+            3,
+        ), "This simple PPOModule only supports 1D and 3D observation spaces."
+
+        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
+            "This simple PPOModule only supports Discrete and Box action space.",
+        )
+
         latent_dim = self.encoder_config.output_dim
 
         # Replace EncoderConfig by ActorCriticEncoderConfig
@@ -51,11 +64,23 @@ class PPOCatalog(Catalog):
         else:
             pi_output_dim = action_space.shape[0] * 2
 
+        post_fcnet_hiddens = self.model_config["post_fcnet_hiddens"]
+        post_fcnet_activation = self.model_config["post_fcnet_activation"]
+
         self.pi_head_config = MLPHeadConfig(
-            input_dim=latent_dim, hidden_layer_dims=[32], output_dim=pi_output_dim
+            input_dim=self.encoder_config.output_dim,
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
+            output_activation="linear",
+            output_dim=pi_output_dim,
         )
+
         self.vf_head_config = MLPHeadConfig(
-            input_dim=latent_dim, hidden_layer_dims=[32], output_dim=1
+            input_dim=self.encoder_config.output_dim,
+            hidden_layer_dims=post_fcnet_hiddens,
+            hidden_layer_activation=post_fcnet_activation,
+            output_activation="linear",
+            output_dim=1,
         )
 
     def build_actor_critic_encoder(self, framework: str):
