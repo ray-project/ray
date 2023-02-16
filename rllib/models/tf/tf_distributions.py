@@ -11,25 +11,28 @@ import abc
 
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TensorType, Union, Tuple, ModelConfigDict
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
-torch, nn = try_import_torch()
+
+_, tf, _ = try_import_tf()
+tfp = try_import_tfp()
+
+# TODO (Kourosh) Write unittest for this class similar to torch distirbutions.
 
 
 @DeveloperAPI
-class TorchDistribution(Distribution, abc.ABC):
-    """Wrapper class for torch.distributions."""
+class TfDistribution(Distribution, abc.ABC):
+    """Wrapper class for tfp.distributions."""
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self._dist = self._get_torch_distribution(*args, **kwargs)
+        self._dist = self._get_tf_distribution(*args, **kwargs)
 
     @abc.abstractmethod
-    def _get_torch_distribution(
-        self, *args, **kwargs
-    ) -> torch.distributions.Distribution:
-        """Returns the torch.distributions.Distribution object to use."""
+    def _get_tf_distribution(self, *args, **kwargs) -> tfp.distributions.Distribution:
+        """Returns the tfp.distributions.Distribution object to use."""
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
@@ -41,11 +44,11 @@ class TorchDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def kl(self, other: "Distribution") -> TensorType:
-        return torch.distributions.kl.kl_divergence(self._dist, other._dist)
+        return self._dist.kl_divergence(other._dist)
 
     @override(Distribution)
     def sample(
-        self, *, sample_shape=torch.Size(), return_logp: bool = False
+        self, *, sample_shape=(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         sample = self._dist.sample(sample_shape)
         if return_logp:
@@ -54,17 +57,24 @@ class TorchDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def rsample(
-        self, *, sample_shape=torch.Size(), return_logp: bool = False
+        self, *, sample_shape=(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        rsample = self._dist.rsample(sample_shape)
+
+        # rsample is not implemented in tfp. So we need to make a placeholder for it.
+        rsample = self._rsample(sample_shape)
         if return_logp:
             return rsample, self.logp(rsample)
         return rsample
 
+    @OverrideToImplementCustomLogic
+    def _rsample(self, sample_shape=()):
+        """Returns a sample from the distribution, while maintaining the gradient."""
+        raise NotImplementedError
+
 
 @DeveloperAPI
-class TorchCategorical(TorchDistribution):
-    """Wrapper class for PyTorch Categorical distribution.
+class TfCategorical(TfDistribution):
+    """Wrapper class for Categorical distribution.
 
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).
@@ -79,9 +89,9 @@ class TorchCategorical(TorchDistribution):
     relative probability vectors.
 
     Example::
-        >>> m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))
+        >>> m = TfCategorical([ 0.25, 0.25, 0.25, 0.25 ])
         >>> m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
-        tensor([3, 4])
+        tf.Tensor([2 3], shape=(2,), dtype=int32)
 
     Args:
         probs: The probablities of each event.
@@ -93,26 +103,26 @@ class TorchCategorical(TorchDistribution):
             larger value will result in uniform sampling.
     """
 
-    @override(TorchDistribution)
+    @override(TfDistribution)
     def __init__(
         self,
-        probs: torch.Tensor = None,
-        logits: torch.Tensor = None,
+        probs: tf.Tensor = None,
+        logits: tf.Tensor = None,
         temperature: float = 1.0,
     ) -> None:
         super().__init__(probs=probs, logits=logits, temperature=temperature)
 
-    @override(TorchDistribution)
-    def _get_torch_distribution(
+    @override(TfDistribution)
+    def _get_tf_distribution(
         self,
-        probs: torch.Tensor = None,
-        logits: torch.Tensor = None,
+        probs: tf.Tensor = None,
+        logits: tf.Tensor = None,
         temperature: float = 1.0,
-    ) -> torch.distributions.Distribution:
+    ) -> tfp.distributions.Distribution:
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
-        return torch.distributions.categorical.Categorical(probs, logits)
+        return tfp.distributions.Categorical(probs=probs, logits=logits)
 
     @staticmethod
     @override(Distribution)
@@ -121,22 +131,27 @@ class TorchCategorical(TorchDistribution):
     ) -> Tuple[int, ...]:
         return (space.n,)
 
+    @override(TfDistribution)
+    def _rsample(self, sample_shape=()):
+        # TODO (Kourosh) Implement Categorical sampling using grrad-passthrough trick.
+        raise NotImplementedError
+
 
 @DeveloperAPI
-class TorchDiagGaussian(TorchDistribution):
-    """Wrapper class for PyTorch Normal distribution.
+class TfDiagGaussian(TfDistribution):
+    """Wrapper class for Normal distribution.
 
     Creates a normal distribution parameterized by :attr:`loc` and :attr:`scale`. In
     case of multi-dimensional distribution, the variance is assumed to be diagonal.
 
     Example::
-        >>> loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
-        >>> m = TorchDiagGaussian(loc=loc, scale=scale)
+
+        >>> m = TfDiagGaussian(loc=[0.0, 0.0], scale=[1.0, 1.0])
         >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
         >>> # scale is None
-        >>> m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
+        >>> m = TfDiagGaussian(loc=[0.0, 1.0])
         >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
         tensor([0.1046, 0.6120])
 
@@ -148,33 +163,32 @@ class TorchDiagGaussian(TorchDistribution):
             Has to be positive.
     """
 
-    @override(TorchDistribution)
+    @override(TfDistribution)
     def __init__(
         self,
-        loc: Union[float, torch.Tensor],
-        scale: Optional[Union[float, torch.Tensor]] = None,
+        loc: Union[float, tf.Tensor],
+        scale: Optional[Union[float, tf.Tensor]] = None,
     ):
         super().__init__(loc=loc, scale=scale)
 
-    def _get_torch_distribution(
-        self, loc, scale=None
-    ) -> torch.distributions.Distribution:
+    @override(TfDistribution)
+    def _get_tf_distribution(self, loc, scale=None) -> tfp.distributions.Distribution:
         if scale is None:
-            loc, log_std = torch.chunk(self.inputs, 2, dim=1)
-            scale = torch.exp(log_std)
-        return torch.distributions.normal.Normal(loc, scale)
+            loc, log_scale = tf.split(loc, num_or_size_splits=2, axis=-1)
+            scale = tf.exp(log_scale)
+        return tfp.distributions.Normal(loc=loc, scale=scale)
 
-    @override(TorchDistribution)
+    @override(TfDistribution)
     def logp(self, value: TensorType) -> TensorType:
-        return super().logp(value).sum(-1)
+        return tf.math.reduce_sum(super().logp(value), axis=-1)
 
-    @override(TorchDistribution)
+    @override(TfDistribution)
     def entropy(self) -> TensorType:
-        return super().entropy().sum(-1)
+        return tf.math.reduce_sum(super().entropy(), axis=-1)
 
-    @override(TorchDistribution)
-    def kl(self, other: "TorchDistribution") -> TensorType:
-        return super().kl(other).sum(-1)
+    @override(TfDistribution)
+    def kl(self, other: "TfDistribution") -> TensorType:
+        return tf.math.reduce_sum(super().kl(other), axis=-1)
 
     @staticmethod
     @override(Distribution)
@@ -183,9 +197,15 @@ class TorchDiagGaussian(TorchDistribution):
     ) -> Tuple[int, ...]:
         return tuple(np.prod(space.shape, dtype=np.int32) * 2)
 
+    @override(TfDistribution)
+    def _rsample(self, sample_shape=()):
+        """Implements reparameterization trick."""
+        eps = tf.random.normal(sample_shape)
+        return self._dist.loc + eps * self._dist.scale
+
 
 @DeveloperAPI
-class TorchDeterministic(Distribution):
+class TfDeterministic(Distribution):
     """The distribution that returns the input values directly.
 
     This is similar to DiagGaussian with standard deviation zero (thus only
@@ -195,16 +215,16 @@ class TorchDeterministic(Distribution):
 
     Example::
 
-        >>> m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))
+        >>> m = TfDeterministic(loc=tf.constant([0.0, 0.0]))
         >>> m.sample(sample_shape=(2,))
-        tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
+        Tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
 
     Args:
         loc: the determinsitic value to return
     """
 
     @override(Distribution)
-    def __init__(self, loc: torch.Tensor) -> None:
+    def __init__(self, loc: tf.Tensor) -> None:
         super().__init__()
         self.loc = loc
 
@@ -212,20 +232,15 @@ class TorchDeterministic(Distribution):
     def sample(
         self,
         *,
-        sample_shape: Tuple[int, ...] = None,
+        sample_shape: Tuple[int, ...] = (),
         return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         if return_logp:
             raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
 
-        if sample_shape is None:
-            sample_shape = torch.Size()
-
-        device = self.loc.device
-        dtype = self.loc.dtype
         shape = sample_shape + self.loc.shape
-        return torch.ones(shape, device=device, dtype=dtype) * self.loc
+        return tf.ones(shape, dtype=self.loc) * self.loc
 
     def rsample(
         self,
@@ -242,7 +257,7 @@ class TorchDeterministic(Distribution):
 
     @override(Distribution)
     def entropy(self, **kwargs) -> TensorType:
-        raise torch.zeros_like(self.loc)
+        raise tf.zeros_like(self.loc)
 
     @override(Distribution)
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
