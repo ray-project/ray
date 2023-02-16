@@ -82,8 +82,10 @@ def execute_to_legacy_block_list(
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundles = executor.execute(dag, initial_stats=stats)
+    block_list = _bundles_to_block_list(bundles)
+    # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-    return _bundles_to_block_list(bundles)
+    return block_list
 
 
 def _to_operator_dag(

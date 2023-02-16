@@ -378,6 +378,27 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     assert results.checkpoint
 
 
+def test_torch_env_vars(ray_start_4_cpus):
+    """Check that env vars are set as expected."""
+
+    def train_func(config):
+        assert os.environ["LOCAL_RANK"] == str(session.get_local_rank())
+        assert os.environ["RANK"] == str(session.get_world_rank())
+        assert os.environ["LOCAL_WORLD_SIZE"] == str(session.get_local_world_size())
+        assert os.environ["WORLD_SIZE"] == str(session.get_world_size())
+        assert os.environ["NODE_RANK"] == str(session.get_node_rank())
+
+        assert os.environ["ACCELERATE_TORCH_DEVICE"] == str(train.torch.get_device())
+
+    num_workers = 1
+    scaling_config = ScalingConfig(num_workers=num_workers)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
