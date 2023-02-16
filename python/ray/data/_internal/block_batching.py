@@ -159,14 +159,8 @@ def batch_blocks(
     )
 
     if collate_fn is not None:
-        import pdb
-
-        pdb.set_trace()
 
         def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
-            import pdb
-
-            pdb.set_trace()
             for batch in iterator:
                 yield collate_fn(batch)
 
