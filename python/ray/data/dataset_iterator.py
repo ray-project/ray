@@ -1,7 +1,9 @@
 import abc
+import numpy as np
 import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.block import DataBatch
 from ray.util.annotations import PublicAPI
 
@@ -234,7 +236,99 @@ class DatasetIterator(abc.ABC):
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
-        raise NotImplementedError
+
+        from ray.air._internal.tensorflow_utils import (
+            get_type_spec,
+            convert_ndarray_to_tf_tensor,
+        )
+
+        try:
+            import tensorflow as tf
+        except ImportError:
+            raise ValueError("tensorflow must be installed!")
+
+        base_dataset = self._base_dataset_or_pipeline
+
+        if base_dataset.dataset_format() == BlockFormat.SIMPLE:
+            raise NotImplementedError(
+                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
+                "convert your data to a tabular format. Alternatively, call the more-"
+                "flexible `iter_batches` in place of `to_tf`."
+            )
+
+        if base_dataset._is_tensor_dataset():
+            raise NotImplementedError(
+                "`to_tf` doesn't support single-column tensor datasets. Call the "
+                "more-flexible `iter_batches` instead."
+            )
+
+        schema = base_dataset.schema()
+        valid_columns = schema.names
+
+        def validate_column(column: str) -> None:
+            if column not in valid_columns:
+                raise ValueError(
+                    f"You specified '{column}' in `feature_columns` or "
+                    f"`label_columns`, but there's no column named '{column}' in the "
+                    f"dataset. Valid column names are: {valid_columns}."
+                )
+
+        def validate_columns(columns: Union[str, List]) -> None:
+            if isinstance(columns, list):
+                for column in columns:
+                    validate_column(column)
+            else:
+                validate_column(columns)
+
+        validate_columns(feature_columns)
+        validate_columns(label_columns)
+
+        def convert_batch_to_tensors(
+            batch: Dict[str, np.ndarray],
+            *,
+            columns: Union[str, List[str]],
+            type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
+        ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+            if isinstance(columns, str):
+                return convert_ndarray_to_tf_tensor(batch[columns], type_spec=type_spec)
+            return {
+                column: convert_ndarray_to_tf_tensor(
+                    batch[column], type_spec=type_spec[column]
+                )
+                for column in columns
+            }
+
+        def generator():
+            for batch in self.iter_batches(
+                prefetch_blocks=prefetch_blocks,
+                batch_size=batch_size,
+                drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
+                batch_format="numpy",
+            ):
+                assert isinstance(batch, dict)
+                features = convert_batch_to_tensors(
+                    batch, columns=feature_columns, type_spec=feature_type_spec
+                )
+                labels = convert_batch_to_tensors(
+                    batch, columns=label_columns, type_spec=label_type_spec
+                )
+                yield features, labels
+
+        feature_type_spec = get_type_spec(schema, columns=feature_columns)
+        label_type_spec = get_type_spec(schema, columns=label_columns)
+        output_signature = (feature_type_spec, label_type_spec)
+
+        dataset = tf.data.Dataset.from_generator(
+            generator, output_signature=output_signature
+        )
+
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = (
+            tf.data.experimental.AutoShardPolicy.OFF
+        )
+        return dataset.with_options(options)
 
     @abc.abstractmethod
     def stats(self) -> str:
