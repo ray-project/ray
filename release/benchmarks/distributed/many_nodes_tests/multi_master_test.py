@@ -8,8 +8,9 @@ import psutil
 
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
-    num_masters = 100
-    num_slaves_per_master = int(total_actors / num_masters) - 1
+    # Each group has 1 master and 99 slaves.
+    num_masters = int(total_actors / 100)
+    num_slaves_per_master = 99
 
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
@@ -30,6 +31,7 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
     ]
     slaves_per_master = []
     for master in actors:
+        # Each master creates 99 slaves.
         slaves_per_master.append(master.create.remote())
     for slaves in slaves_per_master:
         actors.extend(ray.get(slaves))
@@ -38,7 +40,7 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cpus-per-actor", type=float, default=0.2)
+    parser.add_argument("--cpus-per-actor", type=float, default=0.1)
     parser.add_argument("--total-actors", nargs="+", type=int, required=True)
     parser.add_argument("--no-report", default=False, action="store_true")
     parser.add_argument("--no-wait", default=False, action="store_true")
