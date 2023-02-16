@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import json
 from pathlib import Path
+from importlib import import_module
 import os
 import sys
+from jinja2.filters import FILTERS
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
@@ -150,7 +152,12 @@ language = None
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ["_build"]
+# Also helps resolve warnings about documents not included in any toctree.
+exclude_patterns = [
+    "_build",
+    "source/workflows/api/doc/ray.workflow.*",
+    "source/serve/api/doc/ray.serve.*",
+]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
@@ -288,6 +295,17 @@ autodoc_member_order = "bysource"
 # Better typehint formatting (see custom.css)
 autodoc_typehints = "signature"
 
+
+def filter_out_undoc_class_members(member_name, class_name, module_name):
+    module = import_module(module_name)
+    cls = getattr(module, class_name)
+    if getattr(cls, member_name).__doc__:
+        return f"~{class_name}.{member_name}"
+    else:
+        return ""
+
+
+FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 
 # Add a render priority for doctest
 nb_render_priority = {
