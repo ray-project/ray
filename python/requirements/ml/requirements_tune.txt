@@ -18,7 +18,7 @@ hyperopt==0.2.5
 jupyter==1.0.0
 lightgbm==3.2.1
 matplotlib!=3.4.3
-mlflow==1.21.0
+mlflow==1.30.0
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
 optuna==2.10.0
