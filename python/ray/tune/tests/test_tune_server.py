@@ -6,7 +6,8 @@ import json
 
 import ray
 from ray.rllib import _register_all
-from ray.tune.experiment.trial import Trial, Resources
+from ray.tune import PlacementGroupFactory
+from ray.tune.experiment.trial import Trial
 from ray.tune.web_server import TuneClient
 from ray.tune.execution.trial_runner import TrialRunner
 
@@ -34,7 +35,7 @@ class TuneServerSuite(unittest.TestCase):
         runner = self.runner
         kwargs = {
             "stopping_criterion": {"training_iteration": 3},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:

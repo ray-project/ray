@@ -10,7 +10,6 @@ from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -198,15 +197,7 @@ def _create_trial_from_spec(
         raise TuneError("Error parsing args, see above message", spec)
 
     if resources:
-        if isinstance(resources, PlacementGroupFactory):
-            trial_kwargs["placement_group_factory"] = resources
-        else:
-            # This will be converted to a placement group factory in the
-            # Trial object constructor
-            try:
-                trial_kwargs["resources"] = json_to_resources(resources)
-            except (TuneError, ValueError) as exc:
-                raise TuneError("Error parsing resources_per_trial", resources) from exc
+        trial_kwargs["placement_group_factory"] = resources
 
     experiment_dir_name = spec.get("experiment_dir_name")
 
