@@ -1105,9 +1105,11 @@ def _rewrite_read_stage(
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
     blocks, metadata = [], []
+    src_read_fn_names: List[str] = []
     for read_task in in_blocks._tasks:
         blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
+        src_read_fn_names.append(read_task.src_read_fn_name)
     block_list = BlockList(
         blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
     )
@@ -1119,7 +1121,7 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = "read"
+    name: str = "->".join(src_read_fn_names) or "read"
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.

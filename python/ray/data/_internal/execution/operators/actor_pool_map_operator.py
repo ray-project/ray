@@ -88,7 +88,7 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        actor = self._cls.remote()
+        actor = self._cls.remote(src_fn_name=self.name)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -117,7 +117,7 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic", name="haha").remote(
+            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
                 self._transform_fn_ref, ctx, *input_blocks
             )
             self._next_task_idx += 1
@@ -279,6 +279,9 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
+    def __init__(self, src_fn_name: str):
+        self.src_fn_name: str = src_fn_name
+
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
@@ -289,10 +292,9 @@ class _MapWorker:
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(fn, ctx, *blocks)
-    
+
     def __repr__(self):
-        # TODO(Scott) eventually: add informative name here which gets displayed in logs
-        return "HahaWorker"
+        return f"MapWorker({self.src_fn_name})"
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute

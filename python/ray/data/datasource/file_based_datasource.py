@@ -40,6 +40,7 @@ from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
+    from ray.data.dataset import Dataset
 
 
 logger = logging.getLogger(__name__)
@@ -394,7 +395,11 @@ class _FileBasedDatasourceReader(Reader):
                 total_size += sz
         return total_size
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        src_read_fn: Callable[..., "Dataset[Any]"],
+    ) -> List[ReadTask]:
         import numpy as np
 
         open_stream_args = self._open_stream_args
@@ -489,7 +494,9 @@ class _FileBasedDatasourceReader(Reader):
                 file_sizes=file_sizes,
             )
             read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
+                lambda read_paths=read_paths: read_files(read_paths, filesystem),
+                meta,
+                src_read_fn.__name__,
             )
             read_tasks.append(read_task)
 

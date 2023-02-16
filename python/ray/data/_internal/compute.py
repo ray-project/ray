@@ -106,7 +106,7 @@ class TaskPoolStrategy(ComputeStrategy):
             )
             # TODO(scott): for all _apply calls, generate a useful name and pass it here
             refs = [
-                map_block.option(name=name).remote(
+                map_block.remote(
                     block_fn,
                     [f for m in ms for f in m.input_files],
                     fn,
@@ -419,7 +419,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 ):
                     blocks, metas = block_bundles.pop()
                     # TODO(swang): Support block splitting for compute="actors".
-                    ref, meta_ref = worker.map_block_nosplit.remote(
+                    ref, meta_ref = worker.option(name=name).map_block_nosplit.remote(
                         [f for meta in metas for f in meta.input_files],
                         len(blocks),
                         *(blocks + fn_args),

@@ -184,9 +184,15 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
+    def __init__(
+        self,
+        read_fn: Callable[[], Iterable[Block]],
+        metadata: BlockMetadata,
+        src_read_fn_name: Optional[str],
+    ):
         self._metadata = metadata
         self._read_fn = read_fn
+        self.src_read_fn_name = src_read_fn_name
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata

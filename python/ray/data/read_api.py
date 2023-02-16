@@ -1,5 +1,15 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -235,6 +245,7 @@ def range_tensor(
 @PublicAPI
 def read_datasource(
     datasource: Datasource[T],
+    src_read_fn: Callable[..., Dataset[Any]],
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
@@ -308,6 +319,7 @@ def read_datasource(
                 cur_pg,
                 parallelism,
                 local_uri,
+                src_read_fn,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -872,6 +884,7 @@ def read_csv(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
+        src_read_fn=read_csv,
         **arrow_csv_args,
     )
 
@@ -1571,6 +1584,7 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     local_uri: bool,
+    src_read_fn: Callable[..., Dataset[Any]],
     kwargs: dict,
 ) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
@@ -1597,7 +1611,7 @@ def _get_read_tasks(
     return (
         requested_parallelism,
         min_safe_parallelism,
-        reader.get_read_tasks(requested_parallelism),
+        reader.get_read_tasks(requested_parallelism, src_read_fn),
     )
 
 
