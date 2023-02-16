@@ -591,10 +591,10 @@ class Trainable:
         if not self.sync_config.sync_artifacts:
             return False
 
-        # if self._last_artifact_sync_iter == self.iteration:
-        #     # No need to sync again, if we have already synced this iteration.
-        #     return False
-        # self._last_artifact_sync_iter = self.iteration
+        if self._last_artifact_sync_iter == self.iteration:
+            # No need to sync again, if we have already synced this iteration.
+            return False
+        self._last_artifact_sync_iter = self.iteration
         with warn_if_slow(
             name="trial_artifact_cloud_upload",
             message=(
@@ -1006,6 +1006,7 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self.remote_checkpoint_dir = remote_checkpoint_dir
+        self._last_artifact_sync_iter = None
         self._restored = False
 
         return True
