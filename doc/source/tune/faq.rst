@@ -804,6 +804,6 @@ The fourth reason is especially problematic when you run concurrent tuning jobs.
 a symptom is when trials from job A use parameters specified in job B, leading to unexpected
 results.
 
-If you run into this problem, please refer to
+Please refer to
 [this github issue](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976)
 for more context and a workaround.
