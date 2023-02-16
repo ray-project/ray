@@ -135,7 +135,15 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            deployment_statuses = self.get_serve_status().deployment_statuses
+            statuses_bytes = ray.get(
+                self._controller.get_all_deployment_statuses.remote()
+            )
+            deployment_statuses = [
+                DeploymentStatusInfo.from_proto(
+                    DeploymentStatusInfoProto.FromString(status_bytes)
+                )
+                for status_bytes in statuses_bytes
+            ]
             if len(deployment_statuses) == 0:
                 break
             else:
