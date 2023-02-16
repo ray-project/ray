@@ -118,6 +118,41 @@ class Datasource(Generic[T]):
         """
         pass
 
+    @classmethod
+    def _get_datasource_name(cls) -> str:
+        from ray.data.datasource.csv_datasource import CSVDatasource
+        from ray.data.datasource.parquet_datasource import ParquetDatasource
+        from ray.data.datasource.mongo_datasource import MongoDatasource
+        from ray.data.datasource.image_datasource import ImageDatasource
+        from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+        from ray.data.datasource.json_datasource import JSONDatasource
+        from ray.data.datasource.text_datasource import TextDatasource
+        from ray.data.datasource.numpy_datasource import NumpyDatasource
+        from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
+        from ray.data.datasource.binary_datasource import BinaryDatasource
+
+        if isinstance(cls, ParquetDatasource):
+            return "ReadParquet"
+        if isinstance(cls, ParquetBaseDatasource):
+            return "ReadParquetBulk"
+        if isinstance(cls, CSVDatasource):
+            return "ReadCSV"
+        if isinstance(cls, MongoDatasource):
+            return "ReadMongo"
+        if isinstance(cls, ImageDatasource):
+            return "ReadImage"
+        if isinstance(cls, JSONDatasource):
+            return "ReadJSON"
+        if isinstance(cls, TextDatasource):
+            return "ReadText"
+        if isinstance(cls, NumpyDatasource):
+            return "ReadNumpy"
+        if isinstance(cls, TFRecordDatasource):
+            return "ReadTFRecord"
+        if isinstance(cls, BinaryDatasource):
+            return "ReadBinary"
+        return f"Read{cls.__name__}"
+
 
 @PublicAPI
 class Reader(Generic[T]):
@@ -188,11 +223,9 @@ class ReadTask(Callable[[], Iterable[Block]]):
         self,
         read_fn: Callable[[], Iterable[Block]],
         metadata: BlockMetadata,
-        src_read_fn_name: Optional[str],
     ):
         self._metadata = metadata
         self._read_fn = read_fn
-        self.src_read_fn_name = src_read_fn_name
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata

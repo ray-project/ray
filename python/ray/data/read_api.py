@@ -2,7 +2,6 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
     List,
     Optional,
@@ -245,7 +244,6 @@ def range_tensor(
 @PublicAPI
 def read_datasource(
     datasource: Datasource[T],
-    src_read_fn: Callable[..., Dataset[Any]],
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
@@ -319,7 +317,6 @@ def read_datasource(
                 cur_pg,
                 parallelism,
                 local_uri,
-                src_read_fn,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -346,8 +343,12 @@ def read_datasource(
             "dataset blocks."
         )
 
+    read_stage_name = datasource._get_datasource_name()
     block_list = LazyBlockList(
-        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+        read_tasks,
+        read_stage_name=read_stage_name,
+        ray_remote_args=ray_remote_args,
+        owned_by_consumer=False,
     )
 
     # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
@@ -884,7 +885,6 @@ def read_csv(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
-        src_read_fn=read_csv,
         **arrow_csv_args,
     )
 
@@ -1584,7 +1584,6 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     local_uri: bool,
-    src_read_fn: Callable[..., Dataset[Any]],
     kwargs: dict,
 ) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
@@ -1611,7 +1610,7 @@ def _get_read_tasks(
     return (
         requested_parallelism,
         min_safe_parallelism,
-        reader.get_read_tasks(requested_parallelism, src_read_fn),
+        reader.get_read_tasks(requested_parallelism),
     )
 
 
