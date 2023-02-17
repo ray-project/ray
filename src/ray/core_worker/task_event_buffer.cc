@@ -86,13 +86,21 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
+  // Rate limit on the number of profiling events from the task. This is especially the
+  // case if a driver has many profiling events when submitting tasks
+  auto profile_events = rpc_task_events->mutable_profile_events();
+  if (profile_events->events_size() >
+      RayConfig::instance().task_events_max_num_profile_events_for_task()) {
+    // TODO: update counters ?
+    return;
+  }
+
   // Base fields
   rpc_task_events->set_task_id(task_id_.Binary());
   rpc_task_events->set_job_id(job_id_.Binary());
   rpc_task_events->set_attempt_number(attempt_number_);
 
   // Profile data
-  auto profile_events = rpc_task_events->mutable_profile_events();
   profile_events->set_component_type(std::move(component_type_));
   profile_events->set_component_id(std::move(component_id_));
   profile_events->set_node_ip_address(std::move(node_ip_address_));
@@ -213,7 +221,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(TaskStatusEvent e) {
 }
 
 TaskEventThreadBuffer &TaskEventBufferImpl::GetOrCreateThreadBuffer() {
-  auto itr = all_thd_buffer_.find(std::this_thread::get_id());
+  const auto itr = all_thd_buffer_.find(std::this_thread::get_id());
   if (itr != all_thd_buffer_.end()) {
     return itr->second;
   }
