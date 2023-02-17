@@ -90,7 +90,11 @@ class SDKRunner(CommandRunner):
         )
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         full_env = self.get_full_command_env(env)
 
