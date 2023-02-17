@@ -308,8 +308,6 @@ class AlgorithmConfig(_Config):
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
-        self.worker_health_probe_timeout_s = 60
-        self.worker_restore_timeout_s = 1800
 
         # `self.training()`
         self.gamma = 0.99
@@ -414,6 +412,8 @@ class AlgorithmConfig(_Config):
         self.delay_between_worker_restarts_s = 60.0
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
+        self.worker_health_probe_timeout_s = 60
+        self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
         self.rl_module_spec = None
@@ -1249,8 +1249,6 @@ class AlgorithmConfig(_Config):
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        worker_health_probe_timeout_s: int = NotProvided,
-        worker_restore_timeout_s: int = NotProvided,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
         no_done_at_end=DEPRECATED_VALUE,
@@ -1258,6 +1256,8 @@ class AlgorithmConfig(_Config):
         recreate_failed_workers=DEPRECATED_VALUE,
         restart_failed_sub_environments=DEPRECATED_VALUE,
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
+        worker_health_probe_timeout_s=DEPRECATED_VALUE,
+        worker_restore_timeout_s=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1348,11 +1348,6 @@ class AlgorithmConfig(_Config):
                 is the coeff of how much new data points contribute to the averages.
                 Default is None, which uses simple global average instead.
                 The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
-            worker_health_probe_timeout_s: Max amount of time we should spend waiting
-                for health probe calls to finish. Health pings are very cheap, so the
-                default is 1 minute.
-            worker_restore_timeout_s: Max amount of time we should wait to restore
-                states on recovered worker actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1393,10 +1388,6 @@ class AlgorithmConfig(_Config):
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
-        if worker_health_probe_timeout_s is not NotProvided:
-            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
-        if worker_restore_timeout_s is not NotProvided:
-            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         # Deprecated settings.
         if horizon != DEPRECATED_VALUE:
@@ -1455,6 +1446,20 @@ class AlgorithmConfig(_Config):
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
+        if worker_health_probe_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(worker_health_probe_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s=..)",
+                error=False,
+            )
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(worker_restore_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s=..)",
+                error=False,
+            )
+            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         return self
 
@@ -2196,6 +2201,8 @@ class AlgorithmConfig(_Config):
         delay_between_worker_restarts_s: Optional[float] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
+        worker_health_probe_timeout_s: int = NotProvided,
+        worker_restore_timeout_s: int = NotProvided,
     ):
         """Sets the config's fault tolerance settings.
 
@@ -2225,6 +2232,11 @@ class AlgorithmConfig(_Config):
                 Note that for `restart_failed_sub_environments` and sub-environment
                 failures, the worker itself is NOT affected and won't throw any errors
                 as the flawed sub-environment is silently restarted under the hood.
+            worker_health_probe_timeout_s: Max amount of time we should spend waiting
+                for health probe calls to finish. Health pings are very cheap, so the
+                default is 1 minute.
+            worker_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered worker actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2243,6 +2255,10 @@ class AlgorithmConfig(_Config):
             self.num_consecutive_worker_failures_tolerance = (
                 num_consecutive_worker_failures_tolerance
             )
+        if worker_health_probe_timeout_s is not NotProvided:
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s is not NotProvided:
+            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         return self
 

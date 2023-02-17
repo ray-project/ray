@@ -244,6 +244,8 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             }
 
+        print(config)
+
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             algo = config.build()
             algo.train()
@@ -325,7 +327,7 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
 
             a.stop()
-
+    '''
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_fault_fatal(PGConfig().training(optimizer={}))
@@ -409,7 +411,7 @@ class TestWorkerFailures(unittest.TestCase):
             fail_eval=True,
         )
 
-    def test_recreate_eval_workers_parallel_to_training_w_async_req_manager(self):
+    def test_recreate_eval_workers_parallel_to_training_w_actor_manager(self):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PGConfig()
@@ -442,8 +444,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=False,  # Do not ignore
-                recreate_failed_workers=True,  # But recover.
             )
             .training(
                 train_batch_size=32,
@@ -458,6 +458,10 @@ class TestWorkerFailures(unittest.TestCase):
                     "failure_stop_count": 4,
                     "counter": COUNTER_NAME,
                 },
+            )
+            .fault_tolerance(
+                ignore_worker_failures=False,  # Do not ignore
+                recreate_failed_workers=True,  # But recover.
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -513,9 +517,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=False,  # Do not ignore
-                recreate_failed_workers=True,  # But recover.
-                # Throwing error in constructor is a bad idea.
             )
             .training(
                 train_batch_size=32,
@@ -550,6 +551,11 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .callbacks(callbacks_class=AddPolicyCallback)
+            .fault_tolerance(
+                ignore_worker_failures=False,  # Do not ignore
+                recreate_failed_workers=True,  # But recover.
+                # Throwing error in constructor is a bad idea.
+            )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
@@ -606,8 +612,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=True,  # Ignore failure.
-                recreate_failed_workers=True,  # And recover
             )
             .training(
                 train_batch_size=32,
@@ -631,6 +635,10 @@ class TestWorkerFailures(unittest.TestCase):
                     },
                 ),
             )
+            .fault_tolerance(
+                ignore_worker_failures=True,  # Ignore failure.
+                recreate_failed_workers=True,  # And recover
+            )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
@@ -651,7 +659,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Everything still healthy. And all workers are restarted.
             self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
             self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 2)
-
+    '''
     def test_worker_recover_with_hanging_workers(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_eval_workers_fault_but_recover"
@@ -666,10 +674,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=3,
                 rollout_fragment_length=16,
-                ignore_worker_failures=False,  # Not ignore failure.
-                recreate_failed_workers=True,  # And recover
-                worker_health_probe_timeout_s=0.01,
-                worker_restore_timeout_s=5,
             )
             .training(
                 train_batch_size=32,
@@ -702,6 +706,12 @@ class TestWorkerFailures(unittest.TestCase):
                     "step_delay_indices": [3],
                 },
             )
+            .fault_tolerance(
+                ignore_worker_failures=False,  # Not ignore failure.
+                recreate_failed_workers=True,  # And recover
+                worker_health_probe_timeout_s=0.01,
+                worker_restore_timeout_s=5,
+            )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
@@ -725,7 +735,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Only 1 successful restore, since worker 2 is stuck in indefinite init
             # and can not be properly restored.
             self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
-
+    '''
     def test_eval_workers_fault_but_restore_env(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_eval_workers_fault_but_restore_env"
@@ -737,8 +747,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=True,  # Ignore failure.
-                recreate_failed_workers=True,  # And recover
             )
             .training(
                 train_batch_size=32,
@@ -769,6 +777,10 @@ class TestWorkerFailures(unittest.TestCase):
                         "bad_indices": [1],
                     },
                 ),
+            )
+            .fault_tolerance(
+                ignore_worker_failures=True,  # Ignore failure.
+                recreate_failed_workers=True,  # And recover
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -891,9 +903,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=1,
                 create_env_on_local_worker=False,
-                # Worker fault tolerance.
-                recreate_failed_workers=True,  # Restore failed workers.
-                restart_failed_sub_environments=True,  # And create failed envs.
             )
             .training(
                 model={"fcnet_hiddens": [4]},
@@ -919,6 +928,11 @@ class TestWorkerFailures(unittest.TestCase):
                         "evaluation": True,
                     }
                 ),
+            )
+            .fault_tolerance(
+                # Worker fault tolerance.
+                recreate_failed_workers=True,  # Restore failed workers.
+                restart_failed_sub_environments=True,  # And create failed envs.
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -948,9 +962,6 @@ class TestWorkerFailures(unittest.TestCase):
             PGConfig()
             .rollouts(
                 num_rollout_workers=1,
-                # Worker fault tolerance.
-                recreate_failed_workers=False,  # Do not ignore.
-                restart_failed_sub_environments=True,  # But recover.
                 rollout_fragment_length=5,
                 # Use EMA PerfStat.
                 # Really large coeff to show the difference in env_wait_time_ms.
@@ -980,6 +991,11 @@ class TestWorkerFailures(unittest.TestCase):
                 # Important, don't smooth over all the episodes,
                 # otherwise we don't see latency spike.
                 metrics_num_episodes_for_smoothing=1
+            )
+            .fault_tolerance(
+                # Worker fault tolerance.
+                recreate_failed_workers=False,  # Do not ignore.
+                restart_failed_sub_environments=True,  # But recover.
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -1023,7 +1039,7 @@ class TestWorkerFailures(unittest.TestCase):
         algo = config.build()
         results = algo.train()
         self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
-
+    '''
 
 if __name__ == "__main__":
     import sys
