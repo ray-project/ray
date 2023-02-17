@@ -288,8 +288,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
-    - ./java/build-jar-multiplatform.sh linux
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=nightly ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -300,8 +299,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
-    - ./java/build-jar-multiplatform.sh linux
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=10.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -312,8 +310,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
-    - ./java/build-jar-multiplatform.sh linux
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -324,8 +321,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
-    - ./java/build-jar-multiplatform.sh linux
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=8.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -336,8 +332,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
-    - ./java/build-jar-multiplatform.sh linux
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -348,8 +343,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
-    - ./java/build-jar-multiplatform.sh linux
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=6.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
