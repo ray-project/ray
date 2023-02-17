@@ -1048,7 +1048,7 @@ def read_tfrecords(
         0     5.1    3.5  b'setosa'
 
         We can also read compressed TFRecord files which uses one of the
-        `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`:
+        `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
 
         >>> compressed_path = os.path.join(tempfile.gettempdir(), "data_compressed.tfrecords")
         >>> options = tf.io.TFRecordOptions(compression_type="GZIP") # "ZLIB" also supported by TensorFlow
