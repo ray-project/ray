@@ -1522,7 +1522,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    type: anyscale_job
+    type: client
 
     wait_for_nodes:
       num_nodes: 4
@@ -2065,6 +2065,7 @@
   working_dir: long_running_tests
 
   stable: true
+  env: staging_v1
 
   legacy:
     test_name: serve_failure
@@ -2080,6 +2081,7 @@
     timeout: 86400
     script: python workloads/serve_failure.py
     long_running: true
+    type: sdk_command
 
   smoke_test:
     frequency: nightly
@@ -4895,3 +4897,4 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
+    type: sdk_command
