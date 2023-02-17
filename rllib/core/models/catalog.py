@@ -3,10 +3,12 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
+    CNNEncoderConfig,
 )
 from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.models import MODEL_DEFAULTS
 from gymnasium.spaces import Box
+from ray.rllib.models.utils import get_filter_config
 
 
 class Catalog:
@@ -203,18 +205,14 @@ class Catalog:
         # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
         model_config = {**MODEL_DEFAULTS, **model_config}
 
-        assert (
-            len(observation_space.shape) == 1
-        ), "No multidimensional obs space supported."
-
         activation = model_config["fcnet_activation"]
         output_activation = model_config["fcnet_activation"]
-        input_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
+        encoder_latent_dim = model_config["encoder_latent_dim"] or fcnet_hiddens[-1]
 
         if model_config["use_lstm"]:
             encoder_config = LSTMEncoderConfig(
-                input_dim=input_dim,
+                input_dim=observation_space.shape[0],
                 hidden_dim=model_config["lstm_cell_size"],
                 batch_first=not model_config["_time_major"],
                 num_layers=1,
@@ -228,17 +226,21 @@ class Catalog:
         elif model_config["use_attention"]:
             raise NotImplementedError
         else:
+            # TODO (Artur): Maybe check for original spaces here
             # input_space is a 1D Box
             if isinstance(observation_space, Box) and len(observation_space.shape) == 1:
-                # TODO (Artur): Maybe check for original spaces here
-                # TODO (Artur): Discriminate between output and hidden activations
-                # TODO (Artur): Maybe unify hidden_layer_dims and output_dim
-
+                # In order to guarantee backward compatability with old configs,
+                # we need to check if no latent dim was set and simply reuse the last
+                # fcnet hidden dim for that purpose.
+                if model_config["encoder_latent_dim"]:
+                    hidden_layer_dims = model_config["fcnet_hiddens"]
+                else:
+                    hidden_layer_dims = model_config["fcnet_hiddens"][:-1]
                 encoder_config = MLPEncoderConfig(
-                    input_dim=input_dim,
-                    hidden_layer_dims=fcnet_hiddens[:-1],
+                    input_dim=observation_space.shape[0],
+                    hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    output_dim=fcnet_hiddens[-1],
+                    output_dim=encoder_latent_dim,
                     output_activation=output_activation,
                 )
 
@@ -246,7 +248,18 @@ class Catalog:
             elif (
                 isinstance(observation_space, Box) and len(observation_space.shape) == 3
             ):
-                raise NotImplementedError("No default config for 3D spaces yet!")
+                if not model_config.get("conv_filters"):
+                    model_config["conv_filters"] = get_filter_config(
+                        observation_space.shape
+                    )
+
+                encoder_config = CNNEncoderConfig(
+                    input_dims=observation_space.shape,
+                    filter_specifiers=model_config["conv_filters"],
+                    filter_layer_activation=activation,
+                    output_activation=output_activation,
+                    output_dim=encoder_latent_dim,
+                )
             # input_space is a possibly nested structure of spaces.
             else:
                 # NestedModelConfig

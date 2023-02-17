@@ -125,9 +125,6 @@ class TorchCNN(nn.Module):
             in_depth = out_depth
             in_size = out_size
 
-        core_cnn = nn.Sequential(*core_layers)
-        layers.append(core_cnn)
-
         # Append a last convolutional layer of depth-only filters to be flattened.
 
         # Get info of the last layer of user-specified layers
@@ -140,7 +137,7 @@ class TorchCNN(nn.Module):
         )
         padding, _ = same_padding(in_size, (1, 1), (1, 1))
         # TODO(Artur): Inline SlimConv2d or use TorchCNN here
-        layers.append(
+        core_layers.append(
             SlimConv2d(
                 in_depth,
                 1,
@@ -150,7 +147,10 @@ class TorchCNN(nn.Module):
                 activation_fn=filter_layer_activation,
             )
         )
-        layers.append(nn.Flatten())
+        core_layers.append(nn.Flatten())
+
+        core_cnn = nn.Sequential(*core_layers)
+        layers.append(core_cnn)
 
         # Add a final linear layer to make sure that the outputs have the correct
         # dimensionality.

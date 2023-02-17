@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Callable, Dict, Union
+from typing import List, Callable, Dict, Union, Tuple
 from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
 
@@ -87,6 +87,10 @@ class MLPHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
+        # Convert numpy values so that we can build specs from them.
+        assert type(self.output_dim) is int
+        assert type(self.input_dim) is int
+
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -126,7 +130,7 @@ class CNNEncoderConfig(ModelConfig):
             layer to achieve this.
     """
 
-    input_dims: int = None
+    input_dims: Union[List, Tuple] = None
     filter_specifiers: List[List[Union[int, List]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
@@ -136,6 +140,8 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
+        assert type(self.output_dim) is int
+
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -164,6 +170,9 @@ class MLPEncoderConfig(MLPHeadConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
+        assert type(self.output_dim) == int
+        assert type(self.input_dim) == int
+
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
