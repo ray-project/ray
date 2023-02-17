@@ -1,4 +1,4 @@
-from typing import Mapping, Any
+from typing import Mapping, Any, List
 
 import gymnasium as gym
 
@@ -10,12 +10,10 @@ from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     LSTMEncoderConfig,
 )
-from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
-from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
+from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
     TfDiagGaussian,
@@ -78,6 +76,18 @@ class PPOTfRLModule(TfRLModule):
         return [SampleBatch.OBS, SampleBatch.ACTIONS]
 
     @override(RLModule)
+    def output_specs_train(self) -> List[str]:
+        return [
+            SampleBatch.ACTION_DIST,
+            SampleBatch.VF_PREDS,
+        ]
+
+    @override(RLModule)
+    def input_specs_exploration(self):
+        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
+        return SpecDict()
+
+    @override(RLModule)
     def output_specs_exploration(self) -> List[str]:
         return [
             SampleBatch.ACTION_DIST,
@@ -86,63 +96,12 @@ class PPOTfRLModule(TfRLModule):
         ]
 
     @override(RLModule)
-    def output_specs_inference(self) -> List[str]:
-        return [SampleBatch.ACTION_DIST]
-
-    @override(RLModule)
-    def output_specs_train(self) -> List[str]:
-        return [
-            SampleBatch.ACTION_DIST,
-            SampleBatch.VF_PREDS,
-        ]
-
-    @override(TfRLModule)
-    def _forward_train(self, batch: NestedDict):
-        output = {}
-
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
-
-        # Shared encoder
-        encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
-
-        # Value head
-        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
-
-        # Policy head
-        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_logits = pi_out
-        if self._is_discrete:
-            action_dist = Categorical(action_logits)
-        else:
-            action_dist = DiagGaussian(
-                action_logits, None, action_space=self.config.action_space
-            )
-        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
-        entropy = action_dist.entropy()
-        output[SampleBatch.ACTION_DIST] = action_dist
-        output[SampleBatch.ACTION_LOGP] = logp
-        output["entropy"] = entropy
-
-        return output
-
-    @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
         return self.input_specs_exploration()
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return SpecDict({SampleBatch.ACTION_DIST: Deterministic})
+        return SpecDict({SampleBatch.ACTION_DIST: TfDeterministic})
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -169,22 +128,10 @@ class PPOTfRLModule(TfRLModule):
         else:
             action, _ = tf.split(action_logits, num_or_size_splits=2, axis=1)
 
+        action_dist = TfDeterministic(loc=action)
         output[SampleBatch.ACTION_DIST] = action_dist
 
         return output
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
-        return SpecDict()
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return [
-            SampleBatch.ACTION_DIST,
-            SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST_INPUTS,
-        ]
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -215,17 +162,58 @@ class PPOTfRLModule(TfRLModule):
         output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
 
         # Policy head
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        if self._is_discrete:
+            action_dist = TfCategorical(logits=action_logits)
+            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
+        else:
+            loc, log_std = tf.split(action_logits, num_or_size_splits=2, axis=1)
+            scale = tf.math.exp(log_std)
+            action_dist = TfDiagGaussian(loc=loc, scale=scale)
+            output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
+
+        output[SampleBatch.ACTION_DIST] = action_dist
+
+        return output
+
+    @override(TfRLModule)
+    def _forward_train(self, batch: NestedDict):
+        output = {}
+
+        # TODO (Artur): Remove this once Policy supports RNN
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
+
+        # Shared encoder
+        encoder_outs = self.encoder(batch)
+        # TODO (Artur): Un-uncomment once Policy supports RNN
+        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+
+        # Value head
+        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
+
+        # Policy head
         pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
         if self._is_discrete:
-            action_dist = TfCategorical(logits=action_logits)
+            action_dist = TfCategorical(action_logits)
         else:
-            action_dist = DiagGaussian(
-                action_logits, None, action_space=self.config.action_space
-            )
+            loc, log_std = tf.split(action_logits, num_or_size_splits=2, axis=1)
+            scale = tf.math.exp(log_std)
+            action_dist = TfDiagGaussian(loc=loc, scale=scale)
 
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
+        entropy = action_dist.entropy()
         output[SampleBatch.ACTION_DIST] = action_dist
+        output[SampleBatch.ACTION_LOGP] = logp
+        output["entropy"] = entropy
 
         return output
 
