@@ -36,15 +36,11 @@ class TfRLModule(RLModule, tf.keras.Model):
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
-        # self.get_weights() returns a list of numpy arrays that is a list of
-        # all of the traced weights in this TfRLModule.
-        return {"module": self.get_weights()}
+        return self.get_weights()
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        # self.set_weights() sets the weights of the Keras layers in this
-        # TfRLModule.
-        self.set_weights(state_dict["module"])
+        self.set_weights(state_dict)
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

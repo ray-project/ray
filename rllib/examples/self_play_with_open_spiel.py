@@ -33,6 +33,7 @@ from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
@@ -89,6 +90,21 @@ def get_cli_args():
         help="How many episodes to play against the user on the command "
         "line after training has finished.",
     )
+
+    parser.add_argument(
+        "--as-test",
+        action="store_true",
+        help="Whether this script should be run as a test: --stop-reward must "
+        "be achieved within --stop-timesteps AND --stop-iters.",
+    )
+
+    parser.add_argument(
+        "--min-win-rate",
+        type=float,
+        default=0.5,
+        help="Minimum win rate to consider the test passed.",
+    )
+
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
     return args
@@ -230,6 +246,9 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
+    if args.as_test:
+        stop["win_rate"] = args.min_win_rate
+
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
@@ -310,5 +329,8 @@ if __name__ == "__main__":
             num_episodes += 1
 
         algo.stop()
+
+    if args.as_test:
+        check_learning_achieved(results, args.min_win_rate, metric="win_rate")
 
     ray.shutdown()
