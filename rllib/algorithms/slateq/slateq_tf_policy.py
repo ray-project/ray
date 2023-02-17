@@ -356,7 +356,7 @@ def rmsprop_optimizer(
         return tf1.train.RMSPropOptimizer(
             learning_rate=policy.cur_lr,
             epsilon=config["rmsprop_epsilon"],
-            weight_decay=0.95,
+            decay=0.95,
             momentum=0.0,
             centered=True,
         )
