@@ -377,11 +377,16 @@ public class ServeControllerClient {
   private List<DeploymentStatusInfo> getAllDeploymentStatuses() {
     List<DeploymentStatusInfo> deploymentStatuses = new ArrayList<>();
 
-    List<byte[]> statusesBytes = (List<byte[]>)
-      ((PyActorHandle) controller).task(PyActorMethod.of("get_all_deployment_statuses")).remote().get();
+    List<byte[]> statusesBytes =
+        (List<byte[]>)
+            ((PyActorHandle) controller)
+                .task(PyActorMethod.of("get_all_deployment_statuses"))
+                .remote()
+                .get();
 
     for (byte[] statusBytes : statusesBytes) {
-      deploymentStatuses.add(ServeProtoUtil.bytesToProto(statusBytes, DeploymentStatusInfo::parseFrom));
+      deploymentStatuses.add(
+          ServeProtoUtil.bytesToProto(statusBytes, DeploymentStatusInfo::parseFrom));
     }
     return deploymentStatuses;
   }
