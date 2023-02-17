@@ -1452,7 +1452,7 @@
 
   frequency: nightly
   team: ml
-  env: prod
+  env: prod_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1482,7 +1482,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1512,7 +1512,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1686,7 +1686,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -4531,7 +4531,7 @@
 
   # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
   # to be stable.
-  env: staging
+  env: staging_v1
 
   run:
     timeout: 7200
@@ -4790,7 +4790,7 @@
 
   # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
   # to be stable.
-  env: staging
+  env: staging_v1
 
   frequency: nightly
   team: data
@@ -4818,7 +4818,7 @@
 
   # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
   # to be stable.
-  env: staging
+  env: staging_v1
 
   frequency: nightly
   team: data
@@ -4884,7 +4884,7 @@
 
   stable: false
 
-  env: prod
+  env: prod_v1
 
   frequency: nightly
   team: core
