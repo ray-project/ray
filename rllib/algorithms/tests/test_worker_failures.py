@@ -327,7 +327,7 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
 
             a.stop()
-    '''
+
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_fault_fatal(PGConfig().training(optimizer={}))
@@ -659,7 +659,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Everything still healthy. And all workers are restarted.
             self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
             self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 2)
-    '''
+
     def test_worker_recover_with_hanging_workers(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_eval_workers_fault_but_recover"
@@ -736,7 +736,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Only 1 successful restore, since worker 2 is stuck in indefinite init
             # and can not be properly restored.
             self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
-    '''
+
     def test_eval_workers_fault_but_restore_env(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_eval_workers_fault_but_restore_env"
@@ -1040,7 +1040,7 @@ class TestWorkerFailures(unittest.TestCase):
         algo = config.build()
         results = algo.train()
         self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
-    '''
+
 
 if __name__ == "__main__":
     import sys

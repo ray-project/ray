@@ -404,11 +404,16 @@ class AlgorithmConfig(_Config):
         self.ignore_worker_failures = False
         self.recreate_failed_workers = False
         # By default restart failed worker a thousand times.
-        # This should enough to handle normal transient failures.
+        # This should be enough to handle normal transient failures.
         # This also prevents infinite number of restarts in case
         # the worker or env has a bug.
         self.max_num_worker_restarts = 1000
-        # Small delay between worker restarts.
+        # Small delay between worker restarts. In case rollout or
+        # evaluation workers have remote dependencies, this delay can be
+        # adjusted to make sure we don't flood them with re-connection
+        # requests, and allow them enough time to recover.
+        # This delay also gives Ray time to stream back error logging
+        # and exceptions.
         self.delay_between_worker_restarts_s = 60.0
         self.restart_failed_sub_environments = False
         self.num_consecutive_worker_failures_tolerance = 100
@@ -1412,8 +1417,7 @@ class AlgorithmConfig(_Config):
 
         if ignore_worker_failures != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(ignore_worker_failures=..)",
-                new="AlgorithmConfig.fault_tolerance(ignore_worker_failures=..)",
+                old="ignore_worker_failures is deprecated, and will soon be a no-op",
                 error=False,
             )
             self.ignore_worker_failures = ignore_worker_failures
@@ -2195,7 +2199,6 @@ class AlgorithmConfig(_Config):
 
     def fault_tolerance(
         self,
-        ignore_worker_failures: Optional[bool] = NotProvided,
         recreate_failed_workers: Optional[bool] = NotProvided,
         max_num_worker_restarts: Optional[int] = NotProvided,
         delay_between_worker_restarts_s: Optional[float] = NotProvided,
@@ -2203,13 +2206,11 @@ class AlgorithmConfig(_Config):
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
         worker_health_probe_timeout_s: int = NotProvided,
         worker_restore_timeout_s: int = NotProvided,
+        ignore_worker_failures = DEPRECATED_VALUE,
     ):
         """Sets the config's fault tolerance settings.
 
         Args:
-            ignore_worker_failures: Whether to attempt to continue training if a worker
-                crashes. The number of currently healthy workers is reported as the
-                "num_healthy_workers" metric.
             recreate_failed_workers: Whether - upon a worker failure - RLlib will try to
                 recreate the lost worker as an identical copy of the failed one. The new
                 worker will only differ from the failed one in its
@@ -2241,8 +2242,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if ignore_worker_failures is not NotProvided:
-            self.ignore_worker_failures = ignore_worker_failures
         if recreate_failed_workers is not NotProvided:
             self.recreate_failed_workers = recreate_failed_workers
         if max_num_worker_restarts is not NotProvided:
@@ -2259,6 +2258,12 @@ class AlgorithmConfig(_Config):
             self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
         if worker_restore_timeout_s is not NotProvided:
             self.worker_restore_timeout_s = worker_restore_timeout_s
+
+        if ignore_worker_failures != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="ignore_worker_failures is deprecated, and will soon be a no-op",
+                error=False)
+            self.ignore_worker_failures = ignore_worker_failures
 
         return self
 
