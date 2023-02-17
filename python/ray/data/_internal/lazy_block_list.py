@@ -133,6 +133,7 @@ class LazyBlockList(BlockList):
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(
             self._tasks.copy(),
+            read_stage_name=self._read_stage_name,
             block_partition_refs=self._block_partition_refs.copy(),
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),
             cached_metadata=self._cached_metadata,

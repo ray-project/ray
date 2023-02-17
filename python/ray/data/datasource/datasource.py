@@ -151,6 +151,10 @@ class Datasource(Generic[T]):
             return "ReadTFRecord"
         if cls == BinaryDatasource:
             return "ReadBinary"
+        if cls == RangeDatasource:
+            return "ReadRange"
+        if cls == RandomIntRowDatasource:
+            return "ReadRandomInt"
         return f"Read{cls.__name__}"
 
 
