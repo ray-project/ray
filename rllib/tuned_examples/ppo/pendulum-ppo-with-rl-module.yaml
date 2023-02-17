@@ -20,5 +20,7 @@ pendulum-ppo:
         observation_filter: MeanStdFilter
         seed: 42
         enable_connectors: true
+        model:
+            fcnet_activation: relu
         _enable_rl_module_api: true
         eager_tracing: false
