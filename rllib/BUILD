@@ -1862,21 +1862,21 @@ py_test(
     name = "test_tf_mlp_head",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/tf/tests/test_mlp_head.py"]
+    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
 )
 
 py_test(
     name = "test_torch_mlp_encoder",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/torch/tests/test_mlp_encoder.py"]
+    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
 )
 
 py_test(
     name = "test_torch_mlp_head",
     tags = ["team:rllib", "core", "models"],
     size = "small",
-    srcs = ["core/models/torch/tests/test_mlp_head.py"]
+    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
 )
 
 py_test(
