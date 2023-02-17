@@ -1356,18 +1356,12 @@ class TestServeRequestProcessingTimeoutS:
     "ray_instance",
     [
         {
-<<<<<<< HEAD
             "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
             "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
-=======
-            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-            "RAY_SERVE_MAX_REPLICA_FAILURE_RETRIES": "5",
->>>>>>> 1c4cfd5cbb ([Serve] Make http retries tunable)
         },
     ],
     indirect=True,
 )
-<<<<<<< HEAD
 def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     """Test max_concurrent_queries can be honorded with long poll timeout
 
@@ -1421,9 +1415,19 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
 
-=======
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
+            "RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES": "5",
+        },
+    ],
+    indirect=True,
+)
 def test_http_request_number_of_retries(ray_instance):
-    """Test HTTP proxy retry requests"""
+    """Test HTTP proxy retry requests."""
 
     signal_actor = SignalActor.remote()
 
@@ -1451,7 +1455,6 @@ def test_http_request_number_of_retries(ray_instance):
 
     wait_for_condition(verify_metrics, timeout=60, retry_interval_ms=500)
     signal_actor.send.remote()
->>>>>>> 1c4cfd5cbb ([Serve] Make http retries tunable)
     serve.shutdown()
 
 

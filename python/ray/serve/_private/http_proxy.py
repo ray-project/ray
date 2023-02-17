@@ -37,8 +37,12 @@ from ray.serve._private.logging_utils import access_log_msg, configure_component
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = int(
-    os.environ.get("RAY_SERVE_MAX_REPLICA_FAILURE_RETRIES", 10)
+    os.environ.get("RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES", 10)
 )
+assert (
+    MAX_REPLICA_FAILURE_RETRIES >= 0
+), "MAX_REPLICA_FAILURE_RETRIES can't not be negative value"
+
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
@@ -78,7 +82,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < MAX_REPLICA_FAILURE_RETRIES:
+    while retries < MAX_REPLICA_FAILURE_RETRIES + 1:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
