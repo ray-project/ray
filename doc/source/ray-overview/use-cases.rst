@@ -125,6 +125,13 @@ Alternative solutions exist for less common cases:
     ---
     :img-top: /images/ray_logo.png
 
+    .. link-button:: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
+        :type: url
+        :text: [Blog] Many Models Batch Training at Scale with Ray Core
+        :classes: btn-link btn-block stretched-link manyModels
+    ---
+    :img-top: /images/ray_logo.png
+
     .. link-button:: /ray-core/examples/batch_training
         :type: ref
         :text: [Example] Batch Training with Ray Core
