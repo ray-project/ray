@@ -307,7 +307,7 @@ fashion across multiple rollout workers (returns once all rollout workers are so
 It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches
 (exactly one from each remote rollout worker).
 
-RLlib includes other utilities, such as the ``AsyncRequestsManager``,
+RLlib includes other utilities, such as the ``FaultTolerantActorManager``,
 for facilitating the dataflow between various components in parallel, asyncronous fashion.
 These utilities are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
 
@@ -392,7 +392,6 @@ buffers that can be used for storing and sampling experiences.
 
 :ref:`Parallel Request Utilities <parallel-requests-docs>`:
 RLlib provides a collection of concurrency ops that can be asynchronous and synchronous operations in the training loop.
-``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently, in RLlib, it is
-used for asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
-``synchronous_parallel_sample`` has a more narrow but common usage of synchronously sampling from a set of rollout workers.
+``FaultTolerantActorManager`` is used for launching and managing synchronous and asynchronous requests on actors. Currently, in RLlib, it is
+used for synchronous / asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
 

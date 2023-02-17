@@ -1672,8 +1672,7 @@ class AlgorithmConfig(_Config):
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
-            enable_async_evaluation: If True, use an AsyncRequestsManager for
-                the evaluation workers and use this manager to send `sample()` requests
+            enable_async_evaluation: If True, send asynchronous `sample()` requests
                 to the evaluation workers. This way, the Algorithm becomes more robust
                 against long running episodes and/or failing (and restarting) workers.
 

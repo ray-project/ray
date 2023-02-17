@@ -16,10 +16,10 @@ from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLear
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
-from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.from_config import from_config
@@ -395,28 +395,15 @@ class AlphaStar(appo.APPO):
         def _set_policy_learners(worker):
             worker._distributed_learners = distributed_learners
 
-        ray.get(
-            [
-                w.apply.remote(_set_policy_learners)
-                for w in self.workers.remote_workers()
-            ]
-        )
+        self.workers.foreach_worker(_set_policy_learners, local_worker=False)
 
         self.distributed_learners = distributed_learners
-        self._sampling_actor_manager = AsyncRequestsManager(
-            self.workers.remote_workers(),
-            max_remote_requests_in_flight_per_worker=self.config[
-                "max_requests_in_flight_per_sampler_worker"
-            ],
-            ray_wait_timeout_s=self.config.timeout_s_sampler_manager,
-        )
         policy_actors = [policy_actor for _, policy_actor, _ in distributed_learners]
-        self._learner_worker_manager = AsyncRequestsManager(
-            workers=policy_actors,
-            max_remote_requests_in_flight_per_worker=self.config[
-                "max_requests_in_flight_per_learner_worker"
-            ],
-            ray_wait_timeout_s=self.config.timeout_s_learner_manager,
+        self._learner_worker_manager = FaultTolerantActorManager(
+            policy_actors,
+            max_remote_requests_in_flight_per_actor=(
+                self.config.max_requests_in_flight_per_learner_worker
+            ),
         )
 
     @override(Algorithm)
@@ -442,10 +429,8 @@ class AlphaStar(appo.APPO):
                 statistics = worker.apply(self._sample_and_send_to_buffer)
                 sample_results = {worker: [statistics]}
             else:
-                self._sampling_actor_manager.call_on_all_available(
-                    self._sample_and_send_to_buffer
-                )
-                sample_results = self._sampling_actor_manager.get_ready()
+                self.workers.foreach_worker_async(self._sample_and_send_to_buffer)
+                sample_results = self.workers.fetch_ready_async_reqs()
         # Update sample counters.
         for sample_result in sample_results.values():
             for (env_steps, agent_steps) in sample_result:
@@ -456,12 +441,16 @@ class AlphaStar(appo.APPO):
         # policies.
         with self._timers[LEARN_ON_BATCH_TIMER]:
             for pid, pol_actor, repl_actor in self.distributed_learners:
-                if pol_actor not in self._learner_worker_manager.workers:
-                    self._learner_worker_manager.add_workers(pol_actor)
-                self._learner_worker_manager.call(
-                    self._update_policy, actor=pol_actor, fn_args=[repl_actor, pid]
+                if pol_actor not in self._learner_worker_manager.actors():
+                    self._learner_worker_manager.add_actors([pol_actor])
+                actor_id = self._learner_worker_manager.actor_id(pol_actor)
+                self._learner_worker_manager.foreach_actor_async(
+                    lambda _: self._update_policy(repl_actor, pid),
+                    remote_actor_ids=[actor_id],
                 )
-            train_results = self._learner_worker_manager.get_ready()
+            train_results = self._learner_worker_manager.fetch_ready_async_reqs(
+                timeout=self.config.timeout_s_learner_manager,
+            )
 
         # Update sample counters.
         for train_result in train_results.values():

@@ -280,6 +280,20 @@ class FaultTolerantActorManager:
         return self.__actors
 
     @DeveloperAPI
+    def actor_id(self, actor: ActorHandle) -> int:
+        """Get the id of the given actor.
+
+        Warning (jungong): This API should almost never be used.
+        This is only used by AlphaStar algorithm for now, and will be removed
+        once AlphaStar is migrated to not deal with sampling and learning
+        actors directly.
+        """
+        for k, v in self.__actors.items():
+            if v == actor:
+                return k
+        raise AttributeError("Actor {} not found.".format(actor))
+
+    @DeveloperAPI
     def healthy_actor_ids(self) -> List[int]:
         """Returns a list of worker IDs that are healthy."""
         return [k for k, v in self.__remote_actor_states.items() if v.is_healthy]
