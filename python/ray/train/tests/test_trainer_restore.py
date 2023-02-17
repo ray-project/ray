@@ -1,5 +1,6 @@
 from pathlib import Path
 import pytest
+import warnings
 
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
@@ -381,12 +382,33 @@ def test_restore_with_different_trainer(tmpdir):
         run_config=RunConfig(name="restore_with_diff_trainer", local_dir=tmpdir),
     )
     trainer._save(tmpdir)
-    with pytest.raises(ValueError):
-        BaseTrainer.restore(str(tmpdir))
-    with pytest.raises(ValueError):
-        TorchTrainer.restore(str(tmpdir))
-    with pytest.raises(ValueError):
-        XGBoostTrainer.restore(str(tmpdir))
+
+    def attempt_restore(trainer_cls, should_warn: bool, should_raise: bool):
+        def check_for_raise():
+            if should_raise:
+                with pytest.raises(ValueError):
+                    trainer_cls.restore(str(tmpdir))
+            else:
+                trainer_cls.restore(str(tmpdir))
+
+        if should_warn:
+            with pytest.warns() as warn_record:
+                check_for_raise()
+                assert any(
+                    "Invalid trainer type" in str(record.message)
+                    for record in warn_record
+                )
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                check_for_raise()
+
+    attempt_restore(BaseTrainer, should_warn=True, should_raise=True)
+    attempt_restore(XGBoostTrainer, should_warn=True, should_raise=True)
+    # This won't raise because the DataParallelTrainer args can technically
+    # be fed into a TorchTrainer.
+    attempt_restore(TorchTrainer, should_warn=True, should_raise=False)
+    attempt_restore(DataParallelTrainer, should_warn=False, should_raise=False)
 
 
 def test_restore_from_invalid_dir(tmpdir):
