@@ -17,7 +17,7 @@ See also the relevant [design doc](https://docs.google.com/document/d/1x1JAHg7c0
 
 Runtime environment creation is handled by a "dashboard agent" process (`RuntimeEnvAgent`) that runs on each node of the cluster (dashboard/modules/runtime_env/runtime_env_agent.py).  
 
-The dashboard agent fate-shares with the Raylet process. The reason is that if the dashboard agent fails, then runtime env creation will fail, so the Raylet will no longer be able to set up the environment for its workers.  The fate sharing simplifies the failure model and because it is a core component for scheduling tasks and actors.
+The dashboard agent fate-shares with the Raylet process (for more on the Raylet, see the [Ray whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)). The reason is that if the dashboard agent fails, then runtime env creation will fail, so the Raylet will no longer be able to set up the environment for its workers.  The fate sharing simplifies the failure model and because it is a core component for scheduling tasks and actors.
 
 The artifacts of a created runtime environment are a set of files on disk and a `RuntimeEnvContext` Python object (python/ray/_private/runtime_env/context.py) in memory.
 
