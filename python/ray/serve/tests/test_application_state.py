@@ -8,6 +8,7 @@ from ray._private.test_utils import SignalActor
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.exceptions import RayServeException
 
 
 class MockDeploymentStateManager:
@@ -16,6 +17,10 @@ class MockDeploymentStateManager:
             DeploymentStatusInfo("d1", DeploymentStatus.UPDATING),
             DeploymentStatusInfo("d2", DeploymentStatus.UPDATING),
         ]
+
+    def add_deployment_status(self, status: DeploymentStatusInfo):
+        assert type(status) == DeploymentStatusInfo
+        self.deployment_statuses.append(status)
 
     def set_deployment_statuses_unhealthy(self, index: int = 0):
         self.deployment_statuses[index].status = DeploymentStatus.UNHEALTHY
@@ -27,7 +32,22 @@ class MockDeploymentStateManager:
         return self.deployment_statuses
 
     def get_all_deployments(self):
-        return ["d1", "d2"]
+        return [d.name for d in self.deployment_statuses]
+
+    def add_deployment(self, status: DeploymentStatusInfo):
+        self.deployment_statuses.append(status)
+
+    def get_deployment(self, deployment_name: str) -> DeploymentStatusInfo:
+        for deployment in self.deployment_statuses:
+            if deployment.name == deployment_name:
+                return deployment
+
+    def delete_deployment(self, deployment_name: str):
+        statuses = []
+        for deployment in self.deployment_statuses:
+            if deployment.name != deployment_name:
+                statuses.append(deployment)
+        self.deployment_statuses = statuses
 
 
 def test_deploy_app():
@@ -130,6 +150,49 @@ def test_config_deploy_app(fail_deploy):
         app_state_manager.update()
         app_status = app_state_manager.get_app_status("test_app")
         assert app_status.status == ApplicationStatus.RUNNING
+
+
+def test_redeploy_same_app():
+    """Test deploying the same app with different deploy_params."""
+
+    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+    app_state_manager.deploy_application("test_app", [{"name": "d1"}, {"name": "d2"}])
+    app_status = app_state_manager.get_app_status("test_app")
+    assert app_status.status == ApplicationStatus.DEPLOYING
+
+    # Deploy the same app with different deployments
+    unused_deployments = app_state_manager.deploy_application(
+        "test_app", [{"name": "d2"}, {"name": "d3"}]
+    )
+    assert unused_deployments == ["d1"]
+
+    app_state_manager.deployment_state_manager.add_deployment_status(
+        DeploymentStatusInfo("d3", DeploymentStatus.UPDATING)
+    )
+    assert app_state_manager._application_states["test_app"].deployments_to_delete == {
+        "d1"
+    }
+
+    # After updating, the deployment should be deleted successfully, and
+    # deployments_to_delete should be empty
+    app_state_manager.deployment_state_manager.delete_deployment("d1")
+    app_state_manager.update()
+    assert (
+        app_state_manager._application_states["test_app"].deployments_to_delete == set()
+    )
+
+
+def test_deploy_with_route_prefix_conflict():
+    """Test that an application fails to deploy with a route prefix conflict."""
+    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+
+    app_state_manager.deploy_application(
+        "test_app", [{"name": "d1", "route_prefix": "/url1"}]
+    )
+    with pytest.raises(RayServeException):
+        app_state_manager.deploy_application(
+            "test_app1", [{"name": "d1", "route_prefix": "/url1"}]
+        )
 
 
 if __name__ == "__main__":
