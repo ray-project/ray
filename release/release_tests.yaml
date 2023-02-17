@@ -4529,13 +4529,16 @@
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
+  # to be stable.
+  env: staging
+
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    # Works fine as an anyscale job
-    # type: anyscale_job
+    type: sdk_command
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4785,6 +4788,10 @@
 
   stable: false
 
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
+  # to be stable.
+  env: staging
+
   frequency: nightly
   team: data
   cluster:
@@ -4798,6 +4805,7 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
@@ -4807,6 +4815,10 @@
     test_suite: chaos_test
 
   stable: false
+
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
+  # to be stable.
+  env: staging
 
   frequency: nightly
   team: data
@@ -4821,6 +4833,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    
+    type: sdk_command
 
 #####################
 # Observability tests
