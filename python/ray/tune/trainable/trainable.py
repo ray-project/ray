@@ -736,10 +736,10 @@ class Trainable:
             exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
                 DEFAULT_CALLBACK_CLASSES
             )
-            uploaded = self._maybe_load_from_cloud(
+            downloaded = self._maybe_load_from_cloud(
                 remote_dir=remote_dir, local_dir=self.logdir, exclude=exclude
             )
-        return uploaded
+        return downloaded
 
     def _maybe_load_from_cloud(
         self, remote_dir: str, local_dir: str, exclude: List[str] = None
