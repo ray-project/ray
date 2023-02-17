@@ -507,6 +507,12 @@ class ServeController:
 
         new_config_checkpoint = {}
 
+        existing_applications = set(
+            self.application_state_manager._application_states.keys()
+        )
+        new_applications = {app_config.name for app_config in config.applications}
+        self.delete_apps(existing_applications.difference(new_applications))
+
         for app_config in config.applications:
             # Prepend app name to each deployment name
             if not _internal:
