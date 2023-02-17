@@ -1452,7 +1452,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: prod
 
   cluster:
     cluster_env: app_config.yaml
@@ -4308,7 +4308,7 @@
 
   run:
     # Expect the test to finish around 40 seconds.
-    timeout: 80
+    timeout: 100
     script: python parquet_metadata_resolution.py --num-files 915
 
 
@@ -4869,6 +4869,8 @@
     test_suite: cluster-launcher-test
 
   stable: false
+
+  env: prod
 
   frequency: nightly
   team: core
