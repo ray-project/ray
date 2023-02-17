@@ -45,6 +45,7 @@ from ray_release.glue import (
     type_str_to_command_runner,
     command_runner_to_cluster_manager,
     command_runner_to_file_manager,
+    TIMEOUT_BUFFER_MINUTES,
 )
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
@@ -330,9 +331,11 @@ class GlueTest(unittest.TestCase):
             "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
         )
 
-        expected_idle_termination_minutes = int(command_timeout / 60 + 10)
+        expected_idle_termination_minutes = int(
+            command_timeout / 60 + TIMEOUT_BUFFER_MINUTES
+        )
         expected_maximum_uptime_minutes = int(
-            expected_idle_termination_minutes + wait_timeout + 10
+            expected_idle_termination_minutes + wait_timeout + TIMEOUT_BUFFER_MINUTES
         )
 
         self.assertEqual(

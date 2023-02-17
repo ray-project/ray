@@ -82,6 +82,7 @@ command_runner_to_file_manager = {
 
 
 DEFAULT_RUN_TYPE = "anyscale_job"
+TIMEOUT_BUFFER_MINUTES = 15
 
 
 def _get_extra_tags_from_env() -> dict:
@@ -222,7 +223,6 @@ def run_release_test(
         # for nodes at all.
         # The actual default will be otherwise loaded further down.
         wait_timeout = int(test["run"].get("wait_for_nodes", {}).get("timeout", 0))
-        timeout_buffer_minutes = 15
 
         autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
         if autosuspend_mins:
@@ -231,12 +231,12 @@ def run_release_test(
         else:
             cluster_manager.autosuspend_minutes = min(
                 DEFAULT_AUTOSUSPEND_MINS,
-                int(command_and_prepare_timeout / 60) + timeout_buffer_minutes,
+                int(command_and_prepare_timeout / 60) + TIMEOUT_BUFFER_MINUTES,
             )
             # Maximum uptime should be based on the command timeout, not the
             # DEFAULT_AUTOSUSPEND_MINS
             autosuspend_base = (
-                int(command_and_prepare_timeout / 60) + timeout_buffer_minutes
+                int(command_and_prepare_timeout / 60) + TIMEOUT_BUFFER_MINUTES
             )
 
         maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
@@ -244,7 +244,7 @@ def run_release_test(
             cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                autosuspend_base + wait_timeout + timeout_buffer_minutes
+                autosuspend_base + wait_timeout + TIMEOUT_BUFFER_MINUTES
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
