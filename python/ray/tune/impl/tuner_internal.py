@@ -7,15 +7,16 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
-import urllib.parse
 
 import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -99,13 +100,21 @@ class TunerInternal:
                     "Tuner(..., run_config=RunConfig(...))"
                 )
 
+        self.trainable = trainable
+        param_space = param_space or {}
+        if isinstance(param_space, _Config):
+            param_space = param_space.to_dict()
+        if not isinstance(param_space, dict):
+            raise ValueError(
+                "The `param_space` passed to the Tuner` must be a dict. "
+                f"Got '{type(param_space)}' instead."
+            )
+        self.param_space = param_space
+
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
         self._missing_params_error_message = None
-
-        self._param_space = param_space or {}
-        self._process_scaling_config()
 
         # Restore from Tuner checkpoint.
         if restore_path:
@@ -113,6 +122,7 @@ class TunerInternal:
                 path_or_uri=restore_path,
                 resume_config=resume_config,
                 overwrite_trainable=trainable,
+                overwrite_param_space=param_space,
             )
             return
 
@@ -121,12 +131,11 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self._is_restored = False
-        self.trainable = trainable
         self._resume_config = None
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
-        self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
-            self._run_config
+        self._experiment_checkpoint_dir = self.setup_create_experiment_checkpoint_dir(
+            self.converted_trainable, self._run_config
         )
 
         self._experiment_analysis = None
@@ -301,6 +310,7 @@ class TunerInternal:
         path_or_uri: str,
         resume_config: Optional[_ResumeConfig],
         overwrite_trainable: Optional[TrainableTypeOrTrainer],
+        overwrite_param_space: Optional[Dict[str, Any]],
     ):
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
@@ -332,6 +342,8 @@ class TunerInternal:
 
         self._is_restored = True
         self.trainable = trainable
+        if overwrite_param_space:
+            self.param_space = overwrite_param_space
         self._resume_config = resume_config
 
         if not synced:
@@ -347,20 +359,17 @@ class TunerInternal:
             self._run_config.name = experiment_path.name
         else:
             # Set the experiment `name` and `upload_dir` according to the URI
-            parsed_uri = urllib.parse.urlparse(path_or_uri)
-            remote_path = Path(os.path.normpath(parsed_uri.netloc + parsed_uri.path))
-            upload_dir = parsed_uri._replace(
-                netloc="", path=str(remote_path.parent)
-            ).geturl()
-
-            self._run_config.name = remote_path.name
-            self._run_config.sync_config.upload_dir = upload_dir
+            uri = URI(path_or_uri)
+            self._run_config.name = uri.name
+            self._run_config.sync_config.upload_dir = str(uri.parent)
 
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
             new_exp_path = Path(
-                self._setup_create_experiment_checkpoint_dir(self._run_config)
+                self.setup_create_experiment_checkpoint_dir(
+                    self.converted_trainable, self._run_config
+                )
             )
             for file_dir in experiment_checkpoint_path.glob("*"):
                 file_dir.replace(new_exp_path / file_dir.name)
@@ -387,9 +396,11 @@ class TunerInternal:
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
-        path = Path(restore_path)
-        download_from_uri(str(path / _TRAINABLE_PKL), str(tempdir / _TRAINABLE_PKL))
-        download_from_uri(str(path / _TUNER_PKL), str(tempdir / _TUNER_PKL))
+        restore_uri = URI(restore_path)
+        download_from_uri(
+            str(restore_uri / _TRAINABLE_PKL), str(tempdir / _TRAINABLE_PKL)
+        )
+        download_from_uri(str(restore_uri / _TUNER_PKL), str(tempdir / _TUNER_PKL))
         return True, str(tempdir)
 
     def _process_scaling_config(self) -> None:
@@ -405,12 +416,13 @@ class TunerInternal:
             return
         self._param_space["scaling_config"] = scaling_config.__dict__.copy()
 
-    def _setup_create_experiment_checkpoint_dir(
-        self, run_config: Optional[RunConfig]
+    @classmethod
+    def setup_create_experiment_checkpoint_dir(
+        cls, trainable: TrainableType, run_config: Optional[RunConfig]
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self.converted_trainable,
+            trainable,
             run_config.local_dir,
             run_config.name,
         )
@@ -435,6 +447,15 @@ class TunerInternal:
         self._trainable = trainable
         self._converted_trainable = self._convert_trainable(trainable)
 
+    @property
+    def param_space(self) -> Dict[str, Any]:
+        return self._param_space
+
+    @param_space.setter
+    def param_space(self, param_space: Dict[str, Any]):
+        self._param_space = param_space
+        self._process_scaling_config()
+
     def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
         """Converts an AIR Trainer to a Tune trainable and saves the converted
         trainable. If not using an AIR Trainer, this leaves the trainable as is."""
@@ -449,7 +470,7 @@ class TunerInternal:
     def fit(self) -> ResultGrid:
         trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
-        param_space = copy.deepcopy(self._param_space)
+        param_space = copy.deepcopy(self.param_space)
         if not self._is_restored:
             analysis = self._fit_internal(trainable, param_space)
         else:
@@ -552,14 +573,14 @@ class TunerInternal:
         )
 
     def _fit_internal(
-        self, trainable: TrainableType, param_space: Dict[str, Any]
+        self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                config={**param_space},
+                config=param_space,
                 num_samples=self._tune_config.num_samples,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
@@ -575,7 +596,7 @@ class TunerInternal:
         return analysis
 
     def _fit_resume(
-        self, trainable: TrainableType, param_space: Dict[str, Any]
+        self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         if self._missing_params_error_message:
@@ -599,7 +620,7 @@ class TunerInternal:
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                config={**param_space},
+                config=param_space,
                 resume=resume,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
