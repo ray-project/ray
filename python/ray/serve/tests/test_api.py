@@ -12,6 +12,7 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.application import Application
 from ray.serve.drivers import DAGDriver
+from ray.serve.exceptions import RayServeException
 
 
 @serve.deployment()
@@ -381,21 +382,17 @@ def test_shutdown_destructor(serve_instance):
 def test_run_get_ingress_app(serve_instance):
     """Check that serve.run() with an app returns the ingress."""
 
-    @serve.deployment(route_prefix=None)
-    def f():
-        return "got f"
-
     @serve.deployment(route_prefix="/g")
     def g():
         return "got g"
 
-    app = Application([f, g])
+    app = Application([g])
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_deployments(["f", "g"])
+    serve_instance.delete_deployments(["g"])
 
-    no_ingress_app = Application([f.options(route_prefix="/f"), g])
+    no_ingress_app = Application([g.options(route_prefix=None)])
     ingress_handle = serve.run(no_ingress_app)
     assert ingress_handle is None
 
@@ -562,10 +559,10 @@ def test_delete_application(serve_instance):
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
 
-def test_deployment_name_with_app_name():
+def test_deployment_name_with_app_name(serve_instance):
     """Test replica name with app name as prefix"""
 
-    controller = serve.context._global_client._controller
+    controller = serve_instance._controller
 
     @serve.deployment
     def g():
@@ -579,9 +576,74 @@ def test_deployment_name_with_app_name():
     def f():
         return "got f"
 
-    serve.run(f.bind(), name="app1")
+    serve.run(f.bind(), route_prefix="/f", name="app1")
     deployment_info = ray.get(controller._all_running_replicas.remote())
     assert "app1_f" in deployment_info
+
+
+def test_deploy_application_with_same_name(serve_instance):
+    """Test deploying two applications with the same name."""
+
+    controller = serve_instance._controller
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "got model"
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app_Model" in deployment_info
+
+    # After deploying a new app with the same name, no Model replicas should be running
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    handle = serve.run(Model1.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model1"
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app_Model1" in deployment_info
+    assert "app_Model" not in deployment_info or deployment_info["app_Model"] == []
+
+    # Redeploy with same app to update route prefix
+    handle = serve.run(Model1.bind(), name="app", route_prefix="/my_app")
+    assert requests.get("http://127.0.0.1:8000/my_app").text == "got model1"
+    assert requests.get("http://127.0.0.1:8000/").status_code == 404
+
+
+def test_deploy_application_with_route_prefix_conflict(serve_instance):
+    """Test route_prefix conflicts with different apps."""
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "got model"
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+
+    # Second app with the same route_prefix fails to be deployed
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    with pytest.raises(RayServeException):
+        handle = serve.run(Model1.bind(), name="app1")
+
+    # Update the route prefix
+    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
+    assert ray.get(handle.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/model1").text == "got model1"
+
+    # The "app" application should still work properly
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
 
 if __name__ == "__main__":
