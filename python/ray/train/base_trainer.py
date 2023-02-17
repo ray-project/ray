@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+import warnings
 
 import ray
 import ray.cloudpickle as pickle
@@ -279,9 +280,10 @@ class BaseTrainer(abc.ABC):
         with open(trainer_state_path, "rb") as fp:
             original_trainer = pickle.load(fp)
         if type(original_trainer) is not cls:
-            raise ValueError(
-                f"Invalid trainer type. Cannot restore a trainer of type "
-                f"{type(original_trainer)} with `{cls.__name__}.restore`. "
+            warnings.warn(
+                f"Invalid trainer type. You are attempting to restore a trainer of type "
+                f"'{type(original_trainer)}' with `{cls.__name__}.restore`, "
+                "which will most likely fail. "
                 f"Use `{type(original_trainer).__name__}.restore` instead."
             )
 
@@ -317,7 +319,14 @@ class BaseTrainer(abc.ABC):
             if val is not None:
                 param_dict[param_name] = val
 
-        trainer = cls(**param_dict)
+        try:
+            trainer = cls(**param_dict)
+        except Exception as e:
+            raise ValueError(
+                "Trainer restoration failed (see above for the stack trace). "
+                "Make sure that you use the right trainer class to restore: "
+                f"`{cls.__name__}.restore`\n"
+            ) from e
         trainer._restore_path = path
         return trainer
 
