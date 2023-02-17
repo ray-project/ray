@@ -3,18 +3,23 @@ from typing import Optional
 import argparse
 import json
 import os
+import tempfile
 import time
 
 import ray
 from ray import tune
+from ray.air import Checkpoint, session
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
 
-def fn_trainable(config, checkpoint_dir=None):
-    if checkpoint_dir:
-        with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
-            state = json.load(fp)
+def fn_trainable(config):
+    checkpoint = session.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
+                state = json.load(fp)
+            state["internal_iter"] += 1
     else:
         state = {"internal_iter": 0}
 
@@ -22,15 +27,19 @@ def fn_trainable(config, checkpoint_dir=None):
         state["internal_iter"] = i
         time.sleep(config["sleep_time"])
 
+        checkpoint = None
         if i % config["checkpoint_freq"] == 0:
-            with tune.checkpoint_dir(step=i) as cd:
-                with open(os.path.join(cd, "checkpoint.json"), "wt") as fp:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with open(os.path.join(tmpdir, "checkpoint.json"), "wt") as fp:
                     json.dump(state, fp)
+                checkpoint = Checkpoint.from_directory(tmpdir)
 
-        tune.report(
+        metrics = dict(
             score=i * 10 * config["score_multiplied"],
             internal_iter=state["internal_iter"],
         )
+
+        session.report(metrics, checkpoint=checkpoint)
 
 
 class RLlibCallback(DefaultCallbacks):
