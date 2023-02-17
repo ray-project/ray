@@ -1056,9 +1056,9 @@ def read_tfrecords(
         ...     writer.write(example.SerializeToString())
 
         >>> ds = ray.data.read_tfrecords(
-                [compressed_path],
-                arrow_open_stream_args={"compression": "gzip"},
-            )
+        ...     [compressed_path],
+        ...     arrow_open_stream_args={"compression": "gzip"},
+        ... )
         >>> ds.to_pandas()  # doctest: +SKIP
            length  width    species
         0     5.1    3.5  b'setosa'
