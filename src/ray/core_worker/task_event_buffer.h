@@ -162,7 +162,7 @@ class TaskEventThreadBuffer {
   }
 
  private:
-  static constexpr size_t kInitialTaskEventThreadBufferSize = 512;
+  static constexpr size_t kInitialTaskEventThreadBufferSize = 1024;
 
   std::unique_ptr<std::vector<TaskStatusEvent>> status_events_;
   std::unique_ptr<std::vector<TaskProfileEvent>> profile_events_;
