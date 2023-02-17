@@ -1,9 +1,7 @@
-from collections import deque
-from typing import Callable, List, Optional
+from typing import List
 
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
     RefBundle,
     PhysicalOperator,
 )
@@ -23,13 +21,13 @@ class OutputSplitter(PhysicalOperator):
         self,
         input_op: PhysicalOperator,
         n: int,
-        equal: bool,  # TODO: implement output locality
+        equal: bool,
     ):
         super().__init__(f"split({n}, equal={equal})", [input_op])
         self._n = n
         self._equal = equal
         # Buffer of bundles not yet assigned to shards.
-        self._buffer = []
+        self._buffer: List[RefBundle] = []
         # The outputted bundles with shard attribute set.
         self._output_queue: List[RefBundle] = []
         # The number of rows output to each shard so far.
@@ -54,30 +52,33 @@ class OutputSplitter(PhysicalOperator):
         self._dispatch_bundles()
 
     def inputs_done(self) -> None:
-        if self._equal:
-            # TODO: launch tasks to do the split and block until completion.
-            raise NotImplementedError
-        else:
-            assert not self._buffer
+        if not self._equal:
+            return
+        buffer_size = sum(b.num_rows() for b in self._buffer)
+        buffer_requirement = self._calculate_buffer_requirement(self._num_output)
+        assert buffer_size >= buffer_requirement, (
+            buffer_size,
+            buffer_requirement,
+            self._num_output,
+        )
+        # TODO: launch tasks to do the split and block until completion.
+        raise NotImplementedError
 
     def progress_str(self) -> str:
         if self._equal:
             return f"{len(self._buffer)} buffered"
-        else:
-            assert not self._buffer
-            return ""
+        assert not self._buffer
+        return ""
 
     def _dispatch_bundles(self) -> None:
-        """Dispatch all dispatchable bundles from the internal buffer.
-
-        This may not dispatch all bundles when equal=True.
-        """
+        # Dispatch all dispatchable bundles from the internal buffer.
+        # This may not dispatch all bundles when equal=True.
         while self._buffer:
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
                 target_bundle.shard = target_index
-                self._num_sent[i] += target_bundle.num_rows()
+                self._num_sent[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
             else:
                 # Put it back and abort.
@@ -85,7 +86,7 @@ class OutputSplitter(PhysicalOperator):
                 break
 
     def _select_output_index(self) -> int:
-        # Pick the consumer we'd like to dispatch for.
+        # Greedily dispatch to the consumer with the least data so far.
         i, _ = min(enumerate(self._num_output), key=lambda t: t[1])
         return i
 
@@ -94,13 +95,17 @@ class OutputSplitter(PhysicalOperator):
         return self._buffer.pop(0)
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
+        # Whether we can meet equality requirements with the given dispatch.
         if not self._equal:
             return True
-        result = self._num_output.copy()
-        result[i] += nrow
-        # Calculate the new number of rows that we'd need to equalize the row
-        # distribution after the bundle dispatch.
-        max_r = max(result)
-        buffer_requirement = sum([max_r - n for n in result])
+        output_distribution = self._num_output.copy()
+        output_distribution[target_index] += nrow
+        buffer_requirement = self._calculate_buffer_requirement(output_distribution)
         buffer_size = sum(b.num_rows() for b in self._buffer)
         return buffer_size >= buffer_requirement
+
+    def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
+        # Calculate the new number of rows that we'd need to equalize the row
+        # distribution after the bundle dispatch.
+        max_n = max(output_distribution)
+        return sum([max_n - n for n in output_distribution])
