@@ -182,6 +182,7 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
+    @PublicAPI(stability="alpha")
     @classmethod
     def restore(
         cls: Type["BaseTrainer"],
@@ -330,6 +331,7 @@ class BaseTrainer(abc.ABC):
         trainer._restore_path = path
         return trainer
 
+    @PublicAPI(stability="alpha")
     @classmethod
     def can_restore(cls: Type["BaseTrainer"], path: Union[str, Path]) -> bool:
         """Checks whether a given directory contains a restorable Train experiment.
