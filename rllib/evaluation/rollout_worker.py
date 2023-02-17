@@ -224,6 +224,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         num_gpus: Optional[Union[int, float]] = None,
         memory: Optional[int] = None,
         resources: Optional[dict] = None,
+        max_num_worker_restarts: int = 0,
     ) -> type:
         """Returns RolloutWorker class as a `@ray.remote using given options`.
 
@@ -247,7 +248,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             memory=memory,
             resources=resources,
             # Automatically restart failed workers.
-            max_restarts=-1,
+            max_restarts=max_num_worker_restarts,
         )(cls)
 
     @DeveloperAPI
