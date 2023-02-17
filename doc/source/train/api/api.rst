@@ -27,7 +27,7 @@ Trainer Base Classes
     ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` API
-************************
+*******************
 
 .. autosummary::
     :toctree: doc/
@@ -40,7 +40,7 @@ Trainer Base Classes
 
 
 Train Backend Base Classes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. _train-backend:
 .. _train-backend-config:
@@ -170,7 +170,7 @@ Mosaic
 
 
 Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
@@ -182,7 +182,7 @@ Reinforcement Learning (RLlib)
 .. _trainer-restore:
 
 Ray Train Experiment Restoration
----------------------------------
+--------------------------------
 
 .. autosummary::
     :toctree: doc/
@@ -200,7 +200,7 @@ Ray Train Experiment Restoration
 .. _train-framework-specific-restore:
 
 Restoration API for Built-in Trainers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
