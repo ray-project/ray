@@ -1565,13 +1565,12 @@ class Dataset(Generic[T]):
             # Gather read task names from input blocks of unioned Datasets,
             # and concat them before passing to resulting LazyBlockList
             read_task_names = []
-            self_read_name = self._plan._in_blocks._read_stage_name or "read"
+            self_read_name = self._plan._in_blocks._read_stage_name or "Read"
             read_task_names.append(self_read_name)
             other_read_names = [
-                o._plan._in_blocks._read_stage_name or "read" for o in other
+                o._plan._in_blocks._read_stage_name or "Read" for o in other
             ]
             read_task_names.extend(other_read_names)
-            read_task_names.append("union")
 
             for bl in bls:
                 tasks.extend(bl._tasks)
@@ -1579,7 +1578,7 @@ class Dataset(Generic[T]):
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
                 tasks,
-                "->".join(read_task_names),
+                f"Union({','.join(read_task_names)})",
                 block_partition_refs,
                 block_partition_meta_refs,
                 owned_by_consumer=owned_by_consumer,
