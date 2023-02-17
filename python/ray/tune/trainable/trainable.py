@@ -41,10 +41,13 @@ from ray.tune.result import (
     TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
-    EXPR_FILES,
 )
 from ray.tune import TuneError
 from ray.tune.utils import UtilMonitor, warn_if_slow
+from ray.tune.utils.callback import (
+    DEFAULT_CALLBACK_CLASSES,
+    _get_artifact_templates_for_callbacks,
+)
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
@@ -599,7 +602,9 @@ class Trainable:
 
         # Check if any files have actually been written
         # (apart from checkpoints and driver logs)
-        exclude = ("checkpoint_*",) + EXPR_FILES
+        exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
+            DEFAULT_CALLBACK_CLASSES
+        )
         excluded_files = []
         for exclude_template in exclude:
             excluded_files += [
@@ -625,9 +630,11 @@ class Trainable:
             threshold=10,
             disable=not self.uses_cloud_checkpointing,
         ):
-            # Avoid double uploading checkpoints and driver artifacts,
+            # Avoid double uploading checkpoints and driver callback artifacts,
             # if those live in the same directory
-            exclude = ("checkpoint_*",) + EXPR_FILES
+            exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
+                DEFAULT_CALLBACK_CLASSES
+            )
             uploaded = self._maybe_save_to_cloud(self.logdir, exclude=exclude)
         return uploaded
 
@@ -714,7 +721,9 @@ class Trainable:
             threshold=10,
             disable=not self.uses_cloud_checkpointing,
         ):
-            exclude = ("checkpoint_*",) + EXPR_FILES
+            exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
+                DEFAULT_CALLBACK_CLASSES
+            )
             uploaded = self._maybe_load_from_cloud(
                 remote_dir=remote_dir, local_dir=self.logdir, exclude=exclude
             )

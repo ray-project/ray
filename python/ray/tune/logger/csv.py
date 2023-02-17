@@ -76,6 +76,8 @@ class CSVLoggerCallback(LoggerCallback):
 
     """
 
+    _SAVED_FILE_TEMPLATES = [EXPR_PROGRESS_FILE]
+
     def __init__(self):
         self._trial_continue: Dict["Trial", bool] = {}
         self._trial_files: Dict["Trial", TextIO] = {}

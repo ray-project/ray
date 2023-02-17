@@ -1,10 +1,8 @@
-from typing import List, Optional
-
 import logging
 import os
+from typing import List, Optional, Type, Union
 
-from ray.tune.callback import Callback
-from ray.tune.progress_reporter import TrialProgressCallback
+from ray.tune.callback import Callback, CallbackList
 from ray.tune.syncer import SyncConfig
 from ray.tune.logger import (
     CSVLoggerCallback,
@@ -19,6 +17,23 @@ from ray.tune.logger import (
 from ray.tune.syncer import SyncerCallback
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_CALLBACK_CLASSES = (
+    CSVLoggerCallback,
+    JsonLoggerCallback,
+    TBXLoggerCallback,
+    SyncerCallback,
+)
+
+
+def _get_artifact_templates_for_callbacks(
+    callbacks: Union[List[Callback], List[Type[Callback]], CallbackList]
+) -> List[str]:
+    templates = []
+    for callback in callbacks:
+        templates += list(callback._SAVED_FILE_TEMPLATES)
+    return templates
 
 
 def _create_default_callbacks(
@@ -55,6 +70,8 @@ def _create_default_callbacks(
     has_csv_logger = False
     has_json_logger = False
     has_tbx_logger = False
+
+    from ray.tune.progress_reporter import TrialProgressCallback
 
     has_trial_progress_callback = any(
         isinstance(c, TrialProgressCallback) for c in callbacks
