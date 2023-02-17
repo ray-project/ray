@@ -24,7 +24,3 @@ aws:
             Throughput: 1000
             VolumeSize: 1000
             VolumeType: gp3
-
-    IamInstanceProfile:
-        # Arn: arn:aws:iam::959243851260:instance-profile/ray-autoscaler-v1
-        Arn: arn:aws:iam::188439194153:instance-profile/ray-autoscaler-v1

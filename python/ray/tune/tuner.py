@@ -8,7 +8,7 @@ from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
@@ -172,6 +172,7 @@ class Tuner:
         overwrite_trainable: Optional[
             Union[str, Callable, Type[Trainable], "BaseTrainer"]
         ] = None,
+        param_space: Optional[Dict[str, Any]] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -202,6 +203,15 @@ class Tuner:
                 This should be the same trainable that was used to initialize
                 the original Tuner.
                 NOTE: Starting in 2.5, this will be a required parameter.
+            param_space: The same `param_space` that was passed to
+                the original Tuner. This can be optionally re-specified due
+                to the `param_space` potentially containing Ray object
+                references (tuning over Ray Datasets or tuning over
+                several `ray.put` object references). **Tune expects the
+                `param_space` to be unmodified**, and the only part that
+                will be used during restore are the updated object references.
+                Changing the hyperparameter search space then resuming is NOT
+                supported by this API.
             resume_unfinished: If True, will continue to run unfinished trials.
             resume_errored: If True, will re-schedule errored trials and try to
                 restore from their latest checkpoints.
@@ -242,6 +252,7 @@ class Tuner:
                 restore_path=path,
                 resume_config=resume_config,
                 trainable=trainable,
+                param_space=param_space,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
@@ -251,6 +262,7 @@ class Tuner:
                 restore_path=path,
                 resume_config=resume_config,
                 trainable=trainable,
+                param_space=param_space,
             )
             return Tuner(_tuner_internal=tuner_internal)
 

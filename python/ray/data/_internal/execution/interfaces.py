@@ -70,6 +70,12 @@ class RefBundle:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
 
+    def __eq__(self, other) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return id(self)
+
 
 @dataclass
 class ExecutionResources:
@@ -150,8 +156,12 @@ class ExecutionOptions:
     # node (node driving the execution).
     locality_with_output: bool = False
 
-    # Set this to preserve the ordering between blocks processed by operators.
+    # Set this to preserve the ordering between blocks processed by operators under the
+    # streaming executor. The bulk executor always preserves order.
     preserve_order: bool = False
+
+    # Whether to enable locality-aware task dispatch to actors (on by default).
+    actor_locality_enabled: bool = True
 
 
 @dataclass
@@ -389,6 +399,13 @@ class Executor:
                 executor. These stats represent actions done to compute inputs.
         """
         raise NotImplementedError
+
+    def shutdown(self):
+        """Shutdown an executor, which may still be running.
+
+        This should interrupt execution and clean up any used resources.
+        """
+        pass
 
     def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far.
