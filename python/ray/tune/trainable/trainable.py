@@ -676,6 +676,18 @@ class Trainable:
         return True
 
     def _maybe_load_checkpoint_from_cloud(self, checkpoint_path: str) -> bool:
+        """Loads a checkpoint from its corresponding location in remote storage
+        to `checkpoint_path`.
+        If a checkpoint already exists at `checkpoint_path`, the Trainable
+        will continue restoring with that existing checkpoint.
+
+        Args:
+            checkpoint_path: The checkpoint path to download to, which should have
+                `logdir` as part of its path prefix (e.g., `{logdir}/checkpoint_00000`)
+
+        Return:
+            bool: True if the checkpoint was synced down successfully from cloud.
+        """
         if os.path.exists(checkpoint_path):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -683,7 +695,7 @@ class Trainable:
                 pass
             else:
                 # If the path exists locally, we don't have to download
-                return True
+                return False
 
         if not self.uses_cloud_checkpointing:
             return False
