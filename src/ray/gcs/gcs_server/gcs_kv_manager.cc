@@ -57,7 +57,9 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
   auto callback =
       [reply, send_reply_callback](std::unordered_map<std::string, std::string> results) {
         for (auto &result : results) {
-          (*reply->mutable_results())[result.first] = result.second;
+          auto entry = reply->add_results();
+          entry->set_key(result.first);
+          entry->set_value(result.second);
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       };

@@ -309,7 +309,7 @@ class GcsClient:
         req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
         reply = self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
-            return reply.results
+            return {entry.key: entry.value for entry in reply.results}
         elif reply.status.code == GcsCode.NotFound:
             return {}
         else:
@@ -504,7 +504,7 @@ class GcsAioClient:
         req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
         reply = await self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
-            return reply.results
+            return {entry.key: entry.value for entry in reply.results}
         else:
             raise RuntimeError(
                 f"Failed to get value for keys {keys!r} "
