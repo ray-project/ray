@@ -203,7 +203,7 @@ class PPOTfRLModule(TfRLModule):
         pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
         if self._is_discrete:
-            action_dist = TfCategorical(action_logits)
+            action_dist = TfCategorical(logits=action_logits)
         else:
             loc, log_std = tf.split(action_logits, num_or_size_splits=2, axis=1)
             scale = tf.math.exp(log_std)
