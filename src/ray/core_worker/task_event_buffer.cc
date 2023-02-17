@@ -114,8 +114,17 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
-
-  buffer_.set_capacity(RayConfig::instance().task_events_max_buffer_size());
+  auto buf_max_cap = RayConfig::instance().task_events_max_buffer_size();
+  auto buf_min_cap = RayConfig::instance().task_events_min_buffer_size();
+  if (buf_min_cap > buf_max_cap) {
+    RAY_LOG(WARNING)
+        << "RAY_task_events_max_buffer_size(" << buf_max_cap
+        << ") should not be smaller than the minimal buffer size(" << buf_min_cap
+        << ") by RAY_task_events_min_buffer_size). Setting minimal buffer size to "
+        << buf_max_cap;
+    buf_min_cap = buf_max_cap;
+  }
+  buffer_.set_capacity({buf_max_cap, buf_min_cap});
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
@@ -146,7 +155,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     return Status::OK();
   }
 
-  RAY_LOG(INFO) << "Reporting task events to GCS every " << report_interval_ms << "ms.";
+  RAY_LOG(INFO) << "Reporting task events to GCS every " << report_interval_ms
+                << "ms, with a circular buffer of capacity = (min=" << buf_min_cap
+                << ", max=" << buf_max_cap << ").";
   periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
                                        report_interval_ms,
                                        "CoreWorker.deadline_timer.flush_task_events");
@@ -182,13 +193,10 @@ void TaskEventBufferImpl::AddTaskProfileEvent(TaskProfileEvent e) {
     return;
   }
   buf_map_mutex_.ReaderLock();
-  InitTaskEventThreadBufferIfNeeded();
+  auto &buf = GetOrCreateThreadBuffer();
   buf_map_mutex_.AssertReaderHeld();
 
-  auto buf_itr = all_thd_buffer_.find(std::this_thread::get_id());
-
-  RAY_CHECK(buf_itr != all_thd_buffer_.end());
-  buf_itr->second.AddTaskProfileEvent(std::move(e));
+  buf.AddTaskProfileEvent(std::move(e));
   buf_map_mutex_.ReaderUnlock();
 }
 
@@ -197,19 +205,17 @@ void TaskEventBufferImpl::AddTaskStatusEvent(TaskStatusEvent e) {
     return;
   }
   buf_map_mutex_.ReaderLock();
-  InitTaskEventThreadBufferIfNeeded();
+  auto &buf = GetOrCreateThreadBuffer();
   buf_map_mutex_.AssertReaderHeld();
 
-  auto buf_itr = all_thd_buffer_.find(std::this_thread::get_id());
-
-  RAY_CHECK(buf_itr != all_thd_buffer_.end());
-  buf_itr->second.AddTaskStatusEvent(std::move(e));
+  buf.AddTaskStatusEvent(std::move(e));
   buf_map_mutex_.ReaderUnlock();
 }
 
-void TaskEventBufferImpl::InitTaskEventThreadBufferIfNeeded() {
-  if (all_thd_buffer_.count(std::this_thread::get_id())) {
-    return;
+TaskEventThreadBuffer &TaskEventBufferImpl::GetOrCreateThreadBuffer() {
+  auto itr = all_thd_buffer_.find(std::this_thread::get_id());
+  if (itr != all_thd_buffer_.end()) {
+    return itr->second;
   }
   buf_map_mutex_.AssertReaderHeld();
   buf_map_mutex_.ReaderUnlock();
@@ -221,6 +227,7 @@ void TaskEventBufferImpl::InitTaskEventThreadBufferIfNeeded() {
     buf_map_mutex_.WriterUnlock();
   }
   buf_map_mutex_.ReaderLock();
+  return all_thd_buffer_.at(std::this_thread::get_id());
 }
 
 void TaskEventBufferImpl::GatherThreadBuffer() {
@@ -238,7 +245,7 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
   for (auto &buf : all_status_bufs) {
     for (auto &event : *buf) {
-      auto rpc_event =
+      auto &rpc_event =
           agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
       event.ToRpcTaskEvents(&rpc_event);
     }
@@ -252,13 +259,34 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
     }
   }
 
+  size_t num_profile_events_dropped = 0;
+  size_t num_status_events_dropped = 0;
+  size_t num_add = 0;
   {
     absl::MutexLock lock(&mutex_);
     // Add to CB to stage for sending.
+    size_t prev_size = buffer_.size();
     for (auto &[_task_attempt, event] : agg_task_events) {
+      if (buffer_.full()) {
+        const auto &to_evict = buffer_.front();
+        if (to_evict.has_profile_events()) {
+          num_profile_events_dropped++;
+        }
+
+        if (to_evict.has_state_updates()) {
+          num_status_events_dropped++;
+        }
+      }
       buffer_.push_back(std::move(event));
     }
+
+    num_add = buffer_.size() - prev_size;
   }
+  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventDropped,
+                           num_profile_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventDropped,
+                           num_status_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskEventsStored, num_add);
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
@@ -266,25 +294,23 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     return;
   }
 
+  // Gather all threads' buffered events to circular buffer.
   GatherThreadBuffer();
 
-  size_t num_status_task_events_dropped = 0;
-  size_t num_profile_task_events_dropped = 0;
-  std::vector<rpc::TaskEvents> to_send;
-  to_send.reserve(RayConfig::instance().task_events_send_batch_size());
+  // Skip if GCS hasn't finished processing the previous message.
+  if (grpc_in_progress_ && !forced) {
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+        << "GCS hasn't replied to the previous flush events call (likely "
+           "overloaded). "
+           "Skipping reporting task state events and retry later."
+        << "[cur_buffer_size="
+        << stats_counter_.Get(TaskEventBufferCounter::kNumTaskEventsStored) << "].";
+    return;
+  }
 
+  std::vector<rpc::TaskEvents> to_send;
   {
     absl::MutexLock lock(&mutex_);
-
-    // Skip if GCS hasn't finished processing the previous message.
-    if (grpc_in_progress_ && !forced) {
-      RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-          << "GCS hasn't replied to the previous flush events call (likely "
-             "overloaded). "
-             "Skipping reporting task state events and retry later."
-          << "[cur_buffer_size=" << buffer_.size() << "].";
-      return;
-    }
 
     // No data to send.
     if (buffer_.empty()) {
@@ -298,14 +324,19 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
                    std::make_move_iterator(buffer_.begin()),
                    std::make_move_iterator(buffer_.begin() + num_to_send));
     buffer_.erase(buffer_.begin(), buffer_.begin() + num_to_send);
-
-    // Send and reset the counters
-    num_profile_task_events_dropped = num_profile_task_events_dropped_;
-    num_profile_task_events_dropped_ = 0;
-
-    num_status_task_events_dropped = num_status_task_events_dropped_;
-    num_status_task_events_dropped_ = 0;
   }
+
+  // Send and reset the counters
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskEventsStored, to_send.size());
+  size_t num_profile_task_events_dropped =
+      stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventDropped);
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskProfileEventDropped,
+                           num_profile_task_events_dropped);
+
+  size_t num_status_task_events_dropped =
+      stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventDropped);
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventDropped,
+                           num_status_task_events_dropped);
 
   // Convert to rpc::TaskEventsData
   auto data = std::make_unique<rpc::TaskEventData>();
@@ -317,30 +348,28 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_status_event_to_send = 0;
   for (auto &task_event : to_send) {
     auto events_by_task = data->add_events_by_task();
-    events_by_task->Swap(&task_event);
-
-    // if (task_event->IsProfileEvent()) {
-    //   num_profile_event_to_send++;
-    // } else {
-    //   num_status_event_to_send++;
-    // }
+    if (task_event.has_profile_events()) {
+      num_profile_event_to_send++;
+    }
+    if (task_event.has_state_updates()) {
+      num_status_event_to_send++;
+    }
+    *events_by_task = std::move(task_event);
   }
-  size_t data_size = data->ByteSizeLong();
+  // Some debug tracking.
+  stats_counter_.Increment(TaskEventBufferCounter::kTotalTaskEventsReported,
+                           to_send.size());
+  stats_counter_.Increment(TaskEventBufferCounter::kTotalTaskEventsBytesReported,
+                           data->ByteSizeLong());
 
   gcs::TaskInfoAccessor *task_accessor;
   {
     // Sending the protobuf to GCS.
     absl::MutexLock lock(&mutex_);
-    // Some debug tracking.
-    total_num_events_ += num_task_events;
-    total_events_bytes_ += data_size;
-    // The flag should be unset when on_complete is invoked.
-    grpc_in_progress_ = true;
     task_accessor = &gcs_client_->Tasks();
   }
 
   auto on_complete = [this, num_task_events](const Status &status) {
-    absl::MutexLock lock(&mutex_);
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Failed to push " << num_task_events
                        << " task state events to GCS. Data will be lost. [status="
@@ -349,9 +378,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     grpc_in_progress_ = false;
   };
 
+  // The flag should be unset when on_complete is invoked.
+  grpc_in_progress_ = true;
   auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
   {
-    absl::MutexLock lock(&mutex_);
     if (!status.ok()) {
       // If we couldn't even send the data by invoking client side callbacks, there's
       // something seriously wrong, and losing data in this case should not be too
@@ -362,8 +392,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       grpc_in_progress_ = false;
 
       // Fail to send, currently dropping events.
-      num_status_task_events_dropped_ += num_status_event_to_send;
-      num_profile_task_events_dropped_ += num_profile_event_to_send;
+      stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventDropped,
+                               num_profile_event_to_send);
+      stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventDropped,
+                               num_status_event_to_send);
     }
   }
 }
@@ -376,31 +408,22 @@ const std::string TaskEventBufferImpl::DebugString() {
     return ss.str();
   }
 
-  bool grpc_in_progress;
-  size_t num_status_task_events_dropped, num_profile_task_events_dropped,
-      data_buffer_size;
-  uint64_t total_events_bytes, total_num_events;
-
-  {
-    absl::MutexLock lock(&mutex_);
-    grpc_in_progress = grpc_in_progress_;
-    num_status_task_events_dropped = num_status_task_events_dropped_;
-    num_profile_task_events_dropped = num_profile_task_events_dropped_;
-    total_events_bytes = total_events_bytes_;
-    total_num_events = total_num_events_;
-    data_buffer_size = buffer_.size();
-  }
-
+  auto stats = stats_counter_.GetAll();
   ss << "\nIO Service Stats:\n";
   ss << io_service_.stats().StatsString();
   ss << "\nOther Stats:"
-     << "\n\tgrpc_in_progress:" << grpc_in_progress
-     << "\n\tcurrent number of task events in buffer: " << data_buffer_size
-     << "\n\ttotal task events sent: " << 1.0 * total_events_bytes / 1024 / 1024 << " MiB"
-     << "\n\ttotal number of task events sent: " << total_num_events
-     << "\n\tnum status task events dropped: " << num_status_task_events_dropped
-     << "\n\tnum profile task events dropped: " << num_profile_task_events_dropped
-     << "\n";
+     << "\n\tgrpc_in_progress:" << grpc_in_progress_
+     << "\n\tcurrent number of task events in buffer: "
+     << stats[TaskEventBufferCounter::kNumTaskEventsStored]
+     << "\n\ttotal task events sent: "
+     << 1.0 * stats[TaskEventBufferCounter::kTotalTaskEventsBytesReported] / 1024 / 1024
+     << " MiB"
+     << "\n\ttotal number of task events sent: "
+     << stats[TaskEventBufferCounter::kTotalTaskEventsReported]
+     << "\n\tnum status task events dropped: "
+     << stats[TaskEventBufferCounter::kNumTaskProfileEventDropped]
+     << "\n\tnum profile task events dropped: "
+     << stats[TaskEventBufferCounter::kNumTaskStatusEventDropped] << "\n";
 
   return ss.str();
 }

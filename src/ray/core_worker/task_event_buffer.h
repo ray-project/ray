@@ -27,6 +27,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -124,7 +125,6 @@ class TaskProfileEvent : public TaskEvent {
   void SetExtraData(const std::string &extra_data) { extra_data_ = extra_data; }
 
  private:
-  // TODO
   friend class TaskEventBufferImpl;
   /// The below fields mirror rpc::ProfileEvent
   const std::string component_type_;
@@ -149,21 +149,31 @@ class TaskEventThreadBuffer {
 
   std::unique_ptr<std::vector<TaskStatusEvent>> ResetStatusEventBuffer() {
     auto new_buffer = std::make_unique<std::vector<TaskStatusEvent>>();
-    new_buffer->reserve(1000);
+    new_buffer->reserve(kInitialTaskEventThreadBufferSize);
     new_buffer.swap(status_events_);
     return new_buffer;
   }
 
   std::unique_ptr<std::vector<TaskProfileEvent>> ResetProfileEventBuffer() {
     auto new_buffer = std::make_unique<std::vector<TaskProfileEvent>>();
-    new_buffer->reserve(1000);
+    new_buffer->reserve(kInitialTaskEventThreadBufferSize);
     new_buffer.swap(profile_events_);
     return new_buffer;
   }
 
  private:
+  static constexpr size_t kInitialTaskEventThreadBufferSize = 512;
+
   std::unique_ptr<std::vector<TaskStatusEvent>> status_events_;
   std::unique_ptr<std::vector<TaskProfileEvent>> profile_events_;
+};
+
+enum TaskEventBufferCounter {
+  kNumTaskProfileEventDropped,
+  kNumTaskStatusEventDropped,
+  kTotalTaskEventsReported,
+  kTotalTaskEventsBytesReported,
+  kNumTaskEventsStored,
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,
@@ -245,10 +255,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  // void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
-  //     LOCKS_EXCLUDED(mutex_) override;
-
   void AddTaskStatusEvent(TaskStatusEvent e) override;
+
   void AddTaskProfileEvent(TaskProfileEvent e) override;
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
@@ -262,29 +270,28 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
 
  private:
-  void InitTaskEventThreadBufferIfNeeded() NO_THREAD_SAFETY_ANALYSIS;
-  /// Test only functions.
-  // std::vector<std::reference_wrapper<const TaskEvent>> GetAllTaskEvents()
-  //     LOCKS_EXCLUDED(mutex_) {
-  //   GatherThreadBuffer();
-  //   absl::MutexLock lock(&mutex_);
-  //   std::vector<std::reference_wrapper<const TaskEvent>> copy;
-  //   for (const auto &e : buffer_) {
-  //     copy.push_back(std::cref(*e));
-  //   }
-  //   return copy;
-  // }
+  /// @brief Get or initialize the thread buffer.
+  /// @return Reference to the thread buffer.
+  TaskEventThreadBuffer &GetOrCreateThreadBuffer() SHARED_LOCKS_REQUIRED(buf_map_mutex_);
+
+  /// @brief Gather all the task events stored in the threaded buffer into the circular
+  /// buffer `buffer_`.
+  void GatherThreadBuffer() LOCKS_EXCLUDED(buf_map_mutex_, mutex_);
 
   /// Test only functions.
-  size_t GetNumStatusTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    return num_status_task_events_dropped_;
+  size_t GetNumTaskEventsStored() {
+    GatherThreadBuffer();
+    return stats_counter_.Get(TaskEventBufferCounter::kNumTaskEventsStored);
   }
 
   /// Test only functions.
-  size_t GetNumProfileTaskEventsDropped() LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
-    return num_profile_task_events_dropped_;
+  size_t GetNumStatusTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventDropped);
+  }
+
+  /// Test only functions.
+  size_t GetNumProfileTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventDropped);
   }
 
   /// Test only functions.
@@ -293,12 +300,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
-  void GatherThreadBuffer();
-
-  /// Mutex guarding task_events_data_.
+  /// Mutex guarding buffer_ and other internal fields.
   absl::Mutex mutex_;
-  /// Mutex guarding task_events_data_.
-  absl::Mutex buf_map_mutex_;
 
   /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
@@ -319,27 +322,20 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer_space_optimized<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+
+  /// Mutex guarding `all_thd_buffer_`.
+  absl::Mutex buf_map_mutex_;
 
   /// Per thread buffer.
   absl::flat_hash_map<std::thread::id, TaskEventThreadBuffer> all_thd_buffer_;
 
-  /// Number of profile task events dropped since the last report flush.
-  size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
-
-  /// Number of status task events dropped since the last report flush.
-  size_t num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
-
   /// True if there's a pending gRPC call. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
+  std::atomic<bool> grpc_in_progress_ = false;
 
-  /// Debug stats: total number of bytes of task events sent so far to GCS.
-  uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
-
-  /// Debug stats: total number of task events sent so far to GCS.
-  uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
+  CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
