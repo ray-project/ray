@@ -2,6 +2,7 @@ import copy
 from datetime import datetime
 import logging
 import os
+from pathlib import Path
 import platform
 import shutil
 import sys
@@ -587,13 +588,30 @@ class Trainable:
 
         return max(checkpoint_candidates)
 
-    def _maybe_save_artifacts_to_cloud(self) -> bool:
+    @property
+    def _should_upload_artifacts(self) -> bool:
         if not self.sync_config.sync_artifacts:
             return False
 
         if self._last_artifact_sync_iter == self.iteration:
             # No need to sync again, if we have already synced this iteration.
             return False
+
+        # Check if any files have actually been written
+        # (apart from checkpoints and driver logs)
+        exclude = ("checkpoint_*",) + EXPR_FILES
+        excluded_files = []
+        for exclude_template in exclude:
+            excluded_files += [
+                path.name for path in Path(self.logdir).glob(exclude_template)
+            ]
+        artifact_files = set(os.listdir(self.logdir)) - set(excluded_files)
+        return bool(artifact_files)
+
+    def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if not self._should_upload_artifacts:
+            return False
+
         self._last_artifact_sync_iter = self.iteration
         with warn_if_slow(
             name="trial_artifact_cloud_upload",
