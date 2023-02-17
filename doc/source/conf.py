@@ -204,6 +204,14 @@ linkcheck_ignore = [
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
     r"^http:/$",  # Ignore incomplete links
+    # 403 Client Error: Forbidden for url.
+    # They ratelimit bots.
+    "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
+    # 403 Client Error: Forbidden for url.
+    # They ratelimit bots.
+    "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+    # Returning 522s intermittently.
+    "https://lczero.org/",
 ]
 
 # -- Options for HTML output ----------------------------------------------

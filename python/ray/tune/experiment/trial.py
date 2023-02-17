@@ -971,7 +971,7 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
-        return copy.deepcopy(state)
+        return state
 
     def __setstate__(self, state):
         if state["status"] == Trial.RUNNING:

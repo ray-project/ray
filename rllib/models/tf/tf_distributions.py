@@ -240,7 +240,7 @@ class TfDeterministic(Distribution):
             raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
 
         shape = sample_shape + self.loc.shape
-        return tf.ones(shape, dtype=self.loc) * self.loc
+        return tf.ones(shape, dtype=self.loc.dtype) * self.loc
 
     def rsample(
         self,
