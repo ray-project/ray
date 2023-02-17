@@ -223,10 +223,10 @@ export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
         <a
           href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
           target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a flame graph."
+          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
           rel="noreferrer"
         >
-          Flame&nbsp;Graph
+          CPU&nbsp;Flame&nbsp;Graph
         </a>
         <br />
       </TableCell>

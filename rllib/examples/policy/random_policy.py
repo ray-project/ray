@@ -1,12 +1,17 @@
-from gym.spaces import Box
+from gymnasium.spaces import Box
 import numpy as np
 import random
 import tree  # pip install dm_tree
+from typing import (
+    List,
+    Optional,
+    Union,
+)
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ModelWeights
+from ray.rllib.utils.typing import ModelWeights, TensorStructType, TensorType
 
 
 class RandomPolicy(Policy):
@@ -42,10 +47,10 @@ class RandomPolicy(Policy):
     @override(Policy)
     def compute_actions(
         self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
+        obs_batch: Union[List[TensorStructType], TensorStructType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
         **kwargs
     ):
         # Alternatively, a numpy array would work here as well.

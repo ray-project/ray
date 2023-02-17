@@ -46,14 +46,14 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be sdk_command or client (job to be implemented soon).
-#    # Uses either Anyscale SDK commands or the Ray client to run the actual
-#    # release test.
-#    type: sdk_command
+#    # Type of test. Can be job, sdk_command or client.
+#    # Uses either Ray jobs, anyscale jobs, anyscale SDK commands
+#    # or the Ray client to run the actual release test.
+#    type: anyscale_job
 #
 #    # File manager to use to transfer files to and from the cluster.
 #    # Can be any of [sdk, client, job].
-#    file_manager: sdk
+#    file_manager: job
 #
 #    # If you want to wait for nodes to be ready, you can specify this here:
 #    wait_for_nodes:
@@ -103,7 +103,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -114,8 +114,7 @@
     script: python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
-
-    type: sdk_command
+    type: anyscale_job
 
   alert: default
 
@@ -129,7 +128,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
@@ -141,9 +140,8 @@
     long_running: true
     wait_for_nodes:
       num_nodes: 2
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: disabled
@@ -160,7 +158,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -172,9 +170,8 @@
 
     wait_for_nodes:
       num_nodes: 20
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -185,7 +182,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: xgboost_app_config.yaml
@@ -197,9 +194,8 @@
 
     wait_for_nodes:
       num_nodes: 11
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: disabled
@@ -216,7 +212,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -228,9 +224,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -240,7 +235,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -253,8 +248,7 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: job
+    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -278,7 +272,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -287,9 +281,8 @@
   run:
     timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -300,7 +293,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -309,9 +302,8 @@
   run:
     timeout: 3600
     script: python workloads/gpu_batch_prediction.py --data-size-gb 20
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -322,7 +314,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -333,9 +325,10 @@
   run:
     timeout: 10800
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
+    wait_for_nodes:
+        num_nodes: 4
 
   alert: default
 
@@ -346,7 +339,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -358,9 +351,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -371,7 +363,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -383,9 +375,8 @@
 
     wait_for_nodes:
       num_nodes: 8
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -395,7 +386,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -407,9 +398,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -420,7 +410,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -432,9 +422,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -445,7 +434,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -454,9 +443,8 @@
   run:
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -467,7 +455,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -478,12 +466,11 @@
   run:
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -494,7 +481,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -504,13 +491,12 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -533,7 +519,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -542,9 +528,8 @@
   run:
     timeout: 3600
     script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -555,7 +540,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -569,9 +554,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -592,8 +576,6 @@
   run:
     timeout: 3600
     script: bash file_size_benchmark.sh
-    type: sdk_command
-    file_manager: sdk
 
 # Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
@@ -612,8 +594,6 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
-    type: sdk_command
-    file_manager: sdk
 
 # Test additional CPU nodes for preprocessing.
 - name: ray-data-bulk-ingest-heterogeneity-benchmark
@@ -635,8 +615,6 @@
 
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
-    type: sdk_command
-    file_manager: sdk
 
 #######################
 # XGBoost release tests
@@ -678,7 +656,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -690,9 +668,8 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -706,7 +683,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_gpu.yaml
@@ -718,9 +695,8 @@
 
     wait_for_nodes:
       num_nodes: 5
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -734,7 +710,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -745,11 +721,10 @@
     script: python workloads/distributed_api_test.py
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_elastic
   group: XGBoost
@@ -761,7 +736,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -773,11 +748,10 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_ft_small_non_elastic
   group: XGBoost
@@ -789,7 +763,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -801,11 +775,10 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
-  alert: xgboost_tests
+  alert: default
 
 - name: xgboost_tune_small
   group: XGBoost
@@ -817,7 +790,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -829,9 +802,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -845,7 +817,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -857,9 +829,8 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -873,7 +844,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -885,9 +856,8 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -930,7 +900,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -941,9 +911,8 @@
     script: python workloads/train_moderate.py
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -957,7 +926,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -969,9 +938,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -985,7 +953,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -994,12 +962,11 @@
   run:
     timeout: 900
     script: python workloads/ft_small_non_elastic.py
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -1013,7 +980,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1024,9 +991,7 @@
     script: python workloads/tune_small.py
     wait_for_nodes:
       num_nodes: 4
-
-    type: sdk_command
-    file_manager: job
+    type: anyscale_job
 
   alert: default
 
@@ -1040,7 +1005,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1051,9 +1016,8 @@
     script: python workloads/tune_16x4.py
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -1067,7 +1031,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1078,9 +1042,8 @@
     script: python workloads/tune_4x16.py
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -1335,7 +1298,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1347,9 +1310,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1365,7 +1327,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1377,9 +1339,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1395,7 +1356,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1407,9 +1368,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1425,7 +1385,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_ml.yaml
@@ -1439,9 +1399,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1457,7 +1416,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_ml.yaml
@@ -1470,9 +1429,8 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1581,7 +1539,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1590,8 +1548,7 @@
   run:
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
-    type: sdk_command
-    file_manager: sdk
+    type: anyscale_job
 
   alert: tune_tests
 
@@ -1605,7 +1562,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1616,9 +1573,8 @@
     script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
     wait_for_nodes:
       num_nodes: 16
+    type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1632,7 +1588,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1642,8 +1598,7 @@
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
+    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -1662,7 +1617,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1674,9 +1629,7 @@
     script: python workloads/test_network_overhead.py
     wait_for_nodes:
       num_nodes: 100
-
-    type: sdk_command
-    file_manager: sdk
+    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -1685,7 +1638,7 @@
       cluster_compute: tpl_20x2.yaml
 
     run:
-      timeout: 400
+      timeout: 500
       prepare_timeout: 600
       wait_for_nodes:
         num_nodes: 20
@@ -1702,7 +1655,7 @@
 
   frequency: nightly-3x
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1711,12 +1664,10 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_cluster.py
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 16
-
-    type: sdk_command
-    file_manager: sdk
 
   alert: tune_tests
 
@@ -1739,8 +1690,8 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    type: sdk_command
-    file_manager: sdk
+    # Not an anyscale_job as it fails due to extra overhead
+    type: job
 
   alert: tune_tests
 
@@ -1754,7 +1705,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_data.yaml
@@ -1767,8 +1718,8 @@
     wait_for_nodes:
       num_nodes: 16
 
-    type: sdk_command
-    file_manager: sdk
+    type: anyscale_job
+
 
   alert: tune_tests
 
@@ -1824,8 +1775,6 @@
     prepare: ray stop
     script: python workloads/actor_deaths.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1843,7 +1792,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1856,8 +1805,6 @@
     wait_for_nodes:
       num_nodes: 3
 
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1875,7 +1822,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1885,8 +1832,6 @@
     timeout: 86400
     script: python workloads/impala.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1914,8 +1859,6 @@
     prepare: ray stop
     script: python workloads/many_actor_tasks.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1943,8 +1886,6 @@
     prepare: ray stop
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -1977,8 +1918,6 @@
     wait_for_nodes:
       num_nodes: 1
 
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -2006,8 +1945,6 @@
     prepare: ray stop
     script: python workloads/many_tasks.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -2035,8 +1972,6 @@
     prepare: ray stop
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -2064,8 +1999,6 @@
     prepare: ray stop
     script: python workloads/node_failures.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -2094,8 +2027,6 @@
     prepare: ray stop
     script: python workloads/pbt.py
     long_running: true
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -2123,8 +2054,6 @@
     prepare: ray stop
     script: python workloads/serve.py
     long_running: true
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -2138,7 +2067,7 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: serve_failure
@@ -2155,8 +2084,6 @@
     prepare: ray stop
     script: python workloads/serve_failure.py
     long_running: true
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -2186,8 +2113,6 @@
     timeout: 86400
     script: python workloads/long_running_many_jobs.py --num-clients=1
     long_running: true
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: nightly
@@ -2216,8 +2141,6 @@
     timeout: 86400
     script: python workloads/pytorch_pbt_failure.py
     long_running: true
-    type: sdk_command
-    file_manager: job
 
   smoke_test:
     frequency: disabled
@@ -2251,8 +2174,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2277,8 +2198,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2287,6 +2206,7 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+  env: staging_v2
   legacy:
     test_name: jobs_remote_multi_node
     test_suite: jobs_tests
@@ -2299,14 +2219,14 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: job
-    file_manager: job
+    type: anyscale_job
 
 - name: jobs_check_cuda_available
   group: Jobs tests
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+  env: staging_v2
   legacy:
     test_name: jobs_check_cuda_available
     test_suite: jobs_tests
@@ -2318,8 +2238,7 @@
     script: python workloads/jobs_check_cuda_available.py
     wait_for_nodes:
       num_nodes: 2
-    type: job
-    file_manager: job
+    type: anyscale_job
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
@@ -2338,8 +2257,6 @@
     wait_for_nodes:
       num_nodes: 2
 
-    type: sdk_command
-    file_manager: job
 
 ########################
 # Runtime env tests
@@ -2365,8 +2282,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2391,8 +2306,6 @@
     wait_for_nodes:
       num_nodes: 1
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2445,8 +2358,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/single_deployment_1k_noop_replica.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2469,8 +2380,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/multi_deployment_1k_noop_replica.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2493,8 +2402,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/autoscaling_single_deployment.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2517,8 +2424,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/autoscaling_multi_deployment.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2541,8 +2446,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_micro_benchmark.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2566,8 +2469,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_micro_benchmark.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2591,8 +2492,6 @@
     timeout: 3600
     long_running: false
     script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
-    type: sdk_command
-    file_manager: job
 
   alert: default
   stable: False
@@ -2616,8 +2515,6 @@
     timeout: 3600
     long_running: false
     script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
-    type: sdk_command
-    file_manager: job
 
   alert: default
   stable: False
@@ -2641,8 +2538,6 @@
     timeout: 3600
     long_running: false
     script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
-    type: sdk_command
-    file_manager: job
 
   alert: default
   stable: False
@@ -2666,8 +2561,6 @@
     timeout: 3600
     long_running: false
     script: python workloads/serve_handle_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
-    type: sdk_command
-    file_manager: job
 
   alert: default
   stable: False
@@ -2692,8 +2585,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_protocol_benchmark.py --data-size=1048576
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2716,8 +2607,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2741,8 +2630,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_resnet_benchmark.py --gpu-env
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2769,8 +2656,6 @@
     wait_for_nodes:
       num_nodes: 2
 
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -2778,7 +2663,7 @@
 # RLlib tests
 ########################
 
-- name: rllib_learning_tests_a2c
+- name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2787,22 +2672,21 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a2c
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_a3c
+- name: rllib_learning_tests_a2c_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2811,7 +2695,29 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_a3c_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
   env: staging
 
   cluster:
@@ -2820,13 +2726,63 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a3c
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_apex
+# TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
+#- name: rllib_learning_tests_a3c_torch
+#  group: RLlib tests
+#  working_dir: rllib_tests
+
+#  legacy:
+#    test_name: learning_tests
+#    test_suite: rllib_tests
+
+#  frequency: nightly
+#  team: rllib
+#  env: staging
+
+#  cluster:
+#    cluster_env: app_config.yaml
+#    cluster_compute: 32cpus.yaml
+
+#  run:
+#    timeout: 18000
+#    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=torch
+#    type: sdk_command
+#    file_manager: job
+
+#  alert: default
+
+- name: rllib_learning_tests_apex_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_24cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_apex_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2835,7 +2791,265 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_24cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_appo_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf
+
+  alert: default
+
+- name: rllib_learning_tests_appo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_bc_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=tf
+
+  alert: default
+
+- name: rllib_learning_tests_bc_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_cql_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=cql --framework=tf
+
+  alert: default
+
+- name: rllib_learning_tests_cql_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=cql --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_ddpg_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_ddpg_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_dqn_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_dqn_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_es_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
   env: staging
 
   cluster:
@@ -2844,13 +3058,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=apex
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=es --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_appo
+- name: rllib_learning_tests_es_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2859,22 +3072,21 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 2gpus_64cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=es --framework=torch
+
 
   alert: default
 
-- name: rllib_learning_tests_ppo
+- name: rllib_learning_tests_impala_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2883,31 +3095,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-- name: rllib_learning_tests_bc
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2916,13 +3104,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=bc
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=impala --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_cql
+- name: rllib_learning_tests_impala_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2931,7 +3118,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2940,13 +3127,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=cql
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=impala --framework=torch
+
 
   alert: default
 
-- name: rllib_learning_tests_ddpg
+- name: rllib_learning_tests_marwil_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2954,104 +3140,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ddpg
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-- name: rllib_learning_tests_dqn
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=dqn
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-- name: rllib_learning_tests_es
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=es
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-- name: rllib_learning_tests_impala
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=impala
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-- name: rllib_learning_tests_marwil
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3060,14 +3153,38 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=marwil
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=tf
+
 
   alert: default
 
+- name: rllib_learning_tests_marwil_torch
+  group: RLlib tests
+  working_dir: rllib_tests
 
-- name: rllib_learning_tests_sac
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_ppo_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3076,7 +3193,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3085,13 +3202,38 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=sac
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_slateq
+- name: rllib_learning_tests_ppo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_sac_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3100,23 +3242,21 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=slateq
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=sac --framework=tf
+
 
   alert: default
 
-
-- name: rllib_learning_tests_td3
+- name: rllib_learning_tests_sac_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3125,21 +3265,113 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=td3
-    type: sdk_command
-    file_manager: job
+    script: python learning_tests/run.py --yaml-sub-dir=sac --framework=torch
 
   alert: default
 
+- name: rllib_learning_tests_slateq_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_slateq_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_td3_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_td3_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rllib
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=torch
+
+
+  alert: default
 
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
@@ -3150,7 +3382,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3160,8 +3392,6 @@
   run:
     timeout: 7200
     script: python multi_gpu_learning_tests/run.py
-    type: sdk_command
-    file_manager: job
 
   alert: default
 
@@ -3174,7 +3404,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3184,8 +3414,7 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
-    type: sdk_command
-    file_manager: job
+
 
   alert: default
 
@@ -3198,7 +3427,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3208,8 +3437,7 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_attention_learning_tests/run.py
-    type: sdk_command
-    file_manager: job
+
 
   alert: default
 
@@ -3222,7 +3450,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3236,8 +3464,7 @@
     wait_for_nodes:
       num_nodes: 6
 
-    type: sdk_command
-    file_manager: job
+
 
   smoke_test:
     frequency: nightly
@@ -3271,8 +3498,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: stress_test_placement_group
   group: core-multi-test
@@ -3292,30 +3517,6 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
     type: sdk_command
-    file_manager: sdk
-
-- name: shuffle_1tb_5000_partitions
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_1tb_5000_partitions
-    test_suite: nightly_tests
-
-  frequency: nightly-3x
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
-
-  run:
-    timeout: 9000
-    script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
-    wait_for_nodes:
-      num_nodes: 20
-
-    type: sdk_command
-    file_manager: sdk
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
@@ -3334,8 +3535,6 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
-    type: sdk_command
-    file_manager: sdk
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3356,8 +3555,6 @@
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: microbenchmark
   group: core-daily-test
@@ -3433,8 +3630,6 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
       200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: dask_on_ray_large_scale_test_spilling
   group: core-daily-test
@@ -3457,8 +3652,6 @@
     wait_for_nodes:
       num_nodes: 21
 
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3493,8 +3686,6 @@
     script: python stress_tests/test_state_api_scale.py
     wait_for_nodes:
       num_nodes: 7
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3527,8 +3718,6 @@
     script: python stress_tests/test_state_api_with_other_tests.py
       nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6"
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: stress_test_many_tasks
   group: core-daily-test
@@ -3544,13 +3733,11 @@
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 14400
     wait_for_nodes:
       num_nodes: 101
 
     script: python stress_tests/test_many_tasks.py
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3584,8 +3771,6 @@
       num_nodes: 101
 
     script: python stress_tests/test_dead_actors.py
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3645,9 +3830,6 @@
 #       num_nodes: 201
 #       timeout: 600
 #
-#     type: sdk_command
-#     file_manager: sdk
-#
 #   smoke_test:
 #     frequency: nightly
 #     cluster:
@@ -3680,8 +3862,22 @@
     timeout: 500
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
-    type: sdk_command
-    file_manager: sdk
+
+- name: tune_air_oom
+  group: core-daily-test
+  working_dir: air_tests
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
+    cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
+
+  run:
+    timeout: 3600
+    script: bash oom/tune_air_oom.sh
+
 
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
@@ -3704,31 +3900,51 @@
     wait_for_nodes:
       num_nodes: 32
 
-    type: sdk_command
-    file_manager: sdk
 
-- name: many_nodes_actor_test
+- name: many_nodes_actor_test_on_v2
   group: core-daily-test
-  working_dir: nightly_tests
+  working_dir: benchmarks
   legacy:
     test_name: many_nodes_actor_test
-    test_suite: nightly_tests
+    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
+  env: staging_v2
   cluster:
-    cluster_env: many_nodes_tests/app_config.yaml
-    cluster_compute: many_nodes_tests/compute_config.yaml
+    cluster_env: distributed/many_nodes_tests/app_config.yaml
+    cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
-    timeout: 7200
-    script: python many_nodes_tests/actor_test.py
+    timeout: 3600
+    # 2cpus per node x 1000 nodes / 0.2 cpus per actor = 10k
+    # 2cpus per node x 2000 nodes / 0.2 cpus per actor = 20k
+    script: python distributed/many_nodes_tests/actor_test.py --no-wait --cpus-per-actor=0.2 --total-actors 10000 20000
+    type: anyscale_job
     wait_for_nodes:
-      num_nodes: 251
+      num_nodes: 500
 
-    type: sdk_command
-    file_manager: sdk
-
+#- name: many_nodes_multi_master_test
+#  group: core-daily-test
+#  working_dir: nightly_tests
+#  legacy:
+#    test_name: many_nodes_multi_master_test
+#    test_suite: nightly_tests
+#
+#  frequency: nightly-3x
+#  team: core
+#  cluster:
+#    cluster_env: many_nodes_tests/app_config.yaml
+#    cluster_compute: many_nodes_tests/compute_config.yaml
+#
+#  run:
+#    timeout: 7200
+#    script: python many_nodes_tests/multi_master_test.py
+#    wait_for_nodes:
+#      num_nodes: 251
+#
+#    type: sdk_command
+#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
@@ -3746,8 +3962,6 @@
   run:
     timeout: 1200
     script: python placement_group_tests/pg_run.py
-    type: sdk_command
-    file_manager: sdk
 
 - name: placement_group_performance_test
   group: core-daily-test
@@ -3768,8 +3982,6 @@
     wait_for_nodes:
       num_nodes: 5
 
-    type: sdk_command
-    file_manager: sdk
 
 
 #########################
@@ -3794,8 +4006,8 @@
     timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: object_store
   group: core-scalability-test
@@ -3815,9 +4027,9 @@
     script: python object_store/test_object_store.py
     wait_for_nodes:
       num_nodes: 50
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_actors
   group: core-scalability-test
@@ -3837,9 +4049,9 @@
     script: python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 65
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_actors_smoke_test
   group: core-scalability-test
@@ -3859,9 +4071,9 @@
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 2
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_tasks
   group: core-scalability-test
@@ -3881,9 +4093,9 @@
     script: python distributed/test_many_tasks.py --num-tasks=10000
     wait_for_nodes:
       num_nodes: 65
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -3895,6 +4107,8 @@
       script: python distributed/test_many_tasks.py --num-tasks=100
       wait_for_nodes:
         num_nodes: 2
+      # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_pgs
@@ -3915,9 +4129,9 @@
     script: python distributed/test_many_pgs.py
     wait_for_nodes:
       num_nodes: 65
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_pgs_smoke_test
   group: core-scalability-test
@@ -3937,9 +4151,9 @@
     script: SMOKE_TEST=1 python distributed/test_many_pgs.py
     wait_for_nodes:
       num_nodes: 2
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_nodes
   group: core-scalability-test
@@ -3961,9 +4175,9 @@
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
       num_nodes: 250
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
@@ -3985,9 +4199,9 @@
 
     wait_for_nodes:
       num_nodes: 32
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 # - name: scheduling_test_many_5s_tasks_single_node
 #   group: core-scalability-test
@@ -4011,8 +4225,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#     type: sdk_command
-#     file_manager: sdk
 #   stable: false
 
 # - name: scheduling_test_many_5s_tasks_many_nodes
@@ -4037,8 +4249,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#     type: sdk_command
-#     file_manager: sdk
 #   stable: false
 
 ###############
@@ -4046,7 +4256,7 @@
 ###############
 
 - name: inference
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: inference
@@ -4063,12 +4273,12 @@
     script: python inference.py
     wait_for_nodes:
       num_nodes: 2
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: shuffle_data_loader
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: shuffle_data_loader
@@ -4083,11 +4293,11 @@
   run:
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: parquet_metadata_resolution
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: parquet_metadata_resolution
@@ -4096,20 +4306,19 @@
   frequency: nightly
   team: data
   cluster:
-    cluster_env: pipelined_training_app.yaml
-    cluster_compute: pipelined_training_compute.yaml
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    timeout: 1200
+    # Expect the test to finish around 40 seconds.
+    timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
-    wait_for_nodes:
-      num_nodes: 15
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: dataset_random_access
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   stable: false
 
@@ -4124,12 +4333,12 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: pipelined_data_ingest_benchmark
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4143,12 +4352,12 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: aggregate_benchmark
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4160,12 +4369,30 @@
   run:
     timeout: 1800
     script: python aggregate_benchmark.py
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
+
+- name: read_parquet_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish less than 4 mins.
+    timeout: 300
+    script: python read_parquet_benchmark.py
+
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: read_images_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4177,12 +4404,12 @@
   run:
     timeout: 1800
     script: python read_images_benchmark.py
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: read_tfrecords_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4196,11 +4423,65 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
+
+- name: map_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python map_batches_benchmark.py
+
+    # Works fine as an anyscale job
+    # type: anyscale_job
+
+- name: iter_tensor_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py
+
+    # Works fine as an anyscale job
+    # type: anyscale_job
+
+- name: iter_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 12 minutes.
+    timeout: 1080
+    script: python iter_batches_benchmark.py
+
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: pipelined_training_50_gb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_training_50_gb
@@ -4217,13 +4498,14 @@
     script: python pipelined_training.py --epochs 1
     wait_for_nodes:
       num_nodes: 15
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: pipelined_ingestion_1500_gb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
+  env: prod
   legacy:
     test_name: pipelined_ingestion_1500_gb
     test_suite: dataset_test
@@ -4238,58 +4520,15 @@
     timeout: 9600
     script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
       --debug
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 21
 
-    type: sdk_command
-    file_manager: sdk
-
-- name: datasets_preprocess_ingest
-  group: core-dataset-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_preprocess_ingest
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: ray_sgd_training_compute_no_gpu.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
-      --large-dataset --debug
-
-    wait_for_nodes:
-      num_nodes: 17
-
-    type: sdk_command
-    file_manager: sdk
-
-- name: datasets_ingest_400G
-  group: core-dataset-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_ingest_400G
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: dataset_ingest_400G_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
-    type: sdk_command
-    file_manager: sdk
 
 - name: dataset_shuffle_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_random_shuffle_1tb
@@ -4306,11 +4545,11 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_sort_1tb
@@ -4327,11 +4566,11 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_1tb
@@ -4348,11 +4587,11 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_push_based_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_sort_1tb
@@ -4369,11 +4608,11 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
@@ -4390,8 +4629,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
-    type: sdk_command
-    file_manager: sdk
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 ##################
 # Core Chaos tests
@@ -4417,8 +4656,6 @@
     prepare: python setup_chaos.py --no-start
     script: python chaos_test/test_chaos_basic.py --workload=tasks
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_many_actors
   group: core-nightly-test
@@ -4440,18 +4677,16 @@
     prepare: python setup_chaos.py --no-start
     script: python chaos_test/test_chaos_basic.py --workload=actors
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_no_spilling
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
@@ -4464,18 +4699,16 @@
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_spilling
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -4488,18 +4721,16 @@
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_pipelined_ingestion_1500_gb_15_windows
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
@@ -4511,12 +4742,11 @@
     prepare: ' python setup_chaos.py --node-kill-interval 300'
     script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
       915 --debug
-
     type: sdk_command
-    file_manager: sdk
+
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
@@ -4525,7 +4755,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4536,18 +4766,16 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_dataset_shuffle_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_sort_1tb
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4558,11 +4786,9 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_random_shuffle_1tb
@@ -4571,7 +4797,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
@@ -4583,11 +4809,9 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
@@ -4596,7 +4820,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
@@ -4608,8 +4832,6 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
-    file_manager: sdk
 
 #####################
 # Observability tests
@@ -4628,9 +4850,7 @@
 
   run:
     timeout: 14400
-    script: python mem_check.py
-    type: sdk_command
-    file_manager: sdk
+    script: python mem_check.py --working-dir .
 
 - name: k8s_serve_ha_test
   group: k8s-test
@@ -4651,8 +4871,6 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
-    type: sdk_command
-    file_manager: sdk
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
@@ -4672,5 +4890,3 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
-    type: sdk_command
-    file_manager: sdk

@@ -41,9 +41,6 @@ export const DEFAULT_VALUE: MainNavContextType = {
 export const MainNavContext =
   React.createContext<MainNavContextType>(DEFAULT_VALUE);
 
-/**
- * Call this hook at the start of your page render if your page should belong in the MainNav
- */
 export const useMainNavState = (): MainNavContextType => {
   const [pageHierarchy, setPageHierarchy] = useState<MainNavPage[]>([]);
 

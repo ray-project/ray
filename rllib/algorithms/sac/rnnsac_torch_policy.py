@@ -1,13 +1,14 @@
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import List, Optional, Tuple, Type, Union
+import copy
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.algorithms.sac import SACTorchPolicy
 from ray.rllib.algorithms.sac.rnnsac_torch_model import RNNSACTorchModel
 from ray.rllib.algorithms.sac.sac_torch_policy import _get_dist_class
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
@@ -47,9 +48,9 @@ def build_rnnsac_model(
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's `q_model_config` and
     # `policy_model_config` config settings.
-    policy_model_config = MODEL_DEFAULTS.copy()
+    policy_model_config = copy.deepcopy(config["model"])
     policy_model_config.update(config["policy_model_config"])
-    q_model_config = MODEL_DEFAULTS.copy()
+    q_model_config = copy.deepcopy(config["model"])
     q_model_config.update(config["q_model_config"])
 
     default_model_cls = RNNSACTorchModel
@@ -309,7 +310,9 @@ def actor_critic_loss(
             twin_q_t_selected = torch.sum(twin_q_t * one_hot, dim=-1)
         # Discrete case: "Best" means weighted by the policy (prob) outputs.
         q_tp1_best = torch.sum(torch.mul(policy_tp1, q_tp1), dim=-1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
+        q_tp1_best_masked = (
+            1.0 - train_batch[SampleBatch.TERMINATEDS].float()
+        ) * q_tp1_best
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
@@ -383,7 +386,9 @@ def actor_critic_loss(
         q_tp1 -= alpha * log_pis_tp1
 
         q_tp1_best = torch.squeeze(input=q_tp1, dim=-1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
+        q_tp1_best_masked = (
+            1.0 - train_batch[SampleBatch.TERMINATEDS].float()
+        ) * q_tp1_best
 
     # compute RHS of bellman equation
     q_t_selected_target = (

@@ -4,9 +4,13 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
+from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors import Chain
+from ray.air._internal.util import _estimate_avail_object_store_memory
+
 if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
-    from ray.data.preprocessor import Preprocessor
+    from ray.data import DatasetIterator
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -109,7 +113,9 @@ class DataParallelIngestSpec:
         self.preprocessor: Optional["Preprocessor"] = None
 
     def preprocess_datasets(
-        self, prep: "Preprocessor", datasets: Dict[str, "Dataset"]
+        self,
+        prep: "Preprocessor",
+        datasets: Dict[str, "Dataset"],
     ) -> Dict[str, "Dataset"]:
         """Preprocess the given datasets.
 
@@ -126,7 +132,7 @@ class DataParallelIngestSpec:
         for key, dataset in list(datasets.items()):
             conf = self._config(key)
             # If globally shuffling, don't randomize unless using the stream API.
-            local_window = conf.use_stream_api and conf.stream_window_size > 0
+            local_window = 1 > conf.max_object_store_memory_fraction >= 0
             if conf.randomize_block_order and (not conf.global_shuffle or local_window):
                 datasets[key] = dataset.randomize_block_order()
 
@@ -138,14 +144,17 @@ class DataParallelIngestSpec:
                     continue
                 if conf.fit:
                     ds_to_fit = datasets[k]
-            if ds_to_fit:
+            if ds_to_fit and prep.fit_status() in (
+                Preprocessor.FitStatus.NOT_FITTED,
+                Preprocessor.FitStatus.PARTIALLY_FITTED,
+            ):
                 prep.fit(ds_to_fit)
             new_datasets = {}
 
             for key, dataset in datasets.items():
                 conf = self._config(key)
                 if conf.transform:
-                    if conf.use_stream_api and conf.stream_window_size > 0:
+                    if conf.max_object_store_memory_fraction >= 0:
                         # In windowed mode, preprocessor is applied in streaming way.
                         new_datasets[key] = dataset
                     else:
@@ -161,7 +170,7 @@ class DataParallelIngestSpec:
 
     def get_dataset_shards(
         self, training_worker_handles: List[ActorHandle]
-    ) -> List[Dict[str, Union["Dataset", "DatasetPipeline"]]]:
+    ) -> List[Dict[str, "DatasetIterator"]]:
         """Get the shards to pass to training workers.
 
         Note: this has to match the signature of DatasetSpec in legacy train.
@@ -178,33 +187,47 @@ class DataParallelIngestSpec:
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
 
-            if config.use_stream_api:
-                if config.stream_window_size > 0:
-                    dataset = dataset.window(
-                        bytes_per_window=config.stream_window_size
-                    ).repeat()
-                    # In windowed mode, we re-apply the preprocessor on each iteration.
-                    if self.preprocessor:
-                        # TODO: Replace with self.preprocessor.transform when possible.
-                        prep = self.preprocessor.transform_batch
-                        dataset = dataset.map_batches(prep, batch_format="pandas")
-                else:
-                    # If the window size is infinity, the preprocessor is cached and
-                    # we don't need to re-apply it each time.
-                    dataset = dataset.repeat()
+            if config.max_object_store_memory_fraction >= 0:
+                object_store_memory = _estimate_avail_object_store_memory()
+                stream_window_size = max(
+                    object_store_memory * config.max_object_store_memory_fraction, 1
+                )
+                dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
+                # In windowed mode, we re-apply the preprocessor on each iteration.
+                if self.preprocessor or config.per_epoch_preprocessor:
+                    if self.preprocessor is not None:
+                        preprocessor = self.preprocessor
+                        if config.per_epoch_preprocessor is not None:
+                            preprocessor = Chain(
+                                preprocessor, config.per_epoch_preprocessor
+                            )
+                    else:
+                        preprocessor = config.per_epoch_preprocessor
+
+                    dataset = preprocessor._transform_pipeline(dataset)
+
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
                 if config.randomize_block_order and not config.global_shuffle:
+                    # TODO(swang): Should randomize block order across the
+                    # original dataset, not the window.
                     dataset = dataset.randomize_block_order_each_window()
+            elif config.per_epoch_preprocessor is not None:
+                # Reapply the per epoch preprocessor on each epoch.
+                if isinstance(dataset, Dataset):
+                    dataset = dataset.repeat()
+                dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
             if config.global_shuffle:
-                if config.use_stream_api:
-                    dataset = dataset.random_shuffle_each_window()
-                else:
-                    dataset = dataset.random_shuffle()
+                # If global shuffle is requested, then we should try to overlap
+                # this with other computation, so convert to a DatasetPipeline
+                # if not already being used.
+                if isinstance(dataset, Dataset):
+                    dataset = dataset.repeat()
+                dataset = dataset.random_shuffle_each_window()
 
-            if config.split:
+            if config.split and len(training_worker_handles) > 1:
                 dataset_splits = dataset.split(
                     len(training_worker_handles),
                     equal=True,
@@ -212,6 +235,9 @@ class DataParallelIngestSpec:
                 )
             else:
                 dataset_splits = [dataset] * len(training_worker_handles)
+
+            for i, dataset_split in enumerate(dataset_splits):
+                dataset_splits[i] = dataset_split.iterator()._to_train_iterator()
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]

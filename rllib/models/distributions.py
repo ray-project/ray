@@ -1,6 +1,6 @@
 """This is the next version of action distribution base class."""
 from typing import Tuple
-import gym
+import gymnasium as gym
 import abc
 
 from ray.rllib.utils.annotations import ExperimentalAPI

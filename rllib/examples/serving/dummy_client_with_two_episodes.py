@@ -11,7 +11,7 @@ SampleCollector's `postprocess_trajectory` method.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import ray
 
 from ray.rllib.env.policy_client import PolicyClient
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     )
 
     # Get a dummy obs
-    dummy_obs = env.reset()
+    dummy_obs, dummy_infos = env.reset()
     dummy_reward = 1.3
 
     # Start an episode to only compute actions (do NOT record this episode's

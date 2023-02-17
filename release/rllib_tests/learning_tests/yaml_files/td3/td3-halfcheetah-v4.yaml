@@ -1,0 +1,14 @@
+td3-halfcheetah-v4:
+    env: HalfCheetah-v4
+    run: TD3
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 400.0
+        timesteps_total: 1000000
+    stop:
+        time_total_s: 3600
+    config:
+        num_gpus: 1
+        num_steps_sampled_before_learning_starts: 10000
+        exploration_config:
+            random_timesteps: 10000

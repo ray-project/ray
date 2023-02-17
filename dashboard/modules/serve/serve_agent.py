@@ -115,8 +115,15 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
         from ray.serve._private.api import serve_start
+        from pydantic import ValidationError
 
-        config = ServeApplicationSchema.parse_obj(await req.json())
+        try:
+            config = ServeApplicationSchema.parse_obj(await req.json())
+        except ValidationError as e:
+            return Response(
+                status=400,
+                text=repr(e),
+            )
 
         client = serve_start(
             detached=True,
@@ -161,7 +168,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 ),
             )
 
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         return Response()
 

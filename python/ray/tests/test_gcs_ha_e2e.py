@@ -44,9 +44,7 @@ redis_image = fetch(repository="redis:latest")
 redis = container(
     image="{redis_image.id}",
     network="{gcs_network.name}",
-    command=(
-        "redis-server --save 60 1 --loglevel" " warning --requirepass 5241590000000000"
-    ),
+    command=("redis-server --save 60 1 --loglevel" " warning"),
 )
 
 head_node = container(

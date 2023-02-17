@@ -1,6 +1,6 @@
 import unittest
 import time
-import gym
+import gymnasium as gym
 import torch
 
 import numpy as np
@@ -108,7 +108,8 @@ class TestOPEMath(unittest.TestCase):
                 SampleBatch.REWARDS: np.random.randint(
                     1, 3, size=bsize
                 ),  # rewards are 1 or 2
-                SampleBatch.DONES: np.ones(bsize),
+                SampleBatch.TERMINATEDS: np.ones(bsize),
+                SampleBatch.TRUNCATEDS: np.zeros(bsize),
                 SampleBatch.EPS_ID: np.arange(bsize),
                 SampleBatch.ACTION_PROB: np.ones(bsize) / action_dim,
             }

@@ -223,43 +223,6 @@ def test_spilling(object_spilling_config, shutdown_only):
 @pytest.mark.skipif(
     sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
 )
-@pytest.mark.parametrize("metric_report_interval_ms", [500, 1000, 3000])
-def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms):
-    """Test object store metric on raylet controlled by `metric_report_interval_ms`"""
-    import time
-
-    info = ray.init(
-        object_store_memory=100 * MiB,
-        _system_config={"metrics_report_interval_ms": metric_report_interval_ms},
-    )
-
-    # Put object to make sure metric shows up
-    obj = ray.get(ray.put(np.zeros(20 * MiB, dtype=np.uint8)))
-
-    expected = {
-        "MMAP_SHM": 20 * MiB,
-        "MMAP_DISK": 0,
-        "SPILLED": 0,
-        "WORKER_HEAP": 0,
-    }
-    start = time.time()
-    wait_for_condition(
-        # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
-        timeout=10,
-        retry_interval_ms=100,
-    )
-
-    end = time.time()
-    # Also shouldn't have metrics reported too quickly
-    assert (end - start) * 1000 > metric_report_interval_ms, "Reporting too quickly"
-
-    del obj
-
-
-@pytest.mark.skipif(
-    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
-)
 def test_fallback_memory(shutdown_only):
     """Test some fallback allocated objects"""
 

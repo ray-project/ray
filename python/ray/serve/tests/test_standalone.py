@@ -143,7 +143,7 @@ def test_detached_deployment(ray_cluster):
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace=SERVE_NAMESPACE)
-    first_job_id = ray.get_runtime_context().job_id
+    first_job_id = ray.get_runtime_context().get_job_id()
     serve.start(detached=True)
 
     @serve.deployment(route_prefix="/say_hi_f")
@@ -159,7 +159,7 @@ def test_detached_deployment(ray_cluster):
 
     # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
-    assert ray.get_runtime_context().job_id != first_job_id
+    assert ray.get_runtime_context().get_job_id() != first_job_id
 
     @serve.deployment(route_prefix="/say_hi_g")
     def g(*args):
@@ -758,7 +758,7 @@ def test_run_graph_task_uses_zero_cpus():
 
     config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
     config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_app(config)
+    client.deploy_apps(config)
 
     with pytest.raises(RuntimeError):
         wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)

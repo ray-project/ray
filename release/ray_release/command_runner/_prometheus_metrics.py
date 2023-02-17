@@ -126,7 +126,7 @@ def save_prometheus_metrics(
             end_time = time.time()
         if use_ray:
             import ray
-            from ray.tune.utils.node import _force_on_current_node
+            from ray.air.util.node import _force_on_current_node
 
             addr = os.environ.get("RAY_ADDRESS", None)
             ray.init(addr)

@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Tuple, Dict
+import gymnasium as gym
+from gymnasium.spaces import Tuple, Dict
 import numpy as np
 from ray.rllib.utils.annotations import DeveloperAPI
 import tree  # pip install dm_tree

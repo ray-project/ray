@@ -25,6 +25,13 @@ class MockGcsTaskManager : public GcsTaskManager {
                rpc::AddTaskEventDataReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+
+  MOCK_METHOD(void,
+              HandleGetTaskEvents,
+              (rpc::GetTaskEventsRequest request,
+               rpc::GetTaskEventsReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
 };
 
 }  // namespace gcs

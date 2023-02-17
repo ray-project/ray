@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI

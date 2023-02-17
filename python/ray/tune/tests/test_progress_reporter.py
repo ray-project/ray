@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import numpy as np
 
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
@@ -21,7 +22,7 @@ from ray.tune.progress_reporter import (
     _max_len,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -512,6 +513,33 @@ class ProgressReporterTest(unittest.TestCase):
         reporter = TuneReporterBase(metric="metric", mode="min")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
         assert best_trial == trial2
+
+    def testBestTrialNan(self):
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": np.nan, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="min")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial2
+
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": np.nan, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="max")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial3
 
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800

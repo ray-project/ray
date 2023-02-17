@@ -79,9 +79,6 @@ class RedisStoreClient : public StoreClient {
     Status ScanKeysAndValues(const std::string &match_pattern,
                              const MapCallback<std::string, std::string> &callback);
 
-    Status ScanKeys(const std::string &match_pattern,
-                    const MultiItemCallback<std::string> &callback);
-
    private:
     void Scan(const std::string &match_pattern, const StatusCallback &callback);
 
@@ -98,7 +95,7 @@ class RedisStoreClient : public StoreClient {
     absl::Mutex mutex_;
 
     /// All keys that scanned from redis.
-    absl::flat_hash_set<std::string> keys_;
+    absl::flat_hash_map<std::string, std::string> results_;
 
     /// The scan cursor for each shard.
     absl::flat_hash_map<size_t, size_t> shard_to_cursor_;

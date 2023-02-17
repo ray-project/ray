@@ -61,12 +61,10 @@ class GlobalStateAccessor {
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.
   std::vector<std::string> GetAllNodeInfo() LOCKS_EXCLUDED(mutex_);
 
-  /// Get information of all profiles from GCS Service.
+  /// Get information of all task events from GCS Service.
   ///
-  /// \return All profile info. To support multi-language, we serialized each
-  /// ProfileTableData and returned the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::vector<std::string> GetAllProfileInfo() LOCKS_EXCLUDED(mutex_);
+  /// \return All task events info.
+  std::vector<std::string> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a node resource from GCS Service.
   ///

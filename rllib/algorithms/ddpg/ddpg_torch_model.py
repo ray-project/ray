@@ -1,5 +1,5 @@
 import numpy as np
-import gym
+import gymnasium as gym
 from typing import List, Dict, Union, Optional
 
 from ray.rllib.models.torch.misc import SlimFC

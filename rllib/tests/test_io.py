@@ -230,8 +230,8 @@ class AgentIOTest(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .multi_agent(
                 policies={"policy_1", "policy_2"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: random.choice(["policy_1", "policy_2"])
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    random.choice(["policy_1", "policy_2"])
                 ),
             )
         )

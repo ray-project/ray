@@ -60,7 +60,6 @@ Tune further integrates with a wide range of additional hyperparameter optimizat
 
 With Tune you can also launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>`
 in less than 10 lines of code.
-It automatically manages :ref:`checkpoints <tune-checkpoint-syncing>` and logging to :ref:`TensorBoard <tune-logging>`.
 And you can move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
 .. _`Ray Serve`: ../serve/index.html
@@ -174,7 +173,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     With Tune, you can optimize your model just by :ref:`adding a few code snippets <tune-tutorial>`.
 
     Also, Tune removes boilerplate from your code training workflow,
-    automatically :ref:`manages checkpoints <tune-checkpoint-syncing>` and
+    supporting :ref:`multiple storage options for experiment results (NFS, cloud storage) <tune-storage-options>` and
     :ref:`logs results to tools <tune-logging>` such as MLflow and TensorBoard, while also being highly customizable.
 
 .. dropdown:: Multi-GPU & Distributed Training Out Of The Box
@@ -214,8 +213,8 @@ Feel free to submit a pull-request adding (or requesting a removal!) of a listed
 
 
 
-Learn More
-----------
+Learn More About Ray Tune
+-------------------------
 
 Below you can find blog posts and talks about Ray Tune:
 

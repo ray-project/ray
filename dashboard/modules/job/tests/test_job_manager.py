@@ -21,7 +21,11 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.dashboard.modules.job.job_manager import (
+    JobManager,
+    JobSupervisor,
+    generate_job_id,
+)
 from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
@@ -770,12 +774,103 @@ class TestTailLogs:
             job_manager.stop_job(job_id)
 
             async for lines in job_manager.tail_job_logs(job_id):
-                assert all(s == "Waiting..." for s in lines.strip().split("\n"))
+                assert all(
+                    s == "Waiting..." or s == "Terminated"
+                    for s in lines.strip().split("\n")
+                )
                 print(lines, end="")
 
             await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
+
+
+@pytest.mark.asyncio
+async def test_stop_job_gracefully(job_manager):
+    """
+    Stop job should send SIGTERM to child process (before trying to kill).
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    sys.exit()
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+    assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "use_env_var,stop_timeout",
+    [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
+)
+async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
+    """
+    Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    if use_env_var:
+        job_id = await job_manager.submit_job(
+            entrypoint=entrypoint,
+            runtime_env={"env_vars": {"RAY_JOB_STOP_WAIT_TIME_S": str(stop_timeout)}},
+        )
+    else:
+        job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    with pytest.raises(RuntimeError):
+        await async_wait_for_condition_async_predicate(
+            check_job_stopped,
+            job_manager=job_manager,
+            job_id=job_id,
+            timeout=stop_timeout - 1,
+        )
+
+    await async_wait_for_condition(
+        lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+    )
+
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped,
+        job_manager=job_manager,
+        job_id=job_id,
+        timeout=10,
+    )
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,11 @@
 // navigation bar.
 document.getElementsByClassName("announcement")[0].classList.remove("header-item")
 
+// Make the new navigation bar sticky, but remove that property on the
+// top bar that ships with the sphinx-book-theme.
+document.getElementsByClassName("header-article")[0].classList.remove("sticky-top")
+document.getElementsByClassName("announcement")[0].classList.add("sticky-top")
+
 // Get the right relative URL for a given path
 function getNavURL(url) {
     references = document.getElementsByClassName("reference internal")
@@ -100,7 +105,7 @@ learnMenu.setAttribute("class", "menu")
 learnMenu.innerHTML = "<a href='#'>Resources" + downCaret + "</a>"
 learnList = document.createElement("ul")
 learnList.innerHTML += "<li><a href='https://discuss.ray.io/'><span class='primary'>Discussion Forum</span><span class='secondary'>Get your Ray questions answered</span></a></li>"
-learnList.innerHTML += "<li><a href='https://www.anyscale.com/events?type=anyscale-academy'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
+learnList.innerHTML += "<li><a href='https://github.com/ray-project/ray-educational-materials'><span class='primary'>Training</span><span class='secondary'>Hands-on learning</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/blog'><span class='primary'>Blog</span><span class='secondary'>Updates, best practices, user-stories</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/events'><span class='primary'>Events</span><span class='secondary'>Webinars, meetups, office hours</span></a></li>"
 learnList.innerHTML += "<li><a href='https://www.anyscale.com/user-stories'><span class='primary'>Success Stories</span><span class='secondary'>Real-world workload examples</span></a></li>"

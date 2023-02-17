@@ -650,8 +650,9 @@ def test_nested_functions(ray_start_shared_local_modes):
 
     assert ray.get(f.remote()) == (1, 2)
 
-    # Test a remote function that recursively calls itself.
 
+def test_recursive_remote_call(ray_start_shared_local_modes):
+    # Test a remote function that recursively calls itself.
     @ray.remote
     def factorial(n):
         if n == 0:

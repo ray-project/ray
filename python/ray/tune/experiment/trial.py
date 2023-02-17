@@ -9,11 +9,12 @@ import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union, Callable, List, Tuple
+from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
@@ -34,13 +35,12 @@ from ray.tune.result import (
     TRIAL_ID,
     DEBUG_METRICS,
 )
-from ray.tune.resources import Resources
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.utils.serialization import TuneFunctionEncoder
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
@@ -166,11 +166,11 @@ class _TrialInfo:
         return self._trial_id
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> PlacementGroupFactory:
         return self._trial_resources
 
     @trial_resources.setter
-    def trial_resources(self, new_resources: Union[Resources, PlacementGroupFactory]):
+    def trial_resources(self, new_resources: PlacementGroupFactory):
         self._trial_resources = new_resources
 
 
@@ -184,23 +184,6 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
             f"trial dirname '{relative_logdir_old}' already exists."
         )
     return relative_logdir
-
-
-def _to_pg_factory(
-    resources: Optional[Resources],
-    placement_group_factory: Optional[PlacementGroupFactory],
-) -> PlacementGroupFactory:
-    """Outputs resources requirement in the form of PGF.
-
-    In case that `placement_group_factory` is None, `resources` will be
-    converted to PGF. If this is unsuccessful, an error will be raised.
-
-    """
-    if not placement_group_factory:
-        if not resources:
-            resources = Resources(cpu=1, gpu=0)
-        placement_group_factory = resource_dict_to_pg_factory(resources)
-    return placement_group_factory
 
 
 @DeveloperAPI
@@ -239,6 +222,8 @@ class Trial:
         "param_config",
         "extra_arg",
         "placement_group_factory",
+        "_resources",
+        "_default_placement_group_factory",
     ]
 
     PENDING = "PENDING"
@@ -256,7 +241,6 @@ class Trial:
         local_dir: Optional[str] = DEFAULT_RESULTS_DIR,
         evaluated_params: Optional[Dict] = None,
         experiment_tag: str = "",
-        resources: Optional[Resources] = None,
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         experiment_dir_name: Optional[str] = None,
@@ -292,41 +276,31 @@ class Trial:
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
+        self._local_dir = local_dir  # This remains unexpanded for syncing.
+
         self.config = config or {}
-        self.local_dir = local_dir  # This remains unexpanded for syncing.
+        # Save a copy of the original unresolved config so that we can swap
+        # out and update any reference config values after restoration.
+        self.__unresolved_config = self.config
 
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         self.location = _Location()
-        trainable_cls = self.get_trainable_cls()
-        if trainable_cls and _setup_default_resource:
-            default_resources = trainable_cls.default_resource_request(self.config)
-
-            # If Trainable returns resources, do not allow manual override via
-            # `resources_per_trial` by the user.
-            if default_resources:
-                if resources or placement_group_factory:
-                    raise ValueError(
-                        "Resources for {} have been automatically set to {} "
-                        "by its `default_resource_request()` method. Please "
-                        "clear the `resources_per_trial` option.".format(
-                            trainable_cls, default_resources
-                        )
-                    )
-
-                if isinstance(default_resources, PlacementGroupFactory):
-                    placement_group_factory = default_resources
-                    resources = None
-                else:
-                    placement_group_factory = None
-                    resources = default_resources
-
-        self.placement_group_factory = _to_pg_factory(
-            resources, placement_group_factory
-        )
-
         self.stopping_criterion = stopping_criterion or {}
+
+        self._setup_default_resource = _setup_default_resource
+
+        if placement_group_factory and not isinstance(
+            placement_group_factory, PlacementGroupFactory
+        ):
+            placement_group_factory = resource_dict_to_pg_factory(
+                placement_group_factory
+            )
+
+        self._default_placement_group_factory = placement_group_factory
+        # Will be created in create_placement_group_factory().
+        self.placement_group_factory = None
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
@@ -417,6 +391,47 @@ class Trial:
         self._state_json = None
         self._state_valid = False
 
+    def create_placement_group_factory(self):
+        """Compute placement group factor if needed.
+
+        Note: this must be called after all the placeholders in
+        self.config are resolved.
+        """
+        trainable_cls = self.get_trainable_cls()
+        if not trainable_cls or not self._setup_default_resource:
+            # Create placement group factory using default resources.
+            self.placement_group_factory = (
+                self._default_placement_group_factory or resource_dict_to_pg_factory()
+            )
+            return
+
+        default_resources = trainable_cls.default_resource_request(self.config)
+
+        # If Trainable returns resources, do not allow manual override via
+        # `resources_per_trial` by the user.
+        if default_resources and self._default_placement_group_factory:
+            raise TuneError(
+                "Resources for {} have been automatically set to {} "
+                "by its `default_resource_request()` method. Please "
+                "clear the `resources_per_trial` option.".format(
+                    trainable_cls, default_resources
+                )
+            )
+
+        if default_resources and not isinstance(
+            default_resources, PlacementGroupFactory
+        ):
+            default_resources = resource_dict_to_pg_factory(default_resources)
+
+        self.placement_group_factory = (
+            # default_resource_request
+            default_resources
+            # resources_per_trial
+            or self._default_placement_group_factory
+            # cpu=1
+            or resource_dict_to_pg_factory()
+        )
+
     def _get_default_result_or_future(self) -> Optional[dict]:
         """Calls ray.get on self._default_result_or_future and assigns back.
 
@@ -438,6 +453,13 @@ class Trial:
                 )
             )
         return self._default_result_or_future
+
+    def resolve_config_placeholders(self, placeholder_resolvers: Dict[Tuple, Any]):
+        from ray.tune.impl.placeholder import resolve_placeholders
+
+        # Make a copy of the unresolved config before resolve it.
+        self.config = copy.deepcopy(self.__unresolved_config)
+        resolve_placeholders(self.config, placeholder_resolvers)
 
     @property
     def last_result(self) -> dict:
@@ -473,8 +495,38 @@ class Trial:
         return self.location.hostname
 
     @property
+    def local_dir(self):
+        return self._local_dir
+
+    @local_dir.setter
+    def local_dir(self, local_dir):
+        relative_checkpoint_dirs = []
+        if self.logdir:
+            # Save the relative paths of persistent trial checkpoints, which are saved
+            # relative to the old `local_dir`/`logdir`
+            for checkpoint in self.get_trial_checkpoints():
+                checkpoint_dir = checkpoint.dir_or_data
+                assert isinstance(checkpoint_dir, str)
+                relative_checkpoint_dirs.append(
+                    os.path.relpath(checkpoint_dir, self.logdir)
+                )
+
+        # Update the underlying `_local_dir`, which also updates the trial `logdir`
+        self._local_dir = local_dir
+
+        if self.logdir:
+            for checkpoint, relative_checkpoint_dir in zip(
+                self.get_trial_checkpoints(), relative_checkpoint_dirs
+            ):
+                # Reconstruct the checkpoint dir using the (possibly updated)
+                # trial logdir and the relative checkpoint directory.
+                checkpoint.dir_or_data = os.path.join(
+                    self.logdir, relative_checkpoint_dir
+                )
+
+    @property
     def logdir(self):
-        if not self.relative_logdir:
+        if not self.local_dir or not self.relative_logdir:
             return None
         return str(Path(self.local_dir).joinpath(self.relative_logdir))
 
@@ -537,7 +589,7 @@ class Trial:
         return str(uuid.uuid4().hex)[:8]
 
     @property
-    def remote_checkpoint_dir(self):
+    def remote_checkpoint_dir(self) -> str:
         """This is the **per trial** remote checkpoint dir.
 
         This is different from **per experiment** remote checkpoint dir.
@@ -545,9 +597,8 @@ class Trial:
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
         if not self.sync_config.upload_dir or not self.experiment_dir_name:
             return None
-        return os.path.join(
-            self.sync_config.upload_dir, self.experiment_dir_name, self.relative_logdir
-        )
+        uri = URI(self.sync_config.upload_dir)
+        return str(uri / self.experiment_dir_name / self.relative_logdir)
 
     @property
     def uses_cloud_checkpointing(self):
@@ -574,7 +625,6 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=None,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             sync_config=self.sync_config,
@@ -599,9 +649,7 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def update_resources(
-        self, resources: Union[Dict, Resources, PlacementGroupFactory]
-    ):
+    def update_resources(self, resources: Union[dict, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -612,26 +660,13 @@ class Trial:
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
 
-        placement_group_factory = None
-        if isinstance(resources, PlacementGroupFactory):
-            placement_group_factory = resources
-        elif isinstance(resources, dict):
-            resources = Resources(**resources)
+        placement_group_factory = resources
+        if isinstance(resources, dict):
+            placement_group_factory = resource_dict_to_pg_factory(resources)
 
-        self.placement_group_factory = _to_pg_factory(
-            resources, placement_group_factory
-        )
+        self.placement_group_factory = placement_group_factory
 
         self.invalidate_json_state()
-
-    def refresh_default_resource_request(self):
-        """Update trial resources according to the trainable's default resource
-        request, if it is provided."""
-        trainable_cls = self.get_trainable_cls()
-        if trainable_cls:
-            default_resources = trainable_cls.default_resource_request(self.config)
-            if default_resources:
-                self.update_resources(default_resources)
 
     def set_runner(self, runner):
         self.runner = runner
@@ -901,6 +936,20 @@ class Trial:
             self._state_valid = True
         return self._state_json
 
+    @classmethod
+    def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
+        trial_state = json.loads(json_state, cls=TuneFunctionDecoder)
+
+        new_trial = Trial(
+            trial_state["trainable_name"],
+            stub=stub,
+            _setup_default_resource=False,
+        )
+
+        new_trial.__setstate__(trial_state)
+
+        return new_trial
+
     def __getstate__(self):
         """Memento generator for Trial.
 
@@ -922,53 +971,21 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
-        # Save the relative paths of persistent trial checkpoints
-        # When loading this trial state, the paths should be constructed again
-        # relative to the trial `logdir`, which may have been updated.
-        relative_checkpoint_dirs = []
-        for checkpoint in self.get_trial_checkpoints():
-            checkpoint_dir = checkpoint.dir_or_data
-            assert isinstance(checkpoint_dir, str)
-            relative_checkpoint_dirs.append(
-                os.path.relpath(checkpoint_dir, self.logdir)
-            )
-        state["__relative_checkpoint_dirs"] = relative_checkpoint_dirs
-
-        return copy.deepcopy(state)
+        return state
 
     def __setstate__(self, state):
-
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Retrieve the relative checkpoint dirs
-        relative_checkpoint_dirs = state.pop("__relative_checkpoint_dirs", None)
-
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
 
-        if relative_checkpoint_dirs:
-            for checkpoint, relative_checkpoint_dir in zip(
-                self.get_trial_checkpoints(), relative_checkpoint_dirs
-            ):
-                # Reconstruct the checkpoint dir using the (possibly updated)
-                # trial logdir and the relative checkpoint directory.
-                checkpoint.dir_or_data = os.path.join(
-                    self.logdir, relative_checkpoint_dir
-                )
-
         if not self.stub:
             validate_trainable(self.trainable_name)
 
         assert self.placement_group_factory
-
-        # Avoid creating logdir in client mode for returned trial results,
-        # since the dir might not be creatable locally.
-        # TODO(ekl) this is kind of a hack.
-        if not ray.util.client.ray.is_connected():
-            self.init_logdir()  # Create logdir if it does not exist

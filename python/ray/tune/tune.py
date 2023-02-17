@@ -1,3 +1,5 @@
+import abc
+import copy
 import datetime
 import logging
 import os
@@ -10,10 +12,12 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -54,10 +58,10 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
+
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,17 @@ def _check_default_resources_override(
     return hasattr(trainable_cls, "default_resource_request") and (
         trainable_cls.default_resource_request.__code__
         != Trainable.default_resource_request.__code__
+    )
+
+
+def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
+        # Default to True
+        return True
+
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
     )
 
 
@@ -160,9 +175,16 @@ def _setup_signal_catching() -> threading.Event:
     return experiment_interrupted_event
 
 
+class _Config(abc.ABC):
+    def to_dict(self) -> dict:
+        """Converts this configuration to a dict format."""
+        raise NotImplementedError
+
+
 @PublicAPI
 def run(
     run_or_experiment: Union[str, Callable, Type],
+    *,
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
@@ -194,10 +216,11 @@ def run(
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # Deprecated
+    trial_executor: Optional[RayTrialExecutor] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -380,7 +403,6 @@ def run(
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables and ``False`` for
             class and registered trainables.
-        trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -416,6 +438,12 @@ def run(
 
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
+    elif trial_executor:
+        warnings.warn(
+            "Passing a custom `trial_executor` is deprecated and will be removed "
+            "in the future.",
+            DeprecationWarning,
+        )
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
@@ -457,6 +485,14 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
+    if isinstance(config, _Config):
+        config = config.to_dict()
+    if not isinstance(config, dict):
+        raise ValueError(
+            "The `config` passed to `tune.run()` must be a dict. "
+            f"Got '{type(config)}' instead."
+        )
+
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
 
@@ -529,7 +565,13 @@ def run(
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
+            and not (
+                # Mixins do not work with reuse_actors as the mixin setup will only
+                # be invoked once
+                _check_mixin(trainable)
+            )
         )
+        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -539,6 +581,20 @@ def run(
             "Consider boosting PBT performance by enabling `reuse_actors` as "
             "well as implementing `reset_config` for Trainable."
         )
+
+    # Before experiments are created, we first clean up the passed in
+    # Config dictionary by replacing all the non-primitive config values
+    # with placeholders. This serves two purposes:
+    # 1. we can replace and "fix" these objects if a Trial is restored.
+    # 2. the config dictionary will then be compatible with all supported
+    #   search algorithms, since a lot of them do not support non-primitive
+    #   config values.
+    placeholder_resolvers = create_resolvers_map()
+    config = inject_placeholders(
+        # Make a deep copy here to avoid modifying the original config dict.
+        copy.deepcopy(config),
+        placeholder_resolvers,
+    )
 
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -687,9 +743,10 @@ def run(
     )
     runner = TrialRunner(
         search_alg=search_alg,
+        placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+        experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,
@@ -699,9 +756,6 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
-        # Driver should only sync trial checkpoints if
-        # checkpoints are not synced to cloud
-        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
     )
 
     if not runner.resumed:
@@ -735,7 +789,7 @@ def run(
     tune_taken = time.time() - tune_start
 
     try:
-        runner.checkpoint(force=True)
+        runner.checkpoint(force=True, wait=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
