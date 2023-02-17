@@ -204,27 +204,22 @@ class BaseTrainer(abc.ABC):
 
         .. code-block:: python
 
-            # custom_trainer.py
-            from ray.train.trainer import BaseTrainer
-
-            class CustomTrainer(BaseTrainer):
-                def training_loop(self):
-                    pass
-
-        .. code-block:: python
-
             import os
             from ray import air
             from ray.data.preprocessors import BatchMapper
-            # Import our BaseTrainer subclass from the other file
-            from custom_trainer import CustomTrainer
+            from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
             local_dir = "~/ray_results"
             experiment_dir = os.path.join(local_dir, experiment_name)
 
+            # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
             preprocessor = BatchMapper(lambda x: x, batch_format="numpy")
+
+            class CustomTrainer(BaseTrainer):
+                def training_loop(self):
+                    pass
 
             if CustomTrainer.can_restore(experiment_dir):
                 trainer = CustomTrainer.restore(
@@ -282,8 +277,8 @@ class BaseTrainer(abc.ABC):
             original_trainer = pickle.load(fp)
         if type(original_trainer) is not cls:
             warnings.warn(
-                f"Invalid trainer type. You are attempting to restore a trainer of type "
-                f"'{type(original_trainer)}' with `{cls.__name__}.restore`, "
+                f"Invalid trainer type. You are attempting to restore a trainer of type"
+                f" {type(original_trainer)} with `{cls.__name__}.restore`, "
                 "which will most likely fail. "
                 f"Use `{type(original_trainer).__name__}.restore` instead."
             )
