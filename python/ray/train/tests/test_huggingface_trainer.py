@@ -58,9 +58,12 @@ def ray_start_8_cpus():
 def train_function(train_dataset, eval_dataset=None, **config):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
+    evaluation_strategy = (
+        config.pop("evaluation_strategy", "epoch") if eval_dataset else "no"
+    )
     training_args = TrainingArguments(
         f"{model_checkpoint}-wikitext2",
-        evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
+        evaluation_strategy=evaluation_strategy,
         logging_strategy=config.pop("logging_strategy", "epoch"),
         num_train_epochs=config.pop("epochs", 3),
         learning_rate=config.pop("learning_rate", 2e-5),
