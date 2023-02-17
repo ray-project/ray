@@ -111,7 +111,9 @@ def test_put_get(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_put_get_multi_app(ray_start_stop):
-    pizza_import_path = "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+    pizza_import_path = (
+        "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+    )
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     config1 = {
         "host": "127.0.0.1",
@@ -174,7 +176,8 @@ def test_put_get_multi_app(ray_start_stop):
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2").text == "wonderful world",
+            lambda: requests.post("http://localhost:8000/app2").text
+            == "wonderful world",
             timeout=15,
         )
         print("Deployments are live and reachable over HTTP.\n")
@@ -193,7 +196,8 @@ def test_put_get_multi_app(ray_start_stop):
         print("Sending PUT request for config3.")
         deploy_and_check_config_multi(config3)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").text == "wonderful world",
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world",
             timeout=15,
         )
         print("Deployments are live and reachable over HTTP.\n")

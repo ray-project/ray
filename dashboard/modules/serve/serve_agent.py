@@ -138,7 +138,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             serve.shutdown()
 
         return Response()
-    
+
     @routes.delete("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_applications(self, req: Request) -> Response:
@@ -148,7 +148,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             serve.shutdown()
 
         return Response()
-
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
