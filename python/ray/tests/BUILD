@@ -1,4 +1,5 @@
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "pytest_list")
 
 py_library(
   name = "conftest",
@@ -20,7 +21,7 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
-py_test_module_list(
+pytest_list(
   files = [
     "test_actor_pool.py",
     "test_async.py",
@@ -63,7 +64,7 @@ py_test_module_list(
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
+  tags = ["medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

@@ -18,6 +18,26 @@ def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwar
             **kwargs
         )
 
+
+def pytest_list(files, size, deps, extra_srcs=[], name_suffix="", **kwargs):
+    for file in files:
+        # remove .py
+        name = paths.split_extension(file)[0] + name_suffix
+        if name == file:
+            basename = basename + "_test"
+        wrapper = "//bazel:pytest_wrapper.py"
+        native.py_test(
+            name = name,
+            size = size,
+            main = wrapper,
+            srcs = extra_srcs + [file, wrapper],
+            args = [
+                "$(location :%s)" % file
+            ],
+            deps = deps,
+            **kwargs
+        )
+
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
