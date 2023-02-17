@@ -348,7 +348,7 @@ def rmsprop_optimizer(
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
             epsilon=config["rmsprop_epsilon"],
-            decay=0.95,
+            weight_decay=0.95,
             momentum=0.0,
             centered=True,
         )
