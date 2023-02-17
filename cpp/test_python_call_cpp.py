@@ -66,7 +66,9 @@ def test_cross_language_cpp():
 
 
 def test_cross_language_cpp_actor():
-    actor = ray.cross_language.cpp_actor_class("CreateCounter", "Counter").remote()
+    actor = ray.cross_language.cpp_actor_class(
+        "RAY_FUNC(Counter::FactoryCreate)", "Counter"
+    ).remote()
     obj = actor.Plus1.remote()
     assert 1 == ray.get(obj)
 

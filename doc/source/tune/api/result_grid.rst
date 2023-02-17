@@ -15,9 +15,13 @@ ResultGrid (tune.ResultGrid)
     :toctree: doc/
     :template: autosummary/class_with_autosummary.rst
 
-    tune.ResultGrid
-    tune.ResultGrid.get_best_result
-    tune.ResultGrid.get_dataframe
+    ~tune.ResultGrid
+
+.. autosummary::
+    :toctree: doc/
+
+    ~tune.ResultGrid.get_best_result
+    ~tune.ResultGrid.get_dataframe
 
 .. _result-docstring:
 
@@ -27,7 +31,7 @@ Result (air.Result)
 .. autosummary::
     :toctree: doc/
 
-    air.Result
+    ~air.Result
 
 .. _exp-analysis-docstring:
 
@@ -37,10 +41,11 @@ ExperimentAnalysis (tune.ExperimentAnalysis)
 
 .. note::
 
-    An experiment analysis is the output of the ``tune.run`` API.
-    It's now recommended to use ``Tuner.fit``, which outputs a ``ResultGrid`` object.
+    An `ExperimentAnalysis` is the output of the ``tune.run`` API.
+    It's now recommended to use :meth:`Tuner.fit <ray.tune.Tuner.fit>`,
+    which outputs a `ResultGrid` object.
 
 .. autosummary::
     :toctree: doc/
 
-    tune.ExperimentAnalysis
+    ~tune.ExperimentAnalysis
