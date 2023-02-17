@@ -74,6 +74,35 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/json",
         )
 
+    @routes.get("/api/serve/applications/config")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_user_deployed_config(self, req: Request) -> Response:
+        from ray.serve.schema import ServeDeploySchema
+
+        controller = await self.get_serve_controller()
+
+        if controller is None:
+            config = ServeDeploySchema.get_empty_schema_dict()
+        else:
+            try:
+                config = await controller.get_user_deployed_config.remote()
+            except ray.exceptions.RayTaskError as e:
+                # Task failure sometimes are due to GCS
+                # failure. When GCS failed, we expect a longer time
+                # to recover.
+                return Response(
+                    status=503,
+                    text=(
+                        "Fail to get the response from the controller. "
+                        f"Potentially the GCS is down: {e}"
+                    ),
+                )
+
+        return Response(
+            text=json.dumps(config),
+            content_type="application/json",
+        )
+
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployment_statuses(self, req: Request) -> Response:
@@ -109,6 +138,17 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             serve.shutdown()
 
         return Response()
+    
+    @routes.delete("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def delete_serve_applications(self, req: Request) -> Response:
+        from ray import serve
+
+        if await self.get_serve_controller() is not None:
+            serve.shutdown()
+
+        return Response()
+
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -119,6 +159,70 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         try:
             config = ServeApplicationSchema.parse_obj(await req.json())
+        except ValidationError as e:
+            return Response(
+                status=400,
+                text=repr(e),
+            )
+
+        client = serve_start(
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
+        )
+
+        if client.http_config.host != config.host:
+            return Response(
+                status=400,
+                text=(
+                    "Serve is already running on this Ray cluster. Its "
+                    f'HTTP host is set to "{client.http_config.host}". '
+                    f'However, the requested host is "{config.host}". '
+                    f"The requested host must match the running Serve "
+                    "application's host. To change the Serve application "
+                    "host, shut down Serve on this Ray cluster using the "
+                    "`serve shutdown` CLI command or by sending a DELETE "
+                    "request to this Ray cluster's "
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
+        if client.http_config.port != config.port:
+            return Response(
+                status=400,
+                text=(
+                    "Serve is already running on this Ray cluster. Its "
+                    f'HTTP port is set to "{client.http_config.port}". '
+                    f'However, the requested port is "{config.port}". '
+                    f"The requested port must match the running Serve "
+                    "application's port. To change the Serve application "
+                    "port, shut down Serve on this Ray cluster using the "
+                    "`serve shutdown` CLI command or by sending a DELETE "
+                    "request to this Ray cluster's "
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
+        client.deploy_apps(config)
+
+        return Response()
+
+    @routes.put("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve.schema import ServeDeploySchema
+        from ray.serve._private.api import serve_start
+        from pydantic import ValidationError
+
+        print("put_all_applications", await req.json())
+
+        try:
+            config = ServeDeploySchema.parse_obj(await req.json())
         except ValidationError as e:
             return Response(
                 status=400,

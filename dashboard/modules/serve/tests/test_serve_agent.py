@@ -27,6 +27,22 @@ def deploy_and_check_config(config: Dict):
     print("GET request returned correct config.")
 
 
+def deploy_and_check_config_multi(config: Dict):
+    put_response = requests.put(
+        "http://localhost:52365/api/serve/applications/", json=config, timeout=30
+    )
+    assert put_response.status_code == 200
+    print("PUT request sent successfully.")
+
+    # Config should be immediately retrievable
+    get_response = requests.get(
+        "http://localhost:52365/api/serve/applications/config", timeout=15
+    )
+    assert get_response.status_code == 200
+    assert get_response.json() == config
+    print("GET request returned correct config.")
+
+
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_put_get(ray_start_stop):
     config1 = {
@@ -86,6 +102,101 @@ def test_put_get(ray_start_stop):
 
         print("Sending PUT request for config3.")
         deploy_and_check_config(config3)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+            timeout=15,
+        )
+        print("Deployments are live and reachable over HTTP.\n")
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_put_get_multi_app(ray_start_stop):
+    import_path = "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+    config1 = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": import_path,
+                "deployments": [
+                    {
+                        "name": "Adder",
+                        "ray_actor_options": {
+                            "runtime_env": {"env_vars": {"override_increment": "3"}}
+                        },
+                    },
+                    {
+                        "name": "Multiplier",
+                        "ray_actor_options": {
+                            "runtime_env": {"env_vars": {"override_factor": "4"}}
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+    # Use empty dictionary for app2 Adder's ray_actor_options.
+    config2 = copy.deepcopy(config1)
+    config2["applications"][1]["deployments"][0]["ray_actor_options"] = {}
+
+    config3 = copy.deepcopy(config1)
+    config3["applications"][0] = {
+        "name": "app1",
+        "route_prefix": "/app1",
+        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+    }
+
+    # Ensure the REST API is idempotent
+    num_iterations = 3
+    for iteration in range(num_iterations):
+        print(f"*** Starting Iteration {iteration + 1}/{num_iterations} ***\n")
+
+        # APPLY CONFIG 1
+        print("Sending PUT request for config1.")
+        deploy_and_check_config_multi(config1)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "0 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
+            == "-4 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "5 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "8 pizzas please!",
+            timeout=15,
+        )
+        print("Deployments are live and reachable over HTTP.\n")
+
+        # APPLY CONFIG 2: App #2 Adder should add 2 to input.
+        print("Sending PUT request for config2.")
+        deploy_and_check_config_multi(config2)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        print("Adder deployment updated correctly.\n")
+
+        # APPLY CONFIG 3: App #1 should be overwritten to world:DagNode
+        print("Sending PUT request for config3.")
+        deploy_and_check_config_multi(config3)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/").text == "wonderful world",
             timeout=15,
