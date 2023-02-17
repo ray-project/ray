@@ -3286,7 +3286,7 @@ py_test(
     name = "examples/multi_agent_cartpole_w_rlm_torch",
     main = "examples/multi_agent_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
@@ -3295,7 +3295,7 @@ py_test(
     name = "examples/multi_agent_cartpole_w_rlm_tf2",
     main = "examples/multi_agent_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--framework=tf2", "--stop-reward=70.0", "--num-cpus=4"]
 )
