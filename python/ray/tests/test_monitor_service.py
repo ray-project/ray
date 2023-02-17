@@ -31,6 +31,35 @@ def monitor_stub_with_cluster():
     cluster.shutdown()
 
 
+def test_drain_and_kill_node(monitor_stub_with_cluster):
+    monitor_stub, cluster = monitor_stub_with_cluster
+
+    head_node = ray.nodes()[0]["NodeID"]
+
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    wait_for_condition(lambda: count_live_nodes() == 2)
+
+    node_ids = {node["NodeID"] for node in ray.nodes()}
+    worker_nodes = node_ids - {head_node}
+    assert len(worker_nodes) == 1
+
+    worker_node_id = next(iter(worker_nodes))
+
+    request = monitor_pb2.DrainAndKillNodeRequest(
+        node_ids=[binascii.unhexlify(worker_node_id)]
+    )
+    response = monitor_stub.DrainAndKillNode(request)
+
+    assert response.drained_nodes == request.node_ids
+    wait_for_condition(lambda: count_live_nodes() == 1)
+
+    response = monitor_stub.DrainAndKillNode(request)
+    assert response.drained_nodes == request.node_ids
+    wait_for_condition(lambda: count_live_nodes() == 1)
+
+
 def test_ray_version(monitor_stub):
     request = monitor_pb2.GetRayVersionRequest()
     response = monitor_stub.GetRayVersion(request)
