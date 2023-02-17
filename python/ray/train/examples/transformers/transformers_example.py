@@ -43,7 +43,6 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import ray
-from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
@@ -231,10 +230,6 @@ def parse_args():
 
 
 def train_func(config: Dict[str, Any]):
-    # Accelerator reads from this environment variable for GPU placement.
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-
     args = config["args"]
     # Initialize the accelerator. We will let the accelerator handle device
     # placement for us in this example.
