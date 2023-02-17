@@ -213,6 +213,8 @@ def run_release_test(
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
             prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
+        else:
+            prepare_timeout = 0
         command_and_prepare_timeout = command_timeout + prepare_timeout
 
         # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
