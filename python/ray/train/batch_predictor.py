@@ -102,7 +102,7 @@ class BatchPredictor:
         """Run batch scoring on a Dataset.
 
         .. note::
-            In Ray 2.4, `BatchPredictor` is lazy by default. You must use on of the Datasets consumption APIs, such as iterating through the output, to trigger execution of prediction.
+            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datasets consumption APIs, such as iterating through the output, to trigger the execution of prediction.
 
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
