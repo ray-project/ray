@@ -14,8 +14,13 @@ from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
+from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
+from ray.rllib.models.tf.tf_distributions import (
+    TfCategorical,
+    TfDiagGaussian,
+    TfDeterministic,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -69,38 +74,30 @@ class PPOTfRLModule(TfRLModule):
     #         return NestedDict({})
 
     @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        if self._is_discrete:
-            action_spec = TFTensorSpecs("b")
-        else:
-            action_dim = self.config.action_space.shape[0]
-            action_spec = TFTensorSpecs("b, h", h=action_dim)
-
-        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
-        spec_dict = self.input_specs_exploration()
-
-        spec_dict.update({SampleBatch.ACTIONS: action_spec})
-        if SampleBatch.OBS in spec_dict:
-            spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
-        spec = SpecDict(spec_dict)
-        return spec
+    def input_specs_train(self) -> List[str]:
+        return [SampleBatch.OBS, SampleBatch.ACTIONS]
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        spec = SpecDict(
-            {
-                SampleBatch.ACTION_DIST: Categorical
-                if self._is_discrete
-                else DiagGaussian,
-                SampleBatch.ACTION_LOGP: TFTensorSpecs("b", dtype=tf.float32),
-                SampleBatch.VF_PREDS: TFTensorSpecs("b", dtype=tf.float32),
-                "entropy": TFTensorSpecs("b", dtype=tf.float32),
-            }
-        )
-        return spec
+    def output_specs_exploration(self) -> List[str]:
+        return [
+            SampleBatch.ACTION_DIST,
+            SampleBatch.VF_PREDS,
+            SampleBatch.ACTION_DIST_INPUTS,
+        ]
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def output_specs_inference(self) -> List[str]:
+        return [SampleBatch.ACTION_DIST]
+
+    @override(RLModule)
+    def output_specs_train(self) -> List[str]:
+        return [
+            SampleBatch.ACTION_DIST,
+            SampleBatch.VF_PREDS,
+        ]
+
+    @override(TfRLModule)
+    def _forward_train(self, batch: NestedDict):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
@@ -172,7 +169,6 @@ class PPOTfRLModule(TfRLModule):
         else:
             action, _ = tf.split(action_logits, num_or_size_splits=2, axis=1)
 
-        action_dist = Deterministic(action, model=None)
         output[SampleBatch.ACTION_DIST] = action_dist
 
         return output
@@ -222,7 +218,7 @@ class PPOTfRLModule(TfRLModule):
         pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
         if self._is_discrete:
-            action_dist = Categorical(action_logits)
+            action_dist = TfCategorical(logits=action_logits)
         else:
             action_dist = DiagGaussian(
                 action_logits, None, action_space=self.config.action_space
