@@ -87,9 +87,8 @@ class MLPHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        # Convert numpy values so that we can build specs from them.
-        assert type(self.output_dim) is int
-        assert type(self.input_dim) is int
+        self.input_dim = int(self.input_dim)
+        self.output_dim = int(self.output_dim)
 
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
@@ -228,6 +227,7 @@ class LSTMEncoderConfig(ModelConfig):
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
+        self.input_dim = int(self.input_dim)
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 
