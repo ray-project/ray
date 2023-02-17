@@ -1431,7 +1431,10 @@ class AlgorithmConfig(_Config):
         if restart_failed_sub_environments != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(restart_failed_sub_environments=..)",
-                new="AlgorithmConfig.fault_tolerance(restart_failed_sub_environments=..)",
+                new=(
+                    "AlgorithmConfig.fault_tolerance("
+                    "restart_failed_sub_environments=..)"
+                ),
                 error=False,
             )
             self.restart_failed_sub_environments = restart_failed_sub_environments
@@ -2206,7 +2209,7 @@ class AlgorithmConfig(_Config):
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
         worker_health_probe_timeout_s: int = NotProvided,
         worker_restore_timeout_s: int = NotProvided,
-        ignore_worker_failures = DEPRECATED_VALUE,
+        ignore_worker_failures=DEPRECATED_VALUE,
     ):
         """Sets the config's fault tolerance settings.
 
@@ -2262,7 +2265,8 @@ class AlgorithmConfig(_Config):
         if ignore_worker_failures != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ignore_worker_failures is deprecated, and will soon be a no-op",
-                error=False)
+                error=False,
+            )
             self.ignore_worker_failures = ignore_worker_failures
 
         return self
