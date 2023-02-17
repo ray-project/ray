@@ -11,7 +11,6 @@ from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune import _check_mixin
-from ray.tune.tests.test_syncer import temp_data_dirs
 
 
 @pytest.fixture
@@ -480,7 +479,7 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
 
 
 def test_artifact_syncing_with_actor_reuse(
-    ray_start_2_cpus, temp_data_dirs, tmp_path, propagate_logs, caplog
+    ray_start_2_cpus, tmp_path, propagate_logs, caplog
 ):
     """Check that artifacts get synced to the right places with actor reuse.
 
@@ -489,7 +488,8 @@ def test_artifact_syncing_with_actor_reuse(
     On each pause + Trianable.reset, artifacts should get synced to their respective
     location in the target directory.
     """
-    _, tmp_target = temp_data_dirs
+    tmp_target = str(tmp_path / "target")
+    local_dir = str(tmp_path / "local_dir")
 
     exp_name = "sync_artifacts_with_actor_reuse"
 
@@ -540,7 +540,7 @@ def test_artifact_syncing_with_actor_reuse(
             MyResettableClassWithArtifacts,
             reuse=True,
             max_concurrent_trials=2,
-            local_dir=str(tmp_path),
+            local_dir=str(local_dir),
             name=exp_name,
             sync_config=tune.SyncConfig(
                 upload_dir=f"file://{tmp_target}", sync_artifacts=True
