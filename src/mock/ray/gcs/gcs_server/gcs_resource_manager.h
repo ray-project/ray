@@ -48,10 +48,6 @@ class MockGcsResourceManager : public GcsResourceManager {
                rpc::GetAllResourceUsageReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::ResourcesData> &),
-              NodeResourceReportView,
-              (),
-              (const override));
 
  private:
   instrumented_io_context io_context_;

@@ -57,11 +57,23 @@ class GcsMonitorServerTest : public ::testing::Test {
       : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
         cluster_resource_manager_(),
         mock_resource_manager_(
-            std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
+                               std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
+        // mock_resource_manager_(
+                               // std::make_shared<gcs::MockGcsResourceManager>(io_context_, cluster_resource_manager_, NodeID::FromRandom(), nullptr)),
         monitor_server_(
             mock_node_manager_, cluster_resource_manager_, mock_resource_manager_) {}
 
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceUsages() {
+    // return ((gcs::GcsResourceManager&)*mock_resource_manager_).node_resource_usages_;
+    return mock_resource_manager_->node_resource_usages_;
+  }
+
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &AliveNodes() {
+    return mock_node_manager_->alive_nodes_;
+  }
+
  protected:
+  instrumented_io_context io_context_;
   std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
@@ -108,16 +120,16 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
                                         std::function<void()> f1,
                                         std::function<void()> f2) { replied = true; };
 
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> gcs_node_manager_nodes;
+  // absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> gcs_node_manager_nodes;
 
-  ON_CALL(*mock_node_manager_, GetAllAliveNodes())
-      .WillByDefault(ReturnRef(gcs_node_manager_nodes));
-  EXPECT_CALL(*mock_node_manager_, GetAllAliveNodes());
+  // ON_CALL(*mock_node_manager_, GetAllAliveNodes())
+  //     .WillByDefault(ReturnRef(gcs_node_manager_nodes));
+  // EXPECT_CALL(*mock_node_manager_, GetAllAliveNodes());
 
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> gcs_resource_manager_nodes;
-  ON_CALL(*mock_resource_manager_, NodeResourceReportView)
-      .WillByDefault(ReturnRef(gcs_resource_manager_nodes));
-  EXPECT_CALL(*mock_resource_manager_, NodeResourceReportView);
+  // absl::flat_hash_map<NodeID, rpc::ResourcesData> gcs_resource_manager_nodes;
+  // ON_CALL(*mock_resource_manager_, NodeResourceReportView)
+  //     .WillByDefault(ReturnRef(gcs_resource_manager_nodes));
+  // EXPECT_CALL(*mock_resource_manager_, NodeResourceReportView);
 
   NodeID id_1 = NodeID::FromRandom();
   NodeID id_2 = NodeID::FromRandom();
@@ -152,7 +164,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             1,
             1,
             1));
-    gcs_resource_manager_nodes[id_1] = data;
+    NodeResourceUsages()[id_1] = data;
   }
   {
     // Setup the node management mocks.
@@ -161,7 +173,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
         constructNodeResources(
             {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
             {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
-    gcs_node_manager_nodes[id_1] = Mocker::GenNodeInfo(0, "1.1.1.1", "Node1");
+    AliveNodes()[id_1] = Mocker::GenNodeInfo(0, "1.1.1.1", "Node1");
 
     cluster_resource_manager_.AddOrUpdateNode(
         scheduling::NodeID(id_2.Binary()),
@@ -169,7 +181,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
             {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
 
-    gcs_node_manager_nodes[id_3] = Mocker::GenNodeInfo(0, "1.1.1.3", "Node1");
+    AliveNodes()[id_3] = Mocker::GenNodeInfo(0, "1.1.1.3", "Node1");
   }
 
   monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);

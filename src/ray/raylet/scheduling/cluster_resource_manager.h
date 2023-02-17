@@ -191,6 +191,7 @@ class ClusterResourceManager {
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;
+  // friend class gcs::GcsMonitorServerTest;
 };
 
 }  // end namespace ray

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <boost/bimap.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
@@ -96,7 +98,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  virtual const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
       &GetAllAliveNodes() const {
     return alive_nodes_;
   }
@@ -173,6 +175,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
                    boost::bimaps::unordered_set_of<std::string>>;
   NodeIDAddrBiMap node_map_;
+
+  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs
