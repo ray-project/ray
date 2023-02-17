@@ -266,6 +266,9 @@ def _execution_allowed(
         object_store_memory=global_usage.object_store_memory,
     )
     inc = op.incremental_resource_usage()
+    # If there are no resource demands, always allow execution.
+    if not inc.cpu and not inc.gpu and not inc.object_store_memory:
+        return True
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,

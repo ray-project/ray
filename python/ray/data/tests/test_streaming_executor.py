@@ -251,6 +251,14 @@ def test_execution_allowed():
         op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
     )
 
+    # Test zero incremental.
+    op.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=0, gpu=0)
+    )
+    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
+    assert _execution_allowed(op, ExecutionResources(gpu=2), ExecutionResources(gpu=2))
+    assert _execution_allowed(op, ExecutionResources(gpu=3), ExecutionResources(gpu=2))
+
 
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
