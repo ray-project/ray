@@ -141,10 +141,6 @@ class SyncConfig:
         if not self.upload_dir and isinstance(self.syncer, Syncer):
             raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
 
-        if self.upload_dir and self.syncer == "auto":
-            # Setup the default cloud syncer
-            self.syncer = get_node_to_storage_syncer(self)
-
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
 
