@@ -1018,8 +1018,10 @@ def test_ssh_sync():
         - At least one trial ran remotely
         - Driver has trial checkpoints from head node trial
         - Driver has trial checkpoints from remote node trials
+        - Driver has trial artifacts from all trials
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
+        - Remote trial dirs have artifacts for node-local trials
 
     Then, remote checkpoint directories are cleaned up.
 
@@ -1027,6 +1029,7 @@ def test_ssh_sync():
 
         - 4 trials are running
         - All trials progressed with training
+        - All trials have continued appending to their synced artifacts
 
     """
     experiment_name = "cloud_ssh_sync"
@@ -1056,6 +1059,11 @@ def test_ssh_sync():
             driver_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=1
         )
 
+        # Req: Driver has trial artifacts from all trials
+        assert_artifact_existence_and_validity(
+            driver_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=True
+        )
+
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
 
@@ -1078,6 +1086,13 @@ def test_ssh_sync():
                     exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
+                # Req: Remote trial dirs have artifacts for node-local trials
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=False,
+                    exists_for_worker_trials=True,
+                )
+
         # Delete remote checkpoints before resume
         print("Deleting remote checkpoints before resume")
         cleanup_remote_node_experiment_dir(experiment_name)
@@ -1096,6 +1111,14 @@ def test_ssh_sync():
 
         for trial in experiment_state.trials:
             assert_trial_progressed_training(trial)
+
+            # Req: All trials have continued appending to their synced artifacts
+            exp_dir_cp = trial_exp_checkpoint_data[trial]
+            assert_artifact_existence_and_validity(
+                exp_dir_cp,
+                exists_for_driver_trials=trial.was_on_driver_node,
+                exists_for_worker_trials=True,
+            )
 
     run_time = int(os.getenv("TUNE_RUN_TIME", "180")) or 180
 
