@@ -75,11 +75,11 @@ message NodeStatus {
   // The unique id of this node in the cluster.
   bytes node_id = 1;
 
-  // The address of the node. 
+  // The address of the node.
   string address = 2;
 
   // The available resources on the node.
-  map<string,double> available_resources = 3;
+  map<string, double> available_resources = 3;
 
   // The corresponding total resources on the node.
   map<string, double> total_resources = 4;
@@ -92,9 +92,8 @@ message GetSchedulingStatusReply {
   repeated ResourceRequest resource_requests = 1;
 
   // The status of the nodes in the cluster.
-  repeated NodeStatus node_statuses= 2;
+  repeated NodeStatus node_statuses = 2;
 }
-
 
 // This service provides a stable interface for a monitor/autoscaler process to interact
 // with Ray.
@@ -107,4 +106,3 @@ service MonitorGcsService {
 
   rpc GetSchedulingStatus(GetSchedulingStatusRequest) returns (GetSchedulingStatusReply);
 }
-
