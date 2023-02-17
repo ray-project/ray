@@ -1147,11 +1147,15 @@ def test_durable_upload(bucket: str):
         - At least one trial ran on the head node
         - At least one trial ran remotely
         - Driver has trial checkpoints from head node trial
+        - Driver has trial artifacts from head node trial
         - Driver has no trial checkpoints from remote node trials
+        - Driver has no trial artifacts from remote node trials
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
+        - Remote trial dirs have trial artifacts for node-local trials
         - Cloud checkpoint is valid
         - Cloud checkpoint has checkpoints from all trials
+        - Cloud checkpoint has artifacts from all trials
 
     Then, remote checkpoint directories are cleaned up.
 
@@ -1161,6 +1165,7 @@ def test_durable_upload(bucket: str):
         - All trials progressed with training
         - Cloud checkpoint is valid
         - Cloud checkpoint has checkpoints from all trials
+        - Cloud checkpoint has newly appended synced artifacts from all trials
 
     """
     if not bucket:
@@ -1198,6 +1203,12 @@ def test_durable_upload(bucket: str):
             driver_dir_cp, for_driver_trial=2, for_worker_trial=0, max_additional=1
         )
 
+        # Req: Driver has trial artifacts from head node trial
+        # Req: Driver has no trial artifacts from remote node trials
+        assert_artifact_existence_and_validity(
+            driver_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=False
+        )
+
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
 
@@ -1220,6 +1231,13 @@ def test_durable_upload(bucket: str):
                     exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
+                # Req: Remote trial dirs have artifacts for node-local trials
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=False,
+                    exists_for_worker_trials=True,
+                )
+
         bucket_state_cp, bucket_dir_cp = get_bucket_data(bucket, experiment_name)
 
         # Req: Cloud checkpoint is valid
@@ -1228,6 +1246,11 @@ def test_durable_upload(bucket: str):
         # Req: Cloud checkpoint has checkpoints from all trials
         assert_checkpoint_count(
             bucket_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=2
+        )
+
+        # Req: Cloud checkpoint has artifacts from all trials
+        assert_artifact_existence_and_validity(
+            bucket_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=True
         )
 
         # Delete remote checkpoints before resume
@@ -1257,6 +1280,11 @@ def test_durable_upload(bucket: str):
         # Req: Cloud checkpoint has checkpoints from all trials
         assert_checkpoint_count(
             bucket_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=2
+        )
+
+        # Req: Cloud checkpoint has newly appended synced artifacts from all trials
+        assert_artifact_existence_and_validity(
+            bucket_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=True
         )
 
         # clear_bucket_contents(bucket)
