@@ -1,14 +1,15 @@
 import ray
 import unittest
 import numpy as np
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 import torch
+import tensorflow as tf
 import tree  # pip install dm-tree
 
 import ray.rllib.algorithms.ppo as ppo
+
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -54,7 +55,6 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
-            .framework("torch")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -71,42 +71,48 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        trainer = config.build()
-        policy = trainer.get_policy()
+        for fw in framework_iterator(config, ("tf2", "torch")):
+            trainer = config.build()
+            policy = trainer.get_policy()
 
-        train_batch = SampleBatch(FAKE_BATCH)
-        train_batch = compute_gae_for_sample_batch(policy, train_batch)
+            train_batch = SampleBatch(FAKE_BATCH)
+            train_batch = compute_gae_for_sample_batch(policy, train_batch)
 
-        # convert to torch tensors with tree.map_structure
-        train_batch = tree.map_structure(
-            lambda x: torch.as_tensor(x).float(), train_batch
-        )
+            # convert to proper tensors with tree.map_structure
+            if fw == "torch":
+                train_batch = tree.map_structure(
+                    lambda x: torch.as_tensor(x).float(), train_batch
+                )
+            else:
+                # tf
+                train_batch = tree.map_structure(
+                    lambda x: tf.convert_to_tensor(x), train_batch
+                )
 
-        policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
+            policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
-        config.training(_enable_learner_api=True)
-        config.validate()
-        config.freeze()
+            algo_config = config.copy(copy_frozen=False)
+            algo_config.training(_enable_learner_api=True)
+            algo_config.validate()
+            algo_config.freeze()
 
-        learner_group_config = config.get_learner_group_config(
-            SingleAgentRLModuleSpec(
-                module_class=config.rl_module_spec.module_class,
-                observation_space=policy.observation_space,
-                action_space=policy.action_space,
-                model_config=policy.config["model"],
+            learner_group_config = algo_config.get_learner_group_config(
+                SingleAgentRLModuleSpec(
+                    module_class=algo_config.rl_module_spec.module_class,
+                    observation_space=policy.observation_space,
+                    action_space=policy.action_space,
+                    model_config=policy.config["model"],
+                )
             )
-        )
-        learner_group = learner_group_config.build()
+            learner_group = learner_group_config.build()
 
-        # load the policy weights into the learner_group
-        state_dict = {"module_state": {"default_policy": policy.get_weights()}}
-        state_dict = convert_to_torch_tensor(state_dict)
-        learner_group.set_state(state_dict)
-        results = learner_group.update(train_batch.as_multi_agent())
+            # load the trainer weights onto the learner_group
+            learner_group.set_weights(trainer.get_weights())
+            results = learner_group.update(train_batch.as_multi_agent())
 
-        learner_group_loss = results["loss"]["total_loss"]
+            learner_group_loss = results["loss"]["total_loss"]
 
-        check(learner_group_loss, policy_loss)
+            check(learner_group_loss, policy_loss)
 
 
 if __name__ == "__main__":
