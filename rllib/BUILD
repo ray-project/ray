@@ -1867,7 +1867,7 @@ py_test(
 py_test(
     name = "test_tf_mlp_head",
     tags = ["team:rllib", "core", "models"],
-    size = "small",
+    size = "medium",
     srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
 )
 
