@@ -584,6 +584,18 @@ py_test(
     deps = [":train_lib"]
 )
 
+py_test(
+    name = "test_trainer_restore",
+    size = "medium",
+    srcs = ["tests/test_trainer_restore.py"],
+    tags = [
+        "exclusive",
+        "ray_air",
+        "team:ml",
+    ],
+    deps = [":train_lib"],
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

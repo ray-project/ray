@@ -5,12 +5,12 @@ from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
     from ray.data import DatasetIterator
-    from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -113,7 +113,9 @@ class DataParallelIngestSpec:
         self.preprocessor: Optional["Preprocessor"] = None
 
     def preprocess_datasets(
-        self, prep: "Preprocessor", datasets: Dict[str, "Dataset"]
+        self,
+        prep: "Preprocessor",
+        datasets: Dict[str, "Dataset"],
     ) -> Dict[str, "Dataset"]:
         """Preprocess the given datasets.
 
@@ -142,7 +144,10 @@ class DataParallelIngestSpec:
                     continue
                 if conf.fit:
                     ds_to_fit = datasets[k]
-            if ds_to_fit:
+            if ds_to_fit and prep.fit_status() in (
+                Preprocessor.FitStatus.NOT_FITTED,
+                Preprocessor.FitStatus.PARTIALLY_FITTED,
+            ):
                 prep.fit(ds_to_fit)
             new_datasets = {}
 

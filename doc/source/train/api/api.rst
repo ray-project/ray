@@ -26,8 +26,8 @@ Trainer Base Classes
     ~train.data_parallel_trainer.DataParallelTrainer
     ~train.gbdt_trainer.GBDTTrainer
 
-``BaseTrainer`` Methods
-************************
+``BaseTrainer`` API
+*******************
 
 .. autosummary::
     :toctree: doc/
@@ -40,7 +40,7 @@ Trainer Base Classes
 
 
 Train Backend Base Classes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. _train-backend:
 .. _train-backend-config:
@@ -170,10 +170,56 @@ Mosaic
 
 
 Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
 
     ~train.rl.RLTrainer
     ~train.rl.RLCheckpoint
+
+
+.. _trainer-restore:
+
+Ray Train Experiment Restoration
+--------------------------------
+
+.. autosummary::
+    :toctree: doc/
+
+    train.trainer.BaseTrainer.restore
+
+.. note::
+
+    All trainer classes have a `restore` method that takes in a path
+    pointing to the directory of the experiment to be restored.
+    `restore` also exposes a subset of construtor arguments that can be re-specified.
+    See :ref:`train-framework-specific-restore`
+    below for details on `restore` arguments for different AIR trainer integrations.
+
+.. _train-framework-specific-restore:
+
+Restoration API for Built-in Trainers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    train.data_parallel_trainer.DataParallelTrainer.restore
+
+.. autosummary::
+
+    train.huggingface.HuggingFaceTrainer.restore
+
+.. note::
+
+    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
+    can take in the same parameters as their parent class's
+    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
+
+    Unless otherwise specified, other trainers will accept the same parameters as
+    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
+
+.. seealso::
+
+    See :ref:`train-restore-faq` for more details on when and how trainer restore should be used.
