@@ -647,6 +647,8 @@ def main(
             "docker run/"
             "docker run "
             "--cap-add=SYS_PTRACE "
+            "--cap-add=CAP_SYS_ADMIN "
+            "--cap-add=NET_ADMIN "
             "--name ray_container "
             "-d/g' | "
             "bash -l"
