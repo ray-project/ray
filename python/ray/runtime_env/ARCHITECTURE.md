@@ -27,7 +27,7 @@ The `RuntimeEnvContext` is serialized and passed to the Raylet, where it is used
 
 ## Plugins
 
-Each field of the runtime env dict (e.g. `working_dir`, `pip`, etc) is handled by its own subclass of `RuntimeEnvPlugin`.  This class contains public methods to be called during installation, deletion, and for updating the `RuntimeEnvContext` object.
+All options for runtime envs (e.g. `working_dir`, `pip`, etc) are implemented as plugins adhering to a Ray `RuntimeEnvPlugin` interface.  This class contains public methods to be called during installation, deletion, and for updating the `RuntimeEnvContext` object.
 
 For details, see the [design doc.](https://docs.google.com/document/d/1x1JAHg7c0ewcOYwhhclbuW0B0UC7l92WFkF4Su0T-dk/edit#heading=h.j4mqiaz83o96)
 
