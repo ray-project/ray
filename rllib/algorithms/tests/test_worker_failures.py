@@ -711,6 +711,7 @@ class TestWorkerFailures(unittest.TestCase):
                 recreate_failed_workers=True,  # And recover
                 worker_health_probe_timeout_s=0.01,
                 worker_restore_timeout_s=5,
+                delay_between_worker_restarts_s=0,  # For testing, no delay.
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
