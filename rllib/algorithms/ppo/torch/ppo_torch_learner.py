@@ -1,14 +1,12 @@
 import logging
-from typing import Mapping, Any
+from typing import Mapping
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import (
-    explained_variance,
-)
+from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
