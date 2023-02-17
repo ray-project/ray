@@ -16,8 +16,8 @@ from ray.air.util.data_batch_conversion import (
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
-
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
+from ray.tune.tests.conftest import *  # noqa
 
 
 class DummyModelSingleTensor(torch.nn.Module):
@@ -281,7 +281,6 @@ def test_multi_modal_real_model(use_gpu):
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
-# TO BE IMPORTED...
 def test_predictor_w_ckpt_from_uri(mock_s3_bucket_uri):
     def create_model():
         return torch.nn.Sequential(
