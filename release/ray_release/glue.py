@@ -210,11 +210,19 @@ def run_release_test(
         cluster_timeout = int(
             test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
         )
+        prepare_cmd = test["run"].get("prepare", None)
+        if prepare_cmd:
+            prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
+        else:
+            prepare_timeout = 0
+        command_and_prepare_timeout = command_timeout + prepare_timeout
+
         # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
         # sure we don't inflate the maximum_uptime_minutes too much if we don't wait
         # for nodes at all.
         # The actual default will be otherwise loaded further down.
         wait_timeout = int(test["run"].get("wait_for_nodes", {}).get("timeout", 0))
+        timeout_buffer_minutes = 15
 
         autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
         if autosuspend_mins:
@@ -222,18 +230,21 @@ def run_release_test(
             autosuspend_base = autosuspend_mins
         else:
             cluster_manager.autosuspend_minutes = min(
-                DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
+                DEFAULT_AUTOSUSPEND_MINS,
+                int(command_and_prepare_timeout / 60) + timeout_buffer_minutes,
             )
             # Maximum uptime should be based on the command timeout, not the
             # DEFAULT_AUTOSUSPEND_MINS
-            autosuspend_base = int(command_timeout / 60) + 10
+            autosuspend_base = (
+                int(command_and_prepare_timeout / 60) + timeout_buffer_minutes
+            )
 
         maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
         if maximum_uptime_minutes:
             cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                autosuspend_base + wait_timeout + 10
+                autosuspend_base + wait_timeout + timeout_buffer_minutes
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
@@ -307,9 +318,7 @@ def run_release_test(
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
-        prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
-            prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
             try:
                 command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
             except CommandError as e:
