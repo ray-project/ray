@@ -19,6 +19,7 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
@@ -28,7 +29,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
 
@@ -307,10 +308,12 @@ class ServeControllerClient:
             self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
 
     @_ensure_connected
-    def deploy_app(
-        self, config: ServeApplicationSchema, _blocking: bool = False
+    def deploy_apps(
+        self,
+        config: Union[ServeApplicationSchema, ServeDeploySchema],
+        _blocking: bool = False,
     ) -> None:
-        ray.get(self._controller.deploy_app.remote(config))
+        ray.get(self._controller.deploy_apps.remote(config))
 
         if _blocking:
             timeout_s = 60
@@ -380,12 +383,12 @@ class ServeControllerClient:
         }
 
     @_ensure_connected
-    def get_app_config(self) -> Dict:
+    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
         """Returns the most recently requested Serve config."""
-        return ray.get(self._controller.get_app_config.remote())
+        return ray.get(self._controller.get_app_config.remote(name))
 
     @_ensure_connected
-    def get_serve_status(self, name: str = "") -> StatusOverview:
+    def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:
         proto = StatusOverviewProto.FromString(
             ray.get(self._controller.get_serve_status.remote(name))
         )
