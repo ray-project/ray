@@ -383,7 +383,7 @@ public class ServeControllerClient {
     for (byte[] statusBytes : statusesBytes) {
       deploymentStatuses.add(ServeProtoUtil.bytesToProto(statusBytes, DeploymentStatusInfo::parseFrom));
     }
-    return deploymentStatuses
+    return deploymentStatuses;
   }
 
   public BaseActorHandle getController() {
