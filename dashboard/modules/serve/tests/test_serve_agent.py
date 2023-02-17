@@ -111,7 +111,8 @@ def test_put_get(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_put_get_multi_app(ray_start_stop):
-    import_path = "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+    pizza_import_path = "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     config1 = {
         "host": "127.0.0.1",
         "port": 8000,
@@ -119,12 +120,7 @@ def test_put_get_multi_app(ray_start_stop):
             {
                 "name": "app1",
                 "route_prefix": "/app1",
-                "import_path": import_path,
-            },
-            {
-                "name": "app2",
-                "route_prefix": "/app2",
-                "import_path": import_path,
+                "import_path": pizza_import_path,
                 "deployments": [
                     {
                         "name": "Adder",
@@ -140,18 +136,23 @@ def test_put_get_multi_app(ray_start_stop):
                     },
                 ],
             },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
         ],
     }
 
-    # Use empty dictionary for app2 Adder's ray_actor_options.
+    # Use empty dictionary for app1 Adder's ray_actor_options.
     config2 = copy.deepcopy(config1)
-    config2["applications"][1]["deployments"][0]["ray_actor_options"] = {}
+    config2["applications"][0]["deployments"][0]["ray_actor_options"] = {}
 
     config3 = copy.deepcopy(config1)
     config3["applications"][0] = {
         "name": "app1",
         "route_prefix": "/app1",
-        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+        "import_path": world_import_path,
     }
 
     # Ensure the REST API is idempotent
@@ -164,31 +165,25 @@ def test_put_get_multi_app(ray_start_stop):
         deploy_and_check_config_multi(config1)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-            == "0 pizzas please!",
-            timeout=15,
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
-            == "-4 pizzas please!",
-            timeout=15,
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
             == "8 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2").text == "wonderful world",
             timeout=15,
         )
         print("Deployments are live and reachable over HTTP.\n")
 
-        # APPLY CONFIG 2: App #2 Adder should add 2 to input.
+        # APPLY CONFIG 2: App #1 Adder should add 2 to input.
         print("Sending PUT request for config2.")
         deploy_and_check_config_multi(config2)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
             == "4 pizzas please!",
             timeout=15,
         )
@@ -198,7 +193,7 @@ def test_put_get_multi_app(ray_start_stop):
         print("Sending PUT request for config3.")
         deploy_and_check_config_multi(config3)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+            lambda: requests.post("http://localhost:8000/app1").text == "wonderful world",
             timeout=15,
         )
         print("Deployments are live and reachable over HTTP.\n")
