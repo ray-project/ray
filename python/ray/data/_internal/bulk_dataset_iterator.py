@@ -1,10 +1,9 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
+from typing import TYPE_CHECKING, Dict, Optional, Union, Iterator
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
-    import tensorflow as tf
     import torch
     from ray.data import Dataset
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
@@ -63,29 +62,12 @@ class BulkDatasetIterator(DatasetIterator):
             local_shuffle_seed=local_shuffle_seed,
         )
 
-    def to_tf(
-        self,
-        feature_columns: Union[str, List[str]],
-        label_columns: Union[str, List[str]],
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: int = 1,
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-    ) -> "tf.data.Dataset":
-        return self._base_dataset.to_tf(
-            feature_columns,
-            label_columns,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
-        )
-
     def stats(self) -> str:
         return self._base_dataset.stats()
+
+    @property
+    def _base_dataset_or_pipeline(self) -> "Dataset":
+        return self._base_dataset
 
     def _to_train_iterator(self) -> "TrainDatasetIterator":
         from ray.train._internal.dataset_iterator import TrainDatasetIterator

@@ -9,10 +9,9 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type
 
 from ray.air._internal.util import StartTraceback, RunnerThread
-from ray.tune.resources import Resources
 import queue
 
 from ray.air.checkpoint import Checkpoint
@@ -135,7 +134,7 @@ class _StatusReporter:
         trial_name: Optional[str] = None,
         trial_id: Optional[str] = None,
         logdir: Optional[str] = None,
-        trial_resources: Optional[Union[Resources, PlacementGroupFactory]] = None,
+        trial_resources: Optional[PlacementGroupFactory] = None,
     ):
         self._queue = result_queue
         self._last_report_time = None
@@ -663,7 +662,7 @@ def wrap_function(
         @classmethod
         def default_resource_request(
             cls, config: Dict[str, Any]
-        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+        ) -> Optional[PlacementGroupFactory]:
             if not isinstance(resources, PlacementGroupFactory) and callable(resources):
                 return resources(config)
             return resources

@@ -146,12 +146,12 @@ class TfDiagGaussian(TfDistribution):
 
     Example::
 
-        >>> m = Normal(loc=[0.0, 0.0], scale=[1.0, 1.0])
+        >>> m = TfDiagGaussian(loc=[0.0, 0.0], scale=[1.0, 1.0])
         >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
         >>> # scale is None
-        >>> m = Normal(loc=[0.0, 1.0])
+        >>> m = TfDiagGaussian(loc=[0.0, 1.0])
         >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
         tensor([0.1046, 0.6120])
 
@@ -240,7 +240,7 @@ class TfDeterministic(Distribution):
             raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
 
         shape = sample_shape + self.loc.shape
-        return tf.ones(shape, dtype=self.loc) * self.loc
+        return tf.ones(shape, dtype=self.loc.dtype) * self.loc
 
     def rsample(
         self,
