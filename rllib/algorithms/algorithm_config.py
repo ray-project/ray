@@ -2209,7 +2209,6 @@ class AlgorithmConfig(_Config):
         num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
         worker_health_probe_timeout_s: int = NotProvided,
         worker_restore_timeout_s: int = NotProvided,
-        ignore_worker_failures=DEPRECATED_VALUE,
     ):
         """Sets the config's fault tolerance settings.
 
@@ -2261,13 +2260,6 @@ class AlgorithmConfig(_Config):
             self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
         if worker_restore_timeout_s is not NotProvided:
             self.worker_restore_timeout_s = worker_restore_timeout_s
-
-        if ignore_worker_failures != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="ignore_worker_failures is deprecated, and will soon be a no-op",
-                error=False,
-            )
-            self.ignore_worker_failures = ignore_worker_failures
 
         return self
 
