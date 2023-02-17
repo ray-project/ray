@@ -1059,6 +1059,12 @@ py_test(
     srcs = ["algorithms/impala/tests/test_vtrace.py"]
 )
 py_test(
+    name = "test_vtrace_v2",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
+)
+py_test(
     name = "test_impala_off_policyness",
     tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
     size = "large",
