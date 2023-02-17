@@ -1562,8 +1562,8 @@ class Dataset(Generic[T]):
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
             block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
 
-            # Gather read task names from input blocks, and concat them before
-            # passing to resulting LazyBlockList
+            # Gather read task names from input blocks of unioned Datasets,
+            # and concat them before passing to resulting LazyBlockList
             read_task_names = []
             self_read_name = self._plan._in_blocks._read_stage_name or "read"
             read_task_names.append(self_read_name)

@@ -489,8 +489,7 @@ class _FileBasedDatasourceReader(Reader):
                 file_sizes=file_sizes,
             )
             read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths, filesystem),
-                meta,
+                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
             )
             read_tasks.append(read_task)
 
