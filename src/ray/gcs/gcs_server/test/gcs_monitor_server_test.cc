@@ -57,9 +57,10 @@ class GcsMonitorServerTest : public ::testing::Test {
       : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
         cluster_resource_manager_(),
         mock_resource_manager_(
-                               std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
+            std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
         // mock_resource_manager_(
-                               // std::make_shared<gcs::MockGcsResourceManager>(io_context_, cluster_resource_manager_, NodeID::FromRandom(), nullptr)),
+        // std::make_shared<gcs::MockGcsResourceManager>(io_context_,
+        // cluster_resource_manager_, NodeID::FromRandom(), nullptr)),
         monitor_server_(
             mock_node_manager_, cluster_resource_manager_, mock_resource_manager_) {}
 
@@ -120,7 +121,8 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
                                         std::function<void()> f1,
                                         std::function<void()> f2) { replied = true; };
 
-  // absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> gcs_node_manager_nodes;
+  // absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>
+  // gcs_node_manager_nodes;
 
   // ON_CALL(*mock_node_manager_, GetAllAliveNodes())
   //     .WillByDefault(ReturnRef(gcs_node_manager_nodes));

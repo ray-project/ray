@@ -141,8 +141,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Returns the mapping from node id to latest resource report.
   ///
   /// \returns The mapping from node id to latest resource report.
-  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView()
-      const;
+  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
  private:
   /// Aggregate nodes' pending task info.
