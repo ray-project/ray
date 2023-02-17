@@ -11,10 +11,10 @@ multi-agent-cartpole-appo:
         # 4-agent MA cartpole.
         env_config:
           config:
-            num_agents: 2
+            num_agents: 4
 
-        num_envs_per_worker: 1
-        num_workers: 2
+        num_envs_per_worker: 5
+        num_workers: 4
         num_gpus: 1
         _fake_gpus: true
 
@@ -29,7 +29,7 @@ multi-agent-cartpole-appo:
             vf_share_layers: true
 
         multiagent:
-            policies: ["p0", "p1"]
+            policies: ["p0", "p1", "p2", "p3"]
             # YAML-capable policy_mapping_fn definition via providing a callable class here.
             policy_mapping_fn:
                 type: ray.rllib.examples.multi_agent_and_self_play.policy_mapping_fn.PolicyMappingFn
