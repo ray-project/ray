@@ -27,6 +27,16 @@ Topology = Dict[PhysicalOperator, "OpState"]
 MaybeRefBundle = Union[RefBundle, Exception, None]
 
 
+@dataclass
+class DownstreamMemoryInfo:
+    """Mem stats of an operator and its downstream operators in a topology."""
+    # The fraction of the topology this covers, e.g., the last operator of a 4-op
+    # graph would have fraction `0.25`.
+    topology_fraction: float
+    # The resources used by this operator and operators downstream of this operator.
+    resources: ExecutionResources
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -198,6 +208,7 @@ def process_completed_tasks(topology: Topology) -> None:
 def select_operator_to_run(
     topology: Topology,
     cur_usage: ExecutionResources,
+    downstream_memory_usage: Dict[PhysicalOperator, DownstreamMemoryInfo],
     limits: ExecutionResources,
     ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
@@ -219,7 +230,8 @@ def select_operator_to_run(
     ops = [
         op
         for op, state in topology.items()
-        if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
+        if state.num_queued() > 0
+        and _execution_allowed(op, cur_usage, limits, downstream_memory_usage[op])
     ]
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
@@ -246,6 +258,7 @@ def _execution_allowed(
     op: PhysicalOperator,
     global_usage: ExecutionResources,
     global_limits: ExecutionResources,
+    downstream_memory_usage: DownstreamMemoryInfo,
 ) -> bool:
     """Return whether an operator is allowed to execute given resource usage.
 
@@ -253,6 +266,8 @@ def _execution_allowed(
         op: The operator to check.
         global_usage: Resource usage across the entire topology.
         global_limits: Execution resource limits.
+        downstream_memory_usage: Memory usage information about this and downstream
+            ops, which is used to better determine memory throttling.
 
     Returns:
         Whether the op is allowed to run.
@@ -271,4 +286,22 @@ def _execution_allowed(
         gpu=1 if inc.gpu else 0,
         object_store_memory=1 if inc.object_store_memory else 0,
     )
-    return global_floored.add(inc_indicator).satisfies_limit(global_limits)
+
+    # Under global limits; always allow.
+    new_usage = global_floored.add(inc_indicator)
+    if new_usage.satisfies_limit(global_limits):
+        return True
+
+    # We're over global limits, but execution may still be allowed if memory is the
+    # only bottleneck and this wouldn't impact downstream memory limits. This avoids
+    # stalling the execution for memory bottlenecks that occur upstream.
+    global_limits_sans_memory = ExecutionResources(
+        cpu=global_limits.cpu, gpu=global_limits.gpu
+    )
+    global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
+    downstream_limit = global_limits.scale(downstream_memory_usage.topology_fraction)
+    downstream_memory_ok = downstream_memory_usage.resources.satisfies_limit(
+        downstream_limit
+    )
+
+    return global_ok_sans_memory and downstream_memory_ok
