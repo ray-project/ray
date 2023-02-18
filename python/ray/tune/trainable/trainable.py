@@ -193,16 +193,15 @@ class Trainable:
             "Pass in a `tune.SyncConfig` object through the `sync_config` "
             "argument instead."
         )
+        if sync_timeout:
+            warnings.warn(warning_message, DeprecationWarning)
+            self.sync_config.sync_timeout = sync_timeout
         if custom_syncer:
             warnings.warn(warning_message, DeprecationWarning)
             self.sync_config.syncer = custom_syncer
         else:
             # Resolves syncer="auto" to an actual syncer if needed
             self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
-
-        if sync_timeout:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.sync_timeout = sync_timeout
 
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
