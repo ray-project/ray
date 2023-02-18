@@ -245,8 +245,10 @@ class StreamingExecutor(Executor, threading.Thread):
             if not isinstance(op, InputDataBuffer):
                 for bundle in state.outqueue:
                     cur_usage.object_store_memory += bundle.size_bytes()
+            # Subtract one from denom to account for input buffer.
+            f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
             downstream_usage[op] = DownstreamMemoryInfo(
-                topology_fraction=(1.0 + len(downstream_usage)) / len(topology),
+                topology_fraction=min(1.0, f),
                 resources=ExecutionResources(
                     object_store_memory=cur_usage.object_store_memory
                 ),
