@@ -45,7 +45,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.get("/api/serve/deployments/")
+    @routes.get("/api/serve/deployments")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
@@ -129,7 +129,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/json",
         )
 
-    @routes.delete("/api/serve/deployments/")
+    @routes.delete("/api/serve/deployments")
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
@@ -139,7 +139,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
-    @routes.delete("/api/serve/applications/")
+    @routes.delete("/api/serve/applications")
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_applications(self, req: Request) -> Response:
         from ray import serve
@@ -149,11 +149,10 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
-    @routes.put("/api/serve/deployments/")
+    @routes.put("/api/serve/deployments")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
-        from ray.serve._private.api import serve_start
         from pydantic import ValidationError
 
         try:
@@ -164,61 +163,13 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=repr(e),
             )
 
-        client = serve_start(
-            detached=True,
-            http_options={
-                "host": config.host,
-                "port": config.port,
-                "location": "EveryNode",
-            },
-        )
+        return self.submit_config(config)
 
-        if client.http_config.host != config.host:
-            return Response(
-                status=400,
-                text=(
-                    "Serve is already running on this Ray cluster. Its "
-                    f'HTTP host is set to "{client.http_config.host}". '
-                    f'However, the requested host is "{config.host}". '
-                    f"The requested host must match the running Serve "
-                    "application's host. To change the Serve application "
-                    "host, shut down Serve on this Ray cluster using the "
-                    "`serve shutdown` CLI command or by sending a DELETE "
-                    "request to this Ray cluster's "
-                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
-                    "down Serve will also shut down all Serve deployments."
-                ),
-            )
-
-        if client.http_config.port != config.port:
-            return Response(
-                status=400,
-                text=(
-                    "Serve is already running on this Ray cluster. Its "
-                    f'HTTP port is set to "{client.http_config.port}". '
-                    f'However, the requested port is "{config.port}". '
-                    f"The requested port must match the running Serve "
-                    "application's port. To change the Serve application "
-                    "port, shut down Serve on this Ray cluster using the "
-                    "`serve shutdown` CLI command or by sending a DELETE "
-                    "request to this Ray cluster's "
-                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
-                    "down Serve will also shut down all Serve deployments."
-                ),
-            )
-
-        client.deploy_apps(config)
-
-        return Response()
-
-    @routes.put("/api/serve/applications/")
+    @routes.put("/api/serve/applications")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_applications(self, req: Request) -> Response:
         from ray.serve.schema import ServeDeploySchema
-        from ray.serve._private.api import serve_start
         from pydantic import ValidationError
-
-        print("put_all_applications", await req.json())
 
         try:
             config = ServeDeploySchema.parse_obj(await req.json())
@@ -227,6 +178,11 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 status=400,
                 text=repr(e),
             )
+
+        return self.submit_config(config)
+
+    def submit_config(self, config):
+        from ray.serve._private.api import serve_start
 
         client = serve_start(
             detached=True,

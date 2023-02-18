@@ -9,10 +9,15 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
+from ray.experimental.state.api import list_actors
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 
-GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
+GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
+
+MULTI_APP_PUT_URL = "http://localhost:52365/api/serve/applications"
+MULTI_APP_CONFIG_URL = "http://localhost:52365/api/serve/applications/config"
 
 
 def deploy_and_check_config(config: Dict):
@@ -28,16 +33,12 @@ def deploy_and_check_config(config: Dict):
 
 
 def deploy_and_check_config_multi(config: Dict):
-    put_response = requests.put(
-        "http://localhost:52365/api/serve/applications/", json=config, timeout=30
-    )
+    put_response = requests.put(MULTI_APP_PUT_URL, json=config, timeout=30)
     assert put_response.status_code == 200
     print("PUT request sent successfully.")
 
     # Config should be immediately retrievable
-    get_response = requests.get(
-        "http://localhost:52365/api/serve/applications/config", timeout=15
-    )
+    get_response = requests.get(MULTI_APP_CONFIG_URL, timeout=15)
     assert get_response.status_code == 200
     assert get_response.json() == config
     print("GET request returned correct config.")
@@ -274,6 +275,106 @@ def test_delete(ray_start_stop):
             requests.post("http://localhost:8000/", json=["ADD", 1]).raise_for_status()
         with pytest.raises(requests.exceptions.ConnectionError):
             requests.post("http://localhost:8000/", json=["SUB", 1]).raise_for_status()
+        print("Deployments have been deleted and are not reachable.\n")
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_delete_multi_app(ray_start_stop):
+    config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "dir.subdir.a.add_and_sub.serve_dag",
+                "runtime_env": {
+                    "working_dir": (
+                        "https://github.com/ray-project/test_dag/archive/"
+                        "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+                    )
+                },
+                "deployments": [
+                    {
+                        "name": "Subtract",
+                        "ray_actor_options": {
+                            "runtime_env": {
+                                "py_modules": [
+                                    (
+                                        "https://github.com/ray-project/test_module/archive/"
+                                        "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+                                    )
+                                ]
+                            }
+                        },
+                    }
+                ],
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            },
+        ],
+    }
+
+    # Ensure the REST API is idempotent
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
+
+        print("Sending PUT request for config.")
+        deploy_and_check_config(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 1]).json()
+            == 2,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["SUB", 1]).json()
+            == -1,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2").text
+            == "wonderful world",
+            timeout=15,
+        )
+        print("Deployments are live and reachable over HTTP.\n")
+
+        print("Sending DELETE request for config.")
+        delete_response = requests.delete(MULTI_APP_PUT_URL, timeout=15)
+        assert delete_response.status_code == 200
+        print("DELETE request sent successfully.")
+
+        # Make sure return config has empty list of applications
+        wait_for_condition(
+            lambda: len(
+                requests.get(MULTI_APP_CONFIG_URL, timeout=15).json()["applications"]
+            )
+            == 0,
+            timeout=15,
+        )
+        print("GET request returned empty config successfully.")
+
+        wait_for_condition(
+            lambda: len(
+                list_actors(
+                    filters=[
+                        ("ray_namespace", "=", SERVE_NAMESPACE),
+                        ("state", "=", "ALIVE"),
+                    ]
+                )
+            )
+            == 0
+        )
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            requests.post(
+                "http://localhost:8000/app1", json=["ADD", 1]
+            ).raise_for_status()
+        with pytest.raises(requests.exceptions.ConnectionError):
+            requests.post("http://localhost:8000/app2").raise_for_status()
         print("Deployments have been deleted and are not reachable.\n")
 
 
