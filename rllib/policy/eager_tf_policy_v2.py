@@ -775,7 +775,10 @@ class EagerTFPolicyV2(Policy):
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
-        self._re_trace_counter += 1
+        # NOTE: On the new RLModule API, we won't trace the sampling side, so we should
+        # not increment this counter to trigger excess re-tracing error.
+        if not self.config.get("_enable_rl_module_api", False):
+            self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -786,7 +789,8 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if self.config["_enable_rl_module_api"]:
+            if self.config.get("_enable_rl_module_api", False):
+
                 if explore:
                     fwd_out = self.model.forward_exploration(input_dict)
                 else:
