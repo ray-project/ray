@@ -1,7 +1,6 @@
 from freezegun import freeze_time
 import logging
 import os
-from ray.tune.tests.conftest import *  # noqa
 import shutil
 import subprocess
 import tempfile
