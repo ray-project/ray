@@ -432,11 +432,22 @@ class ServeController:
         controller's deploy() function. Calls deploy on all the argument
         dictionaries in the list. Effectively executes an atomic deploy on a
         group of deployments.
+        If same app name deployed, old application will be overwrriten.
+
+        Args:
+            name: Application name.
+            deployment_args_list: List of deployment infomation, each item in the list
+                contains all the information for the single deployment.
+
+        Returns: list of deployment status to indicate whether each deployment is
+            deployed successfully or not.
         """
 
-        deployments_success = [self.deploy(**args) for args in deployment_args_list]
-        self.application_state_manager.deploy_application(name, deployment_args_list)
-        return deployments_success
+        deployments_to_delete = self.application_state_manager.deploy_application(
+            name, deployment_args_list
+        )
+        self.delete_deployments(deployments_to_delete)
+        return [self.deploy(**args) for args in deployment_args_list]
 
     def deploy_apps(
         self,
@@ -664,6 +675,12 @@ class ServeController:
     def get_serve_statuses(self, names: List[str]) -> List[bytes]:
         statuses = []
         for name in names:
+            statuses.append(self.get_serve_status(name))
+        return statuses
+
+    def list_serve_statuses(self) -> List[bytes]:
+        statuses = []
+        for name in self.application_state_manager.list_app_statuses():
             statuses.append(self.get_serve_status(name))
         return statuses
 
