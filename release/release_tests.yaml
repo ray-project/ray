@@ -4865,6 +4865,7 @@
     test_suite: k8s_tests
 
   stable: false
+  env: staging_v1
 
   frequency: nightly
   team: serve
