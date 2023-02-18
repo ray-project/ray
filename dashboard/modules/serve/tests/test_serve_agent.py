@@ -280,6 +280,10 @@ def test_delete(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_delete_multi_app(ray_start_stop):
+    py_module = (
+        "https://github.com/ray-project/test_module/archive/"
+        "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
+    )
     config = {
         "host": "127.0.0.1",
         "port": 8000,
@@ -298,14 +302,7 @@ def test_delete_multi_app(ray_start_stop):
                     {
                         "name": "Subtract",
                         "ray_actor_options": {
-                            "runtime_env": {
-                                "py_modules": [
-                                    (
-                                        "https://github.com/ray-project/test_module/archive/"
-                                        "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
-                                    )
-                                ]
-                            }
+                            "runtime_env": {"py_modules": [py_module]}
                         },
                     }
                 ],
