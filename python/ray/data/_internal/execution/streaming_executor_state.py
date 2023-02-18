@@ -6,6 +6,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 import math
 import time
 from collections import deque
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Deque, Union
 
 import ray
@@ -30,6 +31,7 @@ MaybeRefBundle = Union[RefBundle, Exception, None]
 @dataclass
 class DownstreamMemoryInfo:
     """Mem stats of an operator and its downstream operators in a topology."""
+
     # The fraction of the topology this covers, e.g., the last operator of a 4-op
     # graph would have fraction `0.25`.
     topology_fraction: float
@@ -208,8 +210,8 @@ def process_completed_tasks(topology: Topology) -> None:
 def select_operator_to_run(
     topology: Topology,
     cur_usage: ExecutionResources,
-    downstream_memory_usage: Dict[PhysicalOperator, DownstreamMemoryInfo],
     limits: ExecutionResources,
+    downstream_memory_usage: Dict[PhysicalOperator, DownstreamMemoryInfo],
     ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.

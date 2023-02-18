@@ -1,7 +1,7 @@
 import threading
 import time
 import os
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Dict
 
 import ray
 from ray.data.context import DatasetContext
@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor_state import (
     Topology,
+    DownstreamMemoryInfo,
     OpState,
     build_streaming_topology,
     process_completed_tasks,
@@ -181,23 +182,25 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
-        cur_usage = self._get_current_usage(topology)
+        cur_usage, downstream_usage = self._get_current_usage(topology)
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(
             topology,
             cur_usage,
             limits,
+            downstream_usage,
             ensure_at_least_one_running=self._consumer_idling(),
         )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage = self._get_current_usage(topology)
+            cur_usage, downstream_usage = self._get_current_usage(topology)
             op = select_operator_to_run(
                 topology,
                 cur_usage,
                 limits,
+                downstream_usage,
                 ensure_at_least_one_running=self._consumer_idling(),
             )
 
@@ -229,15 +232,26 @@ class StreamingExecutor(Executor, threading.Thread):
             else cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_current_usage(self, topology: Topology) -> ExecutionResources:
+    def _get_current_usage(
+        self, topology: Topology
+    ) -> (ExecutionResources, Dict[PhysicalOperator, DownstreamMemoryInfo]):
+        downstream_usage = {}
         cur_usage = ExecutionResources()
-        for op, state in topology.items():
+        # Iterate from last to first operator.
+        for op, state in list(topology.items())[::-1]:
             cur_usage = cur_usage.add(op.current_resource_usage())
-            if isinstance(op, InputDataBuffer):
-                continue  # Don't count input refs towards dynamic memory usage.
-            for bundle in state.outqueue:
-                cur_usage.object_store_memory += bundle.size_bytes()
-        return cur_usage
+            # Don't count input refs towards dynamic memory usage, as they have been
+            # pre-created already outside this execution.
+            if not isinstance(op, InputDataBuffer):
+                for bundle in state.outqueue:
+                    cur_usage.object_store_memory += bundle.size_bytes()
+            downstream_usage[op] = DownstreamMemoryInfo(
+                topology_fraction=(1.0 + len(downstream_usage)) / len(topology),
+                resources=ExecutionResources(
+                    object_store_memory=cur_usage.object_store_memory
+                ),
+            )
+        return cur_usage, downstream_usage
 
     def _report_current_usage(
         self, cur_usage: ExecutionResources, limits: ExecutionResources
