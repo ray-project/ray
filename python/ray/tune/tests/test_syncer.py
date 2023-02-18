@@ -531,8 +531,8 @@ def test_syncer_delete(temp_data_dirs):
     assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
-def test_syncer_wait_or_retry(temp_data_dirs):
-    """Check that the wait or retry API works"""
+def test_syncer_wait_or_retry_failure(temp_data_dirs):
+    """Check that the wait or retry API fails after max_retries."""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer(sync_period=60)
@@ -544,6 +544,66 @@ def test_syncer_wait_or_retry(temp_data_dirs):
     with pytest.raises(TuneError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
         assert "Failed sync even after 3 retries." in str(e)
+
+
+def test_syncer_wait_or_retry_timeout(temp_data_dirs):
+    """Check that the wait or retry API raises a timeout error after `sync_timeout`."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    def slow_upload(*args, **kwargs):
+        time.sleep(5)
+
+    class HangingSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            return (
+                slow_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    syncer = HangingSyncer(sync_period=60, sync_timeout=0.1)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
+    with pytest.raises(TuneError) as e:
+        syncer.wait_or_retry(max_retries=3, backoff_s=0)
+        assert "Failed sync even after 3 retries." in str(e.value)
+        assert isinstance(e.value.__cause__, TimeoutError)
+
+
+def test_syncer_wait_or_retry_eventual_success(temp_data_dirs, tmp_path):
+    """Check that the wait or retry API succeeds for a sync_down that
+    fails, times out, then succeeds."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    success = tmp_path / "success"
+    fail_marker = tmp_path / "fail_marker"
+    hang_marker = tmp_path / "hang_marker"
+
+    def eventual_upload(*args, **kwargs):
+        if not fail_marker.exists():
+            fail_marker.write_text(".", encoding="utf-8")
+            raise RuntimeError("Failing")
+        elif not hang_marker.exists():
+            hang_marker.write_text(".", encoding="utf-8")
+            time.sleep(5)
+        else:
+            success.write_text(".", encoding="utf-8")
+
+    class EventualSuccessSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            return (
+                eventual_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    syncer = EventualSuccessSyncer(sync_period=60, sync_timeout=0.5)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
+    syncer.wait_or_retry(max_retries=3, backoff_s=0)
+    assert success.exists()
 
 
 def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
