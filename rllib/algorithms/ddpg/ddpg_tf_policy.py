@@ -197,7 +197,7 @@ def get_ddpg_tf_policy(
             actor_op = tf.cond(
                 should_apply_actor_opt,
                 true_fn=make_apply_op,
-                false_fn=lambda: tf.no_op(),
+                false_fn=lambda: tf.constant(0, dtype=tf.int64),  # this is a no-op
             )
             critic_op = self._critic_optimizer.apply_gradients(
                 self._critic_grads_and_vars

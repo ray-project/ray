@@ -2,6 +2,7 @@ import json
 import os
 
 import numpy as np
+from pandas.api.types import is_int64_dtype, is_float_dtype, is_object_dtype
 import pytest
 
 import ray
@@ -18,14 +19,17 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
             "int64_list": tf.train.Feature(
                 int64_list=tf.train.Int64List(value=[1, 2, 3, 4])
             ),
+            "int64_empty": tf.train.Feature(int64_list=tf.train.Int64List(value=[])),
             "float": tf.train.Feature(float_list=tf.train.FloatList(value=[1.0])),
             "float_list": tf.train.Feature(
                 float_list=tf.train.FloatList(value=[1.0, 2.0, 3.0, 4.0])
             ),
+            "float_empty": tf.train.Feature(float_list=tf.train.FloatList(value=[])),
             "bytes": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"abc"])),
             "bytes_list": tf.train.Feature(
                 bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
             ),
+            "bytes_empty": tf.train.Feature(bytes_list=tf.train.BytesList(value=[])),
         }
     )
     example = tf.train.Example(features=features)
@@ -37,20 +41,29 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
-    assert dict(df.dtypes) == {
-        "int64": np.int64,
-        "int64_list": object,
-        "float": np.float_,
-        "float_list": object,
-        "bytes": object,
-        "bytes_list": object,
-    }
+    assert is_int64_dtype(dict(df.dtypes)["int64"])
+    assert is_object_dtype(dict(df.dtypes)["int64_list"])
+    assert is_object_dtype(dict(df.dtypes)["int64_empty"])
+
+    assert is_float_dtype(dict(df.dtypes)["float"])
+    assert is_object_dtype(dict(df.dtypes)["float_list"])
+    assert is_object_dtype(dict(df.dtypes)["float_empty"])
+
+    assert is_object_dtype(dict(df.dtypes)["bytes"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
+
     assert list(df["int64"]) == [1]
     assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
+    assert np.array_equal(df["int64_empty"][0], np.array([], dtype=np.int64))
+
     assert list(df["float"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
+    assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
+
     assert list(df["bytes"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
+    assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
 
 
 def test_write_tfrecords(ray_start_regular_shared, tmp_path):
@@ -70,21 +83,31 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
             {
                 "int_item": 1,
                 "int_list": [2, 2, 3],
+                "int_empty": [],
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
+                "float_empty": 1.0,
                 "bytes_item": b"abc",
-                "bytes_list": [b"abc", b"1234"],
+                "bytes_list": [b"def", b"1234"],
+                "bytes_empty": None,
             },
             # Row two.
             {
                 "int_item": 2,
                 "int_list": [3, 3, 4],
+                "int_empty": [9, 2],
                 "float_item": 2.0,
-                "float_list": [2.0, 2.0, 3.0],
-                "bytes_item": b"def",
-                "bytes_list": [b"def", b"1234"],
+                "float_list": [5.0, 6.0, 7.0],
+                "float_empty": None,
+                "bytes_item": b"ghi",
+                "bytes_list": [b"jkl", b"5678"],
+                "bytes_empty": b"hello",
             },
-        ]
+        ],
+        # Here, we specify `parallelism=1` to ensure that all rows end up in the same
+        # block, which is required for type inference involving
+        # partially missing columns.
+        parallelism=1,
     )
 
     # The corresponding tf.train.Example that we would expect to read
@@ -101,17 +124,26 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                     "int_list": tf.train.Feature(
                         int64_list=tf.train.Int64List(value=[2, 2, 3])
                     ),
+                    "int_empty": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
                     "float_item": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[1.0])
                     ),
                     "float_list": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
                     ),
+                    "float_empty": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[1.0])
+                    ),
                     "bytes_item": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"abc"])
                     ),
                     "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
+                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
+                    ),
+                    "bytes_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
                     ),
                 }
             )
@@ -126,17 +158,26 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                     "int_list": tf.train.Feature(
                         int64_list=tf.train.Int64List(value=[3, 3, 4])
                     ),
+                    "int_empty": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[9, 2])
+                    ),
                     "float_item": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[2.0])
                     ),
                     "float_list": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[2.0, 2.0, 3.0])
+                        float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
+                    ),
+                    "float_empty": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
                     ),
                     "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"def"])
+                        bytes_list=tf.train.BytesList(value=[b"ghi"])
                     ),
                     "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
+                        bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
+                    ),
+                    "bytes_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"hello"])
                     ),
                 }
             )
@@ -177,21 +218,31 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
             {
                 "int_item": 1,
                 "int_list": [2, 2, 3],
+                "int_empty": [],
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
+                "float_empty": 1.0,
                 "bytes_item": b"abc",
-                "bytes_list": [b"abc", b"1234"],
+                "bytes_list": [b"def", b"1234"],
+                "bytes_empty": None,
             },
             # Row two.
             {
                 "int_item": 2,
                 "int_list": [3, 3, 4],
+                "int_empty": [9, 2],
                 "float_item": 2.0,
-                "float_list": [2.0, 2.0, 3.0],
-                "bytes_item": b"def",
-                "bytes_list": [b"def", b"1234"],
+                "float_list": [5.0, 6.0, 7.0],
+                "float_empty": None,
+                "bytes_item": b"ghi",
+                "bytes_list": [b"jkl", b"5678"],
+                "bytes_empty": b"hello",
             },
-        ]
+        ],
+        # Here and in the read_tfrecords call below, we specify `parallelism=1`
+        # to ensure that all rows end up in the same block, which is required
+        # for type inference involving partially missing columns.
+        parallelism=1,
     )
 
     # Write the TFRecords.
