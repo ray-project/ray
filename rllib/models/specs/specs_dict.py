@@ -108,11 +108,13 @@ class SpecDict(NestedDict[Spec], Spec):
         """
         data = NestedDict(data)
         data_keys_set = set(data.keys())
-        missing_keys = self._keys_set.difference(data_keys_set)
-        if missing_keys:
-            raise ValueError(
-                _MISSING_KEYS_FROM_DATA.format(missing_keys, data_keys_set)
-            )
+
+        for spec_key in self:
+            if spec_key not in data:
+                raise ValueError(
+                    _MISSING_KEYS_FROM_DATA.format(spec_key, data_keys_set)
+                )
+
         if exact_match:
             data_spec_missing_keys = data_keys_set.difference(self._keys_set)
             if data_spec_missing_keys:

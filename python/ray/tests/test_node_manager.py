@@ -8,6 +8,8 @@ from ray._private.test_utils import (
 )
 import pytest
 import os
+from ray.experimental.state.api import list_objects
+import subprocess
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -219,6 +221,38 @@ ray.get(A.options(num_cpus=123, name="det", lifetime="detached").remote())
     det_actor = ray.get_actor("det")
 
     ray.get(det_actor.fn.remote())
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_reference_global_import_does_not_leak_worker_upon_driver_exit(call_ray_start):
+    driver = """
+import ray
+import numpy as np
+import tensorflow
+
+def leak_repro(obj):
+    tensorflow
+    return []
+
+ds = ray.data.from_numpy(np.ones((100_000)))
+ds.map(leak_repro, max_retries=0)
+  """
+    try:
+        run_string_as_driver(driver)
+    except subprocess.CalledProcessError:
+        pass
+
+    ray.init(address=call_ray_start)
+
+    def no_object_leaks():
+        objects = list_objects(_explain=True, timeout=3)
+        return len(objects) == 0
+
+    wait_for_condition(no_object_leaks, timeout=10, retry_interval_ms=1000)
 
 
 if __name__ == "__main__":

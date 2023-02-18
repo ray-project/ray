@@ -5,6 +5,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -157,17 +158,17 @@ class TestAlgorithmConfig(unittest.TestCase):
         )
 
         config.validate()
-        self.assertEqual(config.rl_module_class, PPOTorchRLModule)
+        self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
         class A:
             pass
 
-        config = config.rl_module(rl_module_class=A)
+        config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(A))
         config.validate()
-        self.assertEqual(config.rl_module_class, A)
+        self.assertEqual(config.rl_module_spec.module_class, A)
 
-    def test_rl_trainer_api(self):
-        # TODO (Kourosh): the default rl_trainer of PPO is not implemented yet. When
+    def test_learner_api(self):
+        # TODO (Kourosh): the default learner of PPO is not implemented yet. When
         # that's done this test should be updated
         class A:
             pass
@@ -176,11 +177,11 @@ class TestAlgorithmConfig(unittest.TestCase):
             PPOConfig()
             .environment("CartPole-v1")
             .rollouts(enable_connectors=True)
-            .training(rl_trainer_class=A, _enable_rl_trainer_api=True)
+            .training(learner_class=A, _enable_learner_api=True)
         )
 
         config.validate()
-        self.assertEqual(config.rl_trainer_class, A)
+        self.assertEqual(config.learner_class, A)
 
 
 if __name__ == "__main__":

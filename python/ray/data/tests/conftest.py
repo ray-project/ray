@@ -162,7 +162,7 @@ def test_block_write_path_provider():
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(ray.get(block)).num_rows()
+            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
                 f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
@@ -336,6 +336,18 @@ def enable_optimizer():
     yield
     ctx.new_execution_backend = original_backend
     ctx.optimizer_enabled = original_optimizer
+
+
+@pytest.fixture
+def enable_streaming_executor():
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    use_streaming_executor = ctx.use_streaming_executor
+    ctx.new_execution_backend = True
+    ctx.use_streaming_executor = True
+    yield
+    ctx.new_execution_backend = original_backend
+    ctx.use_streaming_executor = use_streaming_executor
 
 
 # ===== Pandas dataset formats =====

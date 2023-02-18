@@ -28,7 +28,7 @@ Concepts
 
 - **Packages**. External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client <ray-client-ref>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or use `ray attach` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**. A :ref:`Ray job <cluster-clients-and-jobs>` is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
 
@@ -62,6 +62,7 @@ It is installed dynamically on the cluster at runtime and cached for future use 
 
 Runtime environments can be used on top of the prepared environment from :ref:`the Ray Cluster launcher <using-the-cluster-launcher>` if it was used.
 For example, you can use the Cluster launcher to install a base set of packages, and then use runtime environments to install additional packages.
+In contrast with the base cluster environment, a runtime environment will only be active for Ray processes.  (For example, if using a runtime environment specifying a ``pip`` package ``my_pkg``, the statement ``import my_pkg`` will fail if called outside of a Ray task, actor, or job.)
 
 Runtime environments also allow you to set dependencies per-task, per-actor, and per-job on a long-running Ray cluster.
 
@@ -109,7 +110,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`, or using :ref:`Ray Client <ray-client-ref>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
@@ -137,16 +138,6 @@ You can specify a runtime environment for your whole job, whether running a scri
     If using the Ray Jobs API (either the Python SDK or the CLI), specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit``, not in the ``ray.init()`` call in the entrypoint script (in this example, ``my_ray_script.py``). 
     
     This ensures the runtime environment is installed on the cluster before the entrypoint script is run.
-
-..
-  TODO(architkulkarni): run Ray Client doc example in CI
-
-.. code-block:: python
-
-    # Option 4: Connecting to remote cluster using Ray Client
-    ray.init("ray://<head-node-ip>:10001", runtime_env=runtime_env)
-
-This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.
 
 .. note::
 
@@ -464,8 +455,6 @@ Where are the environments cached?
 
 Any local files downloaded by the environments are cached at ``/tmp/ray/session_latest/runtime_resources``.
 
-
-
 How long does it take to install or to load from cache?
 """""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -483,6 +472,11 @@ What is the relationship between runtime environments and Docker?
 They can be used independently or together.  
 A container image can be specified in the :ref:`Cluster Launcher <vm-cluster-quick-start>` for large or static dependencies, and runtime environments can be specified per-job or per-task/actor for more dynamic use cases.
 The runtime environment will inherit packages, files, and environment variables from the container image.
+
+My ``runtime_env`` was installed, but when I log into the node I can't import the packages.
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The runtime environment is only active for the Ray worker processes; it does not install any packages "globally" on the node.
 
 .. _remote-uris:
 
