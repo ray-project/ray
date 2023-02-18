@@ -232,6 +232,7 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
             f"Hint: {fs_hint(uri)}"
         )
 
+    Path(local_path).mkdir(parents=True, exist_ok=True)
     if filelock:
         with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
             _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
@@ -251,8 +252,6 @@ def upload_to_uri(
             f"URI `{uri}` is not a valid or supported cloud target. "
             f"Hint: {fs_hint(uri)}"
         )
-
-    _ensure_directory(bucket_path)
 
     if not exclude:
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
