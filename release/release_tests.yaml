@@ -1356,6 +1356,7 @@
 
   frequency: nightly
   team: ml
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: prod_v1
 
   cluster:
@@ -1386,6 +1387,7 @@
 
   frequency: nightly
   team: ml
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: staging_v1
 
   cluster:
@@ -1416,6 +1418,7 @@
 
   frequency: nightly
   team: ml
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: staging_v1
 
   cluster:
@@ -1580,6 +1583,7 @@
 
   frequency: nightly
   team: ml
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: staging_v1
 
   cluster:
@@ -1950,6 +1954,7 @@
   working_dir: long_running_tests
 
   stable: true
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: staging_v1
 
   legacy:
@@ -4649,6 +4654,7 @@
     test_suite: k8s_tests
 
   stable: false
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: prod_v1
 
   frequency: nightly
@@ -4672,6 +4678,7 @@
 
   stable: false
 
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: prod_v1
 
   frequency: nightly

@@ -134,6 +134,9 @@ class AnyscaleJobRunner(JobRunner):
             workload_time_taken = output_json["workload_time_taken"]
             prepare_return_codes = output_json["prepare_return_codes"]
             last_prepare_time_taken = output_json["last_prepare_time_taken"]
+
+            # If we know results/metrics were not uploaded, we can fail fast
+            # fetching later.
             self._results_uploaded = output_json["uploaded_results"]
             self._metrics_uploaded = output_json["uploaded_metrics"]
 

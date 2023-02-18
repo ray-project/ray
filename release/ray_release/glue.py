@@ -211,11 +211,15 @@ def run_release_test(
         cluster_timeout = int(
             test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
         )
+
+        # Get prepare command timeout, if any
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
             prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
         else:
             prepare_timeout = 0
+
+        # Base maximum uptime on the combined command and prepare timeouts
         command_and_prepare_timeout = command_timeout + prepare_timeout
 
         # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
