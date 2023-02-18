@@ -71,7 +71,7 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold, 0.95)
+RAY_CONFIG(float, memory_usage_threshold, 0.9)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
