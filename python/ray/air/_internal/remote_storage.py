@@ -3,6 +3,8 @@ import os
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
+import shutil
+import tempfile
 from typing import List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
@@ -232,12 +234,20 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
             f"Hint: {fs_hint(uri)}"
         )
 
-    Path(local_path).mkdir(parents=True, exist_ok=True)
-    if filelock:
-        with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
+    _local_path = Path(local_path)
+    exists_before = _local_path.exists()
+    _local_path.mkdir(parents=False, exist_ok=True)
+    try:
+        if filelock:
+            with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
+                _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
+        else:
             _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
-    else:
-        _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
+    except Exception as e:
+        # Clean up the directory if downloading was unsuccessful.
+        if not exists_before:
+            shutil.rmtree(local_path, ignore_errors=True)
+        raise e
 
 
 def upload_to_uri(
