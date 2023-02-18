@@ -19,6 +19,10 @@ class Result:
     wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
 
+    # Anyscale Jobs specific
+    job_url: Optional[str] = None
+    job_id: Optional[str] = None
+
     buildkite_job_id: Optional[str] = None
     cluster_id: Optional[str] = None
 
@@ -45,7 +49,7 @@ class ExitCode(enum.Enum):
     LOCAL_ENV_SETUP_ERROR = 16
     REMOTE_ENV_SETUP_ERROR = 17
     FETCH_RESULT_ERROR = 18
-    # ANYSCALE_SDK_ERROR = 19
+    ANYSCALE_ERROR = 19
 
     # Infra timeouts (retryable)
     RAY_WHEELS_TIMEOUT = 30

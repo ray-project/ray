@@ -337,7 +337,7 @@ By default, Ray actors won't be :ref:`restarted <fault-tolerance-actors>` and
 actor tasks won't be retried when actors crash unexpectedly.
 You can change this behavior by setting
 ``max_restarts`` and ``max_task_retries`` options
-in :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
+in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
 FAQ: Actors, Workers and Resources

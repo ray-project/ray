@@ -60,6 +60,14 @@ class CounterMap {
 
   /// Increment the specified key by `val`, default to 1.
   void Increment(const K &key, int64_t val = 1) {
+    // If value is 0, it is no-op and only registers the callback.
+    if (val == 0) {
+      if (on_change_ != nullptr) {
+        pending_changes_.insert(key);
+      }
+      return;
+    }
+
     counters_[key] += val;
     total_ += val;
     if (on_change_ != nullptr) {
@@ -71,6 +79,13 @@ class CounterMap {
   /// to zero, the entry for the key is erased from the counter. It is not allowed for the
   /// count to be decremented below zero.
   void Decrement(const K &key, int64_t val = 1) {
+    // If value is 0, it is no-op and only registers the callback.
+    if (val == 0) {
+      if (on_change_ != nullptr) {
+        pending_changes_.insert(key);
+      }
+      return;
+    }
     auto it = counters_.find(key);
     RAY_CHECK(it != counters_.end());
     it->second -= val;
