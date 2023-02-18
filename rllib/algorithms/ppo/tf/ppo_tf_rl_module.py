@@ -158,6 +158,7 @@ class PPOTfRLModule(TfRLModule):
         model_config: Mapping[str, Any],
     ) -> "PPOTfRLModule":
         """Create a PPOTfRLModule"""
+
         activation = model_config["fcnet_activation"]
         if activation == "tanh":
             activation = "Tanh"
@@ -169,7 +170,7 @@ class PPOTfRLModule(TfRLModule):
             raise ValueError(f"Unsupported activation: {activation}")
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
-        vf_share_layers = model_config["vf_share_layers"]
+        vf_share_layers = False
         use_lstm = model_config["use_lstm"]
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")

@@ -1,14 +1,10 @@
 from dataclasses import dataclass
-from typing import List, Mapping, Optional, Union
+from typing import List, Mapping, Union
 
 from ray.rllib import SampleBatch
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
-from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
-
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
 
 _, tf, _ = try_import_tf()
 
@@ -66,18 +62,6 @@ def make_time_major(
     return res
 
 
-<<<<<<< HEAD:rllib/algorithms/impala/tf/impala_tf_learner.py
-def get_log_rhos(target_action_log_probs, behaviour_action_log_probs):
-    """With the selected log_probs for multi-discrete actions of behaviour
-    and target policies we compute the log_rhos for calculating the vtrace."""
-    t = tf.stack(target_action_log_probs)
-    b = tf.stack(behaviour_action_log_probs)
-    log_rhos = t - b
-    return log_rhos
-
-
-=======
->>>>>>> ec6c69d5dcf01abe2feb13dee94929973adc83f5:rllib/algorithms/impala/tf/vtrace_tf_v2.py
 def vtrace_tf2(
     *,
     target_action_log_probs: tf.Tensor,
@@ -126,13 +110,7 @@ def vtrace_tf2(
         clip_pg_rho_threshold: A scalar float32 tensor with the clipping threshold
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
-<<<<<<< HEAD:rllib/algorithms/impala/tf/impala_tf_learner.py
-    # log_rhos = get_log_rhos(target_action_log_probs, behaviour_action_log_probs)
     log_rhos = target_action_log_probs - behaviour_action_log_probs
-=======
-    log_rhos = target_action_log_probs - behaviour_action_log_probs
-
->>>>>>> ec6c69d5dcf01abe2feb13dee94929973adc83f5:rllib/algorithms/impala/tf/vtrace_tf_v2.py
     discounts = tf.convert_to_tensor(discounts, dtype=tf.float32)
     rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
     values = tf.convert_to_tensor(values, dtype=tf.float32)
@@ -209,135 +187,3 @@ def vtrace_tf2(
 
     # Make sure no gradients backpropagated through the returned values.
     return tf.stop_gradient(vs), tf.stop_gradient(pg_advantages)
-
-
-@dataclass
-class ImpalaHPs(RLTrainerHPs):
-    rollout_frag_or_episode_len: int = None
-    recurrent_seq_len: int = None
-    discount_factor: float = 0.99
-    vtrace_clip_rho_threshold: float = 1.0
-    vtrace_clip_pg_rho_threshold: float = 1.0
-    vtrace_drop_last_ts: bool = True
-    vf_loss_coeff: float = 0.5
-    entropy_coeff: float = 0.01
-    lr_schedule = None
-    entropy_coeff_schedule = None
-
-
-class ImpalaTfLearner(TfRLTrainer):
-    """Implements IMPALA loss / update logic on top of TfRLTrainer.
-
-    This class implements the IMPALA loss under `_compute_loss_per_module()`.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.entropy_coeff_scheduler = None
-        if self.config.entropy_coeff_schedule:
-            raise ValueError("entropy_coeff_schedule is not supported in RLTrainer yet")
-
-        self.lr_scheduler = None
-        if self.config.lr_schedule:
-            raise ValueError("lr_schedule is not supported in RLTrainer yet")
-
-        self.vtrace_clip_rho_threshold = self.config.vtrace_clip_rho_threshold
-        self.vtrace_clip_pg_rho_threshold = self.config.vtrace_clip_pg_rho_threshold
-        self.vtrace_drop_last_ts = self.config.vtrace_drop_last_ts
-        self.vf_loss_coeff = self.config.vf_loss_coeff
-        self.entropy_coeff = self.config.entropy_coeff
-        self.rollout_frag_or_episode_len = self.config.rollout_frag_or_episode_len
-        self.recurrent_seq_len = self.config.recurrent_seq_len
-        self.discount_factor = self.config.discount_factor
-        assert (
-            self.rollout_frag_or_episode_len is not None
-            or self.recurrent_seq_len is not None
-        ) and not (self.rollout_frag_or_episode_len and self.recurrent_seq_len), (
-            "Either rollout_frag_or_episode_len or recurrent_seq_len"
-            " must be set in the IMPALA HParams. "
-        )
-
-    @override(TfRLTrainer)
-    def _compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
-    ) -> TensorType:
-        values = fwd_out[SampleBatch.VF_PREDS]
-        behavior_policy_dist = batch[SampleBatch.ACTION_DIST]
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
-
-        # the actions are discrete actions
-        if len(batch[SampleBatch.ACTIONS].shape) == 1:
-            batched_actions = tf.expand_dims(batch[SampleBatch.ACTIONS], axis=1)
-        else:
-            batched_actions = batch[SampleBatch.ACTIONS]
-        # this is probably a horribly inefficient way to do this. I should be able to
-        # compute this in a batch fashion
-        behaviour_actions_logp = tf.stack(
-            [
-                tf.squeeze(dist.logp(action))
-                for dist, action in zip(behavior_policy_dist, batched_actions)
-            ]
-        )
-        target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
-
-        behaviour_actions_logp_time_major = make_time_major(
-            behaviour_actions_logp,
-            self.rollout_frag_or_episode_len,
-            self.recurrent_seq_len,
-            self.vtrace_drop_last_ts,
-        )
-        target_actions_logp_time_major = make_time_major(
-            target_actions_logp,
-            self.rollout_frag_or_episode_len,
-            self.recurrent_seq_len,
-            self.vtrace_drop_last_ts,
-        )
-        values_time_major = make_time_major(
-            values,
-            self.rollout_frag_or_episode_len,
-            self.recurrent_seq_len,
-            self.vtrace_drop_last_ts,
-        )
-        bootstrap_value = values_time_major[-1]
-        rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
-            self.rollout_frag_or_episode_len,
-            self.recurrent_seq_len,
-            self.vtrace_drop_last_ts,
-        )
-
-        # how to compute discouts?
-        # should they be pre computed?
-        discounts_time_major = (1 - make_time_major(
-            batch[SampleBatch.TERMINATEDS],
-            self.rollout_frag_or_episode_len,
-            self.recurrent_seq_len,
-            self.vtrace_drop_last_ts,
-        )) * self.discount_factor
-        vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
-            target_action_log_probs=target_actions_logp_time_major,
-            behaviour_action_log_probs=behaviour_actions_logp_time_major,
-            rewards=rewards_time_major,
-            values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major
-        )
-
-        # The policy gradients loss.
-        pi_loss = -tf.reduce_sum(target_actions_logp_time_major * pg_advantages)
-
-        # The baseline loss.
-        delta = values_time_major - vtrace_adjusted_target_values
-        vf_loss = 0.5 * tf.reduce_sum(tf.math.pow(delta, 2.0))
-
-        # The entropy loss.
-        entropy_loss = - tf.reduce_sum(target_actions_logp_time_major)
-
-        # The summed weighted loss.
-        total_loss = (
-            pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
-        )
-        return {self.TOTAL_LOSS_KEY: total_loss, "pi_loss": pi_loss, "vf_loss": vf_loss}

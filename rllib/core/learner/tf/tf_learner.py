@@ -7,6 +7,7 @@ from typing import (
     Optional,
     Callable,
     Sequence,
+    Set,
     Hashable,
 )
 
@@ -97,7 +98,7 @@ class TfLearner(Learner):
     def postprocess_gradients(
         self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        grad_clip = self.optimizer_config.get("grad_clip", None)
+        grad_clip = self._optimizer_config.get("grad_clip", None)
         assert isinstance(grad_clip, (int, float, type(None))), (
             "grad_clip must be a number")
         if grad_clip is not None:
@@ -106,14 +107,15 @@ class TfLearner(Learner):
         return gradients_dict
 
     @override(Learner)
-    def get_weights(self) -> Mapping[str, Any]:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        if module_ids is None:
+            module_ids = self._module.keys()
+        return {mid: self._module[mid].get_weights() for mid in self._module.keys()}
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
+        for mid, sa_module in weights.items():
+            self._module[mid].set_weights(sa_module)
 
     @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:

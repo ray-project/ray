@@ -31,7 +31,7 @@ class TestImpalaTfLearner(unittest.TestCase):
                 action_space=env.action_space,
                 model_config=model_config,
             ),
-            trainer_hyperparameters=ImpalaHPs(rollout_frag_or_episode_len=episode_length),
+            learner_hyperparameters=ImpalaHPs(rollout_frag_or_episode_len=episode_length),
             optimizer_config={"lr": 5e-4, "grad_clip": 40.0},
         )
         learner.build()

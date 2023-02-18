@@ -2754,7 +2754,7 @@ class AlgorithmConfig(_Config):
             .learner(
                 learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
-                optimizer_config={"lr": self.lr},
+                optimizer_config={"lr": self.lr, "grad_clip": getattr(self, "grad_clip", None)},
                 learner_hps=self.learner_hps,
             )
             .resources(

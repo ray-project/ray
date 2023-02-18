@@ -1,17 +1,12 @@
 from collections import defaultdict
 from typing import Type, Union, TYPE_CHECKING
 
-# from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-# from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-# from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec, FrameworkHPs
-# from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-# from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-# from ray.rllib.policy.sample_batch import SampleBatch
-# from ray.rllib.utils.annotations import DeveloperAPI
-# from ray.rllib.utils.framework import try_import_tf
-# from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.numpy import convert_to_numpy
 
-# _, tf, _ = try_import_tf()
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
@@ -22,6 +17,8 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
 )
 from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
+
+_, tf, _ = try_import_tf()
 
 if TYPE_CHECKING:
     import gymnasium as gym

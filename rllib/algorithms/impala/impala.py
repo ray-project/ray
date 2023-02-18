@@ -10,6 +10,8 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaHPs, _reduce_impala_results
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -98,6 +100,7 @@ class ImpalaConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
 
         # IMPALA specific settings:
+        self._learner_hps = ImpalaHPs()
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
@@ -256,14 +259,20 @@ class ImpalaConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
+        if "gamma" in kwargs:
+            self._learner_hps.discount_factor = kwargs["gamma"]
         if vtrace is not NotProvided:
             self.vtrace = vtrace
         if vtrace_clip_rho_threshold is not NotProvided:
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
+            self._learner_hps.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
+            self._learner_hps.vtrace_clip_pg_rho_threshold = (
+                vtrace_clip_pg_rho_threshold)
         if vtrace_drop_last_ts is not NotProvided:
             self.vtrace_drop_last_ts = vtrace_drop_last_ts
+            self._learner_hps.vtrace_drop_last_ts = vtrace_drop_last_ts
         if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
@@ -304,8 +313,10 @@ class ImpalaConfig(AlgorithmConfig):
             self.epsilon = epsilon
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
+            self._learner_hps.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
+            self._learner_hps.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
         if _separate_vf_optimizer is not NotProvided:
@@ -370,6 +381,22 @@ class ImpalaConfig(AlgorithmConfig):
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
 
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self):
+        if self.framework_str == "tf2":
+            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+            return ImpalaTfLearner
+        else:
+            raise ValueError(f"The framework {self.framework_str} is not supported.")
+    
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        if self.framework_str == "tf2":
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
+
+            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+        else:
+            raise ValueError(f"The framework {self.framework_str} is not supported.")
 
 def make_learner_thread(local_worker, config):
     if not config["simple_optimizer"]:
@@ -436,39 +463,63 @@ class Impala(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if config["framework"] == "torch":
-            if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_torch_policy import (
-                    ImpalaTorchPolicy,
-                )
-
-                return ImpalaTorchPolicy
+        if config["_enable_learner_api"] or config["_enable_rl_module_api"]:
+            if config["framework"] == "tf2":
+                if config["vtrace"]:
+                    from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
+                            ImpalaTfPolicyWithRLModule
+                        )
+                    return ImpalaTfPolicyWithRLModule
+                else:
+                    raise ValueError(
+                            "IMPALA with the learner API does not support non-VTrace "
+                        )
             else:
-                from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
-
-                return A3CTorchPolicy
-        elif config["framework"] == "tf":
-            if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF1Policy
-
-                return ImpalaTF1Policy
-            else:
-                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                return A3CTFPolicy
+                raise ValueError(
+                        "IMPALA with the learner API does not support non-TF2 "
+                    )
         else:
-            if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF2Policy
+            if config["framework"] == "torch":
+                if config["vtrace"]:
+                    from ray.rllib.algorithms.impala.impala_torch_policy import (
+                        ImpalaTorchPolicy,
+                    )
 
-                return ImpalaTF2Policy
+                    return ImpalaTorchPolicy
+                else:
+                    from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
+
+                    return A3CTorchPolicy
+            elif config["framework"] == "tf":
+                if config["vtrace"]:
+                    from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF1Policy
+
+                    return ImpalaTF1Policy
+                else:
+                    from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
+
+                    return A3CTFPolicy
             else:
-                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
+                if config["vtrace"]:
+                    from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF2Policy
 
-                return A3CTFPolicy
+                    return ImpalaTF2Policy
+                else:   
+                    from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
+
+                    return A3CTFPolicy
 
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
+        if self.config._enable_learner_api:
+            # TODO: (avnish) find a better solution for this.
+            # Ideally setting hparams should happen in the algo config, but since 
+            # get_rollout_fragment_length is only safe to call after the config has been
+            # built, we have to set it here.
+            self.config.learner_hps.rollout_frag_or_episode_len = (
+                self.config.get_rollout_fragment_length())
         super().setup(config)
+            
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
@@ -525,16 +576,17 @@ class Impala(Algorithm):
 
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
-        # Create and start the learner thread.
-        self._learner_thread = make_learner_thread(
-            self.workers.local_worker(), self.config
-        )
-        self._learner_thread.start()
+        if not self.config._enable_learner_api:
+            # Create and start the learner thread.
+            self._learner_thread = make_learner_thread(
+                self.workers.local_worker(), self.config
+            )
+            self._learner_thread.start()
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # First, check, whether our learner thread is still healthy.
-        if not self._learner_thread.is_alive():
+        if not self.config._enable_learner_api and not self._learner_thread.is_alive():
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (
@@ -566,7 +618,6 @@ class Impala(Algorithm):
         for batch in batches:
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-
         # Concatenate single batches into batches of size `train_batch_size`.
         self.concatenate_batches_and_pre_queue(batches)
         # Move train batches (of size `train_batch_size`) onto learner queue.
@@ -576,10 +627,21 @@ class Impala(Algorithm):
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.update_workers_if_necessary(
-                workers_that_need_updates=workers_that_need_updates,
-                policy_ids=list(train_results.keys()),
-            )
+            if self.config._enable_learner_api:
+                if train_results:
+                    pids = list(train_results["learner"]["loss"].keys())
+                else:
+                    pids = []
+                self.update_workers_learner_api(
+                    workers_that_need_updates=workers_that_need_updates,
+                    policy_ids=pids,
+                )
+            else:
+                pids = list(train_results.keys())
+                self.update_workers_if_necessary(
+                    workers_that_need_updates=workers_that_need_updates,
+                    policy_ids=pids,
+                )
 
         # With a training step done, try to bring any aggregators back to life
         # if necessary.
@@ -590,6 +652,18 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
+        
+        if train_results:
+            import numpy as np
+            if self.config.num_rollout_workers:
+                worker_var_norm = [np.mean(w) for w in ray.get(self.workers.remote_workers()[0].get_weights.remote())["default_policy"]]
+            else: 
+                worker_var_norm = [np.mean(w) for w in self.workers.local_worker().get_weights()["default_policy"]]
+            worker_var_norm = np.mean(worker_var_norm)
+            learner_var_norm = [np.mean(w) for w in self.learner_group.get_weights()["default_policy"]]
+            learner_var_norm = np.mean(learner_var_norm)
+            import ipdb; ipdb.set_trace()
+            train_results["learner"].update({"worker_var_norm" : worker_var_norm, "learner_var_norm" : learner_var_norm})
 
         return train_results
 
@@ -687,7 +761,8 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            elif self.workers.local_worker() and self.config.create_env_on_local_worker:
+            elif self.workers.local_worker() and (self.config.create_env_on_local_worker 
+                or self.config.num_rollout_workers == 0):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
                 if return_object_refs:
@@ -700,56 +775,85 @@ class Impala(Algorithm):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
-        while self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner[0]
-            try:
-                # Setting block = True prevents the learner thread,
-                # the main thread, and the gpu loader threads from
-                # thrashing when there are more samples than the
-                # learner can reasonable process.
-                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                self._learner_thread.inqueue.put(batch, block=True)
-                self.batches_to_place_on_learner.pop(0)
-                self._counters["num_samples_added_to_queue"] += (
-                    batch.agent_steps()
-                    if self.config.count_steps_by == "agent_steps"
-                    else batch.count
-                )
-            except queue.Full:
-                self._counters["num_times_learner_queue_full"] += 1
+        import ipdb; ipdb.set_trace()
+        if self.config._enable_learner_api:
+            if self.batches_to_place_on_learner:
+                import ipdb; ipdb.set_trace()
+                batch = self.batches_to_place_on_learner.pop(0)
+                if self.config.num_rollout_workers == 0:
+                    results = self.learner_group.update(batch, reduce_fn=_reduce_impala_results)
+                    self._results = [results]
+                else:
+                    self._results = self.learner_group.update(batch, reduce_fn=(
+                        _reduce_impala_results), block=False)
+                    if self._results:
+                        import ipdb; ipdb.set_trace()
+                    
+            else:
+                self._results = []
+        else:
+            while self.batches_to_place_on_learner:
+                batch = self.batches_to_place_on_learner[0]
+                try:
+                    # Setting block = True prevents the learner thread,
+                    # the main thread, and the gpu loader threads from
+                    # thrashing when there are more samples than the
+                    # learner can reasonable process.
+                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                    # import ipdb; ipdb.set_trace()
+                    self._learner_thread.inqueue.put(batch, block=True)
+                    self.batches_to_place_on_learner.pop(0)
+                    self._counters["num_samples_added_to_queue"] += (
+                        batch.agent_steps()
+                        if self.config.count_steps_by == "agent_steps"
+                        else batch.count
+                    )
+                except queue.Full:
+                    self._counters["num_times_learner_queue_full"] += 1
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
-        learner_infos = []
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
-
-        # Loop through output queue and update our counts.
-        for _ in range(self._learner_thread.outqueue.qsize()):
-            (
-                env_steps,
-                agent_steps,
-                learner_results,
-            ) = self._learner_thread.outqueue.get(timeout=0.001)
-            num_env_steps_trained += env_steps
-            num_agent_steps_trained += agent_steps
-            if learner_results:
-                learner_infos.append(learner_results)
-        # Nothing new happened since last time, use the same learner stats.
-        if not learner_infos:
-            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
-        # Accumulate learner stats using the `LearnerInfoBuilder` utility.
+        if self.config._enable_learner_api:
+            result = {}
+            if self._results:
+                for r in self._results:
+                    num_env_steps_trained += r["env_steps_trained"]
+                    num_agent_steps_trained += r["agent_steps_trained"]
+                self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
+                self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+                result = self._results[-1]
+                result = {"learner": result}
+            return result
         else:
-            builder = LearnerInfoBuilder()
-            for info in learner_infos:
-                builder.add_learn_on_batch_results_multi_agent(info)
-            final_learner_info = builder.finalize()
+            learner_infos = []
+            # Loop through output queue and update our counts.
+            for _ in range(self._learner_thread.outqueue.qsize()):
+                (
+                    env_steps,
+                    agent_steps,
+                    learner_results,
+                ) = self._learner_thread.outqueue.get(timeout=0.001)
+                num_env_steps_trained += env_steps
+                num_agent_steps_trained += agent_steps
+                if learner_results:
+                    learner_infos.append(learner_results)
+            # Nothing new happened since last time, use the same learner stats.
+            if not learner_infos:
+                final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+            # Accumulate learner stats using the `LearnerInfoBuilder` utility.
+            else:
+                builder = LearnerInfoBuilder()
+                for info in learner_infos:
+                    builder.add_learn_on_batch_results_multi_agent(info)
+                final_learner_info = builder.finalize()
 
-        # Update the steps trained counters.
-        self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
-        self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+            # Update the steps trained counters.
+            self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
+            self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
-        return final_learner_info
+            return final_learner_info
 
     def process_experiences_directly(
         self,
@@ -803,6 +907,31 @@ class Impala(Algorithm):
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
 
+    def update_workers_learner_api(self,
+        workers_that_need_updates: Set[int],
+        policy_ids: Optional[List[PolicyID]] = None,):
+        # Only need to update workers if there are remote workers.
+        self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
+        if (
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
+            >= self.config.broadcast_interval
+            and workers_that_need_updates
+        ):
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
+            self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
+            weights = self.learner_group.get_weights(policy_ids)
+            if self.config.num_rollout_workers == 0 and workers_that_need_updates == {0}:
+                worker = self.workers.local_worker()
+                worker.set_weights(weights)
+            else:
+                weights = ray.put(weights)
+                self.workers.foreach_worker(
+                    func=lambda w: w.set_weights(ray.get(weights)),
+                    local_worker=False,
+                    remote_worker_ids=list(workers_that_need_updates),
+                    timeout_seconds=0,  # Don't wait for the workers to finish.
+            )
+
     def update_workers_if_necessary(
         self,
         workers_that_need_updates: Set[int],
@@ -820,7 +949,6 @@ class Impala(Algorithm):
                 policies on the to-be-updated workers.
         """
         local_worker = self.workers.local_worker()
-
         # Update global vars of the local worker.
         if self.config.policy_states_are_swappable:
             local_worker.lock()
@@ -853,7 +981,6 @@ class Impala(Algorithm):
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-
             self.workers.foreach_worker(
                 func=lambda w: w.set_weights(ray.get(weights), global_vars),
                 local_worker=False,
@@ -864,9 +991,10 @@ class Impala(Algorithm):
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
-        result = self._learner_thread.add_learner_metrics(
-            result, overwrite_learner_info=False
-        )
+        if not self.config._enable_learner_api:
+            result = self._learner_thread.add_learner_metrics(
+                result, overwrite_learner_info=False
+            )
         return result
 
 
