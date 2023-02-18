@@ -4,7 +4,6 @@ import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
 import shutil
-import tempfile
 from typing import List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock

@@ -1057,7 +1057,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         class TestDurable(Trainable):
             def has_syncer(self):
-                return bool(self.syncer)
+                return isinstance(self.sync_config.syncer, Syncer)
 
         upload_dir = "s3://test-bucket/path"
 
@@ -1077,13 +1077,13 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                syncer=trial.syncer,
+                sync_config=trial.sync_config,
             )
             return actor
 
-        # This actor should create a default aws syncer, so check should fail
+        # This actor should create a default syncer, so check should pass
         actor1 = _create_remote_actor(TestDurable, "auto")
-        self.assertFalse(ray.get(actor1.has_syncer.remote()))
+        self.assertTrue(ray.get(actor1.has_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
         actor2 = _create_remote_actor(TestDurable, CustomSyncer())
