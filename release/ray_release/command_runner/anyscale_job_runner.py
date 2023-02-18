@@ -10,7 +10,7 @@ from ray_release.command_runner.job_runner import JobRunner
 from ray_release.exception import (
     TestCommandTimeout,
     TestCommandError,
-    JobStartupFailed,
+    JobOutOfRetriesError,
     PrepareCommandError,
     PrepareCommandTimeout,
     JobBrokenError,
@@ -66,6 +66,9 @@ class AnyscaleJobRunner(JobRunner):
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
+
+        self._results_uploaded = True
+        self._metrics_uploaded = True
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -132,6 +135,11 @@ class AnyscaleJobRunner(JobRunner):
             prepare_return_codes = output_json["prepare_return_codes"]
             last_prepare_time_taken = output_json["last_prepare_time_taken"]
 
+            # If we know results/metrics were not uploaded, we can fail fast
+            # fetching later.
+            self._results_uploaded = output_json["uploaded_results"]
+            self._metrics_uploaded = output_json["uploaded_metrics"]
+
             if prepare_return_codes and prepare_return_codes[-1] != 0:
                 if prepare_return_codes[-1] == TIMEOUT_RETURN_CODE:
                     raise PrepareCommandTimeout(
@@ -162,7 +170,7 @@ class AnyscaleJobRunner(JobRunner):
             )
 
         if job_status_code == -1:
-            raise JobStartupFailed(
+            raise JobOutOfRetriesError(
                 "Job returned non-success state: 'OUT_OF_RETRIES' "
                 "(command has not been ran or no logs could have been obtained) "
                 f"with error:\n{error}\n"
@@ -217,18 +225,26 @@ class AnyscaleJobRunner(JobRunner):
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
         )
+
+        timeout = min(
+            (self.cluster_manager.maximum_uptime_minutes - 1) * 60,
+            # The timeout set here is just for the prepare commands + test workload
+            # WITHOUT wait for nodes time included, as that is set separately.
+            # Since wait for nodes is a part of prepare_commands, we manually
+            # subtract the timeout for it here.
+            # We also add 15 mins for upload & metrics collection.
+            timeout
+            + sum(prepare_command_timeouts)
+            - self._wait_for_nodes_timeout
+            + 900,
+        )
+
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
             working_dir=".",
             upload_path=self.upload_path,
-            # The timeout set here is just for the prepare commands + test workload
-            # WITHOUT wait for nodes time included, as that is set separately.
-            # Since wait for nodes is a part of prepare_commands, we manually
-            # subtract the timeout for it here.
-            timeout=int(timeout)
-            + sum(prepare_command_timeouts)
-            - self._wait_for_nodes_timeout,
+            timeout=int(timeout),
         )
         try:
             error = self.job_manager.last_job_result.state.error
@@ -258,11 +274,19 @@ class AnyscaleJobRunner(JobRunner):
             raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
+        if not self._results_uploaded:
+            raise FetchResultError(
+                "Could not fetch results from session as they were not uploaded."
+            )
         return self._fetch_json(
             join_s3_paths(self.path_in_bucket, self.result_output_json)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
+        if not self._metrics_uploaded:
+            raise FetchResultError(
+                "Could not fetch metrics from session as they were not uploaded."
+            )
         return self._fetch_json(
             join_s3_paths(self.path_in_bucket, self.metrics_output_json)
         )
