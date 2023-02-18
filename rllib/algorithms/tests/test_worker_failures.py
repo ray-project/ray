@@ -227,6 +227,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test fault handling
         config.num_rollout_workers = 2
         config.ignore_worker_failures = True
+        config.recreate_failed_workers = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
         config.env_config = {
@@ -237,6 +238,7 @@ class TestWorkerFailures(unittest.TestCase):
             config.evaluation_interval = 1
             config.evaluation_config = {
                 "ignore_worker_failures": True,
+                "recreate_failed_workers": False,
                 "env_config": {
                     # Make worker idx=1 fail. Other workers will be ok.
                     "bad_indices": [1],
@@ -263,7 +265,6 @@ class TestWorkerFailures(unittest.TestCase):
     def _do_test_fault_fatal(self, config, fail_eval=False):
         # Test raises real error when out of workers.
         config.num_rollout_workers = 2
-        config.ignore_worker_failures = False
         config.env = "fault_env"
         # Make both worker idx=1 and 2 fail.
         config.env_config = {"bad_indices": [1, 2]}
@@ -271,7 +272,6 @@ class TestWorkerFailures(unittest.TestCase):
             config.evaluation_num_workers = 2
             config.evaluation_interval = 1
             config.evaluation_config = {
-                "ignore_worker_failures": False,
                 # Make eval worker (index 1) fail.
                 "env_config": {
                     "bad_indices": [1],
@@ -460,7 +460,6 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .fault_tolerance(
-                ignore_worker_failures=False,  # Do not ignore
                 recreate_failed_workers=True,  # But recover.
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
@@ -536,7 +535,6 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_interval=1,
                 evaluation_config=PGConfig.overrides(
-                    ignore_worker_failures=False,
                     recreate_failed_workers=True,
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
@@ -552,7 +550,6 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .callbacks(callbacks_class=AddPolicyCallback)
             .fault_tolerance(
-                ignore_worker_failures=False,  # Do not ignore
                 recreate_failed_workers=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
             )
@@ -636,7 +633,6 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .fault_tolerance(
-                ignore_worker_failures=True,  # Ignore failure.
                 recreate_failed_workers=True,  # And recover
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
@@ -707,7 +703,6 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .fault_tolerance(
-                ignore_worker_failures=False,  # Not ignore failure.
                 recreate_failed_workers=True,  # And recover
                 worker_health_probe_timeout_s=0.01,
                 worker_restore_timeout_s=5,
@@ -767,7 +762,6 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_num_workers=2,
                 evaluation_interval=1,
                 evaluation_config=PGConfig.overrides(
-                    ignore_worker_failures=True,
                     recreate_failed_workers=True,
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
@@ -780,7 +774,6 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .fault_tolerance(
-                ignore_worker_failures=True,  # Ignore failure.
                 recreate_failed_workers=True,  # And recover
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
