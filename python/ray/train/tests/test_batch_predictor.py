@@ -14,6 +14,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.data.preprocessors import BatchMapper
+from ray.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
 
