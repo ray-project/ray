@@ -416,7 +416,7 @@ class Syncer(abc.ABC):
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
         last_error = None
-        for _ in range(max_retries - 1):
+        for _ in range(max_retries):
             try:
                 self.wait()
             except Exception as e:
