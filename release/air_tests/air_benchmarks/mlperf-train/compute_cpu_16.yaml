@@ -19,4 +19,4 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 600
+            VolumeSize: 400
