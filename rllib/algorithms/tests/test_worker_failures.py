@@ -296,6 +296,8 @@ class TestWorkerFailures(unittest.TestCase):
         config.env = "fault_env"
         config.evaluation_config = {
             "recreate_failed_workers": True,
+            # 0 delay for testing purposes.
+            "delay_between_worker_restarts_s": 0,
             # Make eval worker (index 1) fail.
             "env_config": {
                 "bad_indices": [1],
@@ -461,6 +463,8 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 recreate_failed_workers=True,  # But recover.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -552,6 +556,8 @@ class TestWorkerFailures(unittest.TestCase):
             .fault_tolerance(
                 recreate_failed_workers=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -634,6 +640,8 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 recreate_failed_workers=True,  # And recover
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -775,6 +783,8 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 recreate_failed_workers=True,  # And recover
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -927,6 +937,8 @@ class TestWorkerFailures(unittest.TestCase):
                 # Worker fault tolerance.
                 recreate_failed_workers=True,  # Restore failed workers.
                 restart_failed_sub_environments=True,  # And create failed envs.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -990,6 +1002,8 @@ class TestWorkerFailures(unittest.TestCase):
                 # Worker fault tolerance.
                 recreate_failed_workers=False,  # Do not ignore.
                 restart_failed_sub_environments=True,  # But recover.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
