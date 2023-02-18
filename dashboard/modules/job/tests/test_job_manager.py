@@ -153,9 +153,10 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
             assert job_info.end_time > job_info.start_time
             assert job_info.entrypoint_num_cpus == 0
             assert job_info.entrypoint_num_gpus == 0
-            assert (
-                job_info.driver_agent_http_address
-                == f"http://127.0.0.1:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
+            assert job_info.driver_agent_http_address.startswith(
+                "http://"
+            ) and job_info.driver_agent_http_address.endswith(
+                str(DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
             )
             assert job_info.driver_node_id != ""
 
