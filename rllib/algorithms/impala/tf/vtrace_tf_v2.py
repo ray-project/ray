@@ -1,10 +1,5 @@
-from dataclasses import dataclass
-from typing import List, Mapping, Union
-
-from ray.rllib import SampleBatch
+from typing import List, Union
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
 
@@ -111,6 +106,7 @@ def vtrace_tf2(
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
+
     discounts = tf.convert_to_tensor(discounts, dtype=tf.float32)
     rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
     values = tf.convert_to_tensor(values, dtype=tf.float32)

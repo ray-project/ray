@@ -1,5 +1,5 @@
 import inspect
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
 
 from composer.trainer import Trainer
@@ -152,16 +152,15 @@ class MosaicTrainer(TorchTrainer):
         self._validate_datasets(datasets)
         self._validate_trainer_init_config(trainer_init_config)
 
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
-            raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
-            )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        if resume_from_checkpoint:
+            # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+            raise NotImplementedError
 
         super().__init__(
             train_loop_per_worker=_mosaic_train_loop_per_worker,
-            train_loop_config=trainer_init_config,
+            train_loop_config=self._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            ),
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -170,6 +169,25 @@ class MosaicTrainer(TorchTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    @classmethod
+    def _create_trainer_init_config(
+        cls,
+        trainer_init_per_worker: Callable[[Optional[Dict]], Trainer],
+        trainer_init_config: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if "_trainer_init_per_worker" in trainer_init_config:
+            raise ValueError(
+                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
+            )
+        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        return trainer_init_config
+
+    @classmethod
+    def restore(cls: Type["MosaicTrainer"], **kwargs) -> "MosaicTrainer":
+        # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+        raise NotImplementedError
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str

@@ -9,6 +9,7 @@ from typing import (
     Sequence,
     Set,
     Hashable,
+    Set,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -106,16 +107,17 @@ class TfLearner(Learner):
                 gradients_dict[k] = tf.clip_by_value(v, -grad_clip, grad_clip)
         return gradients_dict
 
-    @override(Learner)
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the weights of the underlying MultiAgentRLModule"""
+        module_weights = self._module.get_state()
         if module_ids is None:
-            module_ids = self._module.keys()
-        return {mid: self._module[mid].get_weights() for mid in self._module.keys()}
+            return module_weights
+
+        return {k: v for k, v in module_weights.items() if k in module_ids}
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        for mid, sa_module in weights.items():
-            self._module[mid].set_weights(sa_module)
+        self._module.set_state(weights)
 
     @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
@@ -269,6 +271,10 @@ class TfLearner(Learner):
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
+            # TODO (Kourosh): We need to go back to NestedDict because that's the
+            # constraint on forward_train and compute_loss APIs. This seems to be
+            # in-efficient. Make it efficient.
+            _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
