@@ -133,7 +133,7 @@ def _patched_makeRecord(
     This patched version is otherwise identical to the one in the standard
     library.
     """
-    rv = logging.LogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
+    rv = logging._logRecordFactory(name, level, fn, lno, msg, args, exc_info, func, sinfo)
     if extra is not None:
         rv.__dict__.update(extra)
     return rv
