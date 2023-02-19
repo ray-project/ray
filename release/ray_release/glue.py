@@ -93,7 +93,7 @@ def _get_extra_tags_from_env() -> dict:
         "BUILDKITE_SOURCE",
         "RELEASE_FREQUENCY",
     )
-    return {key.lower(): os.getenv(key, "") for key in env_vars}
+    return {key.lower(): os.getenv(key, "null") for key in env_vars}
 
 
 def run_release_test(
