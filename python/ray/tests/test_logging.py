@@ -870,7 +870,7 @@ def test_ray_does_not_break_makeRecord():
         # makeRecord called the expected factory.
         mockRecordFactory.assert_called_once()
     finally:
-        # Set back to default factory.
+        # Set it back to the default factory.
         logging.setLogRecordFactory(logging.LogRecord)
 
 
