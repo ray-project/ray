@@ -29,6 +29,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchDiagGaussian,
     TorchMultiActionDistribution,
     TorchMultiCategorical,
+    TorchDirichlet,
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
@@ -315,12 +316,7 @@ class ModelCatalog:
             )
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "Simplex action spaces not supported for torch."
-                )
-            dist_cls = Dirichlet
+            dist_cls = TorchDirichlet if framework == "torch" else Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
             dist_cls = (

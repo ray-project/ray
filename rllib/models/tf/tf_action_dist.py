@@ -704,7 +704,10 @@ class Dirichlet(TFActionDistribution):
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
-        return tf.nn.softmax(self.dist.concentration)
+        self.last_sample = self.dist.concentration / tf.reduce_sum(
+            self.dist.concentration, axis=-1, keepdims=True
+        )
+        return self.last_sample
 
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
