@@ -24,9 +24,9 @@ class TorchMLP(nn.Module):
         """Initialize a TorchMLP object.
 
         Args:
-            input_dim: The input dimension of the network. It cannot be None.
+            input_dim: The input dimension of the network.
             hidden_layer_dims: The sizes of the hidden layers.
-            output_dim: The output dimension of the network. if None, the last layer
+            output_dim: The output dimension of the network. If None, the last layer
                 would be the last hidden layer.
             hidden_layer_activation: The activation function to use after each layer.
                 output_activation: The activation function to use for the output layer.
@@ -78,7 +78,7 @@ class TorchCNN(nn.Module):
         """Initialize a TorchCNN object.
 
         Args:
-            input_dims: The input dimension of the network. It cannot be None.
+            input_dims: The input dimensions of the network.
             filter_specifiers: A list of lists, where each element of an inner list
                 contains elements of the form
                 `[number of filters, [kernel width, kernel height], stride]` to
@@ -86,7 +86,7 @@ class TorchCNN(nn.Module):
             filter_layer_activation: The activation function to use after each layer (
                 except for the output).
             output_activation: The activation function to use for the output layer.
-            output_dim: The output dimension are [BATCH, output_dim]. We append a final
+            output_dim: The output dimensions are [BATCH, output_dim]. We append a final
                 convolutional layer depth-only filters that is flattened and a final
                 linear layer to achieve this.
         """

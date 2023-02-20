@@ -144,7 +144,7 @@ def reinstall_anyscale_dependencies() -> None:
 
     # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
-        "pip install -U anyscale==0.5.76",
+        "pip install -U anyscale==0.5.81",
         shell=True,
         text=True,
     )
