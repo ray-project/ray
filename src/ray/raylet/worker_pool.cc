@@ -104,6 +104,9 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // metric not existing at all).
   stats::NumWorkersStarted.Record(0);
   stats::NumWorkersStartedFromCache.Record(0);
+  stats::NumCachedWorkersSkippedJobMismatch.Record(0);
+  stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
+  stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
