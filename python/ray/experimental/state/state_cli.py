@@ -287,7 +287,7 @@ def format_get_api_output(
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    if schema == TaskState:
+    if schema == TaskState and format == AvailableFormat.YAML:
         augmented_task_state_data = [
             {("task_id: " + state["task_id"]): state} for state in state_data
         ]
@@ -305,7 +305,7 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    if schema == TaskState:
+    if schema == TaskState and format == AvailableFormat.YAML:
         augmented_task_state_data = [
             {("task_id: " + state["task_id"]): state} for state in state_data
         ]
