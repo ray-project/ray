@@ -604,3 +604,8 @@ Stack Traces
 You can use the ``ray stack`` command to dump the stack traces of all the
 Python workers on a single node. This can be useful for debugging unexpected
 hangs or performance issues.
+
+Next Steps
+----------
+
+- To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 

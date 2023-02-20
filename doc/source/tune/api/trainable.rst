@@ -270,37 +270,42 @@ session (Function API)
 .. currentmodule:: ray
 
 .. autosummary::
-    :toctree: doc/
 
     air.session.report
-    :noindex:
     air.session.get_checkpoint
-    :noindex:
     air.session.get_trial_name
-    :noindex:
     air.session.get_trial_id
-    :noindex:
     air.session.get_trial_resources
-    :noindex:
     air.session.get_trial_dir
-    :noindex:
 
 .. _tune-trainable-docstring:
 
 Trainable (Class API)
 ---------------------
 
+Constructor
+~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
+
+    ~tune.Trainable
+
+
+Trainable Methods to Implement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 .. autosummary::
     :toctree: doc/
 
-    tune.Trainable
-    tune.Trainable.setup
-    tune.Trainable.save_checkpoint
-    tune.Trainable.load_checkpoint
-    tune.Trainable.step
-    tune.Trainable.reset_config
-    tune.Trainable.cleanup
-    tune.Trainable.default_resource_request
+    ~tune.Trainable.setup
+    ~tune.Trainable.save_checkpoint
+    ~tune.Trainable.load_checkpoint
+    ~tune.Trainable.step
+    ~tune.Trainable.reset_config
+    ~tune.Trainable.cleanup
+    ~tune.Trainable.default_resource_request
 
 
 .. _tune-util-ref:

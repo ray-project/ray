@@ -108,6 +108,7 @@ class ResourceRequest:
     @property
     @DeveloperAPI
     def head_cpus(self) -> float:
+        """Returns the number of cpus in the head bundle."""
         return 0.0 if self._head_bundle_is_empty else self._bundles[0].get("CPU", 0.0)
 
     @property
