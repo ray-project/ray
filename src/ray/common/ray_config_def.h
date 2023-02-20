@@ -19,7 +19,7 @@
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
 /// The duration between dumping debug info to logs, or 0 to disable.
-RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 0)
 
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
