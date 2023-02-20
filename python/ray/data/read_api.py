@@ -42,6 +42,7 @@ from ray.data.datasource import (
     RangeDatasource,
     DBAPI2Connector, DBAPI2Datasource,
     SnowflakeConnector, SnowflakeDatasource,
+    DatabricksConnector, DatabricksDatasource,
     MongoDatasource,
     ReadTask,
     TextDatasource,
@@ -361,11 +362,50 @@ def read_dbapi2(
     *,
     table: Optional[str] = None,
     query: Optional[str] = None,
-    mode: Optional[str] = 'partitioned',
+    mode: str = 'partition',
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
-    **dbapi2_args,
+    **dbapi2_kwargs
 ) -> Dataset[ArrowRow]:
+    """Read a dataset from a database that provides a 
+    Python DB API 2 library.
+
+    Examples:
+        >>> import ray # doctest: +SKIP
+        >>> from sqlite3 import connect # doctest: +SKIP
+        >>> connect_props = {...} # doctest: +SKIP
+        >>> ds = ray.data.read_dbapi2(connect, connect_props, table='my_table') # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=14, 
+            num_rows=10000, 
+            schema={int_val: int64, str_val: object}
+        )  
+        >>> query = 'select * from my_table' # doctest: +SKIP
+        >>> ds = ray.data.read_dbapi2(connect, connect_props, query=query) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=14, 
+            num_rows=10000, 
+            schema={int_val: int64, str_val: object}
+        )
+            
+    Args:
+        connect_fn: The DB API 2 function that returns a connection object given connection properties.
+        connect_properties: The connection propertiesto pass to the DB API 2 connect function.
+        table: The name of the table to read from. Either table or query must be specified.
+        query: The SQL query to read results from. Either table or query must be specified.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen based on the available cluster
+            resources and estimated in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        dbapi2_kwargs: Additional key word args to pass to the DB API query function. 
+            The `args` item will be expanded as positional arguments. 
+
+    Returns:
+        Dataset holding the data read from the database.
+    """
     connector = DBAPI2Connector(connect_fn, **connect_properties)
     datasource = DBAPI2Datasource(connector)
     return read_datasource(
@@ -375,7 +415,7 @@ def read_dbapi2(
         mode = mode,
         parallelism = parallelism,
         ray_remote_args=ray_remote_args,
-        **dbapi2_args,
+        **dbapi2_kwargs,
     )
     
 @PublicAPI(stability="alpha")
@@ -384,14 +424,50 @@ def read_databricks(
     *,
     table: Optional[str] = None,
     query: Optional[str] = None,
-    mode: Optional[str] = 'partitioned',
+    mode: str = 'partition',
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
-    **databricks_args,
+    **databricks_kwargs,
 ) -> Dataset[ArrowRow]:
-    from databricks.sql import connect as connect_fn
-    connector = DBAPI2Connector(connect_fn, **connect_properties)
-    datasource = DBAPI2Datasource(connector)
+    """Read a dataset from Databricks with the Databricks
+    a Python DB API 2 library.
+
+    Examples:
+        >>> import ray # doctest: +SKIP
+        >>> connect_props = {...} # doctest: +SKIP
+        >>> ds = ray.data.read_databricks(connect_props, table='my_table') # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=14, 
+            num_rows=10000, 
+            schema={int_val: int64, str_val: object}
+        )  
+        >>> query = 'select * from my_table' # doctest: +SKIP
+        >>> ds = ray.data.read_databricks(connect_props, query=query) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=14, 
+            num_rows=10000, 
+            schema={int_val: int64, str_val: object}
+        )
+            
+    Args:
+        connect_properties: The connection propertiesto pass to the DB API 2 connect function.
+        databricks_args: Additional args to pass to the Databricks query function.
+        table: The name of the table to read from. Either table or query must be specified.
+        query: The SQL query to read results from. Either table or query must be specified.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen based on the available cluster
+            resources and estimated in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        databricks_kwargs: Additional key word args to pass to the Databricks query function.
+            The `args` item will be expanded as positional arguments. 
+    Returns:
+        Dataset holding the data read from Databricks.
+    """   
+    connector = DatabricksConnector(**connect_properties)
+    datasource = DatabricksDatasource(connector)
     return read_datasource(
         datasource,
         table=table,
@@ -399,7 +475,7 @@ def read_databricks(
         mode = mode,
         parallelism = parallelism,
         ray_remote_args=ray_remote_args,
-        **databricks_args,
+        **databricks_kwargs
     )
 
 @PublicAPI(stability="alpha")
@@ -410,8 +486,45 @@ def read_snowflake(
     query: Optional[str] = None,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
-    **snowflake_args,
+    **snowflake_kwargs,
 ) -> Dataset[ArrowRow]:
+    """Read a dataset from Snowflake with the Snowflake
+    a Python DB API 2 library.
+
+    Examples:
+        >>> import ray # doctest: +SKIP
+        >>> connect_props = {...} # doctest: +SKIP
+        >>> ds = ray.data.read_snowflake(connect_props, table='my_table') # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=14, 
+            num_rows=10000, 
+            schema={int_val: int64, str_val: object}
+        )  
+        >>> query = 'select * from my_table' # doctest: +SKIP
+        >>> ds = ray.data.read_snowflake(connect_props, query=query) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Dataset(
+            num_blocks=14, 
+            num_rows=10000, 
+            schema={int_val: int64, str_val: object}
+        )
+            
+    Args:
+        connect_properties: The connection properties to pass to the Snowflake connect function.
+        snowflake_args: Additional args to pass to the Snowflake query function.
+        table: The name of the table to read from. Either table or query must be specified.
+        query: The SQL query to read results from. Either table or query must be specified.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen based on the available cluster
+            resources and estimated in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        snowflake_kwargs: Additional key word args to pass to the Snowflake query function.
+            The `args` item will be expanded as positional arguments. 
+    Returns:
+        Dataset holding the data read from Snowflake.
+    """       
     connector = SnowflakeConnector(**connect_properties)
     datasource = SnowflakeDatasource(connector)
     return read_datasource(
@@ -420,7 +533,7 @@ def read_snowflake(
         query=query,
         parallelism = parallelism,
         ray_remote_args=ray_remote_args,
-        **snowflake_args,
+        **snowflake_kwargs
     )
 
 @PublicAPI(stability="alpha")

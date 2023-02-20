@@ -1,0 +1,108 @@
+import os
+from typing import Any, Dict, List, Literal, Optional, Union
+import uuid
+from ray import ObjectRef
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.data.block import Block, BlockMetadata
+from ray.data.datasource.database_datasource import (
+    pylist_to_pylist_of_dicts, 
+    DatabaseConnection, 
+    DatabaseReader
+)
+from ray.data.datasource.dbapi2_datasource import DBAPI2Datasource, DBAPI2Connector
+from ray.data.datasource.parquet_datasource import ParquetDatasource
+
+def cursor_to_pyarrow(cursor: Any) -> Block:
+    return cursor.fetchall_arrow()
+
+@DeveloperAPI
+class DatabricksConnector(DBAPI2Connector):    
+    def __init__(self, **connect_properties):
+        from databricks.sql import connect as databricks_connect_fn
+        super().__init__(
+            databricks_connect_fn,
+            to_block_fn=cursor_to_pyarrow,
+            from_block_fn=pylist_to_pylist_of_dicts, 
+            **connect_properties
+        )
+    
+    def remove_stage(self, stage_uri, **kwargs) -> Any:
+        from pyarrow.fs import FileSystem
+        fs, path = FileSystem.from_uri(stage_uri)
+        try:
+            fs.delete_dir(path)
+        finally:
+            pass
+              
+@PublicAPI
+class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
+    # default write queries
+    WRITE_QUERIES = dict(
+            all_complete_copyinto = """
+                COPY INTO {table} 
+                FROM '{stage_uri}'
+                {credential}
+                FILEFORMAT = PARQUET
+                FORMAT_OPTIONS (
+                    'mergeSchema' = 'true'
+                )
+                COPY_OPTIONS ('mergeSchema' = 'true')
+            """,
+            cleanup_copyinto = 'call_fn(remove_stage,{stage_uri})'
+        )
+        
+    def __init__(
+        self,
+        connector: DatabaseConnection,
+        *,
+        read_queries: Dict[str, str] = {},
+        write_queries: Dict[str, str] = {},
+        template_keys: List[str] = []
+    ):                                   
+        super().__init__(
+            connector, 
+            read_queries=read_queries,
+            write_queries={**DatabricksDatasource.WRITE_QUERIES, **write_queries},
+            template_keys = ['stage_uri', 'credential'] + template_keys
+        )
+    
+    def do_write(self,
+        blocks: List[ObjectRef],
+        metadata: List[BlockMetadata],
+        *,
+        table: str,
+        mode: str = 'copyinto',
+        stage_uri: Optional[str] = None,
+        credential: Optional[Union[str, Dict[str,str]]] = None,
+        dataset_uuid: str = str(uuid.uuid4()),
+        parquet_kwargs: Dict[str,Any] = {},
+        **databricks_kwargs
+    ) -> List[ObjectRef]:
+        if mode == 'copyinto':
+            if not stage_uri:
+                raise ValueError('copyinto mode requires a stage_uri')
+             
+            stage_uri = os.path.join(stage_uri, dataset_uuid)
+            if credential is not None:
+                if isinstance(credential, str):
+                    credential = f" WITH ( CREDENTIAL `{credential}` ) "
+                else:
+                    credential = ' WITH ( CREDENTIAL (' + ','.join(f"'{k}' = '{v}'" for k,v in credential.items()) + ')) '
+                
+            super(ParquetDatasource, self).do_write(
+                blocks,
+                metadata,
+                stage_uri,
+                dataset_uuid=dataset_uuid,
+                **parquet_kwargs
+            )
+                
+        return super().do_write(
+            blocks,
+            metadata,
+            table=table,
+            mode=mode,
+            stage_uri=stage_uri,
+            credential=credential,
+            **databricks_kwargs        
+        )

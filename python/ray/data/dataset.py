@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 import html
 from typing import (
     TYPE_CHECKING,
@@ -2556,44 +2557,18 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
         )
+        
     def write_dbapi2(
         self,
         connect_fn: Callable,
         connect_properties: Dict[str, Any] = {},
         *,
         table: Optional[str] = None,
-        mode: Optional[str] = None,
+        mode: str = 'direct',
         ray_remote_args: Dict[str, Any] = None,
-        read_queries: Dict[str,str] = {},
-        write_queries: Dict[str, str] = {},
-        **dbapi2_args,
+        **dbapi2_kwargs: Dict[str,Any]
     ) -> None:
         from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource
-        connector = DBAPI2Connector(connect_fn, **connect_properties)
-        datasource = DBAPI2Datasource(
-            connector,
-            read_queries=read_queries,
-            write_queries=write_queries
-        )
-        self.write_datasource(
-            datasource,
-            table=table,
-            mode=mode,
-            ray_remote_args=ray_remote_args,
-            **dbapi2_args
-        )
-    
-    def write_databricks(
-        self,
-        connect_properties: Dict[str, Any] = {},
-        *,
-        table: Optional[str] = None,
-        mode: Optional[str] = None,
-        ray_remote_args: Dict[str, Any] = None,
-        **databrick_args,
-    ) -> None:
-        from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource 
-        from databricks.sql import connect as connect_fn
         connector = DBAPI2Connector(connect_fn, **connect_properties)
         datasource = DBAPI2Datasource(connector)
         self.write_datasource(
@@ -2601,16 +2576,42 @@ class Dataset(Generic[T]):
             table=table,
             mode=mode,
             ray_remote_args=ray_remote_args,
-            **databrick_args
+            **dbapi2_kwargs
         )
     
+    def write_databricks(
+        self,
+        connect_properties: Dict[str, Any] = {},
+        *,
+        table: Optional[str] = None,
+        mode: str = 'copyinto',
+        stage_uri: Optional[str] = None,
+        credential: Optional[Union[str,Dict[str,str]]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        parquet_kwargs: Dict[str,Any] = {},
+        **databricks_kwargs: Dict[str,Any]
+    ) -> None:  
+        from ray.data.datasource import DatabricksConnector, DatabricksDatasource
+        connector = DatabricksConnector(**connect_properties)
+        datasource = DatabricksDatasource(connector)
+        self.write_datasource(
+            datasource,
+            table=table,
+            mode=mode,
+            stage_uri=stage_uri,
+            credential=credential,
+            ray_remote_args=ray_remote_args,
+            parquet_kwargs=parquet_kwargs,
+            **databricks_kwargs
+        )
+ 
     def write_snowflake(
         self,
         connect_properties: Dict[str, Any] = {},
         *,
         table: Optional[str] = None,
         ray_remote_args: Dict[str, Any] = None,
-        **databrick_args,
+        **snowflake_kwargs
     ) -> None:
         from ray.data.datasource import SnowflakeConnector, SnowflakeDatasource 
         connector = SnowflakeConnector(**connect_properties)
@@ -2619,7 +2620,7 @@ class Dataset(Generic[T]):
             datasource,
             table=table,
             ray_remote_args=ray_remote_args,
-            **databrick_args
+            **snowflake_kwargs
         )
         
     def write_mongo(

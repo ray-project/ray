@@ -11,6 +11,7 @@ from ray.data.datasource.datasource import (
 )
 
 from ray.data.datasource.dbapi2_datasource import DBAPI2Connector, DBAPI2Datasource
+from ray.data.datasource.databricks_datasource import DatabricksConnector, DatabricksDatasource
 from ray.data.datasource.snowflake_datasource import SnowflakeConnector, SnowflakeDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
 
@@ -73,6 +74,8 @@ __all__ = [
     "RangeDatasource",
     "DBAPI2Connector",
     "DBAPI2Datasource",
+    "DatabricksConnector",
+    "DatabricksDatasource",
     "SnowflakeConnector",
     "SnowflakeDatasource",
     "MongoDatasource",

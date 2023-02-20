@@ -1,19 +1,20 @@
 import logging
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.datasource.database_datasource import (
     DatabaseConnector,
     DatabaseReadTask,
-    DatabaseReader,
-    BlockFormat
+    DatabaseReader
 )
 
 from ray.data.datasource.dbapi2_datasource import (
     DBAPI2Connector,
     DBAPI2Datasource
 )
+
+import pandas
 
 logger = logging.getLogger(__name__)
    
@@ -58,89 +59,81 @@ def _snowflake_load_private_key(props: Dict) -> None:
             serialization.PrivateFormat.PKCS8,
             serialization.NoEncryption(),
         )
-    
+       
 @DeveloperAPI
 class SnowflakeConnector(DBAPI2Connector):
     from snowflake.connector.result_batch import ResultBatch
     
-    def __init__(self, **connection_properties: Dict[str, Any]):
+    def __init__(self, **connect_properties):
         from snowflake.connector import connect as snowflake_connect_fn
-        _snowflake_load_private_key(connection_properties)
-        super().__init__(snowflake_connect_fn, **{'paramstyle':'qmark', **connection_properties})
+        _snowflake_load_private_key(connect_properties)
+        super().__init__(
+            snowflake_connect_fn,
+            to_block_fn= lambda d: d if isinstance(d, pandas.DataFrame) else d.fetch_pandas_all(),
+            from_block_fn= lambda block: BlockAccessor.for_block(block).to_pandas(), 
+            **{'paramstyle':'qmark', **connect_properties}
+        )
     
-    def insert_block(self, query: str, block: Block, **query_args: Dict[str, Any]) -> None:
+    def _execute(self, query: str, data: Optional[Any] = None, **query_kwargs) -> Any:        
         from snowflake.connector.pandas_tools import write_pandas
-        
-        if logger.debug:
-            query_args_str = ', ' + ','.join([f'{k}={v}' for k,v in query_args.items()]) if query_args else ''
-            logger.debug(f'cursor.write_pandas(connection, df, table_name="{query}"{query_args_str}')
-
-        accessor = BlockAccessor.for_block(block)
-        df = accessor.to_batch_format('pandas')    
-        write_pandas(self.connection, df, table_name=query, **{'parallel':1, **query_args})  # type: ignore
-       
-    def query_batches(self, query:str, **query_args: Dict[str, Any]) -> List[ResultBatch]:
-        cursor = self.query(query, **query_args)
+        if data is not None and isinstance(data, pandas.DataFrame):
+            write_pandas(self.connection, data, table_name=query, **{'parallel':1, **query_kwargs})  # type: ignore
+            return None
+        else:
+            return super()._execute(query, data=data, )
+            
+    def query_batches(self, query:str, **kwargs) -> List[ResultBatch]:
+        cursor = self.execute(query, **kwargs)
         batches = cursor.get_result_batches()
         batches = [b for b in batches if b.rowcount > 0]
-        return batches        
-
-@DeveloperAPI
-class SnowflakeReadTask(DatabaseReadTask):
-    from snowflake.connector.result_batch import ResultBatch
+        return batches
     
-    def __init__(self, batch: ResultBatch, **kwargs):
-        super().__init__(**kwargs)
-        self.batch = batch
-             
-    def _read_fn(self) -> Iterable[Block]:
-        return [self.batch.to_pandas()]                  
-
+    def read_batch(self, batch: ResultBatch, **kwargs) -> Block:
+        return batch.to_pandas()    
+            
 @DeveloperAPI
-class SnowflakeReader(DatabaseReader): 
-    def _create_read_task(self, **kwargs) -> DatabaseReadTask:
-        return SnowflakeReadTask(
-            connector=self.connector, 
-            queries=self.queries, 
-            query_args=self.query_args, 
-            **kwargs
-        )
-                           
-    def get_read_tasks(self, parallelism: int) -> List[SnowflakeReadTask]:               
+class SnowflakeReader(DatabaseReader):                           
+    def get_read_tasks(self, parallelism: int) -> List[DatabaseReadTask]:               
         if self.num_rows == 0:
             return []
         
         # read batches
-        if 'read_query' not in self.queries:
+        query = self.queries.get('query_all')
+        if not query:
             raise ValueError('Snowflake reader requires a read query to be defined')
         
-        with self.connector:
-            batches = self.connector.query_batches( # type: ignore 
-                str(self.queries['read_query']), 
-                **self.query_args
-            )
+        with self.connector as con:
+            batches = con.query_batches(query, **self.query_kwargs)
 
         accessor = BlockAccessor.for_block(self.sample)
         schema = accessor.schema()
         row_size = accessor.size_bytes() / accessor.num_rows()
+        row_start = 0
         
         # create tasks
         tasks = []
-        for batch in batches:
-            if batch.uncompressed_size:
-                size = batch.uncompressed_size
-            else:
-                size = int(row_size * batch.rowcount)
-                
-            metadata = BlockMetadata(
-                batch.rowcount, 
-                size, 
-                schema, 
-                None, 
-                None
-            ) 
-            tasks.append(self._create_read_task(metadata=metadata, batch=batch))   
-
+        for i, batch in enumerate(batches):
+            num_rows = batch.rowcount
+            size_bytes = int(row_size * num_rows)            
+            metadata = BlockMetadata(num_rows, size_bytes, schema, None, None)    
+          
+            queries = self.queries.templatize(
+                metadata = metadata,
+                partition = i,
+                row_start=row_start, 
+                num_rows=num_rows
+            )
+            
+            tasks.append(
+                DatabaseReadTask(
+                    self.connector,
+                    metadata, 
+                    queries,
+                    {**self.query_kwargs, 'batch': batch}
+                )
+            )  
+            row_start += num_rows
+            
         return tasks
          
 @PublicAPI   
@@ -148,21 +141,32 @@ class SnowflakeDatasource(DBAPI2Datasource):
     """A Ray datasource for reading and writing data to Snowflake.
         See [Snowflake connector API](https://docs.snowflake.com/en/user-guide/python-connector-api.html#module-snowflake-connector).
     """ 
+    READ_QUERIES = dict(
+        query_all_batch = DBAPI2Datasource.READ_QUERIES['read_direct'],
+        read_batch = 'call_fn(read_batch)',
+        num_rows_batch = DBAPI2Datasource.READ_QUERIES['num_rows_direct'],
+        sample_batch = DBAPI2Datasource.READ_QUERIES['sample_direct'],
+    )
     
     def __init__(self, 
         connector: DatabaseConnector,
+        *,
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
-        read_mode: Optional[str] = None,
-        write_mode: Optional[str] = 'batch'
+        template_keys: List[str] = []
     ):
         super().__init__(
-                connector, 
-                read_queries,
-                {'write_query_batch':'{table}', **write_queries},
-                read_mode,
-                write_mode
-            )
+            connector, 
+            read_queries={**SnowflakeDatasource.READ_QUERIES, **read_queries},
+            write_queries=write_queries,
+            template_keys=template_keys
+        )
     
-    def _create_reader(self, **kwargs) -> DatabaseReader:
-        return SnowflakeReader(**kwargs)
+    def create_reader(self, mode: str = 'batch', **kwargs) -> DatabaseReader:
+        if mode == 'batch':
+            template_kwargs = self._get_template_kwargs(**kwargs)
+            query_kwargs = self._get_query_kwargs(**kwargs)       
+            queries = self.read_queries.templatize(mode=mode, **template_kwargs)            
+            return SnowflakeReader(self.connector, queries, query_kwargs)
+        else:
+            return DatabaseReader(self.connector, queries, query_kwargs)

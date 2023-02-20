@@ -1,58 +1,113 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import dataclasses
+import textwrap
 from functools import cached_property
 from math import ceil
-from typing import Any, Dict, Generic, Iterable, List, Literal, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, TypeVar, Union
 import logging
+import pandas, pyarrow
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockExecStats, BlockAccessor
 from ray.data.datasource import Reader, Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data._internal.remote_fn import cached_remote_fn
-
-from pyarrow import Table
-from pandas import DataFrame
-
-logger = logging.getLogger(__name__)
-
-QueryResult = Optional[Union[None, int, str, bool, float, bytes]]
-
-BlockFormat = Literal['pyarrow', 'pandas', 'native']
+  
 DatabaseConnection = TypeVar("DatabaseConnection")
 
-def _transpose_list(lst: List[List[Any]]) -> List[List[Any]]: 
-     return list(map(list, zip(*lst)))
+def _transpose_list(pylist: List[List[Any]]) -> List[List[Any]]: 
+     return list(map(list, zip(*pylist)))
   
-def _list_to_column_map(lst: List[List[Any]], columns: List[str]) -> Dict[str,List[Any]]: 
-    return {c:d for c,d in zip(columns, _transpose_list(lst))}      
+def pylist_to_pydict_of_lists(pylist: List[List[Any]], columns: List[str]) -> Dict[str,List[Any]]: 
+    return {c:d for c,d in zip(columns, _transpose_list(pylist))}      
 
-def _list_to_records(lst: List[List[Any]], columns: List[str]) -> List[Dict[str, Any]]:
-    return [{c:v for c,v in zip(columns, row)} for row in lst]
-           
-def _get_columns(metadata):
-    if metadata.schema:
-        return metadata.schema.names
+def pylist_to_pylist_of_dicts(pylist: List[List[Any]], columns: List[str]) -> List[Dict[str, Any]]:
+    return [{c:v for c,v in zip(columns, row)} for row in pylist]
+
+def block_to_pylist(block: Block) -> List[List[Any]]:
+    return [[*pydict.values()] for pydict in block_to_pylist_of_dicts(block)]
+
+def block_to_pylist_of_dicts(block: Block) -> List[Dict[str, Any]]:
+    return BlockAccessor.for_block(block).to_arrow().to_pylist()
+
+def block_to_pydict_of_lists(block: Block) -> List[Dict[str, Any]]:
+    return BlockAccessor.for_block(block).to_arrow().to_pydict()
+
+def pylist_to_pandas(pylist: List[List[Any]], columns: List[str]) -> Block:
+    return pandas.DataFrame(columns=columns, data=pylist)           
+
+def pylist_to_pyarrow(pylist: List[List[Any]], columns: List[str]) -> Block:
+    return pyarrow.Table.from_pylist(pylist_to_pylist_of_dicts(pylist, columns))          
+                 
+def _execute_write_task(task: 'DatabaseWriteTask') -> 'DatabaseWriteTask':
+    task()
+    return task
+
+def _desc_val(v: Any) -> str:
+    value_type = type(v)
+    if value_type in (int, bool, float):
+        desc = f"{v}"
+    elif value_type == str:
+        desc = f"'{v}'"
+    elif value_type == list:
+        desc = '[' + ','.join([_desc_val(d) for d in v]) +']'
+    elif value_type == dict:
+        desc = 'dict(' + ','.join([v1+'='+_desc_val(v2) for v1,v2 in v.items()]) +')'
     else:
-        raise ValueError('cannot get columns as metadata is missing schema')
-
+        desc = f"type({value_type})" 
+    
+    if len(desc) > 100:
+        desc = desc[0:50] + ' ... ' + desc[-50:]
+            
+    return desc
+            
+def _desc_method(method:str, *args, **kwargs) -> str:
+    desc = ''   
+    if len(args) > 0:
+        desc = '\n'.join([_desc_val(v) for v in args])
+        if len(kwargs) > 0:
+            desc = desc + '\n'
+    if len(kwargs) > 0:
+        desc = desc + '\n'.join([k+'='+_desc_val(v) for k,v in kwargs.items()])    
+    desc = textwrap.indent(desc, '  ')
+    return method + ':\n' + desc
+       
 @DeveloperAPI
 class DefaultArgs(defaultdict):  
     def __missing__(self, key):
         return '{' + str(key) + '}'
 
 @DeveloperAPI
-class QueryTemplateCollection(dict):
-    """ Dictionary like class that provides functions for templating queries"""
+class QueryTemplates(dict):
+    """ Dictionary like class that provides functions for filtering and templating queries"""
     
-    def filter(self, mode: Optional[str] = None) -> 'QueryTemplateCollection':
-        if mode:
+    def templatize(self, 
+        metadata: Optional[BlockMetadata] = None, 
+        partition: Optional[int] = None,
+        mode: Optional[str] = None,
+        column_template: str = '{column}',
+        partition_template: str = '{partition}',
+        param_template: str = '?',
+        **kwargs
+    ) -> 'QueryTemplates':
+        replacements = {}
+        if metadata:
+            replacements['column_list'] = self._get_column_list_string(column_template, metadata)
+            replacements['param_list'] = self._get_param_list_string(param_template, metadata)
+        
+        if partition is not None:
+            replacements['partition'] = self._get_partition(partition_template, metadata, partition)
+    
+        return self.filter(mode).replace_all(**{**replacements, **kwargs} )   
+        
+    def filter(self, mode: Optional[str] = None) -> 'QueryTemplates':
+        if mode != None:
             suffix = f'_{mode}'
             filtered = {k.replace(suffix, ''):v for k,v in self.items() if k.endswith(suffix)}
-            return QueryTemplateCollection(**filtered)
+            return type(self)(**filtered)
         else:
-            return QueryTemplateCollection(**self)
+            return type(self)(**self)
     
     def replace(self, query_key: str, **replacements) -> Optional[str]:
         query = self.get(query_key, None)
@@ -60,29 +115,57 @@ class QueryTemplateCollection(dict):
             return None
         
         replacements = DefaultArgs(**replacements)
-        return query.format_map(replacements)
+        formatted = query.format_map(replacements)
+        return textwrap.dedent(formatted.strip('\n'))
         
-    def replace_all(self, **replacements) -> 'QueryTemplateCollection':
+    def replace_all(self, **replacements) -> 'QueryTemplates':
         templated = {k:self.replace(k, **replacements) for k,_ in self.items()}
-        return QueryTemplateCollection(**templated)
+        return type(self)(**templated)
   
+    def _get_columns(self, metadata: BlockMetadata):
+        if metadata.schema:
+            return metadata.schema.names
+        else:
+            raise ValueError('cannot get columns as metadata is missing schema')
+    
+    def _get_partition(self, partition_template: str, metadata: BlockMetadata, partition: int) -> str:
+        return partition_template.format(partition = str(partition)) 
+
+    def _get_column_list_string(self, column_template: str, metadata: BlockMetadata) -> str:
+        columns = self._get_columns(metadata)
+        column_str = ','.join([column_template.format(column=c) for c in columns])
+        return column_str
+            
+    def _get_param_list_string(self, param_template: str, metadata: BlockMetadata) -> str:
+        columns = self._get_columns(metadata)
+        return ','.join([param_template.format(column=c) for c in columns])
+    
 @DeveloperAPI
-class DatabaseConnector(ABC, Generic[DatabaseConnection]):
+class DatabaseConnector(ABC):
     """ Abstract class that implements the  DB operations used by readers and writers 
     when interacting with the database.
 
     Attributes:
-        connection_properties: The connection properties of the database connection.
+        connect_properties: The connection properties of the database connection.
         connection : The underlying connection object used to interact with the database.
         
     Current subclasses:
         DBAPI2Connector
     """
-    
-    def __init__(self, **connection_properties):
-        self.connection_properties = connection_properties
+      
+    def __init__(self,
+        to_value_fn: Callable[[Any], Any], 
+        to_block_fn: Callable[[Any], Block],
+        from_block_fn: Callable[[Block], Any],
+        **connect_properties
+    ):
+        self.to_value_fn = to_value_fn
+        self.to_block_fn = to_block_fn
+        self.from_block_fn = from_block_fn
+        self.connect_properties = connect_properties
         self.connection: Optional[DatabaseConnection] = None
         self._ref_count: int = 0
+        self._logger = logging.getLogger(self.__class__.__name__)
     
     @abstractmethod
     def _open(self) -> DatabaseConnection:
@@ -101,66 +184,99 @@ class DatabaseConnector(ABC, Generic[DatabaseConnection]):
         ...
     
     @abstractmethod
-    def query(self, query: str, **query_args) -> Any:
+    def _execute(self, query: str, **kwargs) -> Any:
         ...
-
-    @abstractmethod
-    def query_value(self, query: str, **query_args) -> QueryResult:
-        ...
-
-    @abstractmethod
-    def query_block(self, query: str, **query_args) -> Block:
-        ...
-    
-    @abstractmethod
-    def insert_block(self, query: str, block: Block, **query_args: Dict[str, Any]) -> None:
-        ...
-                
+                    
     def open(self) -> None:
         if self._ref_count == 0:
-            if logger.debug:
-                logger.debug(f'opening db connection)')
-            self.connection = self._open()
-        
-        if logger.debug:
-            logger.debug(f'starting db transaction)')
+            self.debug('opening database connection')
+            try:  
+                self.connection = self._open()
+            except BaseException as e:
+                self.connection = None
+                self._logger.error('error opening database connection', exc_info=True)    
+                raise e              
         self._ref_count += 1
    
     def commit(self) -> None:
-        if self.connection:
+        if not self.connection:
+            raise ValueError('database connection not open')
+
+        self.debug('committing database transaction')         
+        try:  
             self._commit()
-    
+        except BaseException as e:
+            self._logger.error('committing database transaction', exc_info=True)
+            raise e
+                
     def rollback(self) -> None:
-        if self.connection:
-            self._commit()
+        if not self.connection:
+            raise ValueError('database connection not open')
+        
+        self.debug('rolling back database transaction')       
+        try:  
+            self._rollback()
+        except BaseException as e:
+            self._logger.error('error rolling back database transaction', exc_info=True)
+            raise e
             
     def close(self):
         if not self.connection:
-            raise ValueError('connection not open')
+            raise ValueError('database connection not open')
         
         self.commit()
         
         self._ref_count -= 1
         if self._ref_count == 0:
-            if logger.debug:
-                logger.debug(f'closing db connection)')
-            self._close()
-            self.connection = None
-             
-    def query_int(self, query: str, **query_args) -> Optional[int]:
-        value = self.query_value(query, **query_args)
-        if isinstance(value, int) or value == None:
-            return value
-        else:
-            raise ValueError(f'returned value is not a int. {value}')
+            self.debug('closing database connection')  
+            try:  
+                self._close()  
+            except BaseException as e:
+                self._logger.error('error closing database connection', exc_info=True)
+                raise e
+            finally:
+                self.connection = None    
 
-    def query_str(self, query: str, **query_args) -> Optional[str]:
-        value = self.query_value(query, **query_args)
-        if isinstance(value, str) or value == None:
-            return value
-        else:
-            raise ValueError(f'returned value is not a str. {value}')
-         
+    def query(self, query: str, **kwargs) -> None:
+        self.execute(query, **kwargs)
+            
+    def query_value(self, query: str, **kwargs) -> Any:
+        return self.to_value_fn(self.execute(query, **kwargs))
+                    
+    def query_int(self, query: str, **kwargs) -> Optional[int]:
+        value = self.query_value(query, **kwargs)
+        return int(value) if value else None
+
+    def query_str(self, query: str, **kwargs) -> Optional[str]:
+        value = self.query_value(query, **kwargs)
+        return str(value) if value else None
+    
+    def query_block(self, query: str, **kwargs) -> Block:
+        return self.to_block_fn(self.execute(query, **kwargs))
+    
+    def insert_block(self, query: str, block: Block, **kwargs) -> None:
+        data = self.from_block_fn(block)
+        self.execute(query, data=data, **kwargs)
+
+    def execute(self, query:str, **kwargs) -> Any:      
+        self.debug('executing on database', query, **kwargs)  
+        try:    
+            if 'call_fn(' == query[:8]:
+                return self.call_fn(query, **kwargs)
+            else:
+                return self._execute(query, **kwargs)
+        except BaseException as e:
+            self._logger.error(
+                _desc_method('error executing on database', query, **kwargs), 
+                exc_info=True
+            )
+            raise e
+    
+    def call_fn(self, query: str, **kwargs) -> Any:
+        argv = query[8:-1].split(',')
+        fn_name,fn_args = argv[0], argv[1:]
+        return self.__getattribute__(fn_name)(*{*fn_args}, **kwargs)
+                           
     def __enter__(self):
         self.open()
         return self
@@ -180,50 +296,55 @@ class DatabaseConnector(ABC, Generic[DatabaseConnection]):
             state['_ref_count'] = 0
 
         return state
-       
+    
+    def debug(self, message: str, *args, **kwargs):
+        if True:#self._logger.isEnabledFor(logging.DEBUG):
+            if len(args) > 0:
+                #print(_desc_method(message, *args, **kwargs))
+                self._logger.debug(_desc_method(message, *args, **kwargs))
+            else:
+                #print(message)   
+                self._logger.debug(message)   
 @DeveloperAPI
 class DatabaseReadTask(ReadTask):
     def __init__(self, 
         connector: DatabaseConnector,
         metadata: BlockMetadata,
-        queries: QueryTemplateCollection,
-        **query_args: Dict[str, Any],
+        queries: QueryTemplates,
+        query_kwargs: Dict[str,Any] = {},
     ):
         self._metadata = metadata
         self.connector = connector
         self.queries = queries
-        self.query_args = query_args
+        self.query_kwargs = query_kwargs
                   
     def _read_fn(self) -> Iterable[Block]:
-        if 'read_query' not in self.queries:
-            raise ValueError('Database read task require a read_query to be defined')
-        
-        with self.connector:
-            block = self.connector.query_block(
-                self.queries['read_query'], 
-                **self.query_args
-            )
-            return [block]    
+        query = self.queries.get('read')
+        if query:       
+            with self.connector:
+                return [self.connector.query_block(query, **self.query_kwargs)]
+        else:
+            return []  
              
 @DeveloperAPI
 class DatabaseReader(Reader):
     def __init__(self,
         connector: DatabaseConnector,
-        queries: QueryTemplateCollection,
-        **query_args: Dict[str, Any]
+        queries: QueryTemplates,
+        query_kwargs: Dict[str,Any] = {}
     ):
-        self.connector= connector
+        self.connector = connector
         self.queries = queries
-        self.query_args = query_args
+        self.query_kwargs = query_kwargs
     
     @cached_property
     def num_rows(self) -> int:
-        query = self.queries.get('num_rows_query')
+        query = self.queries.get('num_rows')
         if not query:
             raise ValueError('number of rows query not specified.')
         
         with self.connector:
-            num_rows = self.connector.query_int(query, **self.query_args)
+            num_rows = self.connector.query_int(query, **self.query_kwargs)
             if num_rows is None:
                 raise ValueError('number of rows query returns no value.')
             else:
@@ -231,33 +352,30 @@ class DatabaseReader(Reader):
                 
     @cached_property
     def sample(self) -> Block:
-        query = self.queries.get('sample_query')
+        query = self.queries.get('sample')
         if not query:
             raise ValueError('sample query not specified.')
         
         with self.connector:
-            return self.connector.query_block(query, **self.query_args)
+            return self.connector.query_block(query, **self.query_kwargs)
 
     def estimate_inmemory_data_size(self):
         if self.num_rows and self.sample is not None:    
             accessor = BlockAccessor.for_block(self.sample)
             return ceil(accessor.size_bytes()/accessor.num_rows()*self.num_rows)
         else:
-            return None
-    
-    def _create_read_task(self, **kwargs) -> DatabaseReadTask:
-        return DatabaseReadTask(**kwargs) # type: ignore  
+            return None 
             
     def get_read_tasks(self, parallelism: int) -> List[DatabaseReadTask]:
-        """Gets the read tasks for reading from the database table in parallel. Will generate a task that will read
-        divide reading from the table based on the number of rows and parallelism.
+        """Gets the read tasks for reading from the database table in parallel. 
+        Will generate a task that will read divide reading from the table based on the number of rows and parallelism.
 
         Args:
             parallelism: The parallelism will be the same as the number of tasks returned.
         Returns:
             A list of read tasks.
         """           
-        if self.num_rows == 0 or 'read_query' not in self.queries:
+        if self.num_rows == 0:
             return []
         
         elif self.num_rows < parallelism:
@@ -280,14 +398,22 @@ class DatabaseReader(Reader):
             
             size_bytes=average_row_size*num_rows                          
             metadata = BlockMetadata(num_rows, size_bytes, schema, None, None)        
-            queries = self.queries.replace_all(row_start=row_start, num_rows=num_rows)
-            task = self._create_read_task(
-                connector=self.connector,
-                metadata=metadata, 
-                queries=queries, 
-                **self.query_args
+            
+            queries = self.queries.templatize(
+                metadata = metadata,
+                partition = i,
+                row_start=row_start, 
+                num_rows=num_rows
             )
-            tasks.append(task)
+            
+            tasks.append(
+                DatabaseReadTask(
+                    self.connector,
+                    metadata, 
+                    queries,
+                    self.query_kwargs
+                )
+            )
             
             row_start += num_rows      
                 
@@ -299,27 +425,21 @@ class DatabaseWriteTask:
         connector: DatabaseConnector,
         metadata: BlockMetadata,
         block_ref: ObjectRef[Block],
-        queries: QueryTemplateCollection,
-        **query_args: Dict[str, Any]
+        queries: QueryTemplates,
+        query_kwargs: Dict[str,Any] = {}
     ):
         self.connector = connector
         self._metadata = metadata
         self.block_ref = block_ref
         self.queries = queries
-        self.query_args = query_args
+        self.query_kwargs = query_kwargs
      
     def _write_fn(self):
-        query = self.queries.get('write_query')     
-        if not query:
-            raise ValueError('write task requires a write_query to be defined')   
-        
-        with self.connector:
-            block = ray.get(self.block_ref)  # type: ignore
-            self.connector.insert_block(
-                query=query, 
-                block=block, 
-                **self.query_args
-            ) 
+        query = self.queries.get('write')     
+        if query:
+            with self.connector as con:
+                block = ray.get(self.block_ref)  # type: ignore
+                con.insert_block(query, block, **self.query_kwargs)
                    
     def __call__(self) -> BlockMetadata: 
         stats = BlockExecStats.builder() 
@@ -329,24 +449,33 @@ class DatabaseWriteTask:
         return self._metadata
     
     def prepare(self, connector: DatabaseConnector) -> None:
-        query = self.queries.get('write_prepare_query')
+        query = self.queries.get('prepare')
         if query:
-            connector.query(query, **self.query_args)   
+            connector.query(query, **self.query_kwargs)   
     
-    def on_write_complete(self, connector: DatabaseConnector) -> None:
-        query = self.queries.get('on_write_complete_query')
+    def complete(self, connector: DatabaseConnector) -> None:
+        query = self.queries.get('complete')
         if query:
-            connector.query(query, **self.query_args)  
-                
-    def on_write_failed(self, connector: DatabaseConnector, error: Exception) -> None:
-        query = self.queries.get('on_write_failed_query')
+            connector.query(query, **self.query_kwargs)  
+    
+    def all_complete(self, connector: DatabaseConnector) -> None:
+        query = self.queries.get('all_complete')
         if query:
-            connector.query(query, **self.query_args)  
-                
-def _execute_write_task(task: DatabaseWriteTask) -> DatabaseWriteTask:
-    task()
-    return task
-
+            connector.query(query, **self.query_kwargs)  
+                        
+    def failed(self, connector: DatabaseConnector, error: Exception) -> None:
+        query = self.queries.get('failed')
+        if query:
+            connector.query(query, **self.query_kwargs)  
+    
+    def cleanup(self, connector: DatabaseConnector) -> None:
+        query = self.queries.get('cleanup')
+        if query:
+            try:
+                connector.query(query, **self.query_kwargs)
+            except BaseException as e:
+                pass   
+            
 @PublicAPI
 class DatabaseDatasource(Datasource, ABC):
     """An abstract Ray datasource for reading and writing to databases.
@@ -364,89 +493,87 @@ class DatabaseDatasource(Datasource, ABC):
     
     def __init__(self, 
         connector: DatabaseConnector,
+        *,
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
-        read_mode:  Optional[str] = None,
-        write_mode:  Optional[str] = None
+        template_keys: List[str] = []
     ):  
         self.connector = connector    
-        self.read_queries = QueryTemplateCollection(**read_queries)     
-        self.write_queries = QueryTemplateCollection(**write_queries)
-        self.read_mode = read_mode
-        self.write_mode = write_mode
+        self.read_queries = QueryTemplates(**read_queries)     
+        self.write_queries = QueryTemplates(**write_queries)
+        self.template_keys = ['column_template', 'partition_template', 'param_template'] + template_keys
     
-    def _get_template_args(self, **kwargs: Dict[str, Any]) -> Dict[str, Any]:        
-        return kwargs
+    def _get_template_kwargs(self, **kwargs: Dict[str, Any]) -> Dict[str, Any]:     
+        return {k:v for k,v in kwargs.items() if k in self.template_keys}
     
-    def _get_query_args(self, **kwargs: Dict[str, Any]) -> Dict[str, Any]:        
-        return kwargs
-    
-    def _create_reader(self, **kwargs) -> DatabaseReader:
-        return DatabaseReader(**kwargs)
-        
-    def _create_write_task(self, **kwargs) -> DatabaseReader:
-        return DatabaseWriteTask(**kwargs)
-       
-    def create_reader(self, mode: Optional[str] = None, **kwargs) -> DatabaseReader:
-        template_args =  self._get_template_args(**kwargs)
-        query_args = self._get_query_args(**kwargs)
-        
-        queries = self.read_queries\
-            .filter(mode or self.read_mode)\
-            .replace_all(**template_args)
-                        
-        return self._create_reader(
-            connector=self.connector, 
-            queries=queries, 
-            **query_args
-        )         
+    def _get_query_kwargs(self, **kwargs: Dict[str, Any]) -> Dict[str, Any]:       
+        return {k:v for k,v in kwargs.items() if k not in self.template_keys}   
+     
+    def create_reader(self, mode: str, **kwargs) -> DatabaseReader:
+        template_kwargs =  self._get_template_kwargs(**kwargs)
+        query_kwargs = self._get_query_kwargs(**kwargs)       
+        queries = self.read_queries.templatize(mode = mode, **template_kwargs)         
+        return DatabaseReader(self.connector, queries, query_kwargs)         
        
     def do_write(self,
         blocks: List[ObjectRef[Block]],
         metadatas: List[BlockMetadata],
+        *,
         ray_remote_args: Dict[str, Any],
-        mode: Optional[str] = None,
+        mode: str,
         **kwargs: Dict[str, Any]
-    ) -> List[ObjectRef[DatabaseWriteTask]]:
-        template_args =  self._get_template_args(**kwargs)
-        query_args = self._get_query_args(**kwargs)
+    ) -> List[ObjectRef]:
+        template_kwargs =  self._get_template_kwargs(**kwargs)
+        query_kwargs = self._get_query_kwargs(**kwargs)
             
-        remote_fn = cached_remote_fn(_execute_write_task).options(num_returns=1, **ray_remote_args)   
-        results = []
+        # create tasks
+        tasks = []
         for n, block_ref, metadata in zip(range(0, len(blocks)), blocks, metadatas):        
-            columns = _get_columns(metadata)
-            replacements = dict(
-                block_id = str(n),
-                column_list= ','.join(columns),
-                qmark_list= ','.join(['?']*len(columns)),
-                **template_args
+            queries = self.write_queries.templatize(
+                mode = mode,
+                metadata = metadata,
+                partition = n,
+                **template_kwargs
             )
-                       
-            metadata = dataclasses.replace(metadata)
-            queries = self.write_queries.filter(mode or self.write_mode)
-            queries = queries.replace_all(**replacements)
-                         
-            task = self._create_write_task(
-                connector=self.connector, 
-                metadata=metadata, 
-                block_ref=block_ref, 
-                queries=queries, 
-                **query_args
+
+            tasks.append(
+                DatabaseWriteTask(
+                    self.connector, 
+                    metadata, 
+                    block_ref, 
+                    queries,
+                    query_kwargs
+                )
             )
-            with self.connector as con:
-                task.prepare(con)
-                
-            results.append(remote_fn.remote(task))
-                         
-        return results
+        
+        # prepare tasks in single transactions
+        with self.connector as con: 
+            for task in tasks:   
+                task.prepare(con) 
+
+        # execute tasks remotely
+        remote_fn = cached_remote_fn(_execute_write_task).options(num_returns=1, **ray_remote_args)
+        result_refs = [remote_fn.remote(task) for task in tasks]              
+        return result_refs
     
     def on_write_complete(self, tasks: List[DatabaseWriteTask]) -> None:
-        with self.connector as con:
-            for task in tasks:
-                task.on_write_complete(con)
+        if len(tasks) > 0:
+            with self.connector as con:
+                try:
+                    for task in tasks:
+                        task.complete(con)             
+                    tasks[0].all_complete(con)
+                    con.commit()              
+                finally:
+                    tasks[0].cleanup(con)   
                 
-    def on_write_failed(self, tasks: List[ObjectRef[DatabaseWriteTask]], error: Exception) -> None:
-        with self.connector as con:
-            for task_ref in tasks:
-                task: DatabaseWriteTask = ray.get(task_ref) # type: ignore
-                task.on_write_failed(con, error)
+    def on_write_failed(self, task_refs: List[ObjectRef[DatabaseWriteTask]], error: Exception) -> None:
+        if len(task_refs) > 0:
+            with self.connector as con:
+                try:
+                    tasks: List[DatabaseWriteTask] = ray.get(task_refs)
+                    for task in tasks:
+                        task.failed(con, error) 
+                    con.commit()            
+                finally:
+                    tasks[0].cleanup(con)   
