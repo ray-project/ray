@@ -27,6 +27,7 @@ from ray.experimental.state.common import (
     StateResource,
     StateSchema,
     SupportedFilterType,
+    TaskState,
     resource_to_schema,
 )
 from ray.experimental.state.exception import RayStateApiException
@@ -173,10 +174,7 @@ def output_with_format(
     if format == AvailableFormat.DEFAULT:
         return get_table_output(state_data, schema)
     if format == AvailableFormat.YAML:
-        augmented_state_data = [
-            {("task_id: " + state["task_id"]): state} for state in state_data
-        ]
-        return yaml.dump(augmented_state_data, indent=4, explicit_start=True)
+        return yaml.dump(state_data, indent=4, explicit_start=True)
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
@@ -285,9 +283,17 @@ def format_get_api_output(
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.YAML,
 ) -> str:
+
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
+    if schema == TaskState:
+        augmented_task_state_data = [
+            {("task_id: " + state["task_id"]): state} for state in state_data
+        ]
+        return output_with_format(
+            augmented_task_state_data, schema=schema, format=format
+        )
     return output_with_format(state_data, schema=schema, format=format)
 
 
@@ -299,6 +305,13 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
+    if schema == TaskState:
+        augmented_task_state_data = [
+            {("task_id: " + state["task_id"]): state} for state in state_data
+        ]
+        return output_with_format(
+            augmented_task_state_data, schema=schema, format=format
+        )
     return output_with_format(state_data, schema=schema, format=format)
 
 
