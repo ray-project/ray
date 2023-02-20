@@ -18,7 +18,7 @@ from typing import (
 
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.core.rl_trainer import TrainerRunner
+from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -382,21 +382,21 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_trainer: Optional[Union[RolloutWorker, TrainerRunner]] = None,
+        from_worker_or_trainer: Optional[Union[RolloutWorker, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
 
-        Weight source can be either a (local) rollout worker or a trainer runner. It
+        Weight source can be either a (local) rollout worker or a learner_group. It
         should just implement a `get_weights` method.
 
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
             from_worker_or_trainer: Optional (local) RolloutWorker instance or
-                TrainerRunner instance to sync from. If None (default),
+                LearnerGroup instance to sync from. If None (default),
                 sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
                 weights to. If None (default), sync to all remote workers.

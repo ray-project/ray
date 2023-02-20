@@ -4,12 +4,14 @@ import time
 
 from unittest.mock import patch
 import pytest
+import numpy as np
 import torch
 import torchvision
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+import ray.data
 from ray.exceptions import RayTaskError
 from ray.air import session
 from ray import tune
@@ -174,9 +176,9 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
     # The below test should pass without errors.
 
     @patch.object(
-        ray.train.torch.train_loop_utils._TorchAccelerator,
+        ray.train.torch.train_loop_utils,
         "get_device",
-        lambda self: torch.device(f"cuda:{1 - session.get_local_rank()}"),
+        lambda: torch.device(f"cuda:{1 - session.get_local_rank()}"),
     )
     def train_func():
         # These assert statements must hold for prepare_model to wrap with DDP.
@@ -333,6 +335,35 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
     # Training should fail and not hang.
     with pytest.raises(RayTaskError):
         trainer.fit()
+
+
+@pytest.mark.parametrize("use_gpu", (True, False))
+def test_torch_iter_torch_batches_auto_device(ray_start_4_cpus_2_gpus, use_gpu):
+    """
+    Tests that iter_torch_batches in TorchTrainer worker function uses the
+    default device.
+    """
+
+    def train_fn():
+        dataset = session.get_dataset_shard("train")
+        for batch in dataset.iter_torch_batches(dtypes=torch.float, device="cpu"):
+            assert str(batch.device) == "cpu"
+
+        # Autodetect
+        for batch in dataset.iter_torch_batches(dtypes=torch.float):
+            assert str(batch.device) == str(train.torch.get_device())
+
+    dataset = ray.data.from_numpy(np.array([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]).T)
+    # Test that this works outside a Train function
+    for batch in dataset.iter_torch_batches(dtypes=torch.float, device="cpu"):
+        assert str(batch.device) == "cpu"
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=use_gpu),
+        datasets={"train": dataset},
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

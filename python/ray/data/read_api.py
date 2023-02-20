@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
@@ -131,7 +130,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -282,8 +281,7 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    # TODO(ekl) remove this feature flag.
-    force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    force_local = False
     cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
@@ -1447,7 +1445,7 @@ def from_pandas_refs(
                 run_by_consumer=False,
             ),
             0,
-            False,
+            True,
         )
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
@@ -1462,7 +1460,7 @@ def from_pandas_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1521,7 +1519,7 @@ def from_numpy_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1573,7 +1571,7 @@ def from_arrow_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
