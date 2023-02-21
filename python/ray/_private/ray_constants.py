@@ -370,7 +370,7 @@ RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 
 
 def gcs_actor_scheduling_enabled():
-    return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
+    return os.environ.get("RAY_gcs_actor_scheduling_enabled") != "false"
 
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
