@@ -115,8 +115,6 @@ DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAU
 DEFINE_stats(
     operation_run_time_ms, "operation execution time", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(
-    operation_run_time_ns, "operation execution time", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(
     operation_queue_time_ms, "operation queuing time", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(operation_active_count,
              "activate operation number",

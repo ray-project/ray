@@ -20,8 +20,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 /// Count, queueing, and execution statistics for a given event.
@@ -151,16 +149,15 @@ class EventTracker {
   /// DebugString().
   std::string StatsString() const LOCKS_EXCLUDED(mutex_);
 
+ private:
+  using EventStatsTable =
+      absl::flat_hash_map<std::string, std::shared_ptr<GuardedEventStats>>;
   /// Get the mutex-guarded stats for this event if it exists, otherwise create the
   /// stats for this handler and return an iterator pointing to it.
   ///
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
   std::shared_ptr<GuardedEventStats> GetOrCreate(const std::string &name);
-
- private:
-  using EventStatsTable =
-      absl::flat_hash_map<std::string, std::shared_ptr<GuardedEventStats>>;
 
   /// Global stats, across all handlers.
   std::shared_ptr<GuardedGlobalStats> global_stats_;
@@ -172,7 +169,3 @@ class EventTracker {
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
 };
-
-std::shared_ptr<StatsHandle> RecordStartExec(const std::string &name);
-
-void RecordEndExec(std::shared_ptr<StatsHandle> handle);

@@ -54,7 +54,6 @@ DECLARE_stats(placement_groups);
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);
-DECLARE_stats(operation_run_time_ns);
 DECLARE_stats(operation_queue_time_ms);
 DECLARE_stats(operation_active_count);
 

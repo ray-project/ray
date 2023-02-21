@@ -234,17 +234,3 @@ std::string EventTracker::StatsString() const {
   stats_stream << event_stats_stream.rdbuf();
   return stats_stream.str();
 }
-
-static EventTracker global_event_tracker_ = EventTracker();
-
-std::shared_ptr<StatsHandle> RecordStartExec(const std::string &name) {
-  auto stats = global_event_tracker_.GetOrCreate(name);
-  return std::make_shared<StatsHandle>(
-      name, absl::GetCurrentTimeNanos(), std::move(stats), nullptr);
-}
-
-void RecordEndExec(std::shared_ptr<StatsHandle> handle) {
-  auto execution_time_ns = absl::GetCurrentTimeNanos() - handle->start_time;
-  ray::stats::STATS_operation_run_time_ns.Record(execution_time_ns, handle->event_name);
-  handle->execution_recorded = true;
-}
