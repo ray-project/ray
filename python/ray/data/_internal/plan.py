@@ -221,12 +221,22 @@ class ExecutionPlan:
             schema_str = str(schema)
         else:
             schema_str = []
+            SCHEMA_LINE_CHAR_LIMIT = 80
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
                     t = t.__name__
-                schema_str.append(f"{n}: {t}")
-            schema_str = ", ".join(schema_str)
-            schema_str = "{" + schema_str + "}"
+                col_str = f"\t{n}: {t}"
+                # If the regular formatted line exceeds the char limit, abbreviate
+                # the column name to fit while maintaining the full type
+                if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
+                    shortened_suffix = f"...: {str(t)},"
+                    chars_left_for_col_name = SCHEMA_LINE_CHAR_LIMIT - len(
+                        shortened_suffix
+                    )
+                    col_str = f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
+                schema_str.append(f"{col_str}")
+            schema_str = ",\n".join(schema_str)
+            schema_str = "{\n" + schema_str + "\n}"
         count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
         if count is None:
             count = "?"
