@@ -16,6 +16,8 @@ from typing import (
 )
 import warnings
 
+import numpy as np
+
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal import progress_bar
@@ -54,6 +56,7 @@ if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
     import torch
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 logger = logging.getLogger(__name__)
@@ -171,6 +174,7 @@ class DatasetPipeline(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the data in the pipeline.
 
@@ -231,6 +235,7 @@ class DatasetPipeline(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            collate_fn=_collate_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -1079,11 +1084,15 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[Union["torch.Tensor", Dict[str, "torch.Tensor"]]]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Call
         :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
         over the stream of output batches from the pipeline."""
@@ -1091,6 +1100,9 @@ class DatasetPipeline(Generic[T]):
             self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
