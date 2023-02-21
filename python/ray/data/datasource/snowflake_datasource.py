@@ -6,7 +6,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.datasource.database_datasource import (
     DatabaseConnector,
     DatabaseReadTask,
-    DatabaseReader
+    _DatabaseReader
 )
 
 from ray.data.datasource.dbapi2_datasource import (
@@ -93,7 +93,7 @@ class SnowflakeConnector(DBAPI2Connector):
         return batch.to_pandas()    
             
 @DeveloperAPI
-class SnowflakeReader(DatabaseReader):                           
+class SnowflakeReader(_DatabaseReader):                           
     def get_read_tasks(self, parallelism: int) -> List[DatabaseReadTask]:               
         if self.num_rows == 0:
             return []
@@ -163,11 +163,11 @@ class SnowflakeDatasource(DBAPI2Datasource):
             template_keys=template_keys
         )
     
-    def create_reader(self, mode: str = 'batch', **kwargs) -> DatabaseReader:
+    def create_reader(self, mode: str = 'batch', **kwargs) -> _DatabaseReader:
         if mode == 'batch':
             template_kwargs = self._get_template_kwargs(**kwargs)
             query_kwargs = self._get_query_kwargs(**kwargs)       
             queries = self.read_queries.templatize(mode=mode, **template_kwargs)            
             return SnowflakeReader(self.connector, queries, query_kwargs)
         else:
-            return DatabaseReader(self.connector, queries, query_kwargs)
+            return _DatabaseReader(self.connector, queries, query_kwargs)

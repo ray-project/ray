@@ -1,14 +1,13 @@
 from typing import Any, Callable, Dict, List, Optional
-from ray import ObjectRef
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.data.datasource.database_datasource import (
     DatabaseConnector, 
     DatabaseDatasource,
     DatabaseConnection,
-    DatabaseReader, 
-    DatabaseWriteTask,
+    DatabaseBlockWriter,
+    _DatabaseReader,
     pylist_to_pandas,
     pylist_to_pyarrow,
     block_to_pylist,
@@ -47,7 +46,6 @@ class DBAPI2Connector(DatabaseConnector):
     """
     def __init__(self, 
         connect_fn: Callable[..., DatabaseConnection],
-        *,
         to_value_fn: Callable[[Any], Any] = cursor_to_pyvalue,
         to_block_fn: Callable[[Any], Block] = cursor_to_pyarrow,
         from_block_fn: Callable[[Block], Any] = block_to_pylist,
@@ -112,7 +110,7 @@ class DBAPI2Datasource(DatabaseDatasource):
      """
      
     READ_QUERIES = dict(
-        # read_mode set to None
+        # read_mode set to 'direct'
         read_direct=       'SELECT * FROM ({table_or_query})',           
         num_rows_direct=   'SELECT COUNT(*) FROM ({table_or_query})',           
         sample_direct=     'SELECT * FROM ({table_or_query}) LIMIT 100',
@@ -125,7 +123,7 @@ class DBAPI2Datasource(DatabaseDatasource):
     )
         
     WRITE_QUERIES = dict(
-        # write_mode set to None
+        # write_mode set to 'direct'
         write_direct=       'INSERT INTO {table} ({column_list}) VALUES ({param_list})',
             
         # write mode set to 'stage'
@@ -141,7 +139,6 @@ class DBAPI2Datasource(DatabaseDatasource):
     def __init__(
         self,
         connector:  DatabaseConnector,
-        *,
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
         template_keys: List[str] = []
@@ -153,11 +150,11 @@ class DBAPI2Datasource(DatabaseDatasource):
             template_keys = ['table', 'query', 'table_or_query'] + template_keys
         )
     
-    def create_reader(self, *args, mode: str = 'partition', **kwargs) -> DatabaseReader:
+    def create_reader(self, *args, mode: str = 'partition', **kwargs) -> _DatabaseReader:
         return super().create_reader(*args, mode=mode, **kwargs)
     
-    def do_write(self, *args, mode: str = 'direct', **kwargs) -> List[ObjectRef]:
-        return super().do_write(*args, mode=mode, **kwargs) 
+    def write(self, *args, mode: str = 'direct', **kwargs) -> List[DatabaseBlockWriter]:
+        return super().write(*args, mode=mode, **kwargs) 
           
     def _get_template_kwargs(self, 
         table: Optional[str] = None, 

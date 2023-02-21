@@ -7,10 +7,11 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.database_datasource import (
     pylist_to_pylist_of_dicts, 
     DatabaseConnection, 
-    DatabaseReader
+    DatabaseBlockWriter
 )
 from ray.data.datasource.dbapi2_datasource import DBAPI2Datasource, DBAPI2Connector
 from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.execution.interfaces import TaskContext
 
 def cursor_to_pyarrow(cursor: Any) -> Block:
     return cursor.fetchall_arrow()
@@ -66,10 +67,9 @@ class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
             template_keys = ['stage_uri', 'credential'] + template_keys
         )
     
-    def do_write(self,
-        blocks: List[ObjectRef],
-        metadata: List[BlockMetadata],
-        *,
+    def write(self,
+        blocks: List[Block],
+        ctx: TaskContext,
         table: str,
         mode: str = 'copyinto',
         stage_uri: Optional[str] = None,
@@ -77,7 +77,7 @@ class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
         dataset_uuid: str = str(uuid.uuid4()),
         parquet_kwargs: Dict[str,Any] = {},
         **databricks_kwargs
-    ) -> List[ObjectRef]:
+    ) -> List[DatabaseBlockWriter]:
         if mode == 'copyinto':
             if not stage_uri:
                 raise ValueError('copyinto mode requires a stage_uri')
@@ -89,17 +89,17 @@ class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
                 else:
                     credential = ' WITH ( CREDENTIAL (' + ','.join(f"'{k}' = '{v}'" for k,v in credential.items()) + ')) '
                 
-            super(ParquetDatasource, self).do_write(
+            super(ParquetDatasource, self).write(
                 blocks,
-                metadata,
+                ctx,
                 stage_uri,
                 dataset_uuid=dataset_uuid,
                 **parquet_kwargs
             )
                 
-        return super().do_write(
+        return super().write(
             blocks,
-            metadata,
+            ctx,
             table=table,
             mode=mode,
             stage_uri=stage_uri,
