@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Callable, Dict, Union
+from typing import List, Callable, Dict, Union, Tuple
 from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
 
@@ -69,7 +69,30 @@ def _convert_to_lower_case_if_tf(string: str, framework: str) -> str:
 class MLPHeadConfig(ModelConfig):
     """Configuration for a fully connected network.
 
+    The configured MLP encodes 1D-observations into a latent space.
+    The stack of layers is composed of a sequence of linear layers. The first layer
+    has `input_dim` inputs and the last layer has `output_dim` outputs. The number of
+    units inbetween is determined by `hidden_layer_dims`. If `hidden_layer_dims` is
+    None, there is only one linear layer with `input_dim` inputs and `output_dim`
+    outputs. Each layer is followed by an activation function as per this config.
     See ModelConfig for usage details.
+
+    Example:
+
+        Configuration:
+        input_dim = 4
+        hidden_layer_dims = [8, 8]
+        hidden_layer_activation = "relu"
+        output_dim = 2
+        output_activation = "linear"
+
+        Resulting stack in pseudocode:
+        Linear(4, 8)
+        ReLU()
+        Linear(8, 8)
+        ReLU()
+        Linear(8, 2)
+        Linear()
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
@@ -77,6 +100,7 @@ class MLPHeadConfig(ModelConfig):
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         output_activation: The activation function to use for the output layer.
+        output_dim: The output dimension of the network.
     """
 
     input_dim: int = None
@@ -113,24 +137,52 @@ class MLPHeadConfig(ModelConfig):
 class CNNEncoderConfig(ModelConfig):
     """Configuration for a convolutional network.
 
+    The configured CNN encodes 3D-observations into a latent space.
+    The stack of layers is composed of a sequence of convolutional layers.
+    `input_dims` describes the shape of the input tensor. Beyond that, each layer
+    specified by `filter_specifiers` is followed by an activation function according
+    to `filter_activation`. The `output_dim` is reached by flattening a final
+    convolutional layer and applying a linear layer with `output_activation`.
     See ModelConfig for usage details.
 
+    Example:
+
+        Configuration:
+        input_dims = [84, 84, 3]
+        filter_specifiers = [
+            [16, [8, 8], 4],
+            [32, [4, 4], 2],
+        ]
+        filter_activation = "relu"
+        output_dim = 256
+        output_activation = "linear"
+
+        Resulting stack in pseudocode:
+        Conv2D(in_channels=3, out_channels=16, kernel_size=[8, 8], stride=[4, 4])
+        ReLU()
+        Conv2D(in_channels=16, out_channels=32, kernel_size=[4, 4], stride=[2, 2])
+        ReLU()
+        Conv2D(in_channels=32, out_channels=1, kernel_size=[1, 1], stride=[1, 1])
+        Flatten()
+        Linear(121, 256)
+
     Attributes:
-        input_dims: The input dimension of the network. It cannot be None.
+        input_dims: The input dimension of the network. These must be given in the
+            form of `(width, height, channels)`.
         filter_specifiers: A list of lists, where each element of an inner list
             contains elements of the form
-            `[number of filters, [kernel width, kernel height], stride]` to specify a
-            convolutional layer stacked in order of the outer list.
+            `[number of channels/filters, [kernel width, kernel height], stride]` to
+            specify a convolutional layer stacked in order of the outer list.
         filter_layer_activation: The activation function to use after each layer (
             except for the output).
         output_activation: The activation function to use for the output layer.
-        output_dim: The output dimension are [BATCH, output_dim]. We append a final
-            convolutional layer depth-only filters that is flattened and a final linear
-            layer to achieve this.
+        output_dim: The output dimension. We append a final convolutional layer
+            depth-only filters that is flattened and a final linear layer to achieve
+            this dimension regardless of the previous filters.
     """
 
-    input_dims: int = None
-    filter_specifiers: List[List[Union[int, List]]] = field(
+    input_dims: Union[List[int], Tuple[int]] = None
+    filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
     filter_layer_activation: str = "relu"

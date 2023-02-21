@@ -66,8 +66,6 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
-    """A CNN encoder for images."""
-
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
