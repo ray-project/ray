@@ -27,7 +27,7 @@ ray up -y "$1"
 
 sleep 5
 echo "===== verify ray is running ====="
-ray exec "$1" 'python -c "import ray; ray.init()"'
+ray exec "$1" 'python -c "import ray; ray.init('localhost:6379')"'
 
 sleep 5
 echo "===== clean up ====="
