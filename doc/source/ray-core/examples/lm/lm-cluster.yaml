@@ -43,7 +43,8 @@ head_node:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              volumesize: 140
+              VolumeSize: 100
+
     # Additional options in the boto docs.
 
 # Provider-specific config for worker nodes, e.g. instance type. By default

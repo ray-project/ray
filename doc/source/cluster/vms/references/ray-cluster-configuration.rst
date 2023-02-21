@@ -358,7 +358,8 @@ Each node type is identified by a user-specified key.
               BlockDeviceMappings:
                   - DeviceName: /dev/sda1
                     Ebs:
-                        volumesize: 140            resources: {"CPU": 2}
+                        VolumeSize: 100
+            resources: {"CPU": 2}
         ray.worker.default:
             node_config:
               InstanceType: m5.large

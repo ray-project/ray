@@ -65,7 +65,8 @@ available_node_types:
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      volumesize: 140            # Additional options in the boto docs.
+                      VolumeSize: 100
+            # Additional options in the boto docs.
     # CPU workers.
     ray.worker.default:
         # Override global docker setting.

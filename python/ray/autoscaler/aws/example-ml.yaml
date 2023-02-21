@@ -72,7 +72,8 @@ available_node_types:
         BlockDeviceMappings:
             - DeviceName: /dev/sda1
               Ebs:
-                  volumesize: 140
+                  VolumeSize: 100
+
     ray.worker.default:
       node_config:
         InstanceType: m4.16xlarge
