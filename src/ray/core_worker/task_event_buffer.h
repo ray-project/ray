@@ -141,17 +141,29 @@ class TaskProfileEvent : public TaskEvent {
   std::string extra_data_;
 };
 
+/// @brief A per thread buffer that stores TaskEvent.
+///
+/// This class essentially contains vectors for the different categories of TaskEvent.
+/// Each thread of CoreWorker will populate the buffers while submitting/executing tasks.
+///
+/// This class is **not** thread safe, access should be guarded by sync primitives.
 class TaskEventThreadBuffer {
  public:
   TaskEventThreadBuffer()
       : status_events_(std::make_unique<std::vector<TaskStatusEvent>>()),
         profile_events_(std::make_unique<std::vector<TaskProfileEvent>>()) {}
 
+  /// Add a TaskStatusEvent to the local buffer.
   void AddTaskStatusEvent(TaskStatusEvent e) { status_events_->push_back(std::move(e)); }
+
+  /// Add a TaskProfileEvent to the local buffer.
   void AddTaskProfileEvent(TaskProfileEvent e) {
     profile_events_->push_back(std::move(e));
   }
 
+  /// Swap the local TaskStatusEvent buffer.
+  ///
+  /// \return A pointer to the buffer with events stored.
   std::unique_ptr<std::vector<TaskStatusEvent>> ResetStatusEventBuffer() {
     auto new_buffer = std::make_unique<std::vector<TaskStatusEvent>>();
     new_buffer->reserve(kInitialTaskEventThreadBufferSize);
@@ -159,6 +171,9 @@ class TaskEventThreadBuffer {
     return new_buffer;
   }
 
+  /// Swap the local TaskProfileEvent buffer.
+  ///
+  /// \return A pointer to the buffer with events stored.
   std::unique_ptr<std::vector<TaskProfileEvent>> ResetProfileEventBuffer() {
     auto new_buffer = std::make_unique<std::vector<TaskProfileEvent>>();
     new_buffer->reserve(kInitialTaskEventThreadBufferSize);
@@ -167,37 +182,61 @@ class TaskEventThreadBuffer {
   }
 
  private:
+  /// Number of TaskEvents reserved for each buffer for optimization.
   static constexpr size_t kInitialTaskEventThreadBufferSize = 1024;
 
+  /// Buffer storing TaskStatusEvents.
   std::unique_ptr<std::vector<TaskStatusEvent>> status_events_;
+
+  /// Buffer storing TaskProfileEvents.
   std::unique_ptr<std::vector<TaskProfileEvent>> profile_events_;
 };
 
+/// @brief An enum class defining counters to be used in TaskEventBufferImpl.
 enum TaskEventBufferCounter {
-  kNumTaskProfileEventDropped,
-  kNumTaskStatusEventDropped,
+  kNumTaskProfileEventDroppedSinceLastFlush,
+  kNumTaskStatusEventDroppedSinceLastFlush,
+  kNumTaskEventsStored,
+  /// Below stats are updated every flush.
+  kTotalNumTaskProfileEventDropped,
+  kTotalNumTaskStatusEventDropped,
   kTotalTaskEventsReported,
   kTotalTaskEventsBytesReported,
-  kNumTaskEventsStored,
 };
 
 /// An interface for a buffer that stores task status changes and profiling events,
 /// and reporting these events to the GCS periodically.
 ///
+/// Adding of task events
+/// ========================
+/// Task events are generated when executing/submitting tasks on CoreWorker from multiple
+/// threads. These task events (TaskEvent) will first be added to a thread-local buffer,
+/// and be taken out every `RAY_task_events_report_interval_ms` into a circular buffer by
+/// the flushing thread. If the buffer is full (more than
+/// `RAY_task_events_worker_buffer_size`) are in the buffer, old task events will be
+/// dropped in a FIFO fashion.
+///
 /// Dropping of task events
+/// TODO(rickyx): use a per-task-attempt GC policy.
 /// ========================
 /// Task events will be lost in the below cases for now:
 ///   1. If any of the gRPC call failed, the task events will be dropped and warnings
 ///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
-///   2. More than `RAY_task_events_max_buffer_size` tasks have been stored
+///   2. More than `RAY_task_events_worker_buffer_size` tasks have been stored
 ///   in the buffer, any new task events will be dropped. In this case, the number of
 ///   dropped task events will also be included in the next flush to surface this.
 ///
+///   3. More than `RAY_task_events_max_num_profile_events_for_task` for a task of an
+///   attempt has been recorded in the core worker buffer, subsequent TaskProfileEvent
+///   will be dropped before it's flushed.
+///
 /// No overloading of GCS
 /// =====================
-/// If GCS failed to respond quickly enough to the previous report, reporting of events to
-/// GCS will be delayed until GCS replies the gRPC in future intervals.
+/// The config `task_events_send_batch_size` controls how many rpc::TaskEvents are
+/// reported to GCS each flush. This limits the data for each flush. If GCS failed to
+/// respond quickly enough to the previous flush, reporting of events to GCS will be
+/// delayed until GCS replies the gRPC in future intervals.
 class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
@@ -290,13 +329,25 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   }
 
   /// Test only functions.
-  size_t GetNumStatusTaskEventsDropped() {
-    return stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventDropped);
+  size_t GetTotalNumStatusTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped);
   }
 
   /// Test only functions.
-  size_t GetNumProfileTaskEventsDropped() {
-    return stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventDropped);
+  size_t GetNumStatusTaskEventsDroppedSinceLastFlush() {
+    return stats_counter_.Get(
+        TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+  }
+
+  /// Test only functions.
+  size_t GetTotalNumProfileTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped);
+  }
+
+  /// Test only functions.
+  size_t GetNumProfileTaskEventsDroppedSinceLastFlush() {
+    return stats_counter_.Get(
+        TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
   }
 
   /// Test only functions.
@@ -350,6 +401,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
   FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBufferSizeLimit);
+  FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
 };
 
 }  // namespace worker

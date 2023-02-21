@@ -93,9 +93,10 @@ bool TaskProfileEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
   auto profile_events = rpc_task_events->mutable_profile_events();
   auto profile_event_max_num =
       RayConfig::instance().task_events_max_num_profile_events_for_task();
-  if (profile_events->events_size() > profile_event_max_num) {
+  if (profile_event_max_num >= 0 &&
+      profile_events->events_size() >= profile_event_max_num) {
     // Data loss.
-    RAY_LOG_EVERY_N(WARNING, 10000)
+    RAY_LOG_EVERY_N(WARNING, 100000)
         << "Dropping profiling events for task: " << task_id_
         << ", set a higher value for RAY_task_events_max_num_profile_events_for_task("
         << profile_event_max_num << ").";
@@ -265,7 +266,8 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
 
     if (event.ToRpcTaskEventsOrDrop(rpc_event)) {
       RAY_CHECK(event.IsProfileEvent());
-      stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventDropped);
+      stats_counter_.Increment(
+          TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
     }
   };
 
@@ -300,10 +302,12 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
 
     num_add = buffer_.size() - prev_size;
   }
-  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventDropped,
-                           num_profile_events_dropped);
-  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventDropped,
-                           num_status_events_dropped);
+  stats_counter_.Increment(
+      TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush,
+      num_profile_events_dropped);
+  stats_counter_.Increment(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush,
+      num_status_events_dropped);
   stats_counter_.Increment(TaskEventBufferCounter::kNumTaskEventsStored, num_add);
 }
 
@@ -346,14 +350,20 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
 
   // Send and reset the counters
   stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskEventsStored, to_send.size());
-  size_t num_profile_task_events_dropped =
-      stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventDropped);
-  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskProfileEventDropped,
+  size_t num_profile_task_events_dropped = stats_counter_.Get(
+      TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
+  stats_counter_.Decrement(
+      TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush,
+      num_profile_task_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped,
                            num_profile_task_events_dropped);
 
-  size_t num_status_task_events_dropped =
-      stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventDropped);
-  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventDropped,
+  size_t num_status_task_events_dropped = stats_counter_.Get(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+  stats_counter_.Decrement(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush,
+      num_status_task_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped,
                            num_status_task_events_dropped);
 
   // Convert to rpc::TaskEventsData
@@ -410,9 +420,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       grpc_in_progress_ = false;
 
       // Fail to send, currently dropping events.
-      stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventDropped,
+      stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped,
                                num_profile_event_to_send);
-      stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventDropped,
+      stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped,
                                num_status_event_to_send);
     }
   }
@@ -439,9 +449,9 @@ const std::string TaskEventBufferImpl::DebugString() {
      << "\n\ttotal number of task events sent: "
      << stats[TaskEventBufferCounter::kTotalTaskEventsReported]
      << "\n\tnum status task events dropped: "
-     << stats[TaskEventBufferCounter::kNumTaskProfileEventDropped]
+     << stats[TaskEventBufferCounter::kTotalNumTaskProfileEventDropped]
      << "\n\tnum profile task events dropped: "
-     << stats[TaskEventBufferCounter::kNumTaskStatusEventDropped] << "\n";
+     << stats[TaskEventBufferCounter::kTotalNumTaskStatusEventDropped] << "\n";
 
   return ss.str();
 }

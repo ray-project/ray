@@ -38,8 +38,7 @@ class TaskEventBufferTest : public ::testing::Test {
         R"(
 {
   "task_events_report_interval_ms": 1000,
-  "task_events_max_buffer_size": 100,
-  "task_events_min_buffer_size": 100,
+  "task_events_worker_buffer_size": 100,
   "task_events_send_batch_size": 100
 }
   )");
@@ -110,9 +109,21 @@ class TaskEventBufferTestBatchSend : public TaskEventBufferTest {
         R"(
 {
   "task_events_report_interval_ms": 1000,
-  "task_events_max_buffer_size": 100,
-  "task_events_min_buffer_size": 10,
+  "task_events_worker_buffer_size": 100,
   "task_events_send_batch_size": 10
+}
+  )");
+  }
+};
+
+class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
+ public:
+  TaskEventBufferTestLimitProfileEvents() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_profile_events_for_task": 10
 }
   )");
   }
@@ -167,7 +178,7 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   expected_data.set_num_status_task_events_dropped(0);
   for (auto &task_event : task_events) {
     auto event = expected_data.add_events_by_task();
-    task_event.ToRpcTaskEvents(event);
+    task_event.ToRpcTaskEventsOrDrop(event);
   }
 
   for (auto &task_event : task_events) {
@@ -221,8 +232,9 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
   task_event_buffer_->FlushEvents(false);
 
   // Expect the number of dropped events incremented.
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), num_status_events);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), num_profile_events);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), num_status_events);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
+            num_profile_events);
 
   // Adding some more events
   for (size_t i = 0; i < num_status_events + num_profile_events; ++i) {
@@ -234,10 +246,11 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
     }
   }
 
-  // Flush successfully will reset the num events dropped.
+  // Flush should be now successful
   task_event_buffer_->FlushEvents(false);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), 0);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), num_status_events);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
+            num_profile_events);
 }
 
 TEST_F(TaskEventBufferTest, TestBackPressure) {
@@ -324,6 +337,34 @@ TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
   EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
+TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
+  size_t num_profile_events_per_task = 10;
+  size_t num_total_profile_events = 1000;
+  std::vector<TaskProfileEvent> profile_events;
+  auto task_id = RandomTaskId();
+
+  // Generate data for the same task attempts.
+  for (size_t i = 0; i < num_total_profile_events; ++i) {
+    profile_events.push_back(GenProfileTaskEvent(task_id, 0));
+  }
+
+  // Add all
+  for (const auto &event : profile_events) {
+    task_event_buffer_->AddTaskProfileEvent(event);
+  }
+
+  // Assert dropped count
+  task_event_buffer_->GatherThreadBuffer();
+  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(),
+            num_total_profile_events - num_profile_events_per_task);
+  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDroppedSinceLastFlush(), 0);
+
+  task_event_buffer_->FlushEvents(false);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
+            num_total_profile_events - num_profile_events_per_task);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), 0);
+}
+
 TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   size_t num_limit = 100;  // Synced with test setup
   size_t num_profile = 50;
@@ -365,11 +406,11 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   expected_data.set_num_status_task_events_dropped(num_status);
   for (auto &event : profile_events_2) {
     auto expect_event = expected_data.add_events_by_task();
-    event.ToRpcTaskEvents(expect_event);
+    event.ToRpcTaskEventsOrDrop(expect_event);
   }
   for (auto &event : status_events_2) {
     auto expect_event = expected_data.add_events_by_task();
-    event.ToRpcTaskEvents(expect_event);
+    event.ToRpcTaskEventsOrDrop(expect_event);
   }
 
   // Expect only limit in buffer.
@@ -387,14 +428,18 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
         return Status::OK();
       });
 
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), num_profile);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), num_status);
+  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(),
+            num_profile);
+  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDroppedSinceLastFlush(),
+            num_status);
   task_event_buffer_->FlushEvents(false);
 
   // Expect data flushed.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDroppedSinceLastFlush(), 0);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(), num_profile);
+  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), num_status);
 }
 
 }  // namespace worker

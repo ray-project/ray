@@ -469,7 +469,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_worker_buffer_size, 1 * 1000 * 1000)
+RAY_CONFIG(uint64_t, task_events_worker_buffer_size, 100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -480,7 +480,7 @@ RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 /// report gRPC call. A task could have more profile events in GCS from multiple
 /// report gRPC call.
 /// Setting the value to -1 allows unlimited profile events to be sent.
-RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
