@@ -71,6 +71,7 @@ class DownstreamMemoryInfo:
     # The fraction of the topology this covers, e.g., the last operator of a 4-op
     # graph would have fraction `0.25`.
     topology_fraction: float
+
     # The resources used by this operator and operators downstream of this operator.
     object_store_memory: float
 
@@ -330,6 +331,7 @@ def _execution_allowed(
     # We're over global limits, but execution may still be allowed if memory is the
     # only bottleneck and this wouldn't impact downstream memory limits. This avoids
     # stalling the execution for memory bottlenecks that occur upstream.
+    # See for more context: https://github.com/ray-project/ray/pull/32673
     global_limits_sans_memory = ExecutionResources(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
