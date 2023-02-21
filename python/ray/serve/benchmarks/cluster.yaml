@@ -18,7 +18,7 @@ head_node:
         -
             DeviceName: /dev/sda1
             Ebs:
-                VolumeSize: 100
+                VolumeSize: 140
 worker_nodes:
     InstanceType: m5.xlarge
 initialization_commands: []
