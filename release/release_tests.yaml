@@ -4676,7 +4676,7 @@
     test_name: aws_cluster_launcher
     test_suite: cluster-launcher-test
 
-  stable: false
+  stable: true
 
   # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: prod_v1
@@ -4699,6 +4699,9 @@
     test_suite: cluster-launcher-test
 
   stable: true
+
+  # TODO: Migrate this test to Anyscale Jobs / staging_v2
+  env: prod_v1
 
   frequency: nightly
   team: core
