@@ -223,9 +223,9 @@ def read_file_from_uri(uri: str) -> bytes:
 
 
 def download_from_uri(uri: str, local_path: str, filelock: bool = True):
-    """Downloads a remote directory or file to a local path.
+    """Downloads a directory or file at a URI to a local path.
 
-    If the URI is a remote directory, then the full directory contents will be
+    If the URI points to a directory, then the full directory contents will be
     copied, and `local_path` will be the downloaded directory.
     If the download fails for some reason, the `local_path` contents will be
     cleaned up before raising, if the directory did not previously exist.
@@ -271,6 +271,20 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
 def upload_to_uri(
     local_path: str, uri: str, exclude: Optional[List[str]] = None
 ) -> None:
+    """Uploads a local directory or file to a URI.
+
+    NOTE: This will create all necessary directories at the URI destination.
+
+    Args:
+        local_path: The local path to upload.
+        uri: The URI to upload to.
+        exclude: A list of filename matches to exclude from upload. This includes
+            all files under subdirectories as well.
+            Ex: ["*.png"] to exclude all .png images.
+
+    Raises:
+        ValueError: if the URI scheme is not supported.
+    """
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
@@ -283,12 +297,11 @@ def upload_to_uri(
 
     if not exclude:
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
-        return
-
-    # Else, walk and upload
-    return _upload_to_uri_with_exclude(
-        local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
-    )
+    else:
+        # Walk the filetree and upload
+        _upload_to_uri_with_exclude(
+            local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
+        )
 
 
 def _upload_to_uri_with_exclude(
