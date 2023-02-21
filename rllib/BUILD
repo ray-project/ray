@@ -1867,6 +1867,27 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
+)
+
+py_test(
+    name = "test_torch_mlp_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
+)
+
+py_test(
+    name = "test_torch_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
+)
+
+py_test(
     name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
