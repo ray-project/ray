@@ -55,7 +55,7 @@ TaskProfileEvent::TaskProfileEvent(TaskID task_id,
       event_name_(event_name),
       start_time_(start_time) {}
 
-void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
+bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
   // Base fields
   rpc_task_events->set_task_id(task_id_.Binary());
   rpc_task_events->set_job_id(job_id_.Binary());
@@ -83,16 +83,23 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
     state_updates->set_worker_id(worker_id_->Binary());
   }
   gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, state_updates);
+
+  return false;
 }
 
-void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
+bool TaskProfileEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
   // Rate limit on the number of profiling events from the task. This is especially the
   // case if a driver has many profiling events when submitting tasks
   auto profile_events = rpc_task_events->mutable_profile_events();
-  if (profile_events->events_size() >
-      RayConfig::instance().task_events_max_num_profile_events_for_task()) {
-    // TODO: update counters ?
-    return;
+  auto profile_event_max_num =
+      RayConfig::instance().task_events_max_num_profile_events_for_task();
+  if (profile_events->events_size() > profile_event_max_num) {
+    // Data loss.
+    RAY_LOG_EVERY_N(WARNING, 10000)
+        << "Dropping profiling events for task: " << task_id_
+        << ", set a higher value for RAY_task_events_max_num_profile_events_for_task("
+        << profile_event_max_num << ").";
+    return true;
   }
 
   // Base fields
@@ -109,6 +116,7 @@ void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   event_entry->set_start_time(start_time_);
   event_entry->set_end_time(end_time_);
   event_entry->set_extra_data(std::move(extra_data_));
+  return false;
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client)
@@ -122,17 +130,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
-  auto buf_max_cap = RayConfig::instance().task_events_max_buffer_size();
-  auto buf_min_cap = RayConfig::instance().task_events_min_buffer_size();
-  if (buf_min_cap > buf_max_cap) {
-    RAY_LOG(WARNING)
-        << "RAY_task_events_max_buffer_size(" << buf_max_cap
-        << ") should not be smaller than the minimal buffer size(" << buf_min_cap
-        << ") by RAY_task_events_min_buffer_size). Setting minimal buffer size to "
-        << buf_max_cap;
-    buf_min_cap = buf_max_cap;
-  }
-  buffer_.set_capacity({buf_max_cap, buf_min_cap});
+  buffer_.set_capacity(RayConfig::instance().task_events_worker_buffer_size());
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
@@ -164,8 +162,10 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   }
 
   RAY_LOG(INFO) << "Reporting task events to GCS every " << report_interval_ms
-                << "ms, with a circular buffer of capacity = (min=" << buf_min_cap
-                << ", max=" << buf_max_cap << ").";
+                << "ms, with a circular buffer of capacity = "
+                << RayConfig::instance().task_events_worker_buffer_size()
+                << ", send batch size = "
+                << RayConfig::instance().task_events_send_batch_size();
   periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
                                        report_interval_ms,
                                        "CoreWorker.deadline_timer.flush_task_events");
@@ -250,21 +250,31 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
   }
 
   // Aggregate, convert to rpc::TaskEvent, and add to the sending circular buffer.
-  absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
-  for (auto &buf : all_status_bufs) {
-    for (auto &event : *buf) {
-      auto &rpc_event =
-          agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
-      event.ToRpcTaskEvents(&rpc_event);
+  absl::flat_hash_map<TaskAttempt, std::unique_ptr<rpc::TaskEvents>> agg_task_events;
+  auto to_rpc_event_fn = [this, &agg_task_events](TaskEvent &event) {
+    auto itr = agg_task_events.find(event.GetTaskAttempt());
+    rpc::TaskEvents *rpc_event = nullptr;
+    if (itr == agg_task_events.end()) {
+      auto inserted = agg_task_events.insert(
+          {event.GetTaskAttempt(), std::make_unique<rpc::TaskEvents>()});
+      RAY_CHECK(inserted.second);
+      rpc_event = inserted.first->second.get();
+    } else {
+      rpc_event = itr->second.get();
     }
+
+    if (event.ToRpcTaskEventsOrDrop(rpc_event)) {
+      RAY_CHECK(event.IsProfileEvent());
+      stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventDropped);
+    }
+  };
+
+  for (auto &buf : all_status_bufs) {
+    std::for_each(buf->begin(), buf->end(), to_rpc_event_fn);
   }
 
   for (auto &buf : all_profile_bufs) {
-    for (auto &event : *buf) {
-      auto &rpc_event =
-          agg_task_events[std::make_pair(event.task_id_, event.attempt_number_)];
-      event.ToRpcTaskEvents(&rpc_event);
-    }
+    std::for_each(buf->begin(), buf->end(), to_rpc_event_fn);
   }
 
   size_t num_profile_events_dropped = 0;
@@ -277,11 +287,11 @@ void TaskEventBufferImpl::GatherThreadBuffer() {
     for (auto &[_task_attempt, event] : agg_task_events) {
       if (buffer_.full()) {
         const auto &to_evict = buffer_.front();
-        if (to_evict.has_profile_events()) {
+        if (to_evict->has_profile_events()) {
           num_profile_events_dropped++;
         }
 
-        if (to_evict.has_state_updates()) {
+        if (to_evict->has_state_updates()) {
           num_status_events_dropped++;
         }
       }
@@ -316,7 +326,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     return;
   }
 
-  std::vector<rpc::TaskEvents> to_send;
+  std::vector<std::unique_ptr<rpc::TaskEvents>> to_send;
   {
     absl::MutexLock lock(&mutex_);
 
@@ -356,13 +366,13 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_status_event_to_send = 0;
   for (auto &task_event : to_send) {
     auto events_by_task = data->add_events_by_task();
-    if (task_event.has_profile_events()) {
+    if (task_event->has_profile_events()) {
       num_profile_event_to_send++;
     }
-    if (task_event.has_state_updates()) {
+    if (task_event->has_state_updates()) {
       num_status_event_to_send++;
     }
-    *events_by_task = std::move(task_event);
+    *events_by_task = std::move(*task_event);
   }
   // Some debug tracking.
   stats_counter_.Increment(TaskEventBufferCounter::kTotalTaskEventsReported,

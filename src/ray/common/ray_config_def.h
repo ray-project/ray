@@ -469,8 +469,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_max_buffer_size, 1 * 1000 * 1000)
-RAY_CONFIG(uint64_t, task_events_min_buffer_size, 10 * 1000)
+RAY_CONFIG(uint64_t, task_events_worker_buffer_size, 1 * 1000 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.

@@ -54,15 +54,20 @@ class TaskEvent {
 
   virtual ~TaskEvent() = default;
 
-  /// Convert itself a rpc::TaskEvents
+  /// Convert itself a rpc::TaskEvents or drop itself due to data limit.
   ///
   /// NOTE: this method will modify internal states by moving fields to the
   /// rpc::TaskEvents.
   /// \param[out] rpc_task_events The rpc task event to be filled.
-  virtual void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) = 0;
+  /// \return If it's dropped due to data limit.
+  virtual bool ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
+
+  virtual TaskAttempt GetTaskAttempt() const {
+    return std::make_pair(task_id_, attempt_number_);
+  }
 
  protected:
   /// Task Id.
@@ -86,7 +91,7 @@ class TaskStatusEvent : public TaskEvent {
       absl::optional<NodeID> node_id = absl::nullopt,
       absl::optional<WorkerID> worker_id = absl::nullopt);
 
-  void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
+  bool ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -116,7 +121,7 @@ class TaskProfileEvent : public TaskEvent {
                             const std::string &event_name,
                             int64_t start_time);
 
-  void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
+  bool ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) override;
 
   bool IsProfileEvent() const override { return true; }
 
@@ -322,7 +327,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer_space_optimized<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer<std::unique_ptr<rpc::TaskEvents>> buffer_ GUARDED_BY(mutex_);
 
   /// Mutex guarding `all_thd_buffer_`.
   absl::Mutex buf_map_mutex_;
