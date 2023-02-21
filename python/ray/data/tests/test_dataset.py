@@ -337,14 +337,20 @@ def test_zip_pandas(ray_start_regular_shared):
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds2)
     assert ds.count() == 2
-    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
+    assert (
+        "{\n\tcol1: int64,\n\tcol2: int64,\n\tcol3: object,\n\tcol4: object\n}"
+        in str(ds)
+    )
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
 
     ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds3)
     assert ds.count() == 2
-    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
+    assert (
+        "{\n\tcol1: int64,\n\tcol2: int64,\n\tcol2_1: object,\n\tcol4: object\n}"
+        in str(ds)
+    )
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
 
@@ -356,14 +362,14 @@ def test_zip_arrow(ray_start_regular_shared):
     )
     ds = ds1.zip(ds2)
     assert ds.count() == 5
-    assert "{id: int64, a: int64, b: int64}" in str(ds)
+    assert "{\n\tid: int64,\n\ta: int64,\n\tb: int64\n}" in str(ds)
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"id": 0, "a": 1, "b": 2}
 
     # Test duplicate column names.
     ds = ds1.zip(ds1).zip(ds1)
     assert ds.count() == 5
-    assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
+    assert "{\n\tid: int64,\n\tid_1: int64,\n\tid_2: int64\n}" in str(ds)
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
 
@@ -503,7 +509,7 @@ def test_tensors_basic(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
-        "schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)})"
+        "schema={\n\t__value__: ArrowTensorType(shape=(3, 5), dtype=int64)\n})"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -741,7 +747,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "schema={\n\t__value__: ArrowTensorType(shape=(4, 4), dtype=double)\n})"
     )
 
     # Test map_batches.
@@ -751,7 +757,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "schema={\n\t__value__: ArrowTensorType(shape=(4, 4), dtype=double)\n})"
     )
 
     # Test flat_map.
@@ -761,7 +767,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "schema={\n\t__value__: ArrowTensorType(shape=(4, 4), dtype=double)\n})"
     )
 
     # Test map_batches ndarray column.
@@ -771,7 +777,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
+        "schema={\n\ta: TensorDtype(shape=(4, 4), dtype=float64)\n})"
     )
 
     ds = ray.data.range(16, parallelism=4).map_batches(
@@ -781,7 +787,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=16, "
-        "schema={a: TensorDtype(shape=(None, None), dtype=float64)})"
+        "schema={\n\ta: TensorDtype(shape=(None, None), dtype=float64)\n})"
     )
 
 
@@ -1339,10 +1345,13 @@ def test_schema(ray_start_regular_shared):
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4.fully_executed()
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
-    assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert (
-        str(ds4) == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
+        str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={\n\tvalue: int64\n})"
+    )
+    assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={\n\tvalue: int64\n})"
+    assert (
+        str(ds4)
+        == "Dataset(num_blocks=1, num_rows=5, schema={\n\ta: string,\n\tb: double\n})"
     )
 
 
@@ -4476,7 +4485,9 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
+    expected_str = (
+        "Dataset(num_blocks=1, num_rows=10, schema={\n\t1: float64,\n\ta: float64\n})"
+    )
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):

@@ -229,9 +229,12 @@ class ExecutionPlan:
                 # If the regular formatted line exceeds the char limit, abbreviate
                 # the column name to fit while maintaining the full type
                 if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
-                    shortened_suffix = f"...: {str(t)},"
-                    chars_left_for_col_name = SCHEMA_LINE_CHAR_LIMIT - len(
-                        shortened_suffix
+                    shortened_suffix = f"...: {str(t)}"
+                    # Show at least 10 characters of the column name, even if
+                    # we have already hit the line limit with the type.
+                    chars_left_for_col_name = max(
+                        SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
+                        10,
                     )
                     col_str = f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
                 schema_str.append(f"{col_str}")
