@@ -104,12 +104,12 @@ batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredi
 
 # Bulk batch prediction.
 predicted_probabilities = batch_predictor.predict(test_dataset)
+predicted_probabilities.show()
 
 # Pipelined batch prediction: instead of processing the data in bulk, process it
 # incrementally in windows of the given size.
 pipeline = batch_predictor.predict_pipelined(test_dataset, bytes_per_window=1048576)
-for batch in pipeline.iter_batches():
-    print("Pipeline result", batch)
+pipeline.show()
 
 # __air_batch_predictor_end__
 
