@@ -75,7 +75,7 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
 
 def test_basic_stats(ray_start_10_cpus_shared):
     executor = BulkExecutor(ExecutionOptions())
-    prev_stats = ray.data.range(10)._plan.stats()
+    prev_stats = ray.data.range(10).fully_executed()._plan.stats()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(

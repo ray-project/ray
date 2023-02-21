@@ -70,16 +70,20 @@ You can see the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
 .. _logger-interface:
 
-LoggerCallback Interface
-------------------------
+LoggerCallback Interface (tune.logger.LoggerCallback)
+-----------------------------------------------------
 
 .. autosummary::
     :toctree: doc/
     :template: autosummary/class_with_autosummary.rst
 
-    tune.logger.LoggerCallback
-    tune.logger.LoggerCallback.log_trial_start
-    tune.logger.LoggerCallback.log_trial_restore
-    tune.logger.LoggerCallback.log_trial_save
-    tune.logger.LoggerCallback.log_trial_result
-    tune.logger.LoggerCallback.log_trial_end
+    ~tune.logger.LoggerCallback
+
+.. autosummary::
+    :toctree: doc/
+
+    ~tune.logger.LoggerCallback.log_trial_start
+    ~tune.logger.LoggerCallback.log_trial_restore
+    ~tune.logger.LoggerCallback.log_trial_save
+    ~tune.logger.LoggerCallback.log_trial_result
+    ~tune.logger.LoggerCallback.log_trial_end

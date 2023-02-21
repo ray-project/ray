@@ -13,12 +13,12 @@ from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKI
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
-from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -199,7 +199,7 @@ class Trainable:
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]
-    ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    ) -> Optional[PlacementGroupFactory]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -216,8 +216,8 @@ class Trainable:
             config[Dict[str, Any]]: The Trainable's config dict.
 
         Returns:
-            Union[Resources, PlacementGroupFactory]: A Resources object or
-                PlacementGroupFactory consumed by Tune for queueing.
+            PlacementGroupFactory: A PlacementGroupFactory consumed by Tune
+                for queueing.
         """
         return None
 
@@ -614,7 +614,7 @@ class Trainable:
         rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
             self.logdir, checkpoint_path
         )
-        external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
+        external_uri = str(URI(self.remote_checkpoint_dir) / rel_checkpoint_dir)
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
         path_existed_before = os.path.exists(local_dir)
 
@@ -1059,7 +1059,7 @@ class Trainable:
             return "default"
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> Optional[PlacementGroupFactory]:
         """Resources currently assigned to the trial of this Trainable.
 
         This is not set if not using Tune.
@@ -1071,7 +1071,7 @@ class Trainable:
         if self._trial_info:
             return self._trial_info.trial_resources
         else:
-            return "default"
+            return None
 
     @property
     def iteration(self):
