@@ -140,9 +140,6 @@ if __name__ == "__main__":
             num_sgd_iter=10,
             vf_loss_coeff=1e-5,
             model={
-                # Attention net wrapping (for tf) can already use the native keras
-                # model versions. For torch, this will have no effect.
-                "_use_default_native_models": True,
                 "use_attention": not args.no_attention,
                 "max_seq_len": 10,
                 "attention_num_transformer_units": 1,
@@ -190,7 +187,7 @@ if __name__ == "__main__":
             print("Finished training. Running manual test/inference loop.")
             # prepare env
             env = RepeatAfterMeEnv(config["env_config"])
-            obs = env.reset()
+            obs, info = env.reset()
             done = False
             total_reward = 0
             # start with all zeros as state
@@ -200,7 +197,7 @@ if __name__ == "__main__":
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:
                 action, state_out, _ = algo.compute_single_action(obs, state)
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _, _ = env.step(action)
                 print(f"Obs: {obs}, Action: {action}, Reward: {reward}")
                 obs = next_obs
                 total_reward += reward

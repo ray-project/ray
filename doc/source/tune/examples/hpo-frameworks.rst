@@ -1,5 +1,5 @@
-Hyperparameter Optimization Framework Examples
-----------------------------------------------
+Tune Hyperparameter Optimization Framework Examples
+---------------------------------------------------
 
 Tune integrates with a wide variety of hyperparameter optimization frameworks
 and their respective search algorithms. Here you can find detailed examples

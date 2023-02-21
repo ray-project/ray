@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     BatchMapper,
@@ -80,6 +81,37 @@ def test_chain():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+def test_chain_pipeline():
+    """Tests Chain functionality with DatasetPipeline."""
+
+    col_a = [-1, -1, -1, -1]
+    col_b = [1, 1, 1, 1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df).repeat(1)
+
+    def udf(df):
+        df["A"] *= 2
+        return df
+
+    def udf2(df):
+        df["B"] *= 2
+        return df
+
+    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
+    batch_mapper2 = BatchMapper(fn=udf2, batch_format="pandas")
+    chain = Chain(batch_mapper, batch_mapper2)
+
+    transformed = chain._transform_pipeline(ds)
+    out_df = next(transformed.iter_batches(batch_format="pandas", batch_size=4))
+
+    processed_col_a = [-2, -2, -2, -2]
+    processed_col_b = [2, 2, 2, 2]
+
+    expected_df = pd.DataFrame({"A": processed_col_a, "B": processed_col_b})
+
+    assert out_df.equals(expected_df)
 
 
 def test_nested_chain_state():
@@ -187,6 +219,33 @@ def test_nested_chain():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+class PreprocessorWithoutTransform(Preprocessor):
+    pass
+
+
+@pytest.mark.parametrize("block_format", (BlockFormat.PANDAS, BlockFormat.ARROW))
+def test_determine_transform_to_use(block_format):
+    # Test that _determine_transform_to_use doesn't throw any exceptions
+    # and selects the transform function of the underlying preprocessor
+    # while dealing with the nested Chain case.
+
+    # Check that error is propagated correctly
+    with pytest.raises(NotImplementedError):
+        chain = Chain(PreprocessorWithoutTransform())
+        chain._determine_transform_to_use(block_format)
+
+    # Should have no errors from here on
+    preprocessor = SimpleImputer(["A"])
+    chain1 = Chain(preprocessor)
+    format1 = chain1._determine_transform_to_use(block_format)
+    assert format1 == preprocessor._determine_transform_to_use(block_format)
+
+    chain2 = Chain(chain1)
+    format2 = chain2._determine_transform_to_use(block_format)
+
+    assert format1 == format2
 
 
 if __name__ == "__main__":

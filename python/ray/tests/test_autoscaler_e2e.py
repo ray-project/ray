@@ -2,11 +2,13 @@ import subprocess
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 
 import ray
+import sys
 from ray._private.test_utils import (
     wait_for_condition,
     get_metric_check_condition,
 )
 from ray.cluster_utils import AutoscalingCluster
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
 def test_ray_status_e2e(shutdown_only):
@@ -89,7 +91,11 @@ def test_metrics(shutdown_only):
                 return True
 
         zero_reported_condition = get_metric_check_condition(
-            {"autoscaler_cluster_resources": 0, "autoscaler_pending_resources": 0},
+            {
+                "autoscaler_cluster_resources": 0,
+                "autoscaler_pending_resources": 0,
+                "autoscaler_pending_nodes": 0,
+            },
             export_addr=autoscaler_export_addr,
         )
         wait_for_condition(zero_reported_condition)
@@ -98,7 +104,11 @@ def test_metrics(shutdown_only):
         ray.get([actor.ping.remote() for actor in actors])
 
         two_cpu_no_pending_condition = get_metric_check_condition(
-            {"autoscaler_cluster_resources": 2, "autoscaler_pending_resources": 0},
+            {
+                "autoscaler_cluster_resources": 2,
+                "autoscaler_pending_resources": 0,
+                "autoscaler_pending_nodes": 0,
+            },
             export_addr=autoscaler_export_addr,
         )
         wait_for_condition(two_cpu_no_pending_condition)
@@ -111,8 +121,26 @@ def test_metrics(shutdown_only):
         cluster.shutdown()
 
 
+def test_node_launch_exception_serialization(shutdown_only):
+    ray.init(num_cpus=1)
+
+    exc_info = None
+    try:
+        raise Exception("Test exception.")
+    except Exception:
+        exc_info = sys.exc_info()
+    assert exc_info is not None
+
+    exc = NodeLaunchException("cat", "desc", exc_info)
+
+    after_serialization = ray.get(ray.put(exc))
+
+    assert after_serialization.category == exc.category
+    assert after_serialization.description == exc.description
+    assert after_serialization.src_exc_info is None
+
+
 if __name__ == "__main__":
-    import sys
     import os
     import pytest
 

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 import ray  # noqa F401
 import psutil
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
@@ -77,46 +77,47 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
     they might not implement all storage_units.
 
     Examples:
-        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, # doctest: +SKIP
-        ...                         StorageUnit # doctest: +SKIP
-        >>> from ray.rllib.policy.sample_batch import SampleBatch # doctest: +SKIP
-        >>> # Store any batch as a whole
-        >>> buffer = ReplayBuffer(capacity=10,
-        ...                         storage_unit=StorageUnit.FRAGMENTS) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]})) # doctest: +SKIP
-        >>> print(buffer.sample(1)) # doctest: +SKIP
-        >>> # SampleBatch(1: ['a', 'b'])
-        >>> # Store only complete episodes
-        >>> buffer = ReplayBuffer(capacity=10,
-        ...                         storage_unit=StorageUnit.EPISODES) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4], # doctest: +SKIP
-        ...                        SampleBatch.T: [0, 1, 0, 1],
-        ...                        SampleBatch.DONES: [False, True, False, True],
-        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]})) # doctest: +SKIP
-        >>> eps_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(eps_n[SampleBatch.EPS_ID]) # doctest: +SKIP
-        >>> # [1 1]
-        >>> # Store single timesteps
-        >>> buffer = ReplayBuffer(capacity=2,  # doctest: +SKIP
-        ...                         storage_unit=StorageUnit.TIMESTEPS) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"a": [1, 2],
-        ...                         SampleBatch.T: [0, 1]})) # doctest: +SKIP
-        >>> t_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(t_n["a"]) # doctest: +SKIP
-        >>> # [2]
-        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]})) # doctest: +SKIP
-        >>> print(buffer._eviction_started) # doctest: +SKIP
-        >>> # True
-        >>> t_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(t_n["a"]) # doctest: +SKIP
-        >>> # [3] # doctest: +SKIP
-        >>> buffer = ReplayBuffer(capacity=10, # doctest: +SKIP
-        ...                         storage_unit=StorageUnit.SEQUENCES) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3], # doctest: +SKIP
-        ...                        SampleBatch.SEQ_LENS: [1, 2]})) # doctest: +SKIP
-        >>> seq_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(seq_n["c"]) # doctest: +SKIP
-        >>> # [1]
+
+    .. testcode::
+
+        from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+        from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+        from ray.rllib.policy.sample_batch import SampleBatch
+
+        # Store any batch as a whole
+        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
+        buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
+        buffer.sample(1)
+
+        # Store only complete episodes
+        buffer = ReplayBuffer(capacity=10,
+                                storage_unit=StorageUnit.EPISODES)
+        buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+                                SampleBatch.T: [0, 1, 0, 1],
+                                SampleBatch.TERMINATEDS: [False, True, False, True],
+                                SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        buffer.sample(1)
+
+        # Store single timesteps
+        buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
+        buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
+        buffer.sample(1)
+
+        buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
+        print(buffer._eviction_started)
+        buffer.sample(1)
+
+        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
+        buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
+        buffer.sample(1)
+
+    .. testoutput::
+
+        True
+
+    `True` is not the output of the above testcode, but an artifact of unexpected
+    behaviour of sphinx doctests.
+    (see https://github.com/ray-project/ray/pull/32477#discussion_r1106776101)
     """
 
     def __init__(
@@ -220,9 +221,9 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
         elif self.storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
-                if (
-                    eps.get(SampleBatch.T, [0])[0] == 0
-                    and eps.get(SampleBatch.DONES, [True])[-1] == True  # noqa E712
+                if eps.get(SampleBatch.T, [0])[0] == 0 and (
+                    eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                    or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                 ):
                     # Only add full episodes to the buffer
                     # Check only if info is available
@@ -232,8 +233,9 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
                         logger.info(
                             "This buffer uses episodes as a storage "
                             "unit and thus allows only full episodes "
-                            "to be added to it. Some samples may be "
-                            "dropped."
+                            "to be added to it (starting from T=0 and ending in "
+                            "`terminateds=True` or `truncateds=True`. "
+                            "Some samples may be dropped."
                         )
 
         elif self.storage_unit == StorageUnit.FRAGMENTS:
@@ -375,8 +377,7 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
         if samples:
             # We assume all samples are of same type
-            sample_type = type(samples[0])
-            out = sample_type.concat_samples(samples)
+            out = concat_samples(samples)
         else:
             out = SampleBatch()
         out.decompress_if_needed()

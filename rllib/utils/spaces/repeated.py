@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.utils.annotations import PublicAPI
@@ -24,7 +24,7 @@ class Repeated(gym.Space):
     def sample(self):
         return [
             self.child_space.sample()
-            for _ in range(self.np_random.randint(1, self.max_len + 1))
+            for _ in range(self.np_random.integers(1, self.max_len + 1))
         ]
 
     def contains(self, x):

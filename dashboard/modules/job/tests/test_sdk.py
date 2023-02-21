@@ -179,6 +179,8 @@ def get_register_agents_number(webui_url):
             "env_vars": {
                 "CANDIDATE_AGENT_NUMBER": "2",
                 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
+                "RAY_health_check_initial_delay_ms": "0",
+                "RAY_health_check_period_ms": "1000",
             },
         }
     ],

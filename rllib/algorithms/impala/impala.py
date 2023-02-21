@@ -36,12 +36,14 @@ from ray.rllib.utils.metrics import (
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
@@ -104,7 +106,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = 0.0
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
@@ -271,9 +272,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
-            self.replay_ratio = (
-                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
-            )
         if replay_buffer_num_slots is not NotProvided:
             self.replay_buffer_num_slots = replay_buffer_num_slots
         if learner_queue_size is not NotProvided:
@@ -307,8 +305,6 @@ class ImpalaConfig(AlgorithmConfig):
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0!")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -330,6 +326,10 @@ class ImpalaConfig(AlgorithmConfig):
             deprecation_warning(
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
+
+        # Check `entropy_coeff` for correctness.
+        if self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -362,6 +362,13 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+
+    def get_replay_ratio(self) -> float:
+        """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
+
+        Formula: ratio = 1 / proportion
+        """
+        return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
 
 
 def make_learner_thread(local_worker, config):
@@ -511,7 +518,7 @@ class Impala(Algorithm):
                     if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config.replay_ratio,
+                replay_ratio=self.config.get_replay_ratio(),
                 replay_mode=ReplayMode.LOCKSTEP,
             )
             self._aggregator_actor_manager = None
@@ -579,16 +586,25 @@ class Impala(Algorithm):
         # Aggregation workers are stateless, so we do not need to restore any
         # state here.
         if self._aggregator_actor_manager:
-            self._aggregator_actor_manager.probe_unhealthy_actors()
+            self._aggregator_actor_manager.probe_unhealthy_actors(
+                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                mark_healthy=True,
+            )
 
         return train_results
 
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf: ImpalaConfig = config
+        else:
+            cf: ImpalaConfig = cls.get_default_config().update_from_dict(config)
 
-        eval_config = cf["evaluation_config"]
+        eval_config = cf.get_evaluation_config_object()
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -602,18 +618,18 @@ class Impala(Algorithm):
                     # from RolloutWorkers (n rollout workers map to m
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
-                    "CPU": cf["num_cpus_for_driver"] + cf["num_aggregation_workers"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                    "CPU": cf.num_cpus_for_local_worker + cf.num_aggregation_workers,
+                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                    **cf["custom_resources_per_worker"],
+                    "CPU": cf.num_cpus_per_worker,
+                    "GPU": cf.num_gpus_per_worker,
+                    **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["num_workers"])
+                for _ in range(cf.num_rollout_workers)
             ]
             + (
                 [
@@ -621,23 +637,16 @@ class Impala(Algorithm):
                         # Evaluation (remote) workers.
                         # Note: The local eval worker is located on the driver
                         # CPU or not even created iff >0 eval workers.
-                        "CPU": eval_config.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_config.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                        **eval_config.get(
-                            "custom_resources_per_worker",
-                            cf["custom_resources_per_worker"],
-                        ),
+                        "CPU": eval_config.num_cpus_per_worker,
+                        "GPU": eval_config.num_gpus_per_worker,
+                        **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf["evaluation_num_workers"])
+                    for _ in range(cf.evaluation_num_workers)
                 ]
-                if cf["evaluation_interval"]
+                if cf.evaluation_interval
                 else []
             ),
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
     def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
@@ -665,27 +674,28 @@ class Impala(Algorithm):
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
-        # Perform asynchronous sampling on all (remote) rollout workers.
-        if self.workers.num_healthy_remote_workers() > 0:
-            self.workers.foreach_worker_async(
-                lambda worker: worker.sample(),
-                healthy_only=True,
-            )
-            sample_batches: List[
-                Tuple[int, ObjectRef]
-            ] = self.workers.fetch_ready_async_reqs(
-                timeout_seconds=self._timeout_s_sampler_manager,
-                return_obj_refs=return_object_refs,
-            )
-        elif self.workers.local_worker() and self.config.create_env_on_local_worker:
-            # Sampling from the local worker
-            sample_batch = self.workers.local_worker().sample()
-            if return_object_refs:
-                sample_batch = ray.put(sample_batch)
-            sample_batches = [(0, sample_batch)]
-        else:
-            # Not much we can do. Return empty list and wait.
-            return []
+        with self._timers[SAMPLE_TIMER]:
+            if self.workers.num_healthy_remote_workers() > 0:
+                # Perform asynchronous sampling on all (remote) rollout workers.
+                self.workers.foreach_worker_async(
+                    lambda worker: worker.sample(),
+                    healthy_only=True,
+                )
+                sample_batches: List[
+                    Tuple[int, ObjectRef]
+                ] = self.workers.fetch_ready_async_reqs(
+                    timeout_seconds=self._timeout_s_sampler_manager,
+                    return_obj_refs=return_object_refs,
+                )
+            elif self.workers.local_worker() and self.config.create_env_on_local_worker:
+                # Sampling from the local worker
+                sample_batch = self.workers.local_worker().sample()
+                if return_object_refs:
+                    sample_batch = ray.put(sample_batch)
+                sample_batches = [(0, sample_batch)]
+            else:
+                # Not much we can do. Return empty list and wait.
+                return []
 
         return sample_batches
 
@@ -872,7 +882,7 @@ class AggregatorWorker(FaultAwareApply):
                 if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config.replay_ratio,
+            replay_ratio=self.config.get_replay_ratio(),
             replay_mode=ReplayMode.LOCKSTEP,
         )
 

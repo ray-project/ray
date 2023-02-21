@@ -36,6 +36,9 @@ torch
 torchvision
 transformers
 
+# Train
+mxnet==1.8.0.post0
+
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
@@ -53,13 +56,14 @@ sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
 sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
-sphinx-book-theme==0.1.7
+sphinx-book-theme==0.3.3
 sphinx-external-toc==0.2.3
 sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
 sphinx-thebe==0.1.1
 autodoc_pydantic==1.6.1
 sphinxcontrib-redoc==1.6.0
+sphinx-tabs
 
 # MyST
 myst-parser==0.15.2

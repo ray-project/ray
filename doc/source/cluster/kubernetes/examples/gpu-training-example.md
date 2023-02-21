@@ -41,7 +41,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 #   (Method 3) "kubectl config use-context ..."
 
 # Create the KubeRay operator
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
@@ -114,7 +114,7 @@ It is optional.
 ```shell
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 # Create the KubeRay operator
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
@@ -177,7 +177,7 @@ Delete your Ray cluster and KubeRay with the following commands:
 kubectl delete raycluster raycluster
 
 # Please make sure the ray cluster has already been removed before delete the operator.
-kubectl delete -k "http://github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+kubectl delete -k "http://github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
 ```
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.

@@ -1,7 +1,7 @@
 import asyncio
-import pickle
+import json
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, asdict
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
@@ -61,7 +61,10 @@ class JobStatus(str, Enum):
 @PublicAPI(stability="stable")
 @dataclass
 class JobInfo:
-    """A class for recording information associated with a job and its execution."""
+    """A class for recording information associated with a job and its execution.
+
+    Please keep this in sync with the JobsAPIInfo proto in src/ray/protobuf/gcs.proto.
+    """
 
     #: The status of the job.
     status: JobStatus
@@ -93,6 +96,8 @@ class JobInfo:
     driver_node_id: Optional[str] = None
 
     def __post_init__(self):
+        if isinstance(self.status, str):
+            self.status = JobStatus(self.status)
         if self.message is None:
             if self.status == JobStatus.PENDING:
                 self.message = "Job has not started yet."
@@ -105,8 +110,10 @@ class JobInfo:
                         self.entrypoint_resources not in [None, {}],
                     ]
                 ):
-                    self.message += " It may be waiting for resources "
-                    "(CPUs, GPUs, custom resources) to become available."
+                    self.message += (
+                        " It may be waiting for resources "
+                        "(CPUs, GPUs, custom resources) to become available."
+                    )
                 if self.runtime_env not in [None, {}]:
                     self.message += (
                         " It may be waiting for the runtime environment to be set up."
@@ -120,12 +127,61 @@ class JobInfo:
             elif self.status == JobStatus.FAILED:
                 self.message = "Job failed."
 
+    def to_json(self) -> Dict[str, Any]:
+        """Convert this object to a JSON-serializable dictionary.
+
+        Note that the runtime_env field is converted to a JSON-serialized string
+        and the field is renamed to runtime_env_json.
+
+        Returns:
+            A JSON-serializable dictionary representing the JobInfo object.
+        """
+
+        json_dict = asdict(self)
+
+        # Convert enum values to strings.
+        json_dict["status"] = str(json_dict["status"])
+
+        # Convert runtime_env to a JSON-serialized string.
+        if "runtime_env" in json_dict:
+            if json_dict["runtime_env"] is not None:
+                json_dict["runtime_env_json"] = json.dumps(json_dict["runtime_env"])
+            del json_dict["runtime_env"]
+
+        # Assert that the dictionary is JSON-serializable.
+        json.dumps(json_dict)
+
+        return json_dict
+
+    @classmethod
+    def from_json(cls, json_dict: Dict[str, Any]) -> None:
+        """Initialize this object from a JSON dictionary.
+
+        Note that the runtime_env_json field is converted to a dictionary and
+        the field is renamed to runtime_env.
+
+        Args:
+            json_dict: A JSON dictionary to use to initialize the JobInfo object.
+        """
+        # Convert enum values to enum objects.
+        json_dict["status"] = JobStatus(json_dict["status"])
+
+        # Convert runtime_env from a JSON-serialized string to a dictionary.
+        if "runtime_env_json" in json_dict:
+            if json_dict["runtime_env_json"] is not None:
+                json_dict["runtime_env"] = json.loads(json_dict["runtime_env_json"])
+            del json_dict["runtime_env_json"]
+
+        return cls(**json_dict)
+
 
 class JobInfoStorageClient:
     """
     Interface to put and get job data from the Internal KV store.
     """
 
+    # Please keep this format in sync with JobDataKey()
+    # in src/ray/gcs/gcs_server/gcs_job_manager.h.
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
@@ -133,24 +189,24 @@ class JobInfoStorageClient:
         self._gcs_aio_client = gcs_aio_client
         assert _internal_kv_initialized()
 
-    async def put_info(self, job_id: str, data: JobInfo):
+    async def put_info(self, job_id: str, job_info: JobInfo):
         await self._gcs_aio_client.internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
-            pickle.dumps(data),
+            json.dumps(job_info.to_json()).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
-        pickled_info = await self._gcs_aio_client.internal_kv_get(
+        serialized_info = await self._gcs_aio_client.internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,
         )
-        if pickled_info is None:
+        if serialized_info is None:
             return None
         else:
-            return pickle.loads(pickled_info)
+            return JobInfo.from_json(json.loads(serialized_info))
 
     async def delete_info(self, job_id: str, timeout: int = 30):
         await self._gcs_aio_client.internal_kv_del(

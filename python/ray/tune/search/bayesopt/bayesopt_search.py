@@ -53,8 +53,14 @@ class BayesOptSearch(Searcher):
 
         pip install bayesian-optimization
 
-    This algorithm requires setting a search space using the
-    `BayesianOptimization search space specification`_.
+    Initializing this search algorithm with a ``space`` requires that it's
+    in the ``BayesianOptimization`` search space format. Otherwise, you
+    should instead pass in a Tune search space into ``Tuner(param_space=...)``,
+    and the search space will be automatically converted for you.
+
+    See this `BayesianOptimization example notebook
+    <https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb>`_
+    for an example.
 
     Args:
         space: Continuous search space. Parameters will be sampled from
@@ -372,28 +378,26 @@ class BayesOptSearch(Searcher):
 
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
+        save_object = self.get_state()
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(
-                (
-                    self.optimizer,
-                    self._buffered_trial_results,
-                    self._total_random_search_trials,
-                    self._config_counter,
-                    self._points_to_evaluate,
-                ),
-                f,
-            )
+            pickle.dump(save_object, f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
+            save_object = pickle.load(f)
+
+        if isinstance(save_object, dict):
+            self.set_state(save_object)
+        else:
+            # Backwards compatibility
             (
                 self.optimizer,
                 self._buffered_trial_results,
                 self._total_random_search_trials,
                 self._config_counter,
                 self._points_to_evaluate,
-            ) = pickle.load(f)
+            ) = save_object
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:

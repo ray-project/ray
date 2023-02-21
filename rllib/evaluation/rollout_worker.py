@@ -1,6 +1,6 @@
 from collections import defaultdict
 import copy
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
 import numpy as np
@@ -145,13 +145,21 @@ def _update_env_seed_if_necessary(
     ), "Too many envs per worker. Random seeds may collide."
     computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
 
-    # Gym.env.
-    # This will silently fail for most OpenAI gyms
+    # Gymnasium.env.
+    # This will silently fail for most Farama-foundation gymnasium environments.
     # (they do nothing and return None per default)
-    if not hasattr(env, "seed"):
-        logger.info("Env doesn't support env.seed(): {}".format(env))
+    if not hasattr(env, "reset"):
+        if log_once("env_has_no_reset_method"):
+            logger.info(f"Env {env} doesn't have a `reset()` method. Cannot seed.")
     else:
-        env.seed(computed_seed)
+        try:
+            env.reset(seed=computed_seed)
+        except Exception:
+            logger.info(
+                f"Env {env} doesn't support setting a seed via its `reset()` "
+                "method! Implement this method as `reset(self, *, seed=None, "
+                "options=None)` for it to abide to the correct API. Cannot seed."
+            )
 
 
 @DeveloperAPI
@@ -167,7 +175,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -176,9 +184,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "dones": [[...]], "new_obs": [[...]]})
+            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]})
         >>> # Creating a multi-agent rollout worker
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> import random
         >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -407,9 +415,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if soft_horizon != DEPRECATED_VALUE:
             deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True
-            )
+            deprecation_warning("no_done_at_end", error=True)
         if fake_sampler != DEPRECATED_VALUE:
             deprecation_warning(
                 "fake_sampler", "config.rollouts(fake_sampler=..)", error=True
@@ -576,7 +582,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         )
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
-        # the local worker, otherwise, this was already done in the Trainer
+        # the local worker, otherwise, this was already done in the Algorithm
         # object itself.
         if self.worker_index > 0:
             update_global_seed_if_necessary(self.config.framework_str, self.seed)
@@ -637,7 +643,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
                 def wrap(env):
                     env = wrap_deepmind(
-                        env, dim=self.config.model.get("dim"), framestack=use_framestack
+                        env,
+                        dim=self.config.model.get("dim"),
+                        framestack=use_framestack,
+                        noframeskip=self.config.env_config.get("frameskip", 0) == 1,
                     )
                     return env
 
@@ -726,7 +735,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
-        self._build_policy_map(policy_dict=self.policy_dict)
+        # if RLModule API is enabled, marl_module_spec holds the specs of the RLModules
+        self.marl_module_spec = None
+        self._update_policy_map(policy_dict=self.policy_dict)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -813,7 +824,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -831,7 +841,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -880,7 +889,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             A columnar batch of experiences (e.g., tensors).
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -965,7 +974,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 size of the collected batch.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -991,7 +1000,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1114,7 +1123,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1184,7 +1193,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 structs.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1379,7 +1388,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             }
 
         self.policy_dict.update(policy_dict_to_add)
-        self._build_policy_map(
+        self._update_policy_map(
             policy_dict=policy_dict_to_add,
             policy=policy,
             policy_states={policy_id: policy_state},
@@ -1608,8 +1617,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         filters = self.get_filters(flush_after=True)
         policy_states = {}
-        for pid in self.policy_map:
-            policy_states[pid] = self.policy_map[pid].get_state()
+        for pid in self.policy_map.keys():
+            # If required by the user, only capture policies that are actually
+            # trainable. Otherwise, capture all policies (for saving to disk).
+            if (
+                not self.config.checkpoint_trainable_policies_only
+                or self.is_policy_to_train is None
+                or self.is_policy_to_train(pid)
+            ):
+                policy_states[pid] = self.policy_map[pid].get_state()
+
         return {
             # List all known policy IDs here for convenience. When an Algorithm gets
             # restored from a checkpoint, it will not have access to the list of
@@ -1909,34 +1926,88 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
 
-    def _build_policy_map(
+    def _update_policy_map(
         self,
         *,
         policy_dict: MultiAgentPolicyConfigDict,
         policy: Optional[Policy] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
-        """Adds the given policy_dict to `self.policy_map`.
+        """Updates the policy map (and other stuff) on this worker.
+
+        It performes the following:
+            1. It updates the observation preprocessors and updates the policy_specs
+                with the postprocessed observation_spaces.
+            2. It updates the policy_specs with the complete algorithm_config (merged
+                with the policy_spec's config).
+            3. If needed it will update the self.marl_module_spec on this worker
+            3. It updates the policy map with the new policies
+            4. It updates the filter dict
+            5. It calls the on_create_policy() hook of the callbacks on the newly added
+                policies.
 
         Args:
-            policy_dict: The MultiAgentPolicyConfigDict to be added to this
-                worker's PolicyMap.
-            policy: If the policy to add already exists, user can provide it here.
-            policy_states: Optional dict from PolicyIDs to PolicyStates to
-                restore the states of the policies being built.
+            policy_dict: The policy dict to update the policy map with.
+            policy: The policy to update the policy map with.
+            policy_states: The policy states to update the policy map with.
+        """
+
+        # Update the input policy dict with the postprocessed observation spaces and
+        # merge configs. Also updates the preprocessor dict.
+        updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
+
+        # Use the updated policy dict to create the marl_module_spec if necessary
+        if self.config._enable_rl_module_api:
+            spec = self.config.get_marl_module_spec(
+                updated_policy_dict, self.is_policy_to_train
+            )
+            if self.marl_module_spec is None:
+                # this is the first time, so we should create the marl_module_spec
+                self.marl_module_spec = spec
+            else:
+                # This is adding a new policy, so we need call add_modules on the
+                # module_specs of returned spec.
+                self.marl_module_spec.add_modules(spec.module_specs)
+
+            # Add __marl_module_spec key into the config so that the policy can access
+            # it.
+            updated_policy_dict = self._update_policy_dict_with_marl_module(
+                updated_policy_dict
+            )
+
+        # Builds the self.policy_map dict
+        self._build_policy_map(
+            policy_dict=updated_policy_dict,
+            policy=policy,
+            policy_states=policy_states,
+        )
+
+        # Initialize the filter dict
+        self._update_filter_dict(updated_policy_dict)
+
+        # Call callback policy init hooks
+        self._call_callbacks_on_create_policy()
+
+        if self.worker_index == 0:
+            logger.info(f"Built policy map: {self.policy_map}")
+            logger.info(f"Built preprocessor map: {self.preprocessors}")
+
+    def _get_complete_policy_specs_dict(
+        self, policy_dict: MultiAgentPolicyConfigDict
+    ) -> MultiAgentPolicyConfigDict:
+        """Processes the policy dict and creates a new copy with the processed attrs.
+
+        This processes the observation_space and prepares them for passing to rl module
+        construction. It also merges the policy configs with the algorithm config.
+        During this processing, we will also construct the preprocessors dict.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-        # If our policy_map does not exist yet, create it here.
-        self.policy_map = self.policy_map or PolicyMap(
-            capacity=self.config.policy_map_capacity,
-            policy_states_are_swappable=self.config.policy_states_are_swappable,
-        )
+        updated_policy_dict = copy.deepcopy(policy_dict)
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
-
         # Loop through given policy-dict and add each entry to our map.
-        for name, policy_spec in sorted(policy_dict.items()):
+        for name, policy_spec in sorted(updated_policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
 
             # Policy brings its own complete AlgorithmConfig -> Use it for this policy.
@@ -1971,15 +2042,53 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
+            policy_spec.config = merged_conf
+            policy_spec.observation_space = obs_space
+
+        return updated_policy_dict
+
+    def _update_policy_dict_with_marl_module(
+        self, policy_dict: MultiAgentPolicyConfigDict
+    ) -> MultiAgentPolicyConfigDict:
+        for name, policy_spec in policy_dict.items():
+            policy_spec.config["__marl_module_spec"] = self.marl_module_spec
+        return policy_dict
+
+    def _build_policy_map(
+        self,
+        *,
+        policy_dict: MultiAgentPolicyConfigDict,
+        policy: Optional[Policy] = None,
+        policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
+    ) -> None:
+        """Adds the given policy_dict to `self.policy_map`.
+
+        Args:
+            policy_dict: The MultiAgentPolicyConfigDict to be added to this
+                worker's PolicyMap.
+            policy: If the policy to add already exists, user can provide it here.
+            policy_states: Optional dict from PolicyIDs to PolicyStates to
+                restore the states of the policies being built.
+        """
+
+        # If our policy_map does not exist yet, create it here.
+        self.policy_map = self.policy_map or PolicyMap(
+            capacity=self.config.policy_map_capacity,
+            policy_states_are_swappable=self.config.policy_states_are_swappable,
+        )
+
+        # Loop through given policy-dict and add each entry to our map.
+        for name, policy_spec in sorted(policy_dict.items()):
+
             # Create the actual policy object.
             if policy is None:
                 new_policy = create_policy_for_framework(
                     policy_id=name,
                     policy_class=get_tf_eager_cls_if_necessary(
-                        policy_spec.policy_class, merged_conf
+                        policy_spec.policy_class, policy_spec.config
                     ),
-                    merged_config=merged_conf,
-                    observation_space=obs_space,
+                    merged_config=policy_spec.config,
+                    observation_space=policy_spec.observation_space,
                     action_space=policy_spec.action_space,
                     worker_index=self.worker_index,
                     seed=self.seed,
@@ -1994,7 +2103,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if restore_states:
                 new_policy.set_state(restore_states)
 
-            if merged_conf.enable_connectors:
+    def _update_filter_dict(self, policy_dict: MultiAgentPolicyConfigDict) -> None:
+        """Updates the filter dict for the given policy_dict."""
+
+        for name, policy_spec in sorted(policy_dict.items()):
+            new_policy = self.policy_map[name]
+            if policy_spec.config.enable_connectors:
                 # Note(jungong) : We should only create new connectors for the
                 # policy iff we are creating a new policy from scratch. i.e,
                 # we should NOT create new connectors when we already have the
@@ -2003,10 +2117,13 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Also note that we cannot just check the existence of connectors
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
-                if not policy and not restore_states:
+                if (
+                    new_policy.agent_connectors is None
+                    or new_policy.action_connectors is None
+                ):
                     # TODO(jungong) : revisit this. It will be nicer to create
                     # connectors as the last step of Policy.__init__().
-                    create_connectors_for_policy(new_policy, merged_conf)
+                    create_connectors_for_policy(new_policy, policy_spec.config)
                 maybe_get_filters_for_syncing(self, name)
             else:
                 filter_shape = tree.map_structure(
@@ -2019,18 +2136,14 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 )
 
                 self.filters[name] = get_filter(
-                    merged_conf.observation_filter,
+                    policy_spec.config.observation_filter,
                     filter_shape,
                 )
 
-            if name in self.policy_map:
-                self.callbacks.on_create_policy(
-                    policy_id=name, policy=self.policy_map[name]
-                )
-
-        if self.worker_index == 0:
-            logger.info(f"Built policy map: {self.policy_map}")
-            logger.info(f"Built preprocessor map: {self.preprocessors}")
+    def _call_callbacks_on_create_policy(self):
+        """Calls the on_create_policy callback for each policy in the policy map."""
+        for name, policy in self.policy_map.items():
+            self.callbacks.on_create_policy(policy_id=name, policy=policy)
 
     def _get_input_creator_from_config(self):
         def valid_module(class_path):

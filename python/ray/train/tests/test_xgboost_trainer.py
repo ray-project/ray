@@ -237,6 +237,27 @@ def test_validation(ray_start_4_cpus):
         )
 
 
+def test_distributed_data_loading(ray_start_4_cpus):
+    """Checks that XGBoostTrainer does distributed data loading for Ray Datasets."""
+
+    class DummyXGBoostTrainer(XGBoostTrainer):
+        def _train(self, params, dtrain, **kwargs):
+            assert dtrain.distributed
+            return super()._train(params=params, dtrain=dtrain, **kwargs)
+
+    train_dataset = ray.data.from_pandas(train_df)
+
+    trainer = DummyXGBoostTrainer(
+        scaling_config=ScalingConfig(num_workers=2),
+        label_column="target",
+        params=params,
+        datasets={TRAIN_DATASET_KEY: train_dataset},
+    )
+
+    assert trainer.dmatrix_params[TRAIN_DATASET_KEY]["distributed"]
+    trainer.fit()
+
+
 if __name__ == "__main__":
     import pytest
     import sys

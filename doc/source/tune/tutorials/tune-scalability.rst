@@ -1,7 +1,7 @@
 :orphan:
 
-Scalability and Overhead Benchmarks
-===================================
+Scalability and Overhead Benchmarks for Ray Tune
+================================================
 
 We conducted a series of micro-benchmarks where we evaluated the scalability of Ray Tune and analyzed the
 performance overhead we observed. The results from these benchmarks are reflected in the documentation,
@@ -85,6 +85,7 @@ Below we discuss some insights on results where we observed much overhead.
 
 Result throughput
 -----------------
+
 Result throughput describes the number of results Ray Tune can process in a given timeframe (e.g.
 "results per second").
 The higher the throughput, the more concurrent results can be processed without major delays.
@@ -105,8 +106,9 @@ intervals by a factor of 5-10x.
 
 Below we present more detailed results on the result throughput performance.
 
-Many concurrent trials
-""""""""""""""""""""""
+Benchmarking many concurrent Tune trials
+""""""""""""""""""""""""""""""""""""""""
+
 In this setup, loggers (CSV, JSON, and TensorBoardX) and trial synchronization are disabled, except when
 explicitly noted.
 
@@ -141,8 +143,9 @@ should be considered.
 +-------------+--------------------------+---------+---------------+------------------+---------+
 
 
-Many results on a single node
-"""""""""""""""""""""""""""""
+Benchmarking many Tune results on a single node
+"""""""""""""""""""""""""""""""""""""""""""""""
+
 In this setup, loggers (CSV, JSON, and TensorBoardX) are disabled, except when
 explicitly noted.
 
@@ -172,8 +175,9 @@ seems acceptable in terms of overhead, though you should probably still target f
 +-------------+--------------------------+---------+---------------+------------------+---------+
 
 
-Network overhead
-----------------
+Network overhead in Ray Tune
+----------------------------
+
 Running Ray Tune on a distributed setup leads to network communication overhead. This is mostly due to
 trial synchronization, where results and checkpoints are periodically synchronized and sent via the network.
 Per default this happens via SSH, where connnection initialization can take between 1 and 2 seconds each time.

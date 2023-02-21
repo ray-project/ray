@@ -4,6 +4,7 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
 
@@ -162,7 +163,7 @@ def test_nonconsecutive_failures(serve_instance):
 
 
 def test_consecutive_failures(serve_instance):
-    # Test that the health check must fail N times before being marked unhealthy.
+    # Test that the health check must fail N times before being restarted.
 
     counter = ray.remote(Counter).remote()
 
@@ -200,6 +201,78 @@ def test_consecutive_failures(serve_instance):
     check_fails_3_times()
     ray.get(counter.reset.remote())
     check_fails_3_times()
+
+
+def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
+    """If a deployment always fails health check, the deployment should be unhealthy."""
+
+    @serve.deployment
+    class AlwaysUnhealthy:
+        def check_health(self):
+            raise Exception("intended to fail")
+
+        def __call__(self, *args):
+            return ray.get_runtime_context().current_actor
+
+    with pytest.raises(RuntimeError):
+        serve.run(AlwaysUnhealthy.bind())
+
+    app_status = serve_instance.get_serve_status()
+    assert (
+        app_status.deployment_statuses[0].name == "AlwaysUnhealthy"
+        and app_status.deployment_statuses[0].status == DeploymentStatus.UNHEALTHY
+    )
+
+
+def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instance):
+    """
+    If a deployment transitions to unhealthy, then continues to fail health check after
+    being restarted, the deployment should be unhealthy.
+    """
+
+    class Toggle:
+        def __init__(self):
+            self._should_fail = False
+
+        def set_should_fail(self):
+            self._should_fail = True
+
+        def should_fail(self):
+            return self._should_fail
+
+    @serve.deployment(health_check_period_s=1, health_check_timeout_s=1)
+    class WillBeUnhealthy:
+        def __init__(self, toggle):
+            self._toggle = toggle
+
+        def check_health(self):
+            if ray.get(self._toggle.should_fail.remote()):
+                raise Exception("intended to fail")
+
+        def __call__(self, *args):
+            return ray.get_runtime_context().current_actor
+
+    def check_status(expected_status: DeploymentStatus):
+        app_status = serve_instance.get_serve_status()
+        return (
+            app_status.deployment_statuses[0].name == "WillBeUnhealthy"
+            and app_status.deployment_statuses[0].status == expected_status
+        )
+
+    toggle = ray.remote(Toggle).remote()
+    serve.run(WillBeUnhealthy.bind(toggle))
+
+    # Check that deployment is healthy initially
+    assert check_status(DeploymentStatus.HEALTHY)
+
+    ray.get(toggle.set_should_fail.remote())
+
+    # Check that deployment is now unhealthy
+    wait_for_condition(check_status, expected_status=DeploymentStatus.UNHEALTHY)
+
+    # Check that deployment stays unhealthy
+    for _ in range(5):
+        assert check_status(DeploymentStatus.UNHEALTHY)
 
 
 if __name__ == "__main__":

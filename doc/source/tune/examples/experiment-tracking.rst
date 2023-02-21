@@ -1,5 +1,5 @@
-Experiment Tracking Examples
-----------------------------
+Tune Experiment Tracking Examples
+---------------------------------
 
 Ray Tune integrates with some popular Experiment tracking and management tools,
 such as CometML, or Weights & Biases. If you're interested in learning how

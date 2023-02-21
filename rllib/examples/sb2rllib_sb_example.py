@@ -4,7 +4,7 @@ Code taken and adjusted from SB2 docs:
 https://stable-baselines.readthedocs.io/en/master/guide/quickstart.html
 Equivalent script with RLlib: sb2rllib_rllib_example.py
 """
-import gym
+import gymnasium as gym
 
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines import PPO2
@@ -30,11 +30,11 @@ model = PPO2.load(save_path)
 print(f"Agent loaded from saved model at {save_path}")
 
 # inference
-obs = env.reset()
+obs, info = env.reset()
 for i in range(1000):
     action, _states = model.predict(obs)
-    obs, reward, done, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(action)
     env.render()
-    if done:
-        print(f"Cart pole dropped after {i} steps.")
+    if terminated or truncated:
+        print(f"Cart pole ended after {i} steps.")
         break

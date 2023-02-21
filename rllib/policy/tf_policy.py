@@ -2,7 +2,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 

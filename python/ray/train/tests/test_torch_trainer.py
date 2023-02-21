@@ -9,6 +9,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.batch_predictor import BatchPredictor
+from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchConfig
@@ -61,9 +62,12 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     trainer.fit()
 
 
-def test_torch_e2e(ray_start_4_cpus):
+@pytest.mark.parametrize("prepare_model", (True, False))
+def test_torch_e2e(ray_start_4_cpus, prepare_model):
     def train_func():
         model = torch.nn.Linear(3, 1)
+        if prepare_model:
+            model = train.torch.prepare_model(model)
         session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
@@ -83,10 +87,15 @@ def test_torch_e2e(ray_start_4_cpus):
     assert predictions.count() == 3
 
 
-def test_torch_e2e_state_dict(ray_start_4_cpus):
+@pytest.mark.parametrize("prepare_model", (True, False))
+def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
     def train_func():
-        model = torch.nn.Linear(3, 1).state_dict()
-        session.report({}, checkpoint=TorchCheckpoint.from_state_dict(model))
+        model = torch.nn.Linear(3, 1)
+        if prepare_model:
+            model = train.torch.prepare_model(model)
+        session.report(
+            {}, checkpoint=TorchCheckpoint.from_state_dict(model.state_dict())
+        )
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
@@ -111,19 +120,25 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
     assert predictions.count() == 3
 
 
-def test_torch_e2e_dir(ray_start_4_cpus, tmpdir):
+# We can't really test for prepare_model here as we can't detect what the user
+# has saved without loading (and thus triggering the exception anyway)
+@pytest.mark.parametrize("lazy_checkpointing", (True, False))
+def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
     def train_func():
         model = torch.nn.Linear(3, 1)
         torch.save(model, os.path.join(tmpdir, "model"))
         session.report({}, checkpoint=TorchCheckpoint.from_directory(tmpdir))
 
     scaling_config = ScalingConfig(num_workers=2)
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
-    )
-    result = trainer.fit()
+    with patch.dict(
+        os.environ, {DISABLE_LAZY_CHECKPOINTING_ENV: str(int(not lazy_checkpointing))}
+    ):
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_func,
+            scaling_config=scaling_config,
+            preprocessor=DummyPreprocessor(),
+        )
+        result = trainer.fit()
     isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     # TODO(ml-team): Add a way for TorchCheckpoint to natively support
@@ -363,14 +378,25 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     assert results.checkpoint
 
 
-def test_torch_prepare_model_deprecated():
-    model = torch.nn.Linear(1, 1)
+def test_torch_env_vars(ray_start_4_cpus):
+    """Check that env vars are set as expected."""
 
-    with pytest.raises(DeprecationWarning):
-        train.torch.prepare_model(model, wrap_ddp=True)
+    def train_func(config):
+        assert os.environ["LOCAL_RANK"] == str(session.get_local_rank())
+        assert os.environ["RANK"] == str(session.get_world_rank())
+        assert os.environ["LOCAL_WORLD_SIZE"] == str(session.get_local_world_size())
+        assert os.environ["WORLD_SIZE"] == str(session.get_world_size())
+        assert os.environ["NODE_RANK"] == str(session.get_node_rank())
 
-    with pytest.raises(DeprecationWarning):
-        train.torch.prepare_model(model, ddp_kwargs={"x": "y"})
+        assert os.environ["ACCELERATE_TORCH_DEVICE"] == str(train.torch.get_device())
+
+    num_workers = 1
+    scaling_config = ScalingConfig(num_workers=num_workers)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

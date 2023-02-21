@@ -9,11 +9,14 @@ python:
   pip_packages:
     - "gym[atari]>=0.21.0,<0.24.0"
     - ale-py==0.7.5
-    - autorom[accept-rom-license]
     - pygame
     - pytest
     - tensorflow
     - torch
+    # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
+    # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
+    # and 3.9.
+    - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
   conda_packages: []
 
 post_build_cmds:

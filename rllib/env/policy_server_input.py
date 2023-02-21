@@ -34,7 +34,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
     Examples:
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.algorithms.pg import PGConfig
         >>> from ray.rllib.env.policy_client import PolicyClient
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput
@@ -56,9 +56,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         ...     "localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()  # doctest: +SKIP
         >>> env = gym.make("CartPole-v1")
-        >>> obs = env.reset()
+        >>> obs, info = env.reset()
         >>> action = client.get_action(eps_id, obs) # doctest: +SKIP
-        >>> reward = env.step(action)[0] # doctest: +SKIP
+        >>> _, reward, _, _, _ = env.step(action) # doctest: +SKIP
         >>> client.log_returns(eps_id, reward) # doctest: +SKIP
         >>> client.log_returns(eps_id, reward) # doctest: +SKIP
     """

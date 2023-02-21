@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+import json
 from pathlib import Path
+from importlib import import_module
 import os
 import sys
+from jinja2.filters import FILTERS
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
@@ -51,6 +54,7 @@ extensions = [
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
+    "sphinx_tabs.tabs",
 ]
 
 myst_enable_extensions = [
@@ -81,10 +85,19 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
-# Omit prompt when using copy button
-copybutton_prompt_text = r"\$ "
+html_baseurl = "https://docs.ray.io/en/latest"
+
+# This pattern matches:
+# - Python Repl prompts (">>> ") and it's continuation ("... ")
+# - Bash prompts ("$ ")
+# - IPython prompts ("In []: ", "In [999]: ") and it's continuations
+#   ("  ...: ", "     : ")
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
+# By default, tabs can be closed by selecting an open tab. We disable this
+# functionality with the `sphinx_tabs_disable_tab_closing` option.
+sphinx_tabs_disable_tab_closing = True
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -139,7 +152,12 @@ language = None
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ["_build"]
+# Also helps resolve warnings about documents not included in any toctree.
+exclude_patterns = [
+    "_build",
+    "source/workflows/api/doc/ray.workflow.*",
+    "source/serve/api/doc/ray.serve.*",
+]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
@@ -180,11 +198,20 @@ linkcheck_ignore = [
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    "https://speakerdeck.com/*",  # forbidden for bots
     r"https://huggingface.co/*",  # seems to be flaky
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
     r"^http:/$",  # Ignore incomplete links
+    # 403 Client Error: Forbidden for url.
+    # They ratelimit bots.
+    "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
+    # 403 Client Error: Forbidden for url.
+    # They ratelimit bots.
+    "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+    # Returning 522s intermittently.
+    "https://lczero.org/",
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -203,12 +230,13 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
-    "show_navbar_depth": 0,
+    "show_navbar_depth": 1,
     "launch_buttons": {
         "notebook_interface": "jupyterlab",
         "binderhub_url": "https://mybinder.org",
         "colab_url": "https://colab.research.google.com",
     },
+    "announcement": "<div class='topnav'></div>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -220,10 +248,6 @@ html_title = f"Ray {release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
-
-# The name of an image file (relative to this directory) to place at the top
-# of the sidebar.
-html_logo = "images/ray_logo.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
@@ -280,6 +304,17 @@ autodoc_member_order = "bysource"
 autodoc_typehints = "signature"
 
 
+def filter_out_undoc_class_members(member_name, class_name, module_name):
+    module = import_module(module_name)
+    cls = getattr(module, class_name)
+    if getattr(cls, member_name).__doc__:
+        return f"~{class_name}.{member_name}"
+    else:
+        return ""
+
+
+FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
+
 # Add a render priority for doctest
 nb_render_priority = {
     "doctest": (),
@@ -295,6 +330,74 @@ nb_render_priority = {
         "text/plain",
     ),
 }
+
+tag_mapping = {
+    # Tags for use-cases gallery
+    "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
+    "batchActorPool": "Prediction",
+    "batchCore": "Prediction",
+    "nycTaxiData": "Prediction",
+    "batchOcr": "Preprocessing",
+    "millionModels": "Regression,Training,Sklearn",
+    "batchTrainingCore": "Regression,Training,Sklearn",
+    "batchTrainingDatasets": "Regression,Training,Sklearn",
+    "tuneBasicParallel": "Regression,Training,Sklearn",
+    "tuneBatch": "Regression,Training,Tuning,Sklearn",
+    "instacartFulfillment": "Training,Prediction",
+    "productionizingMLServe": "Serving",
+    "simplifyMLOpsServe": "Serving",
+    "gettingStartedServe": "Serving",
+    "compositionServe": "Serving",
+    "examplesServe": "Serving",
+    "useCasesServe": "Serving",
+    "gettingStartedTune": "Tuning",
+    "distributeHPOTune": "Tuning",
+    "simpleDistributedHPO": "Tuning",
+    "HPOTransformers": "Tuning,PyTorch,Classification",
+    "examplesTune": "Tuning",
+    "useCasesTune": "Tuning",
+    "pyTorchTrain": "Training,PyTorch",
+    "xgboostTrain": "Training,XGBoost",
+    "gettingStartedTrain": "Training",
+    "trainingTransformers": "Training,PyTorch,Classification,Prediction",
+    "examplesTrain": "Training",
+    "useCasesTrain": "Training",
+    "appliedRLCourse": "Reinforcement Learning",
+    "introRLlib": "Reinforcement Learning",
+    "gettingStartedRLlib": "Reinforcement Learning",
+    "riotRL": "Reinforcement Learning",
+    "examplesRL": "Reinforcement Learning",
+    "useCasesRL": "Reinforcement Learning",
+    "merlin": "Preprocessing,Training,Prediction",
+    "uberScaleDL": "Preprocessing,Training,Prediction,Tuning,XGBoost,"
+    "TensorFlow,PyTorch",
+    "instacartMLPlatformTripled": "Preprocessing,Prediction,Training,Tuning",
+    "predibase": "Preprocessing,Training,Prediction,Tuning,PyTorch",
+    "GKEMLPlatform": "Preprocessing,Training,Prediction,Tuning,TensorFlow,Serving",
+    "summitMLPlatform": "Preprocessing,Prediction,Training,Tuning,Serving",
+    "torchImageExample": "Preprocessing,Prediction,Training,PyTorch,Classification",
+    "feastExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
+    "xgboostExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
+    "timeSeriesAutoML": "Regression,Sklearn,Tuning",
+    "AIRExamples": "Regression,Classification,Training,Tuning,Prediction,"
+    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn",
+    # Tags for Ray Train examples gallery
+    "trainTorchFashionMnist": "PyTorch,Training",
+    "trainTransformers": "PyTorch,Training,HuggingFace",
+    "trainTensorflowMnist": "TensorFlow,Training",
+    "trainHorovod": "Horovod, PyTorch,Training",
+    "trainMlflow": "MLflow,Training",
+    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
+    "trainTunePyTorch": "PyTorch,Training,Tuning",
+    "trainBenchmark": "PyTorch,Training"
+    # TODO add and integrate tags for other libraries.
+    # Tune has a proper example library
+    # Serve, RLlib and AIR could use one.
+}
+
+# Create file with tag mappings for tags.js to use.
+with open("./_static/tag-mapping.json", "w") as f:
+    json.dump(tag_mapping, f)
 
 
 def setup(app):
@@ -323,7 +426,7 @@ def setup(app):
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
 
-    app.add_js_file("js/try-anyscale.js", defer="defer")
+    app.add_js_file("js/top-navigation.js", defer="defer")
 
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
@@ -339,6 +442,9 @@ def setup(app):
 
     # Create galleries on the fly
     app.connect("builder-inited", build_gallery)
+
+    # tag filtering system
+    app.add_js_file("js/tags.js")
 
 
 redoc = [

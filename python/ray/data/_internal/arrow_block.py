@@ -16,10 +16,10 @@ from typing import (
 
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
-    VALUE_COL_NAME,
     TableBlockAccessor,
     TableBlockBuilder,
 )
@@ -114,7 +114,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
-            if col_name == VALUE_COL_NAME or isinstance(
+            if col_name == TENSOR_COLUMN_NAME or isinstance(
                 next(iter(col), None), np.ndarray
             ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
@@ -156,7 +156,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         if isinstance(batch, np.ndarray):
-            batch = {VALUE_COL_NAME: batch}
+            batch = {TENSOR_COLUMN_NAME: batch}
         elif not isinstance(batch, dict) or any(
             not isinstance(col, np.ndarray) for col in batch.values()
         ):
@@ -181,7 +181,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return pa.Table.from_pydict(new_batch)
 
     @staticmethod
-    def _build_tensor_row(row: ArrowRow, col_name: str = VALUE_COL_NAME) -> np.ndarray:
+    def _build_tensor_row(
+        row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
+    ) -> np.ndarray:
         from pkg_resources._vendor.packaging.version import parse as parse_version
 
         element = row[col_name][0]

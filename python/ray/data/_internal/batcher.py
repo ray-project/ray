@@ -255,11 +255,13 @@ class ShufflingBatcher(BatcherInterface):
     def has_batch(self) -> bool:
         """Whether this batcher has any batches."""
         buffer_size = self._buffer_size()
-        # If still adding blocks, ensure that removing a batch wouldn't cause the
-        # shuffle buffer to dip beneath its configured minimum size.
-        return buffer_size - self._batch_size >= self._buffer_min_size or (
-            self._done_adding and buffer_size >= self._batch_size
-        )
+
+        if not self._done_adding:
+            # If still adding blocks, ensure that removing a batch wouldn't cause the
+            # shuffle buffer to dip beneath its configured minimum size.
+            return buffer_size - self._batch_size >= self._buffer_min_size
+        else:
+            return buffer_size >= self._batch_size
 
     def _buffer_size(self) -> int:
         """Return shuffle buffer size."""

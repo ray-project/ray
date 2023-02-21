@@ -23,7 +23,7 @@ using --flat in this example.
 """
 
 import argparse
-from gym.spaces import Discrete, Tuple
+from gymnasium.spaces import Discrete, Tuple
 import logging
 import os
 

@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class MBMPOConfig(AlgorithmConfig):
-    """Defines a configuration class from which an MBMPO Algorithm can be built.
+    r"""Defines a configuration class from which an MBMPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -458,11 +458,11 @@ def post_process_samples(samples, config: AlgorithmConfig):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
-        indexes = np.asarray(sample["dones"]).nonzero()[0]
+        indexes = np.asarray(sample[SampleBatch.TERMINATEDS]).nonzero()[0]
         indexes = indexes + 1
 
-        reward_list = np.split(sample["rewards"], indexes)[:-1]
-        observation_list = np.split(sample["obs"], indexes)[:-1]
+        reward_list = np.split(sample[SampleBatch.REWARDS], indexes)[:-1]
+        observation_list = np.split(sample[SampleBatch.OBS], indexes)[:-1]
 
         paths = []
         for i in range(0, len(reward_list)):

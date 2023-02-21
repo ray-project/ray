@@ -9,7 +9,7 @@ For a simpler example, see also: multiagent_cartpole.py
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray

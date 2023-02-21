@@ -11,7 +11,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 
 import logging
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class MADDPGPostprocessing:
     ):
         # FIXME: Get done from info is required since agentwise done is not
         #  supported now.
-        sample_batch[SampleBatch.DONES] = self.get_done_from_info(
+        sample_batch[SampleBatch.TERMINATEDS] = self.get_done_from_info(
             sample_batch[SampleBatch.INFOS]
         )
 
@@ -48,7 +48,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         self.global_step = tf1.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
-        # supported now.
+        #  supported now.
         self.get_done_from_info = np.vectorize(lambda info: info.get("done", False))
 
         agent_id = config["agent_id"]
@@ -101,7 +101,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             tf.float32, shape=None, name="rewards_{}".format(agent_id)
         )
         done_ph = tf1.placeholder(
-            tf.float32, shape=None, name="dones_{}".format(agent_id)
+            tf.float32, shape=None, name="terminateds_{}".format(agent_id)
         )
 
         if config["use_local_critic"]:
@@ -339,10 +339,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model_n = [
-                    ModelCatalog.get_model(
-                        SampleBatch(
-                            obs=obs, _is_training=self._get_is_training_placeholder()
-                        ),
+                    ModelCatalog.get_model_v2(
                         obs_space,
                         act_space,
                         1,
@@ -377,10 +374,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     ):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
-                model = ModelCatalog.get_model(
-                    SampleBatch(
-                        obs=obs, _is_training=self._get_is_training_placeholder()
-                    ),
+                model = ModelCatalog.get_model_v2(
                     obs_space,
                     act_space,
                     1,

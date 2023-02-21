@@ -115,7 +115,7 @@ class SearchAlgorithm:
         self._finished = True
 
     def has_checkpoint(self, dirpath: str) -> bool:
-        """Should return False if not restoring is not implemented."""
+        """Should return False if restoring is not implemented."""
         return False
 
     def save_to_dir(self, dirpath: str, **kwargs):

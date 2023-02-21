@@ -39,7 +39,8 @@ Every Ray cluster has one node which is designated as the *head node* of the clu
 The head node is identical to other worker nodes, except that it also runs singleton processes responsible for cluster management such as the
 :ref:`autoscaler <cluster-autoscaler>` and the Ray driver processes
 :ref:`which run Ray jobs <cluster-clients-and-jobs>`. Ray may schedule
-tasks and actors on the head node just like any other worker node, unless configured otherwise.
+tasks and actors on the head node just like any other worker node, which is not desired in large-scale clusters.
+See :ref:`vms-large-cluster-configure-head-node` for the best practice in large-scale clusters.
 
 .. _cluster-worker-nodes:
 
@@ -73,7 +74,7 @@ There are three ways to run a Ray job on a Ray cluster:
 
 1. (Recommended) Submit the job using the :ref:`Ray Jobs API <jobs-overview>`.
 2. Run the driver script directly on any node of the Ray cluster, for interactive development.
-3. Use :ref:`Ray Client <ray-client-ref>` to connect remotely to the cluster within a driver script.
+3. (For Experts only) Use :ref:`Ray Client <ray-client-ref>` to connect remotely to the cluster within a driver script.
 
 For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-overview>`.
 

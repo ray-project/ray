@@ -1,4 +1,4 @@
-from gym.wrappers import TimeLimit
+from gymnasium.wrappers import TimeLimit
 import unittest
 
 import ray

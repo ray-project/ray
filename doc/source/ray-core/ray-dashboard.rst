@@ -2,16 +2,12 @@
 
 Ray Dashboard
 =============
-Ray's built-in dashboard provides metrics, charts, and other features that help
-Ray users to understand Ray clusters and libraries.
+Ray provides a web-based dashboard for monitoring and debugging Ray applications.
+The dashboard provides a visual representation of the system state, allowing users to track the performance 
+of their applications and troubleshoot issues.
 
-The dashboard lets you:
-
-- View cluster metrics including time-series visualizations.
-- See errors and exceptions at a glance.
-- View logs across many machines.
-- See all your ray jobs and the logs for those jobs.
-- See your ray actors and their logs
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/Dashboard-overview.png
+    :align: center
 
 Getting Started
 ---------------
@@ -113,6 +109,23 @@ You can select the time range of the metrics in the top right corner. The graphs
 There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/metrics.png
+    :align: center
+
+Event View
+~~~~~~~~~~
+
+.. note:: 
+
+  The event view feature is experimental.
+
+The event view lets you see a list of events associated with a specific type (e.g., autoscaler or job) in a chronological order. The equivalent information is also accessible via CLI commands ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>`.
+
+There are 2 types of events that are available.
+
+- **Job**: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
+- **Autoscaler**: Events related to :ref:`Ray autoscaler <cluster-autoscaler>`
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/event.png
     :align: center
 
 Advanced Usage
@@ -237,7 +250,7 @@ You can also click the node id to go into a node detail page where you can see m
     - Logs messages at each node and worker. You can see log files relevant to a node or worker by clicking this link.
   * - **Stack Trace**
     - Get the Python stack trace for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
-  * - **Flame Graph**
+  * - **CPU Flame Graph**
     - Get a CPU flame graph for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
 
 
@@ -304,7 +317,7 @@ Actors
     - A link to the logs that are relevant to this actor.
   * - **Stack Trace**
     - Get the Python stack trace for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
-  * - **Flame Graph**
+  * - **CPU Flame Graph**
     - Get a CPU flame graph for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
 
 Logs

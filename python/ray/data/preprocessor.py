@@ -4,10 +4,10 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict, Any
 
 from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.data import Dataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.data import Dataset, DatasetPipeline
     import pandas as pd
     import numpy as np
     from ray.air.data_batch_type import DataBatchType
@@ -73,7 +73,7 @@ class Preprocessor(abc.ABC):
             return None
         return self._transform_stats
 
-    def fit(self, dataset: Dataset) -> "Preprocessor":
+    def fit(self, dataset: "Dataset") -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
 
         Fitted state attributes will be directly set in the Preprocessor.
@@ -104,7 +104,7 @@ class Preprocessor(abc.ABC):
 
         return self._fit(dataset)
 
-    def fit_transform(self, dataset: Dataset) -> Dataset:
+    def fit_transform(self, dataset: "Dataset") -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
         Calling it more than once will overwrite all previously fitted state:
@@ -120,7 +120,7 @@ class Preprocessor(abc.ABC):
         self.fit(dataset)
         return self.transform(dataset)
 
-    def transform(self, dataset: Dataset) -> Dataset:
+    def transform(self, dataset: "Dataset") -> "Dataset":
         """Transform the given dataset.
 
         Args:
@@ -141,7 +141,7 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        transformed_ds = self._transform(dataset)
+        transformed_ds = self._transform(dataset).fully_executed()
         self._transform_stats = transformed_ds.stats()
         return transformed_ds
 
@@ -170,6 +170,31 @@ class Preprocessor(abc.ABC):
             )
         return self._transform_batch(data)
 
+    def _transform_pipeline(self, pipeline: "DatasetPipeline") -> "DatasetPipeline":
+        """Transform the given DatasetPipeline.
+
+        Args:
+            pipeline: The pipeline to transform.
+
+        Returns:
+            A DatasetPipeline with this preprocessor's transformation added as an
+                operation to the pipeline.
+        """
+
+        fit_status = self.fit_status()
+        if fit_status not in (
+            Preprocessor.FitStatus.NOT_FITTABLE,
+            Preprocessor.FitStatus.FITTED,
+        ):
+            raise RuntimeError(
+                "Streaming/pipelined ingest only works with "
+                "Preprocessors that do not need to be fit on the entire dataset. "
+                "It is not possible to fit on Datasets "
+                "in a streaming fashion."
+            )
+
+        return self._transform(pipeline)
+
     def _check_is_fitted(self) -> bool:
         """Returns whether this preprocessor is fitted.
 
@@ -180,7 +205,7 @@ class Preprocessor(abc.ABC):
         return bool(fitted_vars)
 
     @DeveloperAPI
-    def _fit(self, dataset: Dataset) -> "Preprocessor":
+    def _fit(self, dataset: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
 
@@ -233,7 +258,9 @@ class Preprocessor(abc.ABC):
 
         return transform_type
 
-    def _transform(self, dataset: Dataset) -> Dataset:
+    def _transform(
+        self, dataset: Union["Dataset", "DatasetPipeline"]
+    ) -> Union["Dataset", "DatasetPipeline"]:
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
 

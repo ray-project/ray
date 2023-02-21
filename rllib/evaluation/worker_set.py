@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 import logging
 import importlib.util
 import os
@@ -18,6 +18,7 @@ from typing import (
 
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
+from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -381,18 +382,22 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker: Optional[RolloutWorker] = None,
+        from_worker_or_trainer: Optional[Union[RolloutWorker, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
     ) -> None:
-        """Syncs model weights from the local worker to all remote workers.
+        """Syncs model weights from the given weight source to all remote workers.
+
+        Weight source can be either a (local) rollout worker or a learner_group. It
+        should just implement a `get_weights` method.
 
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker: Optional local RolloutWorker instance to sync from.
-                If None (default), sync from this WorkerSet's local worker.
+            from_worker_or_trainer: Optional (local) RolloutWorker instance or
+                LearnerGroup instance to sync from. If None (default),
+                sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
                 weights to. If None (default), sync to all remote workers.
             global_vars: An optional global vars dict to set this
@@ -402,16 +407,23 @@ class WorkerSet:
                 for any sync calls to finish). This significantly improves
                 algorithm performance.
         """
-        if self.local_worker() is None and from_worker is None:
+        if self.local_worker() is None and from_worker_or_trainer is None:
             raise TypeError(
                 "No `local_worker` in WorkerSet, must provide `from_worker` "
                 "arg in `sync_weights()`!"
             )
 
-        # Only sync if we have remote workers or `from_worker` is provided.
+        # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         weights = None
-        if self.num_remote_workers() or from_worker is not None:
-            weights = (from_worker or self.local_worker()).get_weights(policies)
+        if self.num_remote_workers() or from_worker_or_trainer is not None:
+            weights_src = from_worker_or_trainer or self.local_worker()
+
+            if weights_src is None:
+                raise ValueError(
+                    "`from_worker_or_trainer` is None. In this case, workerset "
+                    "should have local_worker. But local_worker is also None."
+                )
+            weights = weights_src.get_weights(policies)
 
             def set_weight(w):
                 w.set_weights(weights, global_vars)
@@ -431,7 +443,7 @@ class WorkerSet:
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
         if self.local_worker() is not None:
-            if from_worker is not None:
+            if from_worker_or_trainer is not None:
                 self.local_worker().set_weights(weights, global_vars=global_vars)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
@@ -660,6 +672,7 @@ class WorkerSet:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> List[T]:
         """Calls the given function with each worker instance as the argument.
 
@@ -673,6 +686,7 @@ class WorkerSet:
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
+            mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -691,6 +705,7 @@ class WorkerSet:
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -782,12 +797,14 @@ class WorkerSet:
         *,
         timeout_seconds: Optional[int] = 0,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
+            mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -796,6 +813,7 @@ class WorkerSet:
         remote_results = self.__worker_manager.fetch_ready_async_reqs(
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -906,7 +924,9 @@ class WorkerSet:
         Returns:
             IDs of the workers that were restored.
         """
-        return self.__worker_manager.probe_unhealthy_actors()
+        return self.__worker_manager.probe_unhealthy_actors(
+            timeout_seconds=self._remote_config.worker_health_probe_timeout_s
+        )
 
     @staticmethod
     def _from_existing(

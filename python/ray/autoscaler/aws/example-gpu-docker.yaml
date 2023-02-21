@@ -59,7 +59,8 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: p2.xlarge
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Default AMI. Uncomment to use a different AMI.
+            # ImageId:
             # You can provision additional disk space with a conf as follows
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
@@ -91,7 +92,8 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Default AMI. Uncomment to use a different AMI.
+            # ImageId:
             # Run workers on spot by default. Comment this out to use on-demand.
             InstanceMarketOptions:
                 MarketType: spot

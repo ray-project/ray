@@ -8,7 +8,7 @@ import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -43,10 +43,10 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        if isinstance(checkpoint.dir_or_data, dict):
-            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
-        else:
-            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
+        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
+            air_checkpoint, self.preprocessor
+        )
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -114,7 +114,7 @@ class DataParallelTrainer(BaseTrainer):
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
+    **How do I use DataParallelTrainer or any of its subclasses?**
 
     Example:
 
@@ -136,7 +136,7 @@ class DataParallelTrainer(BaseTrainer):
         )
         result = trainer.fit()
 
-    **How do I develop on top of ``DataParallelTrainer``?**
+    **How do I develop on top of DataParallelTrainer?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.
@@ -241,6 +241,10 @@ class DataParallelTrainer(BaseTrainer):
         WILDCARD_KEY: DatasetConfig(split=False),
     }
 
+    _fields_for_tuner_param_space = BaseTrainer._fields_for_tuner_param_space + [
+        "train_loop_config"
+    ]
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
@@ -254,9 +258,6 @@ class DataParallelTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not ray.is_initialized():
-            ray.init()
-
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
@@ -277,6 +278,47 @@ class DataParallelTrainer(BaseTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+    @classmethod
+    def restore(
+        cls: Type["DataParallelTrainer"],
+        path: str,
+        train_loop_per_worker: Optional[
+            Union[Callable[[], None], Callable[[Dict], None]]
+        ] = None,
+        train_loop_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "DataParallelTrainer":
+        """Restores a DataParallelTrainer from a previously interrupted/failed run.
+
+        Args:
+            train_loop_per_worker: Optionally re-specified train loop function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g., it holds onto outdated
+                object references). This should be the same training loop
+                that was passed to the original trainer constructor.
+            train_loop_config: Optionally re-specified train config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
+            subclass that is calling this method.
+        """
+        return super(DataParallelTrainer, cls).restore(
+            path=path,
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
         )
 
     def _validate_attributes(self):
@@ -357,6 +399,7 @@ class DataParallelTrainer(BaseTrainer):
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
+            driver_ip=ray.util.get_node_ip_address(),
             experiment_name=session.get_experiment_name(),
         )
 

@@ -1,9 +1,19 @@
 import re
 from collections import defaultdict
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 
 from ray_release.buildkite.settings import Frequency, get_frequency
 from ray_release.config import Test
+
+
+def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
+    curr = lookup
+    for k in flat_key.split(delimiter):
+        try:
+            curr = curr.get(k, {})
+        except Exception:
+            return None
+    return curr
 
 
 def filter_tests(
@@ -20,7 +30,7 @@ def filter_tests(
         # First, filter by string attributes
         attr_mismatch = False
         for attr, regex in test_attr_regex_filters.items():
-            if not re.fullmatch(regex, test[attr]):
+            if not re.fullmatch(regex, _unflattened_lookup(test, attr) or ""):
                 attr_mismatch = True
                 break
         if attr_mismatch:

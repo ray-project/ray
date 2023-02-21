@@ -85,8 +85,11 @@ class DashboardTestAtScale:
 
         # Schedule the actor on the current node (which is a head node).
         current_node_ip = ray._private.worker.global_worker.node_ip_address
-        nodes = ray.experimental.state.api.list_nodes()
-        node = list(filter(lambda n: n["node_ip"] == current_node_ip, nodes))[0]
+        nodes = ray.experimental.state.api.list_nodes(
+            filters=[("node_ip", "=", current_node_ip)]
+        )
+        assert len(nodes) > 0, f"{current_node_ip} not found in the cluster"
+        node = nodes[0]
         # Schedule on a head node.
         self.tester = DashboardTester.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(

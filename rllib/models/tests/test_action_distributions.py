@@ -1,5 +1,5 @@
 from functools import partial
-from gym.spaces import Box, Dict, Tuple
+from gymnasium.spaces import Box, Dict, Tuple
 import numpy as np
 from scipy.stats import beta, norm
 import tree  # pip install dm_tree

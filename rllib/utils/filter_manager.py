@@ -31,7 +31,7 @@ class FilterManager:
             update_remote: Whether to push updates to remote filters.
             timeout_seconds: How long to wait for filter to get or set filters
         """
-        logger.info("Synchronizing filters ...")
+        logger.debug("Synchronizing filters ...")
 
         remote_filters = worker_set.foreach_worker(
             func=lambda worker: worker.get_filters(flush_after=True),
@@ -52,7 +52,7 @@ class FilterManager:
             copies = {k: v.as_serializable() for k, v in local_filters.items()}
             remote_copy = ray.put(copies)
 
-            logger.info("Updating remote filters ...")
+            logger.debug("Updating remote filters ...")
             results = worker_set.foreach_worker(
                 func=lambda worker: worker.sync_filters(ray.get(remote_copy)),
                 local_worker=False,

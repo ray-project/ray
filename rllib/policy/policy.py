@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
-import gym
-from gym.spaces import Box
+import gymnasium as gym
+from gymnasium.spaces import Box
 import json
 import logging
 import numpy as np
@@ -334,6 +334,8 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self.__policy_id = config.get("__policy_id")
         # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
@@ -380,10 +382,22 @@ class Policy(metaclass=ABCMeta):
         this method should be implemented and should return the RLModule instance to
         use for this Policy. Otherwise, RLlib will error out.
         """
-        module_class: RLModule = self.config["rl_module_class"]
-        return module_class.from_model_config(
-            self.observation_space, self.action_space, model_config=self.config["model"]
-        )
+        # if imported on top it creates circular dependency
+        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+        if self.__policy_id is None:
+            raise ValueError(
+                "When using RLModule API, `policy_id` within the policies must be "
+                "set. This should have happened automatically. If you see this "
+                "bug, please file a github issue."
+            )
+
+        module_spec = self.config["__marl_module_spec"]
+        if isinstance(module_spec, SingleAgentRLModuleSpec):
+            module = module_spec.build()
+        else:
+            module = module_spec.build(module_id=self.__policy_id)
+        return module
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -404,6 +418,24 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
+
+    def get_connector_metrics(self) -> Dict:
+        """Get metrics on timing from connectors."""
+        return {
+            "agent_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+            "action_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+        }
+
+    def reset_connectors(self, env_id) -> None:
+        """Reset action- and agent-connectors for this policy."""
+        self.agent_connectors.reset(env_id=env_id)
+        self.action_connectors.reset(env_id=env_id)
 
     @DeveloperAPI
     def compute_single_action(
@@ -512,7 +544,6 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return (
             single_action,
-            # [s[0] for s in state_out],
             tree.map_structure(lambda x: x[0], state_out),
             tree.map_structure(lambda x: x[0], info),
         )
@@ -521,7 +552,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
@@ -974,14 +1005,14 @@ class Policy(metaclass=ABCMeta):
             self.agent_connectors = restore_connectors_for_policy(
                 self, connector_configs["agent"]
             )
-            logger.info("restoring agent connectors:")
-            logger.info(self.agent_connectors.__str__(indentation=4))
+            logger.debug("restoring agent connectors:")
+            logger.debug(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
             self.action_connectors = restore_connectors_for_policy(
                 self, connector_configs["action"]
             )
-            logger.info("restoring action connectors:")
-            logger.info(self.action_connectors.__str__(indentation=4))
+            logger.debug("restoring action connectors:")
+            logger.debug(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1179,6 +1210,7 @@ class Policy(metaclass=ABCMeta):
         """
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
+
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and not fake_gpus
@@ -1186,8 +1218,14 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # If head node, take num_gpus.
-            num_gpus = self.config["num_gpus"]
+            # if we are in the new rl trainer world num_gpus is deprecated.
+            # so use num_gpus_per_worker for policy sampling
+            # we need this .get() syntax here to ensure backwards compatibility.
+            if self.config.get("_enable_learner_api", False):
+                num_gpus = self.config["num_gpus_per_worker"]
+            else:
+                # If head node, take num_gpus.
+                num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take num_gpus_per_worker
             num_gpus = self.config["num_gpus_per_worker"]
@@ -1266,9 +1304,9 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
-            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.TERMINATEDS: ViewRequirement(),
+            SampleBatch.TRUNCATEDS: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
-            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
@@ -1433,7 +1471,8 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.EPS_ID,
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
-                            SampleBatch.DONES,
+                            SampleBatch.TERMINATEDS,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,
@@ -1441,8 +1480,8 @@ class Policy(metaclass=ABCMeta):
                     ):
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
-                # by Sampler to properly execute sample collection).
-                # Also always leave DONES, REWARDS, INFOS, no matter what.
+                # by Sampler to properly execute sample collection). Also always leave
+                # TERMINATEDS, TRUNCATEDS, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if (
                         key not in all_accessed_keys
@@ -1451,7 +1490,8 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.EPS_ID,
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
-                            SampleBatch.DONES,
+                            SampleBatch.TERMINATEDS,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,

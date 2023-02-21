@@ -22,6 +22,9 @@ from ray._private.test_utils import (
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.util.placement_group import (
+    placement_group,
+)
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -176,28 +179,46 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "ray://127.0.0.1:10001" if ray_client else address
         )
         run_string_as_driver(driver)
-        result = ray_usage_lib.get_extra_usage_tags_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            )
+            == {
+                "key": "val",
+                "_test1": "val1",
+                "_test2": "val2",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
+                "num_actor_creation_tasks": "0",
+                "num_actor_tasks": "0",
+                "num_normal_tasks": "0",
+                "num_drivers": "2",
+                "gcs_storage": gcs_storage_type,
+                "dashboard_used": "False",
+            },
+            timeout=10,
         )
-        assert result == {
-            "key": "val",
-            "_test1": "val1",
-            "_test2": "val2",
-            "gcs_storage": gcs_storage_type,
-            "dashboard_used": "False",
-        }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
-        result = ray_usage_lib.get_extra_usage_tags_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            )
+            == {
+                "key": "val",
+                "_test1": "val1",
+                "_test2": "val3",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
+                "num_actor_creation_tasks": "0",
+                "num_actor_tasks": "0",
+                "num_normal_tasks": "0",
+                "num_drivers": "2",
+                "gcs_storage": gcs_storage_type,
+                "dashboard_used": "False",
+            },
+            timeout=10,
         )
-        assert result == {
-            "key": "val",
-            "_test1": "val1",
-            "_test2": "val3",
-            "gcs_storage": gcs_storage_type,
-            "dashboard_used": "False",
-        }
 
 
 @pytest.mark.skipif(
@@ -236,6 +257,135 @@ def test_worker_crash_increment_stats():
 
         assert "worker_crash_oom" in result
         assert result["worker_crash_oom"] == "1"
+
+
+def test_actor_stats(reset_usage_stats):
+    @ray.remote
+    class Actor:
+        def foo(self):
+            pass
+
+    with ray.init(
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        actor = Actor.remote()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "1"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_creation_tasks"
+            )
+            == "1",
+            timeout=10,
+        )
+        actor = Actor.remote()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_creation_tasks"
+            )
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_tasks"
+            )
+            == "0",
+            timeout=10,
+        )
+
+        ray.get(actor.foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_creation_tasks"
+            )
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_tasks"
+            )
+            == "1",
+            timeout=10,
+        )
+        del actor
+
+
+def test_pg_stats(reset_usage_stats):
+    with ray.init(
+        num_cpus=3,
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
+        ray.get(pg.ready())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "pg_num_created"
+            )
+            == "1",
+            timeout=5,
+        )
+        pg1 = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
+        ray.get(pg1.ready())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "pg_num_created"
+            )
+            == "2",
+            timeout=5,
+        )
+
+
+def test_task_stats(reset_usage_stats):
+    @ray.remote
+    def foo():
+        pass
+
+    with ray.init(
+        _system_config={"metrics_report_interval_ms": 1000},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_normal_tasks"
+            )
+            == "0"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_drivers"
+            )
+            == "1",
+            timeout=10,
+        )
+        ray.get(foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_normal_tasks"
+            )
+            == "1",
+            timeout=10,
+        )
+        ray.get(foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_normal_tasks"
+            )
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_drivers"
+            )
+            == "1",
+            timeout=10,
+        )
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
@@ -632,14 +782,15 @@ with joblib.parallel_backend("ray"):
     )
     run_string_as_driver(driver)
 
-    job_submission_client = ray.job_submission.JobSubmissionClient(
-        "http://127.0.0.1:8265"
-    )
-    job_id = job_submission_client.submit_job(entrypoint="ls")
-    wait_for_condition(
-        lambda: job_submission_client.get_job_status(job_id)
-        == ray.job_submission.JobStatus.SUCCEEDED
-    )
+    if sys.platform != "win32":
+        job_submission_client = ray.job_submission.JobSubmissionClient(
+            "http://127.0.0.1:8265"
+        )
+        job_id = job_submission_client.submit_job(entrypoint="ls")
+        wait_for_condition(
+            lambda: job_submission_client.get_job_status(job_id)
+            == ray.job_submission.JobStatus.SUCCEEDED
+        )
 
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
@@ -659,8 +810,9 @@ with joblib.parallel_backend("ray"):
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
-        "job_submission",
     }
+    if sys.platform != "win32":
+        expected.add("job_submission")
     if ray_client:
         expected.add("client")
     assert set(library_usages) == expected
@@ -1064,6 +1216,18 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
+        assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["pg_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_actor_creation_tasks"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_actor_tasks"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_normal_tasks"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_drivers"]) >= 0
+        payload["extra_usage_tags"]["actor_num_created"] = "0"
+        payload["extra_usage_tags"]["pg_num_created"] = "0"
+        payload["extra_usage_tags"]["num_actor_creation_tasks"] = "0"
+        payload["extra_usage_tags"]["num_actor_tasks"] = "0"
+        payload["extra_usage_tags"]["num_normal_tasks"] = "0"
+        payload["extra_usage_tags"]["num_drivers"] = "0"
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
@@ -1072,6 +1236,12 @@ provider:
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
+            "actor_num_created": "0",
+            "pg_num_created": "0",
+            "num_actor_creation_tasks": "0",
+            "num_actor_tasks": "0",
+            "num_normal_tasks": "0",
+            "num_drivers": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -1413,6 +1583,12 @@ def test_usage_stats_tags(
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
                 "dashboard_used": "False",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
+                "num_actor_creation_tasks": "0",
+                "num_actor_tasks": "0",
+                "num_normal_tasks": "0",
+                "num_drivers": "1",
             }
             assert num_nodes == 2
             return True

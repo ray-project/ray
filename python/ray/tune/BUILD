@@ -40,6 +40,14 @@ py_test(
 )
 
 py_test(
+    name = "test_callbacks",
+    size = "small",
+    srcs = ["tests/test_callbacks.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
@@ -145,14 +153,6 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_comet",
-    size = "small",
-    srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -161,25 +161,20 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_wandb",
-    size = "small",
-    srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_mlflow",
-    size = "small",
-    srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
-)
-
-py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml"],
+)
+
+py_test(
+    name = "test_multi_tenancy",
+    size = "medium",
+    srcs = [
+        "tests/test_multi_tenancy.py",
+        "tests/_test_multi_tenancy_run.py"
+    ],
     deps = [":tune_lib"],
     tags = ["team:ml"],
 )
@@ -257,6 +252,14 @@ py_test(
 )
 
 py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_searchers",
     size = "large",
     srcs = ["tests/test_searchers.py"],
@@ -330,7 +333,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -338,7 +341,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_2",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner_2.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -346,7 +349,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_3",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
@@ -442,7 +445,7 @@ py_test(
 
 py_test(
     name = "test_tuner_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],

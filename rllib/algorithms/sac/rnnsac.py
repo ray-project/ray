@@ -26,8 +26,10 @@ class RNNSACConfig(SACConfig):
 
     def __init__(self, algo_class=None):
         super().__init__(algo_class=algo_class or RNNSAC)
+
         # fmt: off
         # __sphinx_doc_begin__
+        self.framework_str = "torch"
         self.batch_mode = "complete_episodes"
         self.zero_init_states = True
         self.replay_buffer_config = {
@@ -49,11 +51,11 @@ class RNNSACConfig(SACConfig):
             # model->max_seq_len + burn_in.
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
-        },
-        self.burn_in = DEPRECATED_VALUE
-
+        }
         # fmt: on
         # __sphinx_doc_end__
+
+        self.burn_in = DEPRECATED_VALUE
 
     @override(SACConfig)
     def training(

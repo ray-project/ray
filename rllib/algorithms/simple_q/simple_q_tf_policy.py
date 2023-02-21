@@ -160,7 +160,7 @@ def get_simple_q_tf_policy(
             q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
 
             # compute estimate of best possible value starting from state at t + 1
-            dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            dones = tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 tf.argmax(q_tp1, 1), self.action_space.n
             )

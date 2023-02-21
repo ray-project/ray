@@ -129,7 +129,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Drain the given node.
   /// Idempotent.
-  void DrainNode(const NodeID &node_id);
+  virtual void DrainNode(const NodeID &node_id);
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is

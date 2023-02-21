@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # >> algo = config.build()
     # >> lstm_cell_size = config.model["custom_model_config"]["cell_size"]
     # >> env = RepeatAfterMeEnv({})
-    # >> obs = env.reset()
+    # >> obs, info = env.reset()
     # >>
     # >> # range(2) b/c h- and c-states of the LSTM.
     # >> init_state = state = [
@@ -105,9 +105,9 @@ if __name__ == "__main__":
     # >>
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(obs, state)
-    # >>     obs, reward, done, _ = env.step(a)
+    # >>     obs, reward, done, _, _ = env.step(a)
     # >>     if done:
-    # >>         obs = env.reset()
+    # >>         obs, info = env.reset()
     # >>         state = init_state
     # >>     else:
     # >>         state = state_out

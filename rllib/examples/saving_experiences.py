@@ -1,7 +1,7 @@
 """Simple example of writing experiences to a file using JsonWriter."""
 
 # __sphinx_doc_begin__
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 
@@ -28,14 +28,14 @@ if __name__ == "__main__":
     print("The preprocessor is", prep)
 
     for eps_id in range(100):
-        obs = env.reset()
+        obs, info = env.reset()
         prev_action = np.zeros_like(env.action_space.sample())
         prev_reward = 0
-        done = False
+        terminated = truncated = False
         t = 0
-        while not done:
+        while not terminated and not truncated:
             action = env.action_space.sample()
-            new_obs, rew, done, info = env.step(action)
+            new_obs, rew, terminated, truncated, info = env.step(action)
             batch_builder.add_values(
                 t=t,
                 eps_id=eps_id,
@@ -47,7 +47,8 @@ if __name__ == "__main__":
                 rewards=rew,
                 prev_actions=prev_action,
                 prev_rewards=prev_reward,
-                dones=done,
+                terminateds=terminated,
+                truncateds=truncated,
                 infos=info,
                 new_obs=prep.transform(new_obs),
             )

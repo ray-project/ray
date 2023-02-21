@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete, MultiDiscrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete, MultiDiscrete
 import logging
 import numpy as np
 import tree  # pip install dm_tree
@@ -82,7 +82,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
@@ -471,7 +471,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         ValueError: If the given space is not a discrete one.
 
     Examples:
-        >>> import gym
+        >>> import gymnasium as gym
         >>> import tensorflow as tf
         >>> from ray.rllib.utils.tf_utils import one_hot
         >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
@@ -570,7 +570,7 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
 
 @DeveloperAPI
 def warn_if_infinite_kl_divergence(
-    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+    policy: Type["TFPolicy"], mean_kl: TensorType
 ) -> None:
     def print_warning():
         logger.warning(
@@ -585,7 +585,7 @@ def warn_if_infinite_kl_divergence(
 
     if policy.loss_initialized():
         tf.cond(
-            tf.math.is_inf(mean_kl_loss),
+            tf.math.is_inf(mean_kl),
             false_fn=lambda: tf.constant(0.0),
             true_fn=lambda: print_warning(),
         )

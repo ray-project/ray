@@ -19,6 +19,7 @@ from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
@@ -457,6 +458,8 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    name: str = SERVE_DEFAULT_APP_NAME,
+    route_prefix: str = "/",
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -473,6 +476,11 @@ def run(
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
         port: Port for HTTP server. Defaults to 8000.
+        name: Application name. If not provided, this will be the only
+            application running on the cluster (it will delete all others).
+        route_prefix: Route prefix for HTTP requests. If not provided, it will use
+            route_prefix of the ingress deployment. By default, the ingress route
+            prefix is '/'.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
@@ -491,11 +499,11 @@ def run(
         ingress = target.ingress
     # Each DAG should always provide a valid Driver ClassNode
     elif isinstance(target, ClassNode):
-        deployments = pipeline_build(target)
+        deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, FunctionNode):
-        deployments = pipeline_build(target)
+        deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
             raise ValueError(
@@ -517,9 +525,18 @@ def run(
             f"Got unexpected type {type(target)} instead."
         )
 
+    # when name provided, keep all existing applications
+    # otherwise, delete all of them.
+    remove_past_deployments = True
+    if name:
+        remove_past_deployments = False
+
     parameter_group = []
 
     for deployment in deployments:
+        # Overwrite route prefix
+        if route_prefix != "/" and deployment._route_prefix:
+            deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
             "func_or_class": deployment._func_or_class,
@@ -534,7 +551,10 @@ def run(
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(
-        parameter_group, _blocking=_blocking, remove_past_deployments=True
+        name,
+        parameter_group,
+        _blocking=_blocking,
+        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:
@@ -542,7 +562,9 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: Union[ClassNode, FunctionNode]) -> Application:
+def build(
+    target: Union[ClassNode, FunctionNode], name: str = SERVE_DEFAULT_APP_NAME
+) -> Application:
     """Builds a Serve application into a static application.
 
     Takes in a ClassNode or FunctionNode and converts it to a
@@ -560,6 +582,7 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     Args:
         target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
             that acts as the top level node of the DAG.
+        name: The name of the Serve application.
 
     Returns:
         The static built Serve application
@@ -573,4 +596,17 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return Application(pipeline_build(target))
+    return Application(pipeline_build(target, name))
+
+
+@PublicAPI(stability="alpha")
+def delete(name: str, _blocking: bool = True):
+    """Delete an app by its name
+
+    Deletes the app with all corresponding deployments.
+
+    Args:
+        name: the name of app to delete.
+    """
+    client = get_global_client()
+    client.delete_apps([name], blocking=_blocking)

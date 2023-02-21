@@ -6,7 +6,7 @@ Includes options for LSTM-based models (--use-lstm), attention-net models
 (--use-attention), and plain (non-recurrent) models.
 """
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")
-    obs = env.reset()
+    obs, info = env.reset()
 
     num_episodes = 0
     episode_reward = 0.0
@@ -113,12 +113,12 @@ if __name__ == "__main__":
             policy_id="default_policy",  # <- default value
         )
         # Send the computed action `a` to the env.
-        obs, reward, done, _ = env.step(a)
+        obs, reward, done, truncated, _ = env.step(a)
         episode_reward += reward
         # Is the episode `done`? -> Reset.
         if done:
             print(f"Episode done: Total reward = {episode_reward}")
-            obs = env.reset()
+            obs, info = env.reset()
             num_episodes += 1
             episode_reward = 0.0
 

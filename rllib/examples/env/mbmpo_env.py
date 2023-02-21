@@ -1,11 +1,11 @@
-from gym.envs.classic_control import PendulumEnv, CartPoleEnv
+from gymnasium.envs.classic_control import PendulumEnv, CartPoleEnv
 import numpy as np
 
 # MuJoCo may not be installed.
 HalfCheetahEnv = HopperEnv = None
 
 try:
-    from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
+    from gymnasium.envs.mujoco import HalfCheetahEnv, HopperEnv
 except Exception:
     pass
 

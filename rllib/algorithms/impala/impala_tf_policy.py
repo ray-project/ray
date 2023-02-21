@@ -4,7 +4,7 @@ Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
 import numpy as np
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, List, Type, Union
 
 import ray
@@ -338,7 +338,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 )
 
             actions = train_batch[SampleBatch.ACTIONS]
-            dones = train_batch[SampleBatch.DONES]
+            dones = train_batch[SampleBatch.TERMINATEDS]
             rewards = train_batch[SampleBatch.REWARDS]
             behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
             behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
