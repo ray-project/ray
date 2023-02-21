@@ -3018,14 +3018,18 @@ def remote(
             (This means, by default, actors cannot get scheduled on a zero-cpu node,
             but an infinite number of them can run on any non-zero cpu node.
             The default value for actors was chosen for historical reasons.
-            It’s recommended to always explicitly set num_cpus for actors to avoid any surprises.
-            If resources are specified explicitly, they are required for both scheduling and running.)
-            See :ref:`specifying resource requirements <resource-requirements>` for more details.
+            It’s recommended to always explicitly set num_cpus for actors
+            to avoid any surprises.
+            If resources are specified explicitly,
+            they are required for both scheduling and running.)
+            See :ref:`specifying resource requirements <resource-requirements>`
+            for more details.
         num_gpus: The quantity of GPU resources to reserve
             for this task or for the lifetime of the actor.
             The default value is 0.
             See :ref:`Ray GPU support <gpu-support>` for more details.
-        resources (Dict[str, float]): The quantity of various :ref:`custom resources <custom-resources>`
+        resources (Dict[str, float]): The quantity of various
+            :ref:`custom resources <custom-resources>`
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
@@ -3087,7 +3091,8 @@ def remote(
             placement group based scheduling;
             `NodeAffinitySchedulingStrategy`:
             node id based affinity scheduling.
-            See :ref:`Ray scheduling strategies <ray-scheduling-strategies>` for more details.
+            See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
+            for more details.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 
