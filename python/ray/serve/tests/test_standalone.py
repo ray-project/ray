@@ -139,7 +139,7 @@ def test_v1_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in 1.x case.
 
     Ensures that after deploying deployments using 1.x API, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the Serve namespace.
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003), detached=True)
@@ -177,7 +177,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in single-app case
 
     Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the Serve namespace.
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003), detached=True)
@@ -215,7 +215,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in multi-app case.
 
     Ensures that after deploying multiple distinct applications, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the Serve namespace.
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003), detached=True)
@@ -224,8 +224,8 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     def f():
         pass
 
-    serve.run(f.bind(), name="app1")
-    serve.run(f.bind(), name="app2")
+    serve.run(f.bind(), name="app1", route_prefix="/app1")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
 
     actor_names = {
         "ServeController",

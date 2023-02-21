@@ -701,7 +701,7 @@ class ServeController:
             )
 
     def get_all_deployment_statuses(self) -> List[bytes]:
-        """Gets deployment status bytes for all alive deployments."""
+        """Gets deployment status bytes for all live deployments."""
         statuses = self.deployment_state_manager.get_deployment_statuses()
         return [status.to_proto().SerializeToString() for status in statuses]
 
