@@ -1,6 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 debian_packages: []
-env_vars: {"RAY_task_events_max_buffer_size": "1000000"}
 
 python:
   pip_packages:
