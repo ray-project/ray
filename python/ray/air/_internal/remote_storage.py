@@ -223,6 +223,24 @@ def read_file_from_uri(uri: str) -> bytes:
 
 
 def download_from_uri(uri: str, local_path: str, filelock: bool = True):
+    """Downloads a remote directory or file to a local path.
+
+    If the URI is a remote directory, then the full directory contents will be
+    copied, and `local_path` will be the downloaded directory.
+    If the download fails for some reason, the `local_path` contents will be
+    cleaned up before raising, if the directory did not previously exist.
+    NOTE: This requires that `local_path`'s parent directory already exists.
+
+    Args:
+        uri: The URI to download from.
+        local_path: The local path to download to.
+        filelock: Whether to require a file lock before downloading, useful for
+            multiple downloads to the same directory that may be happening in parallel.
+
+    Raises:
+        ValueError: if the URI scheme is not supported.
+        FileNotFoundError: if the URI doesn't exist.
+    """
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
@@ -235,7 +253,8 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
 
     _local_path = Path(local_path)
     exists_before = _local_path.exists()
-    _local_path.mkdir(parents=False, exist_ok=True)
+    if is_directory(uri):
+        _local_path.mkdir(parents=False, exist_ok=True)
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
@@ -324,6 +343,22 @@ def list_at_uri(uri: str) -> List[str]:
         os.path.relpath(file_info.path.lstrip("/"), start=bucket_path.lstrip("/"))
         for file_info in fs.get_file_info(selector)
     ]
+
+
+def is_directory(uri: str) -> bool:
+    """Checks if a remote URI is a directory or a file.
+
+    Returns:
+        bool: True if the URI is a directory. False if it is a file.
+
+    Raises:
+        FileNotFoundError: if the URI doesn't exist.
+    """
+    _assert_pyarrow_installed()
+
+    fs, bucket_path = get_fs_and_path(uri)
+    file_info = fs.get_file_info(bucket_path)
+    return not file_info.is_file
 
 
 def _ensure_directory(uri: str):
