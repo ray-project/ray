@@ -106,7 +106,7 @@ class TorchCNN(nn.Module):
         in_size = [width, height]
         for out_depth, kernel, stride in filter_specifiers:
             padding, out_size = same_padding(in_size, kernel, stride)
-            # TODO(Artur): Inline SlimConv2d
+            # TODO(Artur): Inline SlimConv2d after old models are deprecated.
             core_layers.append(
                 SlimConv2d(
                     in_depth,
@@ -134,7 +134,7 @@ class TorchCNN(nn.Module):
             int(np.ceil((height - kernel[1]) / stride)),
         )
         padding, _ = same_padding(in_size, (1, 1), (1, 1))
-        # TODO(Artur): Inline SlimConv2d or use TorchCNN here
+        # TODO(Artur): Inline SlimConv2d after old models are deprecated.
         layers.append(
             SlimConv2d(
                 in_depth,
