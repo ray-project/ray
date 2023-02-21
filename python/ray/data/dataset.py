@@ -2693,7 +2693,7 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if hasattr(datasource, "write"):
+        if type(datasource).write != Datasource.write:
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
