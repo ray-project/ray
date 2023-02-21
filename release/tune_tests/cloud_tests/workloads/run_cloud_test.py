@@ -828,6 +828,9 @@ def assert_artifact_existence_and_validity(
                 f"Directory: {experiment_dir_cp.dir}"
             )
 
+        if not artifact_exists:
+            continue
+
         # NOTE: This expects `artifact_data` to be comma-separated string
         # with the trial.config["id"] showing up as many times as the
         # latest checkpoint iteration.

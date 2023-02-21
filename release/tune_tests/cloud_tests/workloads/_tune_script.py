@@ -18,10 +18,7 @@ from run_cloud_test import ARTIFACT_FILENAME
 def fn_trainable(config):
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
-                state = json.load(fp)
-            state["internal_iter"] += 1
+        state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
     else:
         # NOTE: Need to 1 index because `session.report`
         # will save checkpoints w/ 1-indexing.
@@ -33,10 +30,7 @@ def fn_trainable(config):
 
         checkpoint = None
         if i % config["checkpoint_freq"] == 0:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                with open(os.path.join(tmpdir, "checkpoint.json"), "wt") as fp:
-                    json.dump(state, fp)
-                checkpoint = Checkpoint.from_directory(tmpdir)
+            checkpoint = Checkpoint.from_dict({"internal_iter": i})
 
         # Log artifacts to the trial dir.
         trial_dir = session.get_trial_dir()
