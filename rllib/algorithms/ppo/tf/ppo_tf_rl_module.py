@@ -3,7 +3,6 @@ from typing import Mapping, Any, List
 from ray.rllib.algorithms.ppo.ppo_rl_module_base import PPORLModuleBase
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
-from ray.rllib.core.models.tf.encoder import TfActorCriticEncoder
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
     TfDiagGaussian,
@@ -28,9 +27,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
-
-        # TODO(Artur): After unifying ActorCriticEncoder, move this to PPORLModuleBase
-        assert isinstance(self.encoder, TfActorCriticEncoder)
 
     # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
     # @override(RLModule)

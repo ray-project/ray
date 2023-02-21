@@ -139,7 +139,7 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
-        assert type(self.output_dim) is int
+        self.output_dim = int(self.output_dim)
 
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
@@ -169,8 +169,8 @@ class MLPEncoderConfig(MLPHeadConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
-        assert type(self.output_dim) == int
-        assert type(self.input_dim) == int
+        self.output_dim = int(self.output_dim)
+        self.input_dim = int(self.input_dim)
 
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(

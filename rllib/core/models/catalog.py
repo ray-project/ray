@@ -44,12 +44,12 @@ class Catalog:
             return self.my_model_config.build(framework=framework)
 
 
-    # Next, you can use MyCatalog to build your RLModule:
+    # With that, RLlib can build and use models from this catalog like so:
     catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
     my_head = catalog.build_my_head("torch")  # doctest: +SKIP
     out = my_head(...)  # doctest: +SKIP
 
-    # Uou can also modify configs of RLlib's native Catalogs.
+    # We can also modify configs of RLlib's native Catalogs like so:
     catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
     catalog.my_model_config.output_dim = 32
     my_head = catalog.build_my_head("torch")  # doctest: +SKIP
@@ -66,16 +66,16 @@ class Catalog:
         model_config: dict,
         view_requirements: dict = None,
     ):
-        """Initializes a Catalog.
+        """Initializes a Catalog with a default encoder config.
 
         Args:
             observation_space: The observation space of the environment.
             action_space: The action space of the environment.
             model_config: The model config that specifies things like hidden
-            dimensions and activations functions to use in this Catalog.
+                dimensions and activations functions to use in this Catalog.
             view_requirements: The view requirements of Models to produce. This is
-            needed for a Model that encodes something else than observations or
-            actions but not otherwise.
+                needed for a Model that encodes something else than observations or
+                actions but not otherwise.
 
         """
         self.observation_space = observation_space
@@ -132,7 +132,7 @@ class Catalog:
         Returns:
             The base ModelConfig.
 
-        The returned ModelConfig can be used as is or inside an encoder.
+        The returned ModelConfig can be used as is or as a tokenizer inside an encoder.
         It is either an MLPModelConfig, a CNNModelConfig or a NestedModelConfig.
         """
         # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
@@ -141,7 +141,6 @@ class Catalog:
 
         # input_space is a 1D Box
         if isinstance(input_space, Box) and len(input_space.shape) == 1:
-            # TODO (Artur): Maybe check for original spaces here
             # TODO (Artur): Discriminate between output and hidden activations
             # TODO (Artur): Maybe unify hidden_layer_dims and output_dim
             hidden_layer_dims = model_config["fcnet_hiddens"]
@@ -184,20 +183,14 @@ class Catalog:
         # TODO (Artur): Support more spaces here
         # ...
 
-        Furthermore, this method can provide LSTMEncoderConfigs and
-        AttentionEncoderConfigs. These wrap the primitive encoder types and use them
-        as tokenizers of the input spaces. For example, a 1D-Box input space applied
-        to an LSTMEncoder produces an MLPModel "tokenizer" as part of the LSTMEncoder to
-        tokenize the 1D-Box before feeding it to the LSTM.
-
         Args:
             observation_space: The observation space to use.
             model_config: The model config to use.
             action_space: The action space to use if actions are to be encoded. This
-            is commonly the case for LSTM models.
+                is commonly the case for LSTM models.
             view_requirements: The view requirements to use if anything else than
-            observation_space or action_space is to be encoded. This signifies an
-            anvanced use case.
+                observation_space or action_space is to be encoded. This signifies an
+                advanced use case.
 
         Returns:
             The encoder config.

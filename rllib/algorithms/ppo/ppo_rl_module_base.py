@@ -12,7 +12,7 @@ from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.core.models.base import ActorCriticEncoder
 
 
 @ExperimentalAPI
@@ -46,6 +46,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
             gym.spaces.Discrete,
         )
+        assert isinstance(self.encoder, ActorCriticEncoder)
 
     @classmethod
     @override(RLModule)
@@ -87,11 +88,3 @@ class PPORLModuleBase(RLModule, abc.ABC):
         )
 
         return config.build(framework=cls.framework)
-
-    # TODO (Artur): We use _get_initial_state here temporarily instead of
-    #  get_initial_state. This should be changed back once Policy supports RNNs.
-    def _get_initial_state(self) -> NestedDict:
-        if hasattr(self.encoder, "get_initial_state"):
-            return self.encoder.get_initial_state()
-        else:
-            return NestedDict({})
