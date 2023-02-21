@@ -7,6 +7,8 @@ import sys
 import tempfile
 import time
 import urllib.request
+import boto3
+from botocore.exceptions import ClientError
 from typing import Optional, List, Tuple
 
 from ray_release.config import DEFAULT_PYTHON_VERSION, parse_python_version
@@ -23,6 +25,7 @@ from ray_release.util import url_exists, python_version_str, resolve_url
 DEFAULT_BRANCH = "master"
 DEFAULT_GIT_OWNER = "ray-project"
 DEFAULT_GIT_PACKAGE = "ray"
+RELEASE_MANUAL_WHEEL_BUCKET = "ray-release-manual-wheels"
 
 REPO_URL_TPL = "https://github.com/{owner}/{package}.git"
 INIT_URL_TPL = (
@@ -128,6 +131,36 @@ def parse_wheels_filename(
         return ray_version, None
 
     return ray_version, python_version
+
+
+def upload_to_s3(src_path: str, bucket: str, key_path: str) -> Optional[str]:
+    s3_client = boto3.client("s3")
+    try:
+        s3_client.upload_file(Filename=src_path, Bucket=bucket, Key=key_path)
+    except ClientError as e:
+        logger.warning(f"Failed to upload to s3:  {e}")
+        return None
+
+    return f"https://{bucket}.s3.us-west-2.amazonaws.com/{key_path}"
+
+
+def get_ray_wheels_url_from_local_wheel(ray_wheels: str) -> Optional[str]:
+    """Upload a local wheel file to S3 and return the downloadable URI"""
+    import os
+    from datetime import datetime
+
+    wheel_path = ray_wheels[len("file://") :]
+    wheel_name = os.path.basename(wheel_path)
+    if not os.path.exists(wheel_path):
+        logger.error(f"Local wheel file: {wheel_path} not found")
+        return None
+
+    bucket = RELEASE_MANUAL_WHEEL_BUCKET
+    unique_dest_path_prefix = (
+        f'{os.getlogin()}_{datetime.now().strftime("%Y-%m-%d-%H%MZ")}'
+    )
+    key_path = f"{unique_dest_path_prefix}/{wheel_name}"
+    return upload_to_s3(wheel_path, bucket, key_path)
 
 
 def get_ray_wheels_url(
@@ -243,6 +276,17 @@ def find_ray_wheels_url(
         set_test_env_var("RAY_VERSION", ray_version)
 
         return get_ray_wheels_url(repo_url, branch, commit, ray_version, python_version)
+
+    # If this is a local wheel file.
+    if ray_wheels.startswith("file://"):
+        logger.info(f"Getting wheel url from local wheel file: {ray_wheels}")
+        ray_wheels_url = get_ray_wheels_url_from_local_wheel(ray_wheels)
+        if ray_wheels_url is None:
+            raise RayWheelsNotFoundError(
+                f"Couldn't get wheel urls from local wheel file({ray_wheels}) by "
+                "uploading it to S3."
+            )
+        return ray_wheels_url
 
     # If this is a URL, return
     if ray_wheels.startswith("https://") or ray_wheels.startswith("http://"):
