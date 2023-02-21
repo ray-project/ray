@@ -132,10 +132,7 @@ class TestReadImages:
         model = resnet18(pretrained=True)
         checkpoint = TorchCheckpoint.from_model(model=model)
         predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictions = predictor.predict(dataset)
-
-        for _ in predictions.iter_batches():
-            pass
+        predictor.predict(dataset)
 
     @pytest.mark.parametrize(
         "image_size,image_mode,expected_size,expected_ratio",
