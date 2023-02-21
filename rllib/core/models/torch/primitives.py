@@ -73,7 +73,6 @@ class TorchCNN(nn.Module):
         filter_specifiers: List[List[Union[int, List]]] = None,
         filter_layer_activation: str = "relu",
         output_activation: str = "linear",
-        output_dim: int = None,
     ):
         """Initialize a TorchCNN object.
 
@@ -85,15 +84,11 @@ class TorchCNN(nn.Module):
                 specify a convolutional layer stacked in order of the outer list.
             filter_layer_activation: The activation function to use after each layer (
                 except for the output).
-            output_activation: The activation function to use for the output layer.
-            output_dim: The output dimensions are [BATCH, output_dim]. We append a final
-                convolutional layer depth-only filters that is flattened and a final
-                linear layer to achieve this.
+            output_activation: The activation function to use for the last filter layer.
         """
         super().__init__()
 
         assert len(input_dims) == 3
-        assert isinstance(output_dim, int)
         assert filter_specifiers is not None, "Must provide filter specifiers."
 
         filter_layer_activation = get_activation_fn(
@@ -111,7 +106,7 @@ class TorchCNN(nn.Module):
         in_size = [width, height]
         for out_depth, kernel, stride in filter_specifiers:
             padding, out_size = same_padding(in_size, kernel, stride)
-            # TODO(Artur): Inline SlimConv2d
+            # TODO(Artur): Inline SlimConv2d after old models are deprecated.
             core_layers.append(
                 SlimConv2d(
                     in_depth,
@@ -136,17 +131,19 @@ class TorchCNN(nn.Module):
             int(np.ceil((height - kernel[1]) / stride)),
         )
         padding, _ = same_padding(in_size, (1, 1), (1, 1))
-        # TODO(Artur): Inline SlimConv2d or use TorchCNN here
-        core_layers.append(
+        # TODO(Artur): Inline SlimConv2d after old models are deprecated.
+        layers.append(
             SlimConv2d(
                 in_depth,
                 1,
                 (1, 1),
                 1,
                 padding,
-                activation_fn=filter_layer_activation,
+                activation_fn=output_activation,
             )
         )
+        self.output_width = width
+        self.output_height = height
         core_layers.append(nn.Flatten())
 
         core_cnn = nn.Sequential(*core_layers)
