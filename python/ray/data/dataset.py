@@ -2693,7 +2693,7 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if "write" in datasource.__dict__:
+        if "write" in type(datasource).__dict__:
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
