@@ -73,7 +73,6 @@ class TorchCNN(nn.Module):
         filter_specifiers: List[List[Union[int, List]]] = None,
         filter_layer_activation: str = "relu",
         output_activation: str = "linear",
-        output_dim: int = None,
     ):
         """Initialize a TorchCNN object.
 
@@ -85,15 +84,11 @@ class TorchCNN(nn.Module):
                 specify a convolutional layer stacked in order of the outer list.
             filter_layer_activation: The activation function to use after each layer (
                 except for the output).
-            output_activation: The activation function to use for the output layer.
-            output_dim: The output dimensions are [BATCH, output_dim]. We append a final
-                convolutional layer depth-only filters that is flattened and a final
-                linear layer to achieve this.
+            output_activation: The activation function to use for the last filter layer.
         """
         super().__init__()
 
         assert len(input_dims) == 3
-        assert isinstance(output_dim, int)
         assert filter_specifiers is not None, "Must provide filter specifiers."
 
         filter_layer_activation = get_activation_fn(
@@ -147,16 +142,11 @@ class TorchCNN(nn.Module):
                 (1, 1),
                 1,
                 padding,
-                activation_fn=filter_layer_activation,
+                activation_fn=output_activation,
             )
         )
-        layers.append(nn.Flatten())
-
-        # Add a final linear layer to make sure that the outputs have the correct
-        # dimensionality.
-        layers.append(nn.Linear(int(width) * int(height), output_dim))
-        if output_activation is not None:
-            layers.append(output_activation())
+        self.output_width = width
+        self.output_height = height
 
         # Create the cnn that potentially includes a flattened layer
         self.cnn = nn.Sequential(*layers)
