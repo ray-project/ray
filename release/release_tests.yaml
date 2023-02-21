@@ -4690,6 +4690,7 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh ./aws_cluster.yaml
+    type: sdk_command
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
