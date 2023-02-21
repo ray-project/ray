@@ -180,7 +180,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_actions_helper = True
@@ -206,7 +206,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_learn_on_batch_helper = True
@@ -226,7 +226,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_gradients_helper = True
@@ -246,7 +246,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._apply_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_apply_gradients_helper = True
@@ -763,7 +763,7 @@ def _build_eager_tf_policy(
             within this TfModelV2 class that is-a tf.keras.Model. This base model
             will be used here for the export.
             TODO (kourosh): This restriction will be resolved once we move Policy and
-             ModelV2 to the new RLTrainer/RLModule APIs.
+            ModelV2 to the new Learner/RLModule APIs.
 
             Args:
                 export_dir: Local writable directory.

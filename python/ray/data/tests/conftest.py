@@ -1,3 +1,4 @@
+import copy
 import os
 import posixpath
 
@@ -17,7 +18,22 @@ from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(scope="module")
+def ray_start_2_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_10_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
 
 
 @pytest.fixture(scope="function")
@@ -146,7 +162,7 @@ def test_block_write_path_provider():
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(ray.get(block)).num_rows()
+            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
                 f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
@@ -257,6 +273,14 @@ def assert_base_partitioned_ds():
     yield _assert_base_partitioned_ds
 
 
+@pytest.fixture
+def restore_dataset_context(request):
+    """Restore any DatasetContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+    yield
+    ray.data.context.DatasetContext._set_current(original)
+
+
 @pytest.fixture(params=[True, False])
 def use_push_based_shuffle(request):
     ctx = ray.data.context.DatasetContext.get_current()
@@ -302,16 +326,28 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture(params=[True])
-def enable_optimizer(request):
+@pytest.fixture
+def enable_optimizer():
     ctx = ray.data.context.DatasetContext.get_current()
     original_backend = ctx.new_execution_backend
     original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = request.param
-    ctx.optimizer_enabled = request.param
-    yield request.param
+    ctx.new_execution_backend = True
+    ctx.optimizer_enabled = True
+    yield
     ctx.new_execution_backend = original_backend
     ctx.optimizer_enabled = original_optimizer
+
+
+@pytest.fixture
+def enable_streaming_executor():
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    use_streaming_executor = ctx.use_streaming_executor
+    ctx.new_execution_backend = True
+    ctx.use_streaming_executor = True
+    yield
+    ctx.new_execution_backend = original_backend
+    ctx.use_streaming_executor = use_streaming_executor
 
 
 # ===== Pandas dataset formats =====

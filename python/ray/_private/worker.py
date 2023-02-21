@@ -44,7 +44,6 @@ else:
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
-import ray._private.memory_monitor as memory_monitor
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -426,7 +425,6 @@ class Worker:
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
-        self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -1355,15 +1353,19 @@ def init(
                 job_config = ray.job_config.JobConfig()
             job_config.set_runtime_env(runtime_env)
 
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
-
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
+
+    # NOTE(swang): We must set the node IP address *after* we determine whether
+    # this is an existing cluster or not. For Windows and OSX, the resolved IP
+    # is localhost for new clusters and the usual public IP for existing
+    # clusters.
+    if _node_ip_address is not None:
+        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
+    raylet_ip_address = node_ip_address
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1914,7 +1916,7 @@ def connect(
             it during startup as a command line argument.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
-        entrypoint: The name of the entrypoint script. Ignored unless the
+        entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
     """
     # Do some basic checking to make sure we didn't call ray.init twice.

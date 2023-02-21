@@ -8,9 +8,9 @@ import {
   Tooltip,
   Typography,
 } from "@material-ui/core";
-import FileCopyOutlined from "@material-ui/icons/FileCopyOutlined";
 import copy from "copy-to-clipboard";
 import React, { useState } from "react";
+import { RiFileCopyLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
 import { HelpInfo } from "../Tooltip";
 
@@ -121,7 +121,7 @@ export const MetadataContentField: React.FC<{
               size="small"
               className={classes.button}
             >
-              <FileCopyOutlined />
+              <RiFileCopyLine />
             </IconButton>
           </Tooltip>
         )}

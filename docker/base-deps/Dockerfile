@@ -11,7 +11,9 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.7.7
+ARG PYTHON_VERSION=3.7.16
+
+ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -42,14 +44,14 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         openssh-client \
         gnupg; fi) \
     && wget \
-        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
+        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=$PYTHON_VERSION \
+        libgcc-ng python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
@@ -75,9 +77,6 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     else sudo apt-get autoremove -y wget; \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
-    && sudo apt-get clean \
-    # Ensure all users are able to write to /home/ray because OpenShift uses a random UID when logging into
-    # pods. See #30959 for more context.
-    && chmod --recursive 777 /home/ray
+    && sudo apt-get clean
 
 WORKDIR $HOME

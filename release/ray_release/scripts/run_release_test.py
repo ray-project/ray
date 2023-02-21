@@ -1,6 +1,7 @@
 import os
 import sys
 from typing import Optional
+from pathlib import Path
 
 import click
 from ray_release.aws import maybe_fetch_api_token
@@ -73,7 +74,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 @click.option(
     "--env",
     default=None,
-    type=click.Choice(["prod", "staging"]),
+    # Get the names without suffixes of all files in "../environments"
+    type=click.Choice(
+        [x.stem for x in (Path(__file__).parent.parent / "environments").glob("*.env")]
+    ),
     help="Environment to use. Will overwrite environment used in test config.",
 )
 @click.option(

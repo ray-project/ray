@@ -166,6 +166,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init GCS task manager.
   InitGcsTaskManager();
 
+  // Init Monitor service.
+  InitMonitorServer();
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -180,6 +183,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   RecordMetrics();
 
@@ -344,8 +348,11 @@ void GcsServer::InitClusterTaskManager() {
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(
-      gcs_table_storage_, gcs_publisher_, *runtime_env_manager_, *function_manager_);
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
+                                                     gcs_publisher_,
+                                                     *runtime_env_manager_,
+                                                     *function_manager_,
+                                                     kv_manager_->GetInstance());
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -586,6 +593,13 @@ void GcsServer::InitGcsTaskManager() {
   rpc_server_.RegisterService(*task_info_service_);
 }
 
+void GcsServer::InitMonitorServer() {
+  monitor_server_ = std::make_unique<GcsMonitorServer>(gcs_node_manager_);
+  monitor_grpc_service_.reset(
+      new rpc::MonitorGrpcService(main_service_, *monitor_server_));
+  rpc_server_.RegisterService(*monitor_grpc_service_);
+}
+
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -741,6 +755,8 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "GcsTaskManager Event stats:\n\n"
+                  << gcs_task_manager_->GetIoContext().stats().StatsString() << "\n\n";
   }
 }
 

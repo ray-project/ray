@@ -4,7 +4,9 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import math
-from typing import Dict, List, Optional
+import time
+from collections import deque
+from typing import Dict, List, Optional, Deque, Union
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -15,12 +17,14 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats
 
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
+
+# A RefBundle or an exception / end of stream indicator.
+MaybeRefBundle = Union[RefBundle, Exception, None]
 
 
 class OpState:
@@ -28,15 +32,18 @@ class OpState:
 
     This tracks state to manage input and output buffering for StreamingExecutor and
     progress bars, which is separate from execution state internal to the operators.
+
+    Note: we use the `deque` data structure here because it is thread-safe, enabling
+    operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[List[RefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[List[RefBundle]] = inqueues
+        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
-        self.outqueue: List[RefBundle] = []
+        self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -52,9 +59,9 @@ class OpState:
         """Return the number of queued bundles across all inqueues."""
         return sum(len(q) for q in self.inqueues)
 
-    def num_active_tasks(self):
-        """Return the number of Ray futures pending for this operator."""
-        return self.op.num_active_work_refs()
+    def num_processing(self):
+        """Return the number of bundles currently in processing for this operator."""
+        return self.op.num_active_work_refs() + self.op.internal_queue_size()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -69,8 +76,9 @@ class OpState:
             self.progress_bar.set_description(self.summary_str())
 
     def summary_str(self) -> str:
-        queued = self.num_queued()
-        desc = f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
+        queued = self.num_queued() + self.op.internal_queue_size()
+        active = self.op.num_active_work_refs()
+        desc = f"{self.op.name}: {active} active, {queued} queued"
         suffix = self.op.progress_str()
         if suffix:
             desc += f", {suffix}"
@@ -80,9 +88,21 @@ class OpState:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.inqueues):
             if inqueue:
-                self.op.add_input(inqueue.pop(0), input_index=i)
+                self.op.add_input(inqueue.popleft(), input_index=i)
                 return
         assert False, "Nothing to dispatch"
+
+    def get_output_blocking(self) -> MaybeRefBundle:
+        """Get an item from this node's output queue, blocking as needed.
+
+        Returns:
+            The RefBundle from the output queue, or an error / end of stream indicator.
+        """
+        while True:
+            try:
+                return self.outqueue.popleft()
+            except IndexError:
+                time.sleep(0.01)
 
 
 def build_streaming_topology(
@@ -132,8 +152,7 @@ def build_streaming_topology(
             op_state.initialize_progress_bar(i)
             i += 1
 
-    # TODO: fill out stats.
-    return topology, DatasetStats(stages={}, parent=None)
+    return topology
 
 
 def process_completed_tasks(topology: Topology) -> None:
@@ -177,7 +196,10 @@ def process_completed_tasks(topology: Topology) -> None:
 
 
 def select_operator_to_run(
-    topology: Topology, cur_usage: ExecutionResources, limits: ExecutionResources
+    topology: Topology,
+    cur_usage: ExecutionResources,
+    limits: ExecutionResources,
+    ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -186,7 +208,11 @@ def select_operator_to_run(
 
     This is currently implemented by applying backpressure on operators that are
     producing outputs faster than they are consuming them `len(outqueue)`, as well as
-    operators with a large number of running tasks `num_active_tasks()`.
+    operators with a large number of running tasks `num_processing()`.
+
+    Note that memory limits also apply to the outqueue of the output operator. This
+    provides backpressure if the consumer is slow. However, once a bundle is returned
+    to the user, it is no longer tracked.
     """
 
     # Filter to ops that are eligible for execution.
@@ -196,8 +222,13 @@ def select_operator_to_run(
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
 
-    # To ensure liveness, allow at least 1 op to run regardless of limits.
-    if not ops and all(op.num_active_work_refs() == 0 for op in topology):
+    # To ensure liveness, allow at least 1 op to run regardless of limits. This is
+    # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
+    if (
+        ensure_at_least_one_running
+        and not ops
+        and all(op.num_active_work_refs() == 0 for op in topology)
+    ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [op for op, state in topology.items() if state.num_queued() > 0]
 
@@ -205,9 +236,9 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and active tasks for backpressure.
+    # Equally penalize outqueue length and num bundles processing for backpressure.
     return min(
-        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_active_tasks()
+        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
     )
 
 

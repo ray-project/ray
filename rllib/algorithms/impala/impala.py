@@ -36,12 +36,14 @@ from ray.rllib.utils.metrics import (
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
@@ -593,10 +595,16 @@ class Impala(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf: ImpalaConfig = config
+        else:
+            cf: ImpalaConfig = cls.get_default_config().update_from_dict(config)
 
-        eval_config = cf["evaluation_config"]
+        eval_config = cf.get_evaluation_config_object()
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -610,18 +618,18 @@ class Impala(Algorithm):
                     # from RolloutWorkers (n rollout workers map to m
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
-                    "CPU": cf["num_cpus_for_driver"] + cf["num_aggregation_workers"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                    "CPU": cf.num_cpus_for_local_worker + cf.num_aggregation_workers,
+                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                    **cf["custom_resources_per_worker"],
+                    "CPU": cf.num_cpus_per_worker,
+                    "GPU": cf.num_gpus_per_worker,
+                    **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["num_workers"])
+                for _ in range(cf.num_rollout_workers)
             ]
             + (
                 [
@@ -629,23 +637,16 @@ class Impala(Algorithm):
                         # Evaluation (remote) workers.
                         # Note: The local eval worker is located on the driver
                         # CPU or not even created iff >0 eval workers.
-                        "CPU": eval_config.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_config.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                        **eval_config.get(
-                            "custom_resources_per_worker",
-                            cf["custom_resources_per_worker"],
-                        ),
+                        "CPU": eval_config.num_cpus_per_worker,
+                        "GPU": eval_config.num_gpus_per_worker,
+                        **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf["evaluation_num_workers"])
+                    for _ in range(cf.evaluation_num_workers)
                 ]
-                if cf["evaluation_interval"]
+                if cf.evaluation_interval
                 else []
             ),
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
     def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
@@ -673,27 +674,28 @@ class Impala(Algorithm):
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
-        # Perform asynchronous sampling on all (remote) rollout workers.
-        if self.workers.num_healthy_remote_workers() > 0:
-            self.workers.foreach_worker_async(
-                lambda worker: worker.sample(),
-                healthy_only=True,
-            )
-            sample_batches: List[
-                Tuple[int, ObjectRef]
-            ] = self.workers.fetch_ready_async_reqs(
-                timeout_seconds=self._timeout_s_sampler_manager,
-                return_obj_refs=return_object_refs,
-            )
-        elif self.workers.local_worker() and self.config.create_env_on_local_worker:
-            # Sampling from the local worker
-            sample_batch = self.workers.local_worker().sample()
-            if return_object_refs:
-                sample_batch = ray.put(sample_batch)
-            sample_batches = [(0, sample_batch)]
-        else:
-            # Not much we can do. Return empty list and wait.
-            return []
+        with self._timers[SAMPLE_TIMER]:
+            if self.workers.num_healthy_remote_workers() > 0:
+                # Perform asynchronous sampling on all (remote) rollout workers.
+                self.workers.foreach_worker_async(
+                    lambda worker: worker.sample(),
+                    healthy_only=True,
+                )
+                sample_batches: List[
+                    Tuple[int, ObjectRef]
+                ] = self.workers.fetch_ready_async_reqs(
+                    timeout_seconds=self._timeout_s_sampler_manager,
+                    return_obj_refs=return_object_refs,
+                )
+            elif self.workers.local_worker() and self.config.create_env_on_local_worker:
+                # Sampling from the local worker
+                sample_batch = self.workers.local_worker().sample()
+                if return_object_refs:
+                    sample_batch = ray.put(sample_batch)
+                sample_batches = [(0, sample_batch)]
+            else:
+                # Not much we can do. Return empty list and wait.
+                return []
 
         return sample_batches
 

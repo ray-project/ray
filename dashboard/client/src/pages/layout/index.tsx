@@ -61,6 +61,20 @@ const useStyles = makeStyles((theme) => ({
   child: {
     flex: 1,
   },
+  newUI: {
+    fontWeight: 500,
+    color: "#036DCF",
+    backgroundColor: "#036DCF20",
+    padding: theme.spacing(0.5, 1),
+    margin: theme.spacing(-0.5),
+    borderRadius: 4,
+    width: "fit-content",
+  },
+  newUIMenuItem: {
+    "&:hover": {
+      backgroundColor: theme.palette.grey[200],
+    },
+  },
 }));
 
 const BasicLayout = ({
@@ -151,6 +165,15 @@ const BasicLayout = ({
               <ListItemText>METRICS</ListItemText>
             </ListItem>
           )}
+          <ListItem
+            button
+            className={classnames(classes.menuItem, classes.newUIMenuItem)}
+            onClick={() => navigate("/new")}
+          >
+            <ListItemText classes={{ primary: classes.newUI }}>
+              TRY THE NEW UI
+            </ListItemText>
+          </ListItem>
           <ListItem>
             <IconButton
               color="primary"

@@ -27,7 +27,7 @@ class _MockTrainer(Algorithm):
         )
 
     @classmethod
-    def default_resource_request(cls, config):
+    def default_resource_request(cls, config: AlgorithmConfig):
         return None
 
     @override(Algorithm)

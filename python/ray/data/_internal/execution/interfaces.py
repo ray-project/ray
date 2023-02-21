@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Tuple
+from typing import Dict, List, Optional, Iterable, Tuple, Callable
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
@@ -69,6 +69,12 @@ class RefBundle:
         for b in self.blocks:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
+
+    def __eq__(self, other) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return id(self)
 
 
 @dataclass
@@ -150,9 +156,30 @@ class ExecutionOptions:
     # node (node driving the execution).
     locality_with_output: bool = False
 
-    # Always preserve ordering of blocks, even if using operators that
-    # don't require it.
-    preserve_order: bool = True
+    # Set this to preserve the ordering between blocks processed by operators under the
+    # streaming executor. The bulk executor always preserves order.
+    preserve_order: bool = False
+
+    # Whether to enable locality-aware task dispatch to actors (on by default).
+    actor_locality_enabled: bool = True
+
+
+@dataclass
+class TaskContext:
+    """This describes the information of a task running block transform."""
+
+    # The index of task. Each task has a unique task index within the same
+    # operator.
+    task_idx: int
+
+
+# Block transform function applied by task and actor pools in MapOperator.
+MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+
+# Block transform function applied in AllToAllOperator.
+AllToAllTransformFn = Callable[
+    [List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]
+]
 
 
 class PhysicalOperator(Operator):
@@ -217,6 +244,13 @@ class PhysicalOperator(Operator):
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
+
+    def get_transformation_fn(self) -> Callable:
+        """Returns the underlying transformation function for this operator.
+
+        This is used by the physical plan optimizer for e.g. operator fusion.
+        """
+        raise NotImplementedError
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -293,6 +327,13 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_work_refs())
 
+    def internal_queue_size(self) -> int:
+        """If the operator has an internal input queue, return its size.
+
+        This is used to report tasks pending submission to actor pools.
+        """
+        return 0
+
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
         """Executor calls this when the given work is completed and local.
 
@@ -358,6 +399,13 @@ class Executor:
                 executor. These stats represent actions done to compute inputs.
         """
         raise NotImplementedError
+
+    def shutdown(self):
+        """Shutdown an executor, which may still be running.
+
+        This should interrupt execution and clean up any used resources.
+        """
+        pass
 
     def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far.

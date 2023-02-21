@@ -433,7 +433,11 @@ def wait_for_node(
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for node to startup.")
+    raise TimeoutError(
+        f"Timed out after {timeout} seconds while waiting for node to startup. "
+        f"Did not find socket name {node_plasma_store_socket_name} in the list "
+        "of object store socket names."
+    )
 
 
 def get_node_to_connect_for_driver(gcs_address, node_ip_address):
@@ -579,8 +583,11 @@ def resolve_ip_for_localhost(address: str):
     if not address:
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
-    # Make sure localhost isn't resolved to the loopback ip
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
+        # Clusters are disabled by default for OSX and Windows.
+        if not ray_constants.ENABLE_RAY_CLUSTER:
+            return address
+        # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
     else:
@@ -623,10 +630,10 @@ def node_ip_address_from_perspective(address: str):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
-    if sys.platform == "darwin" or sys.platform == "win32":
-        # Due to the mac osx/windows firewall,
-        # we use loopback ip as the ip address
-        # to prevent security popups.
+    if not ray_constants.ENABLE_RAY_CLUSTER:
+        # Use loopback IP as the local IP address to prevent bothersome
+        # firewall popups on OSX and Windows.
+        # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
 

@@ -10,7 +10,8 @@ from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
 
 
-def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
+@DeveloperAPI
+def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     """Converts a spec type input to the canonical format.
 
     The canonical format is either
@@ -34,23 +35,23 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     .. code-block:: python
         spec = ["foo", ("bar", "baz")]
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict({"foo": None, ("bar", "baz"): None})
 
         spec = {"foo": int, "bar": {"baz": None}}
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict(
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": None})}
         # )
 
         spec = {"foo": int, "bar": {"baz": str}}
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict(
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TypeSpec(str)})}
         # )
 
         spec = {"foo": int, "bar": {"baz": TorchTensorSpec("b,h")}}
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = SpecDict(
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TorchTensorSpec("b,h")})}
         # )
@@ -60,15 +61,15 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     .. code-block:: python
         spec = int
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = TypeSpec(int)
 
         spec = None
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = None
 
         spec = TorchTensorSpec("b,h")
-        output = _convert_to_canonical_format(spec)
+        output = convert_to_canonical_format(spec)
         # output = TorchTensorSpec("b,h")
 
     Args:
@@ -89,6 +90,9 @@ def _convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
             # if values are types or tuple of types, convert to TypeSpec
             if isinstance(spec[key], (type, tuple)):
                 spec[key] = TypeSpec(spec[key])
+            elif isinstance(spec[key], list):
+                # this enables nested conversion of none-canonical formats
+                spec[key] = convert_to_canonical_format(spec[key])
         return spec
 
     if isinstance(spec, type):
@@ -232,19 +236,20 @@ def check_input_specs(
                 spec = getattr(self, input_spec, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
                     raise ValueError(f"object {self} has no attribute {input_spec}.")
-                spec = _convert_to_canonical_format(spec)
-                checked_data = _validate(
-                    cls_instance=self,
-                    method=func,
-                    data=input_data,
-                    spec=spec,
-                    filter=filter,
-                    tag="input",
-                )
+                if spec is not None:
+                    spec = convert_to_canonical_format(spec)
+                    checked_data = _validate(
+                        cls_instance=self,
+                        method=func,
+                        data=input_data,
+                        spec=spec,
+                        filter=filter,
+                        tag="input",
+                    )
 
-                if filter and isinstance(checked_data, NestedDict):
-                    # filtering should happen regardless of cache
-                    checked_data = checked_data.filter(spec)
+                    if filter and isinstance(checked_data, NestedDict):
+                        # filtering should happen regardless of cache
+                        checked_data = checked_data.filter(spec)
 
             output_data = func(self, checked_data, **kwargs)
 
@@ -318,14 +323,15 @@ def check_output_specs(
                 spec = getattr(self, output_spec, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
                     raise ValueError(f"object {self} has no attribute {output_spec}.")
-                spec = _convert_to_canonical_format(spec)
-                _validate(
-                    cls_instance=self,
-                    method=func,
-                    data=output_data,
-                    spec=spec,
-                    tag="output",
-                )
+                if spec is not None:
+                    spec = convert_to_canonical_format(spec)
+                    _validate(
+                        cls_instance=self,
+                        method=func,
+                        data=output_data,
+                        spec=spec,
+                        tag="output",
+                    )
 
             if cache and func.__name__ not in self.__checked_output_specs_cache__:
                 self.__checked_output_specs_cache__[func.__name__] = True
@@ -336,3 +342,15 @@ def check_output_specs(
         return wrapper
 
     return decorator
+
+
+@DeveloperAPI
+def is_input_decorated(obj: object) -> bool:
+    """Returns True if the object is decorated with `check_input_specs`."""
+    return hasattr(obj, "__checked_input_specs__")
+
+
+@DeveloperAPI
+def is_output_decorated(obj: object) -> bool:
+    """Returns True if the object is decorated with `check_output_specs`."""
+    return hasattr(obj, "__checked_output_specs__")
