@@ -231,13 +231,13 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _get_current_usage(self, topology: Topology) -> ExecutionResources:
         cur_usage = ExecutionResources()
+        cur_usage.object_store_memory = 0
         for op, state in topology.items():
             cur_usage = cur_usage.add(op.current_resource_usage())
             if isinstance(op, InputDataBuffer):
                 continue  # Don't count input refs towards dynamic memory usage.
             for bundle in state.outqueue:
-                if cur_usage.object_store_memory:
-                    cur_usage.object_store_memory += bundle.size_bytes()
+                cur_usage.object_store_memory += bundle.size_bytes()
         return cur_usage
 
     def _report_current_usage(
