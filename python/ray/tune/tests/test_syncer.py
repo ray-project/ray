@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import tempfile
@@ -746,12 +747,14 @@ def test_artifact_syncing_on_save_restore(ray_start_2_cpus, temp_data_dirs, tmp_
             artifact_data = f.read()
             assert artifact_data.split("\n")[:-1] == ["test"] * i
 
+    # Check that artifacts are syncd when a trainable is restored.
+    shutil.rmtree(local_dir_1)
     restored_trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_2)
     )
 
-    ray.get(restored_trainable.restore.remote(checkpoint_dir))
-    # Should have synced down artifacts as well upon restore
+    new_ckpt_dir = str(local_dir_2 / Path(checkpoint_dir).relative_to(local_dir_1))
+    ray.get(restored_trainable.restore.remote(new_ckpt_dir))
     with open(os.path.join(local_dir_2, "artifact.txt"), "r") as f:
         artifact_data = f.read()
         assert artifact_data.split("\n")[:-1] == ["test"] * 3
