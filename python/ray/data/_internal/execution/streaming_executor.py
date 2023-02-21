@@ -1,7 +1,7 @@
 import threading
 import time
 import os
-from typing import Iterator, Optional, Dict
+from typing import Iterator, Optional
 
 import ray
 from ray.data.context import DatasetContext
@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor_state import (
     Topology,
+    TopologyResourceUsage,
     DownstreamMemoryInfo,
     OpState,
     build_streaming_topology,
@@ -182,25 +183,23 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
-        cur_usage, downstream_usage = self._get_current_usage(topology)
+        cur_usage = self._get_current_usage(topology)
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(
             topology,
             cur_usage,
             limits,
-            downstream_usage,
             ensure_at_least_one_running=self._consumer_idling(),
         )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage, downstream_usage = self._get_current_usage(topology)
+            cur_usage = self._get_current_usage(topology)
             op = select_operator_to_run(
                 topology,
                 cur_usage,
                 limits,
-                downstream_usage,
                 ensure_at_least_one_running=self._consumer_idling(),
             )
 
@@ -232,9 +231,7 @@ class StreamingExecutor(Executor, threading.Thread):
             else cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_current_usage(
-        self, topology: Topology
-    ) -> (ExecutionResources, Dict[PhysicalOperator, DownstreamMemoryInfo]):
+    def _get_current_usage(self, topology: Topology) -> TopologyResourceUsage:
         downstream_usage = {}
         cur_usage = ExecutionResources()
         # Iterate from last to first operator.
@@ -253,7 +250,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     object_store_memory=cur_usage.object_store_memory
                 ),
             )
-        return cur_usage, downstream_usage
+        return TopologyResourceUsage(cur_usage, downstream_usage)
 
     def _report_current_usage(
         self, cur_usage: ExecutionResources, limits: ExecutionResources

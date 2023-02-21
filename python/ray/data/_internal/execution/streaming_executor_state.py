@@ -29,6 +29,17 @@ MaybeRefBundle = Union[RefBundle, Exception, None]
 
 
 @dataclass
+class TopologyResourceUsage:
+    """Snapshot of resource usage in a `Topology` object."""
+
+    # The current usage of the topology (summed across all operators and queues).
+    overall: ExecutionResources
+
+    # The downstream resource usage by operator.
+    downstream_memory_usage: Dict[PhysicalOperator, "DownstreamMemoryInfo"]
+
+
+@dataclass
 class DownstreamMemoryInfo:
     """Mem stats of an operator and its downstream operators in a topology."""
 
@@ -209,9 +220,8 @@ def process_completed_tasks(topology: Topology) -> None:
 
 def select_operator_to_run(
     topology: Topology,
-    cur_usage: ExecutionResources,
+    cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
-    downstream_memory_usage: Dict[PhysicalOperator, DownstreamMemoryInfo],
     ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
@@ -227,13 +237,13 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
+    assert isinstance(cur_usage, TopologyResourceUsage), cur_usage
 
     # Filter to ops that are eligible for execution.
     ops = [
         op
         for op, state in topology.items()
-        if state.num_queued() > 0
-        and _execution_allowed(op, cur_usage, limits, downstream_memory_usage[op])
+        if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
@@ -258,9 +268,8 @@ def select_operator_to_run(
 
 def _execution_allowed(
     op: PhysicalOperator,
-    global_usage: ExecutionResources,
+    global_usage: TopologyResourceUsage,
     global_limits: ExecutionResources,
-    downstream_memory_usage: DownstreamMemoryInfo,
 ) -> bool:
     """Return whether an operator is allowed to execute given resource usage.
 
@@ -268,19 +277,18 @@ def _execution_allowed(
         op: The operator to check.
         global_usage: Resource usage across the entire topology.
         global_limits: Execution resource limits.
-        downstream_memory_usage: Memory usage information about this and downstream
-            ops, which is used to better determine memory throttling.
 
     Returns:
         Whether the op is allowed to run.
     """
+    assert isinstance(global_usage, TopologyResourceUsage), global_usage
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
     # allows operators with non-integral requests to slightly overshoot the limit.
     global_floored = ExecutionResources(
-        cpu=math.floor(global_usage.cpu or 0),
-        gpu=math.floor(global_usage.gpu or 0),
-        object_store_memory=global_usage.object_store_memory,
+        cpu=math.floor(global_usage.overall.cpu or 0),
+        gpu=math.floor(global_usage.overall.gpu or 0),
+        object_store_memory=global_usage.overall.object_store_memory,
     )
     inc = op.incremental_resource_usage()
     inc_indicator = ExecutionResources(
@@ -301,9 +309,8 @@ def _execution_allowed(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
-    downstream_limit = global_limits.scale(downstream_memory_usage.topology_fraction)
-    downstream_memory_ok = downstream_memory_usage.resources.satisfies_limit(
-        downstream_limit
-    )
+    downstream_usage = global_usage.downstream_memory_usage[op]
+    downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
+    downstream_memory_ok = downstream_usage.resources.satisfies_limit(downstream_limit)
 
     return global_ok_sans_memory and downstream_memory_ok
