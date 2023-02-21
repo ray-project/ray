@@ -1135,7 +1135,7 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = in_blocks._read_stage_name or "read"
+    name = in_blocks._read_stage_name or "Read"
     if isinstance(name, list):
         name = "->".join(name)
 

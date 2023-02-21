@@ -418,7 +418,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 ):
                     blocks, metas = block_bundles.pop()
                     # TODO(swang): Support block splitting for compute="actors".
-                    ref, meta_ref = worker.option(name=name).map_block_nosplit.remote(
+                    ref, meta_ref = worker.map_block_nosplit.remote(
                         [f for meta in metas for f in meta.input_files],
                         len(blocks),
                         *(blocks + fn_args),
