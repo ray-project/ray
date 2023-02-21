@@ -70,7 +70,7 @@ def scale_cluster_up(num_cpus):
 def run_one(total_actors, cpus_per_actor, no_wait):
     total_cpus = cpus_per_actor * total_actors + psutil.cpu_count()
     total_cpus = int(math.ceil(total_cpus))
-    scale_cluster_up(total_cpus)
+    # scale_cluster_up(total_cpus)
 
     actor_launch_start = perf_counter()
     actors = test_max_actors_launch(cpus_per_actor, total_actors)
