@@ -209,7 +209,7 @@ class AnyscaleJobManager:
                         msg = "... job not yet running ..."
                     logger.info(
                         f"{msg}({int(now - start_time)} seconds, "
-                        f"{int(timeout_at - now)} seconds to timeout) ..."
+                        f"{int(timeout_at - now)} seconds to job timeout) ..."
                     )
                     next_status += 30
 
