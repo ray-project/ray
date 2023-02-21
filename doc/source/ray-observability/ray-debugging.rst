@@ -13,7 +13,7 @@ drop into a PDB session that you can then use to:
 
 .. warning::
 
-    The Ray Debugger is an experimental feature and may be unstable. Interfaces are subject to change.
+    The Ray Debugger is an experimental feature and is currently unstable. Interfaces are subject to change.
 
 Getting Started
 ---------------
