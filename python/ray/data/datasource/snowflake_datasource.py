@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -15,6 +15,9 @@ from ray.data.datasource.dbapi2_datasource import (
 )
 
 import pandas
+
+if TYPE_CHECKING:
+    from snowflake.connector.result_batch import ResultBatch
 
 logger = logging.getLogger(__name__)
    
@@ -61,9 +64,7 @@ def _snowflake_load_private_key(props: Dict) -> None:
         )
        
 @DeveloperAPI
-class SnowflakeConnector(DBAPI2Connector):
-    from snowflake.connector.result_batch import ResultBatch
-    
+class SnowflakeConnector(DBAPI2Connector):    
     def __init__(self, **connect_properties):
         from snowflake.connector import connect as snowflake_connect_fn
         _snowflake_load_private_key(connect_properties)
@@ -82,13 +83,13 @@ class SnowflakeConnector(DBAPI2Connector):
         else:
             return super()._execute(query, data=data, )
             
-    def query_batches(self, query:str, **kwargs) -> List[ResultBatch]:
+    def query_batches(self, query:str, **kwargs) -> List['ResultBatch']:
         cursor = self.execute(query, **kwargs)
         batches = cursor.get_result_batches()
         batches = [b for b in batches if b.rowcount > 0]
         return batches
     
-    def read_batch(self, batch: ResultBatch, **kwargs) -> Block:
+    def read_batch(self, batch: 'ResultBatch', **kwargs) -> Block:
         return batch.to_pandas()    
             
 @DeveloperAPI

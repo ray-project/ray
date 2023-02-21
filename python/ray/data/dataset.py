@@ -2595,7 +2595,8 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
         )
-        
+    
+    @ConsumptionAPI 
     def write_dbapi2(
         self,
         connect_fn: Callable,
@@ -2606,6 +2607,28 @@ class Dataset(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         **dbapi2_kwargs: Dict[str,Any]
     ) -> None:
+        """Write the dataset to a Python DB API 2 datasource.
+        
+        Examples:
+            >>> import ray
+            >>> from sqlite3 import connect
+            >>> import pandas as pd
+            >>> rows = [{"name": f"DBAPI2 test {key}", "key": key} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(rows))
+            >>> ds.write_dbapi2( # doctest: +SKIP
+            >>>     connect, # doctest: +SKIP
+            >>>     dict(user='MY_USER', password='MY_PASSWORD'), # doctest: +SKIP
+            >>>     table="mydatabase.myschema.mytable", # doctest: +SKIP
+            >>> ) # doctest: +SKIP
+            
+        Args:
+            connect_fn: The DB API 2 compliant connect function.
+            connect_properties: The DB API 2 connection properties. For more details see the connection
+            properties documentation for yoru database.
+            table: The name of table to write to.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            dbapi2_kwargs: Kwargs to pass to the underlying DBA API 2 execute method.
+        """
         from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource
         connector = DBAPI2Connector(connect_fn, **connect_properties)
         datasource = DBAPI2Datasource(connector)
@@ -2617,6 +2640,7 @@ class Dataset(Generic[T]):
             **dbapi2_kwargs
         )
     
+    @ConsumptionAPI
     def write_databricks(
         self,
         connect_properties: Dict[str, Any] = {},
@@ -2628,7 +2652,41 @@ class Dataset(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         parquet_kwargs: Dict[str,Any] = {},
         **databricks_kwargs: Dict[str,Any]
-    ) -> None:  
+    ) -> None: 
+        """Write the dataset to a Databricks SQL datasource.
+        
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> rows = [{"name": f"Databricks test {key}", "key": key} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(rows))
+            >>> ds.write_databricks( # doctest: +SKIP
+            >>>     dict(user='MY_USER', password='MY_PASSWORD'), # # doctest: +SKIP
+            >>>     table="mydatabase.myschema.mytable", # doctest: +SKIP
+            >>>     stage_uri='s3://mybucket/stage_data', # doctest: +SKIP
+            >>>     credential='SHBDJHSJDHJS...SJGDHJG' # doctest: +SKIP
+            >>> ) # doctest: +SKIP
+            
+        Args:
+            connect_properties: The Databricks connection properties. For more details see the
+            [Databricks documentation](https://docs.databricks.com/dev-tools/python-sql-connector.html#get-started).
+            database: The name of the database. This database must exist otherwise
+                ValueError will be raised.
+            table: The name of table to write to.
+            mode: How to write to Databricks. 'copyinto' requires an intermediate stage_uri pointing to a 
+            cloud storage location such as gcs or s3 that is accessible both to databricks and the ray cluster. 
+            This mode is recommended for any significantly large dataset size, as it uses parquet files to send data.  
+            Mode 'direct' will use 'INSERT INTO' statements with string values to insert data directly into the table. Mode
+            'stage' will insert each partition into a staging table using 'INSERT INTO' and then copy the staging tables
+            into the destination table.
+            stage_uri: The URI of the cloud staging location. This is the same parameter that is used by write_parquet. 
+            parquet_kwargs: Additional kwargs that will be passed to the write_parquet method.
+            credential: The credential used to access the cloud storage using unity catalog. For more information
+            on how to configure cloud storage, see [How do you configure cloud object storage for Databricks?
+](https://docs.databricks.com/storage/index.html#how-do-you-configure-cloud-object-storage-for-databricks)
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            databricks_kwargs: Kwargs to pass to the underlying Databricks SQL execute method.
+        """
         from ray.data.datasource import DatabricksConnector, DatabricksDatasource
         connector = DatabricksConnector(**connect_properties)
         datasource = DatabricksDatasource(connector)
@@ -2643,6 +2701,7 @@ class Dataset(Generic[T]):
             **databricks_kwargs
         )
  
+    @ConsumptionAPI
     def write_snowflake(
         self,
         connect_properties: Dict[str, Any] = {},
@@ -2651,6 +2710,25 @@ class Dataset(Generic[T]):
         ray_remote_args: Dict[str, Any] = None,
         **snowflake_kwargs
     ) -> None:
+        """Write the dataset to a Snowflake datasource.
+        
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> rows = [{"name": f"Snowflake test {key}", "key": key} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(rows))
+            >>> ds.write_snowflake( # doctest: +SKIP
+            >>>     dict(user='MY_USER', password='MY_PASSWORD'), # doctest: +SKIP
+            >>>     table="mydatabase.myschema.mytable", # doctest: +SKIP
+            >>> ) # doctest: +SKIP
+            
+        Args:
+            connect_properties: The Snowflake connection properties. For more details see the
+            [Snowflake documentation](https://docs.snowflake.com/en/user-guide/python-connector-example#connecting-to-snowflake).
+            table: The name of table to write to.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            snowflake_kwargs: Kwargs to pass to the underlying Snowflake write_pandas method.
+        """
         from ray.data.datasource import SnowflakeConnector, SnowflakeDatasource 
         connector = SnowflakeConnector(**connect_properties)
         datasource = SnowflakeDatasource(connector)
@@ -2660,7 +2738,8 @@ class Dataset(Generic[T]):
             ray_remote_args=ray_remote_args,
             **snowflake_kwargs
         )
-        
+    
+    @ConsumptionAPI   
     def write_mongo(
         self,
         uri: str,
@@ -2693,7 +2772,6 @@ class Dataset(Generic[T]):
             >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
             >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
             >>> ds.write_mongo( # doctest: +SKIP
-            >>>     MongoDatasource(), # doctest: +SKIP
             >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501 # doctest: +SKIP
             >>>     database="my_db", # doctest: +SKIP
             >>>     collection="my_collection", # doctest: +SKIP
