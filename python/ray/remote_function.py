@@ -170,7 +170,7 @@ class RemoteFunction:
             max_retries: This specifies the maximum number of times that the remote
                 function should be rerun when the worker process executing it
                 crashes unexpectedly. The minimum valid value is 0,
-                the default is 4 (default), and a value of -1 indicates
+                the default is 3 (default), and a value of -1 indicates
                 infinite retries.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
