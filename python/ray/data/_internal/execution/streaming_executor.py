@@ -17,7 +17,6 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.streaming_executor_state import (
     Topology,
     TopologyResourceUsage,
-    DownstreamMemoryInfo,
     OpState,
     build_streaming_topology,
     process_completed_tasks,
@@ -183,7 +182,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
-        cur_usage = self._get_current_usage(topology)
+        cur_usage = TopologyResourceUsage.of(topology)
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(
             topology,
@@ -195,7 +194,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage = self._get_current_usage(topology)
+            cur_usage = TopologyResourceUsage.of(topology)
             op = select_operator_to_run(
                 topology,
                 cur_usage,
@@ -231,36 +230,15 @@ class StreamingExecutor(Executor, threading.Thread):
             else cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_current_usage(self, topology: Topology) -> TopologyResourceUsage:
-        downstream_usage = {}
-        cur_usage = ExecutionResources()
-        # Iterate from last to first operator.
-        for op, state in list(topology.items())[::-1]:
-            cur_usage = cur_usage.add(op.current_resource_usage())
-            # Don't count input refs towards dynamic memory usage, as they have been
-            # pre-created already outside this execution.
-            if not isinstance(op, InputDataBuffer):
-                for bundle in state.outqueue:
-                    cur_usage.object_store_memory += bundle.size_bytes()
-            # Subtract one from denom to account for input buffer.
-            f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
-            downstream_usage[op] = DownstreamMemoryInfo(
-                topology_fraction=min(1.0, f),
-                resources=ExecutionResources(
-                    object_store_memory=cur_usage.object_store_memory
-                ),
-            )
-        return TopologyResourceUsage(cur_usage, downstream_usage)
-
     def _report_current_usage(
-        self, cur_usage: ExecutionResources, limits: ExecutionResources
+        self, cur_usage: TopologyResourceUsage, limits: ExecutionResources
     ) -> None:
         if self._global_info:
             self._global_info.set_description(
                 "Resource usage vs limits: "
-                f"{cur_usage.cpu}/{limits.cpu} CPU, "
-                f"{cur_usage.gpu}/{limits.gpu} GPU, "
-                f"{cur_usage.object_store_memory_str()}/"
+                f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
+                f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
+                f"{cur_usage.overall.object_store_memory_str()}/"
                 f"{limits.object_store_memory_str()} object_store_memory"
             )
         if self._output_info:

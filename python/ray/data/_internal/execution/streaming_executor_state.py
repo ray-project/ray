@@ -30,13 +30,40 @@ MaybeRefBundle = Union[RefBundle, Exception, None]
 
 @dataclass
 class TopologyResourceUsage:
-    """Snapshot of resource usage in a `Topology` object."""
+    """Snapshot of resource usage in a `Topology` object.
+
+    The stats here can be computed on the fly from any `Topology`; this class
+    serves only a convenience wrapper to access the current usage snapshot.
+    """
 
     # The current usage of the topology (summed across all operators and queues).
     overall: ExecutionResources
 
     # The downstream resource usage by operator.
     downstream_memory_usage: Dict[PhysicalOperator, "DownstreamMemoryInfo"]
+
+    @staticmethod
+    def of(topology: Topology) -> "TopologyResourceUsage":
+        """Calculate the resource usage of the given topology."""
+        downstream_usage = {}
+        cur_usage = ExecutionResources(0, 0, 0)
+        # Iterate from last to first operator.
+        for op, state in list(topology.items())[::-1]:
+            cur_usage = cur_usage.add(op.current_resource_usage())
+            # Don't count input refs towards dynamic memory usage, as they have been
+            # pre-created already outside this execution.
+            if not isinstance(op, InputDataBuffer):
+                for bundle in state.outqueue:
+                    cur_usage.object_store_memory += bundle.size_bytes()
+            # Subtract one from denom to account for input buffer.
+            f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
+            downstream_usage[op] = DownstreamMemoryInfo(
+                topology_fraction=min(1.0, f),
+                resources=ExecutionResources(
+                    object_store_memory=cur_usage.object_store_memory
+                ),
+            )
+        return TopologyResourceUsage(cur_usage, downstream_usage)
 
 
 @dataclass
