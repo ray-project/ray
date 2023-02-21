@@ -114,12 +114,22 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
+            first_elem = next(iter(col), None)
             if col_name == TENSOR_COLUMN_NAME or isinstance(
-                next(iter(col), None), np.ndarray
+                first_elem, np.ndarray
             ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
-
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
+            elif isinstance(first_elem, dict):
+                from ray.data.extensions.tensor_extension import ArrowTensorArray
+                new_dict = {}
+                for k, v in first_elem.items():
+                    if isinstance(v, np.ndarray):
+                        new_dict[k] = ArrowTensorArray.from_numpy(v)
+                    else:
+                        new_dict[k] = v
+                columns[col_name] = [new_dict]
+        print("===> final columns to convert:", columns)
         return pyarrow.Table.from_pydict(columns)
 
     @staticmethod

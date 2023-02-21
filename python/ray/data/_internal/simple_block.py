@@ -96,19 +96,6 @@ class SimpleBlockAccessor(BlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
 
-        # If any of the columns contain dict values, passing the input dict
-        # `self._items` directly into the `pd.DataFrame()` constructor will
-        # result in the DataFrame parsing the entire input dict as a single
-        # column. To work around this, we examine the first row to check
-        # for any dict values; if any are found, we use `pd.json_normalize()`
-        # instead to build the DataFrame while maintaining the dict structure
-        # of the column values.
-        if self._items:
-            first_row = self._items[0]
-            if isinstance(first_row, dict) and any(
-                isinstance(value, dict) for value in first_row.values()
-            ):
-                return pandas.json_normalize(self._items, max_level=0)
         return pandas.DataFrame({"value": self._items})
 
     def to_numpy(
