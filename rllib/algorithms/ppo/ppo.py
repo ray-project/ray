@@ -47,9 +47,6 @@ if TYPE_CHECKING:
     from ray.rllib.core.learner.learner import Learner
 
 
-if TYPE_CHECKING:
-    from ray.rllib.core.rl_module import RLModule
-
 logger = logging.getLogger(__name__)
 
 

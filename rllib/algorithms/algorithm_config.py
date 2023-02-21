@@ -2177,32 +2177,6 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
-        rl_module_class: Optional[Type] = NotProvided,
-        _enable_rl_module_api: bool = True,
-    ) -> "AlgorithmConfig":
-        """Sets the config's RLModule settings.
-
-        Args:
-            rl_module_class: The RLModule class to use for this config.
-            _enable_rl_module_api: Whether to enable the RLModule API for this config.
-                By default if you call `config.rl_module(rl_module=MyRLModule)`, the
-                RLModule API will be enabled. If you want to disable it, you can call
-                `config.rl_module(_enable_rl_module_api=False)`.
-
-        Returns:
-            This updated AlgorithmConfig object.
-        """
-        if rl_module_class is not NotProvided:
-            self.rl_module_class = rl_module_class
-
-        self._enable_rl_module_api = _enable_rl_module_api
-
-        return self
-
-    @ExperimentalAPI
-    def rl_module(
-        self,
-        *,
         rl_module_spec: Optional[ModuleSpec] = NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
