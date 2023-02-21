@@ -28,9 +28,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(
-    lambda: DownstreamMemoryInfo(0, ExecutionResources())
-)
+EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(lambda: DownstreamMemoryInfo(0, 0))
 NO_USAGE = TopologyResourceUsage(ExecutionResources(), EMPTY_DOWNSTREAM_USAGE)
 
 
@@ -342,8 +340,45 @@ def test_calculate_topology_usage():
     assert usage.downstream_memory_usage[o3].topology_fraction == 0.5, usage
 
 
-def test_downstream_aware_throttling():
-    raise NotImplementedError
+def test_execution_allowed_downstream_aware_memory_throttling():
+    op = InputDataBuffer([])
+    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    # Below global.
+    assert _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(1, 1000)},
+        ),
+        ExecutionResources(object_store_memory=1100),
+    )
+    # Above global.
+    assert not _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(1, 1000)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
+    # Above global, but below downstream quota of 50%.
+    assert _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(0.5, 400)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
+    # Above global, and above downstream quota of 50%.
+    assert not _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(0.5, 600)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
 
 
 if __name__ == "__main__":
