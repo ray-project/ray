@@ -317,6 +317,35 @@ def test_configure_output_locality():
     )
 
 
+def test_calculate_topology_usage():
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2.current_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=5, object_store_memory=500)
+    )
+    o3.current_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=10, object_store_memory=1000)
+    )
+    topo = build_streaming_topology(o3, ExecutionOptions())
+    inputs[0].size_bytes = MagicMock(return_value=200)
+    topo[o2].outqueue = [inputs[0]]
+    usage = TopologyResourceUsage.of(topo)
+    assert len(usage.downstream_memory_usage) == 3, usage
+    assert usage.overall == ExecutionResources(15, 0, 1700)
+    assert usage.downstream_memory_usage[o1].object_store_memory == 1700, usage
+    assert usage.downstream_memory_usage[o1].topology_fraction == 1, usage
+    assert usage.downstream_memory_usage[o2].object_store_memory == 1700, usage
+    assert usage.downstream_memory_usage[o2].topology_fraction == 1, usage
+    assert usage.downstream_memory_usage[o3].object_store_memory == 1000, usage
+    assert usage.downstream_memory_usage[o3].topology_fraction == 0.5, usage
+
+
+def test_downstream_aware_throttling():
+    raise NotImplementedError
+
+
 if __name__ == "__main__":
     import sys
 

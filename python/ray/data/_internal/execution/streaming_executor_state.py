@@ -59,9 +59,7 @@ class TopologyResourceUsage:
             f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
             downstream_usage[op] = DownstreamMemoryInfo(
                 topology_fraction=min(1.0, f),
-                resources=ExecutionResources(
-                    object_store_memory=cur_usage.object_store_memory
-                ),
+                object_store_memory=cur_usage.object_store_memory,
             )
         return TopologyResourceUsage(cur_usage, downstream_usage)
 
@@ -74,7 +72,7 @@ class DownstreamMemoryInfo:
     # graph would have fraction `0.25`.
     topology_fraction: float
     # The resources used by this operator and operators downstream of this operator.
-    resources: ExecutionResources
+    object_store_memory: float
 
 
 class OpState:
@@ -338,6 +336,8 @@ def _execution_allowed(
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
     downstream_usage = global_usage.downstream_memory_usage[op]
     downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
-    downstream_memory_ok = downstream_usage.resources.satisfies_limit(downstream_limit)
+    downstream_memory_ok = ExecutionResources(
+        object_store_memory=downstream_usage.object_store_memory
+    ).satisfies_limit(downstream_limit)
 
     return global_ok_sans_memory and downstream_memory_ok
