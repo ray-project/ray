@@ -8,6 +8,7 @@ document.getElementsByClassName("announcement")[0].classList.remove("header-item
 // top bar that ships with the sphinx-book-theme.
 document.getElementsByClassName("header-article")[0].classList.remove("sticky-top")
 document.getElementsByClassName("announcement")[0].classList.add("sticky-top")
+document.getElementsByClassName("bd-toc")[0].classList.add("sticky-top")
 
 // Get the right relative URL for a given path
 function getNavURL(url) {
