@@ -15,15 +15,17 @@
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
+   :show-inheritance:
 
    {% block methods %}
    {% if methods %}
    .. rubric:: {{ _('Methods') }}
 
    .. autosummary::
+      :toctree:
 
    {% for item in methods %}
-      ~{{ name }}.{{ item }}
+      {{ item | filter_out_undoc_class_members(name, module) }}
    {%- endfor %}
 
    {% endif %}
@@ -35,6 +37,7 @@
    .. rubric:: {{ _('Attributes') }}
 
    .. autosummary::
+      :toctree:
 
    {% for item in attributes %}
       ~{{ name }}.{{ item }}

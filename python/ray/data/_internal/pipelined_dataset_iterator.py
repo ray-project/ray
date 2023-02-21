@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
+import numpy as np
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, Iterator
 
-from ray.data import Dataset
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
-    import tensorflow as tf
     import torch
     from ray.data import DatasetPipeline
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
@@ -23,9 +22,10 @@ class PipelinedDatasetIterator(DatasetIterator):
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset_pipeline})"
 
-    def _get_next_dataset(self) -> "Dataset":
+    def _get_next_dataset(self) -> "DatasetPipeline":
         if self._epoch_iterator is None:
             self._epoch_iterator = self._base_dataset_pipeline.iter_epochs()
+
         ds = next(self._epoch_iterator)
         return ds
 
@@ -57,47 +57,21 @@ class PipelinedDatasetIterator(DatasetIterator):
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         drop_last: bool = False,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator["TorchTensorBatchType"]:
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
 
         ds = self._get_next_dataset()
-        for batch in ds.iter_batches(
+        return ds.iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
             drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_torch_tensor_batch(
-                batch,
-                dtypes=dtypes,
-                device=device,
-            )
-
-    def to_tf(
-        self,
-        feature_columns: Union[str, List[str]],
-        label_columns: Union[str, List[str]],
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: int = 1,
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-    ) -> "tf.data.Dataset":
-        ds = self._get_next_dataset()
-        return Dataset.to_tf(
-            ds,
-            feature_columns,
-            label_columns,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            drop_last=drop_last,
+            collate_fn=collate_fn,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )

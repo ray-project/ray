@@ -20,4 +20,4 @@ It assumes that the environment is a MultiAgent Chess environment, that has a di
 ## References
 
 - AlphaZero: https://arxiv.org/abs/1712.01815
-- LeelaChessZero: https://lczero.org/dev/
+- LeelaChessZero: https://github.com/LeelaChessZero/lc0

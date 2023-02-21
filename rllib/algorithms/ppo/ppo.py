@@ -144,6 +144,10 @@ class PPOConfig(PGConfig):
             )
 
             return PPOTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
+
+            return PPOTfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 

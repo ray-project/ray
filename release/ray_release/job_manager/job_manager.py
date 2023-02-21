@@ -5,10 +5,13 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
 from ray_release.logger import logger
-from ray_release.util import ANYSCALE_HOST, exponential_backoff_retry
+from ray_release.util import (
+    ANYSCALE_HOST,
+    exponential_backoff_retry,
+)
 
 if TYPE_CHECKING:
-    from ray.job_submission import JobStatus, JobSubmissionClient  # noqa: F401
+    from ray.job_submission import JobSubmissionClient  # noqa: F401
 
 
 class JobManager:
