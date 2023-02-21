@@ -3,9 +3,7 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner, ImpalaHPs
-from ray.rllib.algorithms.ppo.tests.test_ppo_rl_module import get_expected_model_config
 from ray.rllib.core.testing.utils import do_rollout_single_agent
-from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
@@ -31,7 +29,9 @@ class TestImpalaTfLearner(unittest.TestCase):
                 action_space=env.action_space,
                 model_config=model_config,
             ),
-            learner_hyperparameters=ImpalaHPs(rollout_frag_or_episode_len=episode_length),
+            learner_hyperparameters=ImpalaHPs(
+                rollout_frag_or_episode_len=episode_length
+            ),
             optimizer_config={"lr": 5e-4, "grad_clip": 40.0},
         )
         learner.build()

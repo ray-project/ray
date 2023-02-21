@@ -3,10 +3,6 @@ from typing import Dict, List, Union
 
 import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
-from ray.rllib.evaluation.postprocessing import (
-    Postprocessing,
-    compute_gae_for_sample_batch,
-)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
@@ -36,7 +32,6 @@ class ImpalaTfPolicyWithRLModule(
     EntropyCoeffSchedule,
     EagerTFPolicyV2,
 ):
-
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
         # TODO: Move into Policy API, if needed at all here. Why not move this into
@@ -66,7 +61,9 @@ class ImpalaTfPolicyWithRLModule(
         train_batch[SampleBatch.TERMINATEDS]
 
         seqs_len = train_batch.get(SampleBatch.SEQ_LENS)
-        rollout_frag_or_episode_len = self.config["rollout_fragment_length"] if not seqs_len else None
+        rollout_frag_or_episode_len = (
+            self.config["rollout_fragment_length"] if not seqs_len else None
+        )
         drop_last = self.config["vtrace_drop_last_ts"]
 
         fwd_out = model.forward_train(train_batch)
@@ -106,12 +103,18 @@ class ImpalaTfPolicyWithRLModule(
 
         # how to compute discouts?
         # should they be pre computed?
-        discounts_time_major = (1. - tf.cast(make_time_major(
-            train_batch[SampleBatch.TERMINATEDS],
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
-            drop_last=drop_last,
-        ), dtype=tf.float32)) * self.config["gamma"]
+        discounts_time_major = (
+            1.0
+            - tf.cast(
+                make_time_major(
+                    train_batch[SampleBatch.TERMINATEDS],
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=seqs_len,
+                    drop_last=drop_last,
+                ),
+                dtype=tf.float32,
+            )
+        ) * self.config["gamma"]
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
@@ -120,7 +123,7 @@ class ImpalaTfPolicyWithRLModule(
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
-            discounts=discounts_time_major
+            discounts=discounts_time_major,
         )
 
         # The policy gradients loss.
@@ -133,15 +136,22 @@ class ImpalaTfPolicyWithRLModule(
         mean_vf_loss = 0.5 * tf.reduce_mean(tf.math.pow(delta, 2.0))
 
         # The entropy loss.
-        entropy_loss = - tf.reduce_sum(target_actions_logp_time_major)
+        entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)
 
         # The summed weighted loss.
         total_loss = (
-            pi_loss + vf_loss * self.config["vf_loss_coeff"] + entropy_loss * self.entropy_coeff
+            pi_loss
+            + vf_loss * self.config["vf_loss_coeff"]
+            + entropy_loss * self.entropy_coeff
         )
-        self.stats = {"total_loss": total_loss, "pi_loss": mean_pi_loss, "vf_loss": mean_vf_loss,
-                       "values" : values_time_major, "entropy_loss": entropy_loss,
-                       "vtrace_adjusted_target_values": vtrace_adjusted_target_values}
+        self.stats = {
+            "total_loss": total_loss,
+            "pi_loss": mean_pi_loss,
+            "vf_loss": mean_vf_loss,
+            "values": values_time_major,
+            "entropy_loss": entropy_loss,
+            "vtrace_adjusted_target_values": vtrace_adjusted_target_values,
+        }
         return total_loss
 
     @override(EagerTFPolicyV2)
@@ -158,8 +168,7 @@ class ImpalaTfPolicyWithRLModule(
                 tf.reshape(self.stats["values"], [-1]),
             ),
         }
-    
+
     @override(EagerTFPolicyV2)
     def get_batch_divisibility_req(self) -> int:
         return self.config["rollout_fragment_length"]
-    

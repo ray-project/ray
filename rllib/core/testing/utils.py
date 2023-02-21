@@ -161,7 +161,9 @@ def add_module_to_learner_or_learner_group(
     )
 
 
-def do_rollout_single_agent(rl_module, env, episode_length, policy_id=DEFAULT_POLICY_ID):
+def do_rollout_single_agent(
+    rl_module, env, episode_length, policy_id=DEFAULT_POLICY_ID
+):
     """Do a rollout of the given RLModule on the given environment.
 
     Args:

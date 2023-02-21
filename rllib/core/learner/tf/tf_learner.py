@@ -9,7 +9,6 @@ from typing import (
     Sequence,
     Set,
     Hashable,
-    Set,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -25,7 +24,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -100,8 +99,9 @@ class TfLearner(Learner):
         self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         grad_clip = self._optimizer_config.get("grad_clip", None)
-        assert isinstance(grad_clip, (int, float, type(None))), (
-            "grad_clip must be a number")
+        assert isinstance(
+            grad_clip, (int, float, type(None))
+        ), "grad_clip must be a number"
         if grad_clip is not None:
             for k, v in gradients_dict.items():
                 gradients_dict[k] = tf.clip_by_value(v, -grad_clip, grad_clip)
@@ -154,11 +154,10 @@ class TfLearner(Learner):
         # to unwanted consequences. We'll need to further investigate this.
         ma_batch = dict(batch.policy_batches)
         for pid, batch in ma_batch.items():
-            for key, value in batch.items():
-                if key != SampleBatch.INFOS and key != SampleBatch.ACTION_DIST:
-                    batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
             ma_batch[pid] = dict(batch)
         ma_batch = NestedDict(ma_batch)
+        for key, value in ma_batch.items():
+            ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return ma_batch
 
     @override(Learner)

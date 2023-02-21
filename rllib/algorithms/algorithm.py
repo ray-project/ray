@@ -695,7 +695,6 @@ class Algorithm(Trainable):
             local_worker = self.workers.local_worker()
             module_spec = local_worker.marl_module_spec
             learner_group_config = self.config.get_learner_group_config(module_spec)
-            import ipdb; ipdb.set_trace()
             self.learner_group = learner_group_config.build()
 
             # sync the weights from local rollout worker to trainers

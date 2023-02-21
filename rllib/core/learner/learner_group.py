@@ -86,7 +86,6 @@ class LearnerGroup:
             self._learner.build()
             self._worker_manager = None
         else:
-            import ipdb; ipdb.set_trace()
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
@@ -95,7 +94,6 @@ class LearnerGroup:
                 num_gpus_per_worker=scaling_config.num_gpus_per_worker,
                 max_retries=0,
             )
-
             backend_executor.start(
                 train_cls=learner_class,
                 train_cls_kwargs=learner_spec.get_params_dict(),
@@ -146,7 +144,6 @@ class LearnerGroup:
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
-        import ipdb; ipdb.set_trace()
         if self.is_local:
             if not block:
                 raise ValueError(
@@ -197,7 +194,6 @@ class LearnerGroup:
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
-        import ipdb; ipdb.set_trace()
 
         if block:
             results = self._worker_manager.foreach_actor(
@@ -212,7 +208,6 @@ class LearnerGroup:
                 ]
             )
         else:
-            import ipdb; ipdb.set_trace()
             if batch is not None:
                 self._in_queue.append(batch)
             results = self._worker_manager.fetch_ready_async_reqs()

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import numpy as np
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, List, Mapping
 import tree
 
 from ray.rllib import SampleBatch
@@ -55,7 +55,6 @@ class ImpalaTfLearner(TfLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        import ipdb; ipdb.set_trace()
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
 
@@ -92,12 +91,18 @@ class ImpalaTfLearner(TfLearner):
 
         # how to compute discouts?
         # should they be pre computed?
-        discounts_time_major = (1. - tf.cast(make_time_major(
-            batch[SampleBatch.TERMINATEDS],
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
-        ), dtype=tf.float32)) * self.discount_factor
+        discounts_time_major = (
+            1.0
+            - tf.cast(
+                make_time_major(
+                    batch[SampleBatch.TERMINATEDS],
+                    trajectory_len=self.rollout_frag_or_episode_len,
+                    recurrent_seq_len=self.recurrent_seq_len,
+                    drop_last=self.vtrace_drop_last_ts,
+                ),
+                dtype=tf.float32,
+            )
+        ) * self.discount_factor
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
@@ -106,7 +111,7 @@ class ImpalaTfLearner(TfLearner):
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major
+            discounts=discounts_time_major,
         )
 
         # The policy gradients loss.
@@ -119,17 +124,29 @@ class ImpalaTfLearner(TfLearner):
         mean_vf_loss = 0.5 * tf.reduce_mean(tf.math.pow(delta, 2.0))
 
         # The entropy loss.
-        entropy_loss = - tf.reduce_sum(target_actions_logp_time_major)
+        entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)
 
         # The summed weighted loss.
         total_loss = (
             pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
         )
-        return {self.TOTAL_LOSS_KEY: total_loss, "pi_loss": mean_pi_loss, "vf_loss": mean_vf_loss}
+        return {
+            self.TOTAL_LOSS_KEY: total_loss,
+            "pi_loss": mean_pi_loss,
+            "vf_loss": mean_vf_loss,
+        }
 
     @override(TfLearner)
-    def compile_results(self, batch: SampleBatch, fwd_out: Mapping[str, Any], postprocessed_loss: Mapping[str, Any], postprocessed_gradients: Mapping[str, Any]) -> Mapping[str, Any]:
-        results = super().compile_results(batch, fwd_out, postprocessed_loss, postprocessed_gradients)
+    def compile_results(
+        self,
+        batch: SampleBatch,
+        fwd_out: Mapping[str, Any],
+        postprocessed_loss: Mapping[str, Any],
+        postprocessed_gradients: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        results = super().compile_results(
+            batch, fwd_out, postprocessed_loss, postprocessed_gradients
+        )
         results["agent_steps_trained"] = batch.agent_steps()
         results["env_steps_trained"] = batch.env_steps()
         return results
