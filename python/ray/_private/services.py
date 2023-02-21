@@ -1492,9 +1492,8 @@ def start_raylet(
             sys.executable,
             setup_worker_path,
         ]
-        + _site_flags()
-        + [  # Inherit "-S" and "-s" from the current Python interpreter.
-            worker_path,
+        + _site_flags()  # Inherit "-S" and "-s" flags from the current Python interpreter.
+        + [
             f"--node-ip-address={node_ip_address}",
             "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
             f"--object-store-name={plasma_store_name}",
