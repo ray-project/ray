@@ -241,10 +241,14 @@ class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
 
-  /// Add a task event to be reported.
+  /// Add a task status event to be reported.
   ///
-  /// \param task_events Task events.
+  /// \param event Task status event.
   virtual void AddTaskStatusEvent(TaskStatusEvent event) = 0;
+
+  /// Add a task profile event to be reported.
+  ///
+  /// \param event Task profile event.
   virtual void AddTaskProfileEvent(TaskProfileEvent event) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
