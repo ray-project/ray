@@ -40,7 +40,7 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cpus-per-actor", type=float, default=0.1)
+    parser.add_argument("--cpus-per-actor", type=float, default=0.2)
     parser.add_argument("--total-actors", nargs="+", type=int, required=True)
     parser.add_argument("--no-report", default=False, action="store_true")
     parser.add_argument("--no-wait", default=False, action="store_true")
@@ -120,7 +120,7 @@ def main():
     # dashboard_test = DashboardTestAtScale(addr)
     result = {}
     for i in args.total_actors:
-        result[f"many_nodes_actor_tests_{i}"] = run_one(
+        result[f"multi_master_tests_{i}"] = run_one(
             i, args.cpus_per_actor, args.no_wait
         )
 
