@@ -136,6 +136,16 @@ def run_release_test(
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
+    # Workaround while Anyscale Jobs don't support leaving cluster alive
+    # after the job has finished.
+    # TODO: Remove once we have support in Anyscale
+    if no_terminate and run_type == "anyscale_job":
+        logger.warning(
+            "anyscale_job run type does not support --no-terminate. "
+            "Switching to job (Ray Job) run type."
+        )
+        run_type = "job"
+
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
         raise ReleaseTestConfigError(

@@ -85,7 +85,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     type=bool,
     is_flag=True,
-    help="Do not terminate cluster after test.",
+    help=(
+        "Do not terminate cluster after test. "
+        "Will switch `anyscale_job` run type to `job` (Ray Job)."
+    ),
 )
 def main(
     test_name: str,
