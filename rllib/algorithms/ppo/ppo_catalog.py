@@ -13,17 +13,18 @@ class PPOCatalog(Catalog):
         - Pi Head: The head used to compute the policy logits.
         - Value Function Head: The head used to compute the value function.
 
-    The ActorCriticEncoder is a wrapper around ordinary encoders to produce separate
-    outputs for the policy and value function. See implementations of PPORLModuleBase
-    for mode details.
+    The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
+    for the policy and value function. See implementations of PPORLModuleBase for
+    mode details.
 
     Any custom ActorCriticEncoder can be built by overriding the
     build_actor_critic_encoder() method. Alternatively, the ActorCriticEncoderConfig
-    can be overridden to build a custom ActorCriticEncoder.
+    at PPOCatalog.actor_critic_encoder_config can be overridden to build a custom
+    ActorCriticEncoder during RLModule runtime.
 
     Any custom head can be built by overriding the build_pi_head() and build_vf_head()
     methods. Alternatively, the PiHeadConfig and VfHeadConfig can be overridden to
-    build custom heads.
+    build custom heads during RLModule runtime.
     """
 
     def __init__(
@@ -37,14 +38,20 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config=model_config,
         )
+        """Initializes the PPOCatalog.
+
+        Args:
+            observation_space: The observation space of the Encoder.
+            action_space: The action space for the Pi Head.
+            model_config: The model config to use.
+        """
         assert isinstance(
             observation_space, gym.spaces.Box
         ), "This simple PPOModule only supports Box observation space."
 
         assert len(observation_space.shape) in (
             1,
-            3,
-        ), "This simple PPOModule only supports 1D and 3D observation spaces."
+        ), "This simple PPOModule only supports 1D observation spaces."
 
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPOModule only supports Discrete and Box action space.",
@@ -101,7 +108,9 @@ class PPOCatalog(Catalog):
 
         Since PPO uses an ActorCriticEncoder, this method should not be implemented.
         """
-        raise NotImplementedError("Use PPOCatalog.build_actor_critic_encoder() instead")
+        raise NotImplementedError(
+            "Use PPOCatalog.build_actor_critic_encoder() " "instead."
+        )
 
     def build_pi_head(self, framework: str):
         """Builds the policy head.

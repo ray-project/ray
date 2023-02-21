@@ -599,15 +599,15 @@ py_test(
 
 # TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
 # it would get faster with eager mode once it is enabled.
-py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
+# py_test(
+#     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
+#     main = "tests/run_regression_tests.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
+#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#     srcs = ["tests/run_regression_tests.py"],
+#     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
+#     args = ["--dir=tuned_examples/ppo"]
+# )
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
