@@ -112,8 +112,6 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (avnish): re enable eager tracing when we get this working with the new
-        # sampler.
         for fw in framework_iterator(
             config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
@@ -159,7 +157,6 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        # TODO (Kourosh) Test against all frameworks.
         for fw in framework_iterator(
             config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
