@@ -43,6 +43,12 @@ Batch Inference
 
 Batch inference refers to generating model predictions over a set of input observations. The model could be a regression model, neural network, or simply a Python function. Ray can scale batch inference from single GPU machines to large clusters.
 
+Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray scales predictions on batches across workers.
+
+.. image:: /images/batch_inference.png
+  :width: 800
+  :alt: Using Ray AIR's ``BatchPredictor`` for batch inference.
+
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
