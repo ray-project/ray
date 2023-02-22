@@ -102,11 +102,22 @@ ProcessInfo = collections.namedtuple(
 
 def _site_flags() -> List[str]:
     flags = []
-    if sys.flags.no_site:
+    # sys.flags hidden behind helper methods for unit testing.
+    if _no_site():
         flags.append("-S")
-    if sys.flags.no_user_site:
+    if _no_user_site():
         flags.append("-s")
     return flags
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_site():
+    return sys.flags.no_site
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_user_site():
+    return sys.flags.no_user_site
 
 
 def _build_python_executable_command_memory_profileable(

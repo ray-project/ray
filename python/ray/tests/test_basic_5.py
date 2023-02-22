@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import subprocess
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -248,6 +249,30 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
     assert freqs["internal_kv_get"] == 4
+
+
+@pytest.mark.parametrize("root_process_no_site", [0, 1])
+@pytest.mark.parametrize("root_process_no_user_site", [0, 1])
+def test_site_flag_inherited(shutdown_only, monkeypatch, root_process_no_site, root_process_no_user_site):
+    # The flags we're testing could prevent Ray from being imported in worker processes
+    # in the test environment.
+    # Avoid this by setting the PYTHONPATH.
+    monkeypatch.setenv("PYTHONPATH", ":".join(sys.path))
+
+    @ray.remote
+    def get_flags():
+        return sys.flags.no_site, sys.flags.no_user_site
+
+    with patch.multiple(
+        "ray._private.services",
+        _no_site=Mock(return_value=root_process_no_site),
+        _no_user_site=Mock(return_value=root_process_no_user_site),
+    ):
+        ray.init()
+        worker_process_no_site, worker_process_no_user_site = ray.get(get_flags.remote())
+        assert worker_process_no_site == root_process_no_site
+        assert worker_process_no_user_site == root_process_no_user_site
+
 
 
 if __name__ == "__main__":
