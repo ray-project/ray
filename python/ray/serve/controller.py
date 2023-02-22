@@ -700,31 +700,6 @@ class ServeController:
                 .dict(exclude_unset=True)
             )
 
-    def get_user_deployed_config(self) -> Dict:
-        """Gets the config of format ServeDeploySchema deployed by the user.
-
-        The config dict returned contains all of and only the config options set by the
-        user. For human readability, deployments that aren't listed and default values
-        are not included.
-        """
-        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is None:
-            return ServeDeploySchema.get_empty_schema_dict()
-        else:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
-            applications = [
-                ServeApplicationSchema.parse_obj(app_config_dict)
-                .remove_app_name_from_deployment_names()
-                .dict(exclude_unset=True)
-                for app_config_dict, _ in config_checkpoints_dict.values()
-            ]
-            http_config = self.get_http_config()
-            return {
-                "host": http_config.host,
-                "port": http_config.port,
-                "applications": applications,
-            }
-
     def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""
         status = self.deployment_state_manager.get_deployment_statuses([name])

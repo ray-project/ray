@@ -74,35 +74,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/json",
         )
 
-    @routes.get("/api/serve/applications/config")
-    @optional_utils.init_ray_and_catch_exceptions()
-    async def get_user_deployed_config(self, req: Request) -> Response:
-        from ray.serve.schema import ServeDeploySchema
-
-        controller = await self.get_serve_controller()
-
-        if controller is None:
-            config = ServeDeploySchema.get_empty_schema_dict()
-        else:
-            try:
-                config = await controller.get_user_deployed_config.remote()
-            except ray.exceptions.RayTaskError as e:
-                # Task failure sometimes are due to GCS
-                # failure. When GCS failed, we expect a longer time
-                # to recover.
-                return Response(
-                    status=503,
-                    text=(
-                        "Fail to get the response from the controller. "
-                        f"Potentially the GCS is down: {e}"
-                    ),
-                )
-
-        return Response(
-            text=json.dumps(config),
-            content_type="application/json",
-        )
-
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployment_statuses(self, req: Request) -> Response:

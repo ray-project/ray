@@ -17,7 +17,6 @@ GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 
 MULTI_APP_PUT_URL = "http://localhost:52365/api/serve/applications"
-MULTI_APP_CONFIG_URL = "http://localhost:52365/api/serve/applications/config"
 
 
 def deploy_and_check_config(config: Dict):
@@ -32,16 +31,10 @@ def deploy_and_check_config(config: Dict):
     print("GET request returned correct config.")
 
 
-def deploy_and_check_config_multi(config: Dict):
+def deploy_config_multi_app(config: Dict):
     put_response = requests.put(MULTI_APP_PUT_URL, json=config, timeout=30)
     assert put_response.status_code == 200
     print("PUT request sent successfully.")
-
-    # Config should be immediately retrievable
-    get_response = requests.get(MULTI_APP_CONFIG_URL, timeout=15)
-    assert get_response.status_code == 200
-    assert get_response.json() == config
-    print("GET request returned correct config.")
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
@@ -165,7 +158,7 @@ def test_put_get_multi_app(ray_start_stop):
 
         # APPLY CONFIG 1
         print("Sending PUT request for config1.")
-        deploy_and_check_config_multi(config1)
+        deploy_config_multi_app(config1)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
             == "5 pizzas please!",
@@ -185,7 +178,7 @@ def test_put_get_multi_app(ray_start_stop):
 
         # APPLY CONFIG 2: App #1 Adder should add 2 to input.
         print("Sending PUT request for config2.")
-        deploy_and_check_config_multi(config2)
+        deploy_config_multi_app(config2)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
             == "4 pizzas please!",
@@ -195,7 +188,7 @@ def test_put_get_multi_app(ray_start_stop):
 
         # APPLY CONFIG 3: App #1 should be overwritten to world:DagNode
         print("Sending PUT request for config3.")
-        deploy_and_check_config_multi(config3)
+        deploy_config_multi_app(config3)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1").text
             == "wonderful world",
@@ -321,7 +314,7 @@ def test_delete_multi_app(ray_start_stop):
         print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
         print("Sending PUT request for config.")
-        deploy_and_check_config(config)
+        deploy_config_multi_app(config)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 1]).json()
             == 2,
@@ -343,16 +336,6 @@ def test_delete_multi_app(ray_start_stop):
         delete_response = requests.delete(MULTI_APP_PUT_URL, timeout=15)
         assert delete_response.status_code == 200
         print("DELETE request sent successfully.")
-
-        # Make sure return config has empty list of applications
-        wait_for_condition(
-            lambda: len(
-                requests.get(MULTI_APP_CONFIG_URL, timeout=15).json()["applications"]
-            )
-            == 0,
-            timeout=15,
-        )
-        print("GET request returned empty config successfully.")
 
         wait_for_condition(
             lambda: len(
