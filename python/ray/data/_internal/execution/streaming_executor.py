@@ -236,8 +236,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if isinstance(op, InputDataBuffer):
                 continue  # Don't count input refs towards dynamic memory usage.
             for bundle in state.outqueue:
-                if cur_usage.object_store_memory:
-                    cur_usage.object_store_memory += bundle.size_bytes()
+                cur_usage.object_store_memory += bundle.size_bytes()
         return cur_usage
 
     def _report_current_usage(
