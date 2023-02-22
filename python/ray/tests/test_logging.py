@@ -864,7 +864,7 @@ def test_ray_does_not_break_makeRecord():
     mockRecordFactory = Mock()
     try:
         logging.setLogRecordFactory(mockRecordFactory)
-        # makeRecord needs 7 positional arguments. What the args are isn't consequential.
+        # makeRecord needs 7 positional args. What the args are isn't consequential.
         makeRecord_args = [None] * 7
         logging.Logger("").makeRecord(*makeRecord_args)
         # makeRecord called the expected factory.
