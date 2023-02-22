@@ -19,5 +19,5 @@ aws:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
-        - Key: anyscale-expiration
+        - Key: ttl-hours
           Value: '24'
