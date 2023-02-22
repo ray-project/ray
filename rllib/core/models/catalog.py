@@ -1,6 +1,5 @@
 import gymnasium as gym
 from ray.rllib.core.models.configs import (
-    MLPHeadConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
     CNNEncoderConfig,
@@ -109,58 +108,6 @@ class Catalog:
         """
         return self.encoder_config.build(framework=framework)
 
-    def get_primitive_model_config(
-        self, input_space: gym.Space, model_config: dict
-    ) -> ModelConfig:
-        """Returns a ModelConfig for the given input_space space and model_config.
-
-        The returned ModelConfigs relate 1:1 to the primitive Models that RLlib
-        supports. For example, for a simple 1D-Box input_space, RLlib offers an
-        MLPModel, hence this method returns the MLPModelConfig. You can overwrite
-        this method to produce specific ModelConfigs for your custom Models.
-
-        The following input spaces lead to the following configs:
-        - 1D-Box: MLPModelConfig
-        # TODO (Artur): Support more spaces here
-        # - 3D-Box: CNNModelConfig
-        # ...
-
-        Args:
-            input_space: The input space to use.
-            model_config: The model config to use.
-
-        Returns:
-            The base ModelConfig.
-
-        The returned ModelConfig can be used as is or as a tokenizer inside an encoder.
-        It is either an MLPModelConfig, a CNNModelConfig or a NestedModelConfig.
-        """
-        # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
-        model_config = {**MODEL_DEFAULTS, **model_config}
-        input_dim = input_space.shape[0]
-
-        # input_space is a 1D Box
-        if isinstance(input_space, Box) and len(input_space.shape) == 1:
-            # TODO (Artur): Discriminate between output and hidden activations
-            # TODO (Artur): Maybe unify hidden_layer_dims and output_dim
-            hidden_layer_dims = model_config["fcnet_hiddens"]
-
-            activation = model_config["fcnet_activation"]
-            return MLPHeadConfig(
-                input_dim=input_dim,
-                hidden_layer_dims=hidden_layer_dims[:-1],
-                hidden_layer_activation=activation,
-                output_dim=hidden_layer_dims[-1],
-                output_activation=activation,
-            )
-        # input_space is a 3D Box
-        elif isinstance(input_space, Box) and len(input_space.shape) == 3:
-            raise NotImplementedError("No default config for 3D spaces yet!")
-        # input_space is a possibly nested structure of spaces.
-        else:
-            # NestedModelConfig
-            raise NotImplementedError("No default config for complex spaces yet!")
-
     def get_encoder_config(
         self,
         observation_space: gym.Space,
@@ -214,7 +161,7 @@ class Catalog:
                 observation_space=observation_space,
                 action_space=action_space,
                 view_requirements_dict=view_requirements,
-                get_tokenizer_config=self.get_tokenizer_config,
+                get_tokenizer_encoder_config=self.get_tokenizer_encoder_config,
             )
         elif model_config["use_attention"]:
             raise NotImplementedError
@@ -261,13 +208,20 @@ class Catalog:
         return encoder_config
 
     @classmethod
-    def get_tokenizer_config(cls, space: gym.Space, model_config: dict) -> ModelConfig:
+    def get_tokenizer_encoder_config(
+        cls, space: gym.Space, model_config: dict
+    ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
         This is useful for LSTM models that need to tokenize their inputs.
         By default, RLlib uses the models supported by Catalog out of the box to
         tokenize.
         """
-        return cls.get_primitive_model_config(
-            input_space=space, model_config=model_config
+        return cls.get_encoder_config(
+            observation_space=space,
+            # Use the model_config without flags that would end up in complex models
+            model_config={
+                **model_config,
+                **{"use_lstm": False, "use_attention": False},
+            },
         )

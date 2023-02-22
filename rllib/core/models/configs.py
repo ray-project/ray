@@ -260,10 +260,9 @@ class LSTMEncoderConfig(ModelConfig):
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
-        get_tokenizer_config: A callable that takes a gym.Space and a dict and
+        get_tokenizer_encoder_config: A callable that takes a gym.Space and a dict and
             returns a ModelConfig to build tokenizers for observations, actions and
             other spaces that might be present in the view_requirements_dict.
-
     """
 
     input_dim: int = None
@@ -274,11 +273,18 @@ class LSTMEncoderConfig(ModelConfig):
     observation_space: gym.Space = None
     action_space: gym.Space = None
     view_requirements_dict: ViewRequirementsDict = None
-    get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
+    get_tokenizer_encoder_config: Callable[[gym.Space, Dict], ModelConfig] = None
     output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
+        if (
+            self.get_tokenizer_encoder_config is not None
+            or self.view_requirements_dict is not None
+        ):
+            raise NotImplementedError(
+                "LSTMEncoderConfig does not support advanced use cases yet."
+            )
         self.input_dim = int(self.input_dim)
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
