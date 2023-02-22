@@ -641,13 +641,21 @@ def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
         },
     )
 
-    class FaultyCheckpoint(Checkpoint):
-        def to_uri(self, uri: str) -> str:
-            raise subprocess.CalledProcessError(-1, "dummy")
+    class FailingSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            def failing_upload(*args, **kwargs):
+                raise RuntimeError("Upload failing!")
+
+            return (
+                failing_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    syncer = FailingSyncer(sync_period=60, sync_timeout=0.1)
 
     class TestTrainableRetry(TestTrainable):
-        _checkpoint_cls = FaultyCheckpoint
-
         def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
             from ray.tune.trainable.trainable import logger
 
@@ -662,7 +670,8 @@ def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
             return ret
 
     trainable = ray.remote(TestTrainableRetry).remote(
-        remote_checkpoint_dir=f"file://{tmp_target}"
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        sync_config=SyncConfig(upload_dir="not_used", syncer=syncer),
     )
 
     ray.get(trainable.save.remote())
