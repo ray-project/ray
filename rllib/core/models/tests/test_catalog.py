@@ -7,7 +7,7 @@ import itertools
 from gymnasium.spaces import Box
 
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import MLPEncoderConfig
+from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
 
 
 class TestCatalog(unittest.TestCase):
@@ -16,9 +16,9 @@ class TestCatalog(unittest.TestCase):
 
         # TODO (Artur): Add support for the commented out spaces
         input_spaces_and_config_types = [
-            (Box(-1.0, 1.0, (5,), dtype=np.float32), MLPEncoderConfig)
-            # Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
-            # Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32),
+            (Box(-1.0, 1.0, (5,), dtype=np.float32), MLPEncoderConfig),
+            (Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32), CNNEncoderConfig),
+            (Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32), CNNEncoderConfig),
             # Box(-1.0, 1.0, (5, 5), dtype=np.float32),
             # MultiBinary([3, 10, 10]),
             # Discrete(5),
@@ -86,13 +86,16 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
+            if model_config_type is not MLPEncoderConfig and framework == "tf":
+                # TODO (Artur): Enable this once we have TF implementations
+                continue
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
                 f"and config: \n{model_config_dict}\n"
             )
             catalog = Catalog(
                 observation_space=input_space,
-                # Action space does not matter for primitive models
+                # Action space does not matter for encoders
                 action_space=gym.spaces.Box(1, 1, (1,)),
                 model_config=model_config_dict,
                 # TODO(Artur): Add view requirements when we need them
@@ -106,7 +109,6 @@ class TestCatalog(unittest.TestCase):
             model_config.build(framework=framework)
 
         # TODO(Artur): Comment in to also test complex input spaces
-
         # Secondly, check if composite input spaces can be created for composite spaces
         # print("Testing encoders for composite input spaces...")
         # Produce all possible threefold combinations of the input spaces to test

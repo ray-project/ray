@@ -15,7 +15,7 @@ class PPOCatalog(Catalog):
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
     for the policy and value function. See implementations of PPORLModuleBase for
-    mode details.
+    more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
     build_actor_critic_encoder() method. Alternatively, the ActorCriticEncoderConfig
@@ -47,14 +47,14 @@ class PPOCatalog(Catalog):
         """
         assert isinstance(
             observation_space, gym.spaces.Box
-        ), "This simple PPOModule only supports Box observation space."
+        ), "This simple PPO Module only supports Box observation space."
 
         assert len(observation_space.shape) in (
             1,
-        ), "This simple PPOModule only supports 1D observation spaces."
+        ), "This simple PPO Module only supports 1D observation spaces."
 
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPOModule only supports Discrete and Box action space.",
+            "This simple PPO Module only supports Discrete and Box action spaces.",
         )
 
         # Replace EncoderConfig by ActorCriticEncoderConfig
