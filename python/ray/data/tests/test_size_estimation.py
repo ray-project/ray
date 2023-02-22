@@ -193,7 +193,9 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_split_map(ray_start_regular_shared, use_actors):
+def test_split_map(shutdown_only, use_actors):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     kwargs = {}
     if use_actors:
         kwargs = {"compute": "actors"}

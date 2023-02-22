@@ -90,7 +90,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=6)
     n = 5
     ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
@@ -152,7 +152,7 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
 
 def test_callable_classes(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=2)
     ds = ray.data.range(10, parallelism=10)
 
     class StatefulFn:
