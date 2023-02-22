@@ -252,7 +252,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=3, schema={\n_id: fixed_size_binary[12],"
+        "Dataset(num_blocks=2, num_rows=3, schema={\n\t_id: fixed_size_binary[12],"
         "\n\tfloat_field: double,\n\tint_field: int32\n})"
     )
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
