@@ -45,6 +45,8 @@ Batch inference refers to generating model predictions over a set of input obser
 
 Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's :ref:`Batch Predictor <air-predictors>` scales predictions on batches across workers.
 
+Learn more about batch inference with the following resources.
+
 .. figure:: /images/batch_inference.png
   
   Using Ray AIR's ``BatchPredictor`` for batch inference.
@@ -119,6 +121,7 @@ Alternative solutions exist for less common cases:
 #. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
 #. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`). 
 
+Learn more about many model training with the following resources.
 .. TODO
   Add link to many model training blog.
 
@@ -185,8 +188,10 @@ Model Serving
 It supports complex `model deployment patterns <https://www.youtube.com/watch?v=mM4hJLelzSw>`_ requiring the orchestration of multiple Ray actors, where different actors provide inference for different models. Serve handles both batch and online inference and can scale to thousands of models in production.
 
 .. figure:: /images/multi_model_serve.png
-  
+
   Deployment patterns with Ray Serve. (Click image to enlarge.)
+
+Learn more about model serving with the following resources.
 
 .. panels::
     :container: container pb-3
@@ -368,6 +373,8 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 
    Decentralized distributed proximal polixy optimiation (DD-PPO) architecture.
 
+Learn more about reinforcement learning with the following resources.
+
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
@@ -485,7 +492,7 @@ The following highlights feature companies leveraging Ray's unified API to build
 End-to-End ML Workflows
 -----------------------
 
-The following are highlighted examples utilizing Ray AIR to implement end-to-end ML workflows.
+The following highlights examples utilizing Ray AIR to implement end-to-end ML workflows.
 
 .. panels::
     :container: container pb-3
