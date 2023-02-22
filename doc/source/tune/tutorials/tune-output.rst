@@ -195,23 +195,26 @@ You can save trial artifacts directly in the trainable, as shown below:
 
     .. code-block:: python
 
-        import library
+        import logging_library  # ex: mlflow, wandb
         from ray.air import session
 
         def trainable(config):
-            library.init(
+            logging_library.init(
                 name=trial_id,
                 id=trial_id,
                 resume=trial_id,
                 reinit=True,
                 allow_val_change=True)
-            library.set_log_path(os.getcwd())
+            logging_library.set_log_path(os.getcwd())
 
             for step in range(100):
-                library.log_model(...)
-                library.log(results, step=step)
+                logging_library.log_model(...)
+                logging_library.log(results, step=step)
 
                 # You can also just write to a file directly.
+                # The working directory is set to the trial directory, so
+                # you don't need to worry about multiple workers saving
+                # to the same location.
                 with open(f"./artifact_{step}.txt", "w") as f:
                     f.write("Artifact Data")
 
@@ -222,24 +225,28 @@ You can save trial artifacts directly in the trainable, as shown below:
 
     .. code-block:: python
 
-        import library
+        import logging_library  # ex: mlflow, wandb
+        from ray import tune
 
         class CustomLogging(tune.Trainable)
             def setup(self, config):
                 trial_id = self.trial_id
-                library.init(
+                logging_library.init(
                     name=trial_id,
                     id=trial_id,
                     resume=trial_id,
                     reinit=True,
                     allow_val_change=True
                 )
-                library.set_log_path(os.getcwd())
+                logging_library.set_log_path(os.getcwd())
 
             def step(self):
-                library.log_model(...)
+                logging_library.log_model(...)
 
                 # You can also just write to a file directly.
+                # The working directory is set to the trial directory, so
+                # you don't need to worry about multiple workers saving
+                # to the same location.
                 with open(f"./artifact_{self.iteration}.txt", "w") as f:
                     f.write("Artifact Data")
 
@@ -250,10 +257,11 @@ You can save trial artifacts directly in the trainable, as shown below:
                     if (v and "config" not in k and not isinstance(v, str))
                 }
                 step = result["training_iteration"]
-                library.log(res_dict, step=step)
+                logging_library.log(res_dict, step=step)
 
-In the code snippet above, ``library`` refers to whatever 3rd party logging library you are using.
-Note that ``library.set_log_path(os.getcwd())`` is an imaginary API that we are using
+
+In the code snippet above, ``logging_library`` refers to whatever 3rd party logging library you are using.
+Note that ``logging_library.set_log_path(os.getcwd())`` is an imaginary API that we are using
 for demonstation purposes, and it highlights that the third-party library
 should be configured to log to the Trainable's *working directory.* By default,
 the current working directory of both functional and class trainables will be set to the
