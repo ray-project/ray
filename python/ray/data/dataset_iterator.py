@@ -1,7 +1,7 @@
 import abc
 import numpy as np
 import sys
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.block import DataBatch
@@ -111,6 +111,9 @@ class DatasetIterator(abc.ABC):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -145,6 +148,13 @@ class DatasetIterator(abc.ABC):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
+            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
+                Potential use cases include collating along a dimension other than the
+                first, padding sequences of various lengths, or generally handling
+                batches of different length tensors. If not provided, the default
+                collate function is used which simply converts the batch of numpy
+                arrays to a batch of PyTorch tensors. This API is still experimental
+                and is subject to change.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
