@@ -1,8 +1,9 @@
-from pandas import pd
+import pandas as pd
 
 import ray
 from ray.air import Checkpoint
 from ray.data.preprocessors import BatchMapper
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.train.predictor import Predictor
 from ray.train.batch_predictor import BatchPredictor
 
@@ -46,7 +47,7 @@ model = load_trained_model()
 predictor = BatchPredictor(
     checkpoint=Checkpoint.from_dict({"model": model}),
     predictor_cls=CustomPredictor,
-    preprocessor=BatchMapper(preprocess),
+    preprocessor=BatchMapper(preprocess, batch_format=BatchFormat.NUMPY),
 )
 
 results = predictor.predict(ds)

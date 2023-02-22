@@ -8,7 +8,7 @@ import pandas as pd
 def trainable_func(config: dict):
     data = pd.read_csv(smart_open(config["file_path"], "r"))
 
-    ## Train your model here.
+    # Train your model here.
     from sklearn.linear_model import LinearRegression
 
     lr = LinearRegression()
@@ -23,11 +23,18 @@ def trainable_func(config: dict):
 
 
 # Tune is designed for up to thousands of trials.
+num_trials = 1000
+
 param_space = {
     "file_path": tune.grid_search(
-        [f"s3://air-example-data/h2oai_1m_files/file_{i:07}.csv" for i in range(1000)]
+        [
+            f"s3://air-example-data/h2oai_1m_files/file_{i:07}.csv"
+            for i in range(num_trials)
+        ]
     )
 }
 
 tuner = tune.Tuner(trainable_func, param_space=param_space)
-print(tuner.fit())
+result_grid = tuner.fit()
+
+print(result_grid.get_dataframe())
