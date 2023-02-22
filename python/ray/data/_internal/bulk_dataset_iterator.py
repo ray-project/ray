@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Dict, Optional, Union, Iterator
+import numpy as np
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, Iterator
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
@@ -49,6 +50,9 @@ class BulkDatasetIterator(DatasetIterator):
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         drop_last: bool = False,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator["TorchTensorBatchType"]:
@@ -57,6 +61,7 @@ class BulkDatasetIterator(DatasetIterator):
             batch_size=batch_size,
             dtypes=dtypes,
             device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
