@@ -350,7 +350,19 @@ class ServeControllerClient:
                     return
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
             else:
-                raise TimeoutError(f"Deployment {names} wasn't deleted after 60s.")
+                raise TimeoutError(
+                    f"Some of these applications weren't deleted after 60s: {names}"
+                )
+
+    @_ensure_connected
+    def delete_all_apps(self, blocking: bool = True):
+        """Delete all applications"""
+        all_apps = []
+        for status_bytes in ray.get(self._controller.list_serve_statuses.remote()):
+            proto = StatusOverviewProto.FromString(status_bytes)
+            status = StatusOverview.from_proto(proto)
+            all_apps.append(status.name)
+        self.delete_apps(all_apps, blocking)
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:

@@ -597,7 +597,7 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if 
+# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
 # it would get faster with eager mode once it is enabled.
 # py_test(
 #     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
@@ -1864,6 +1864,34 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
+)
+
+py_test(
+    name = "test_tf_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
+)
+
+py_test(
+    name = "test_torch_cnn_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
+)
+
+py_test(
+    name = "test_torch_mlp_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
+)
+
+py_test(
+    name = "test_torch_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
 )
 
 py_test(
