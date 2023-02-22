@@ -210,6 +210,11 @@ You can save trial artifacts directly in the trainable, as shown below:
             for step in range(100):
                 library.log_model(...)
                 library.log(results, step=step)
+
+                # You can also just write to a file directly.
+                with open(f"./artifact_{step}.txt", "w") as f:
+                    f.write("Artifact Data")
+
                 session.report(results)
 
 
@@ -233,6 +238,10 @@ You can save trial artifacts directly in the trainable, as shown below:
 
             def step(self):
                 library.log_model(...)
+
+                # You can also just write to a file directly.
+                with open(f"./artifact_{self.iteration}.txt", "w") as f:
+                    f.write("Artifact Data")
 
             def log_result(self, result):
                 res_dict = {
