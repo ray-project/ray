@@ -253,11 +253,13 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
 
 @pytest.mark.parametrize("root_process_no_site", [0, 1])
 @pytest.mark.parametrize("root_process_no_user_site", [0, 1])
-def test_site_flag_inherited(shutdown_only, monkeypatch, root_process_no_site, root_process_no_user_site):
+def test_site_flag_inherited(
+    shutdown_only, monkeypatch, root_process_no_site, root_process_no_user_site
+):
     # The flags we're testing could prevent Python workers in the test environment
-    # from locating site packages; the workers would fail to find Ray and would thus fail to start.
-    # To prevent that, set the PYTHONPATH env. The env will be inherited by the Python workers,
-    # so that they are able to import Ray.
+    # from locating site packages; the workers would fail to find Ray and would thus
+    # fail to start. To prevent that, set the PYTHONPATH env. The env will be inherited
+    # by the Python workers, so that they are able to import Ray.
     monkeypatch.setenv("PYTHONPATH", ":".join(sys.path))
 
     @ray.remote
@@ -270,10 +272,11 @@ def test_site_flag_inherited(shutdown_only, monkeypatch, root_process_no_site, r
         _no_user_site=Mock(return_value=root_process_no_user_site),
     ):
         ray.init()
-        worker_process_no_site, worker_process_no_user_site = ray.get(get_flags.remote())
+        worker_process_no_site, worker_process_no_user_site = ray.get(
+            get_flags.remote()
+        )
         assert worker_process_no_site == root_process_no_site
         assert worker_process_no_user_site == root_process_no_user_site
-
 
 
 if __name__ == "__main__":

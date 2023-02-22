@@ -101,9 +101,9 @@ ProcessInfo = collections.namedtuple(
 
 
 def _site_flags() -> List[str]:
-    """Detect whether flags related to site packages are enabled for the current interpreter.
-    To run Ray in hermetic build environments, it helps to pass these flags down to Python
-    workers.
+    """Detect whether flags related to site packages are enabled for the current
+    interpreter. To run Ray in hermetic build environments, it helps to pass these flags
+    down to Python workers.
     """
     flags = []
     # sys.flags hidden behind helper methods for unit testing.
@@ -1507,7 +1507,7 @@ def start_raylet(
             sys.executable,
             setup_worker_path,
         ]
-        + _site_flags()  # Inherit "-S" and "-s" flags from the current Python interpreter.
+        + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
         + [
             worker_path,
             f"--node-ip-address={node_ip_address}",
