@@ -458,8 +458,9 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
-        // NOTE(rickyx): I couldn't figure out why this is always an empty reply?
-        RAY_CHECK(reply.ByteSizeLong() == 0);
+        // NOTE(rickyx): I couldn't figure out why this is empty reply even though we set
+        // it at the executor's side(CoreWorkerDirectTaskReceiver::HandleTask) when
+        // returned?
         RAY_UNUSED(reply);
         // If the actor is still in the creating map and the status is ok, remove the
         // actor from the creating map and invoke the schedule_success_handler_.
