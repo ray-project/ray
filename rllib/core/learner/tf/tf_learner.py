@@ -270,7 +270,7 @@ class TfLearner(Learner):
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
 
-            # TODO (Kourosh) The reason for returning fwd_out is that it is optionally
+            # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
             # needed for compiling the results in a later step (e.g. in
             # compile_results), but it should not contain anything but tensors, None or
             # ExtensionTypes, otherwise the tf.function will yell at us because it
