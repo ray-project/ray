@@ -142,10 +142,7 @@ def test_tensorflow_checkpoint_saved_model():
     batch_predictor = BatchPredictor.from_checkpoint(
         result_checkpoint, TensorflowPredictor
     )
-    predictions = batch_predictor.predict(ray.data.range(3))
-
-    for _ in predictions.iter_batches():
-        pass
+    batch_predictor.predict(ray.data.range(3))
 
 
 def test_tensorflow_checkpoint_h5():
@@ -173,10 +170,7 @@ def test_tensorflow_checkpoint_h5():
     batch_predictor = BatchPredictor.from_checkpoint(
         result_checkpoint, TensorflowPredictor
     )
-    predictions = batch_predictor.predict(ray.data.range(3))
-
-    for _ in predictions.iter_batches():
-        pass
+    batch_predictor.predict(ray.data.range(3))
 
 
 if __name__ == "__main__":

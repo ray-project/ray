@@ -66,7 +66,6 @@ predictor = BatchPredictor.from_checkpoint(
 )
 # This is the same data we trained our model on. Don't do this in practice.
 dataset = ray.data.from_pandas(data)
-predictions = predictor.predict(dataset)
-predictions.show()
+predictor.predict(dataset)
 # __statsmodelpredictor_predict_end__
 # fmt: on
