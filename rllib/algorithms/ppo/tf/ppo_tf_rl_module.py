@@ -1,8 +1,6 @@
 from typing import Mapping, Any, List
 
 import gymnasium as gym
-
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.configs import (
     MLPHeadConfig,
@@ -10,21 +8,22 @@ from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     LSTMEncoderConfig,
 )
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
     TfDiagGaussian,
     TfDeterministic,
 )
+
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
-
 
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
