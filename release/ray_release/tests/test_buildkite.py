@@ -26,6 +26,7 @@ from ray_release.buildkite.step import (
     get_step,
     RELEASE_QUEUE_DEFAULT,
     RELEASE_QUEUE_CLIENT,
+    DOCKER_PLUGIN_KEY,
 )
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
@@ -543,10 +544,12 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         step = get_step(test, smoke_test=False)
-        self.assertNotIn("--smoke-test", step["command"])
+        self.assertNotIn(
+            "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
+        )
 
         step = get_step(test, smoke_test=True)
-        self.assertIn("--smoke-test", step["command"])
+        self.assertIn("--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"])
 
         step = get_step(test, priority_val=20)
         self.assertEqual(step["priority"], 20)

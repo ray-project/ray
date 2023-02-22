@@ -163,8 +163,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        url = "https://github.com/nelhage/rules_boost/archive/ca9ff1a923c45e3e708e3bea17e9b4b2b48c4e4c.tar.gz",
-        sha256 = "a6739e9f68514194757e396bc0092a4b0ed7a8cbc3b7dd18320ab47383b4fa7e",
+        url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
+        sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
     )
 
     auto_http_archive(

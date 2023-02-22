@@ -8,6 +8,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     StatusOverview,
 )
+from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -243,6 +244,8 @@ class DeploymentSchema(
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
+        # TODO(cindy): eventually we should set the default app name to a non-empty
+        # string and forbid empty app names.
         default="",
         description=(
             "Application name, the name should be unique within the serve instance"
@@ -353,7 +356,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     def get_empty_schema_dict() -> Dict:
         """Returns an empty app schema dictionary.
 
-        Schema can be used as a representation of an empty Serve config.
+        Schema can be used as a representation of an empty Serve application config.
         """
 
         return {
@@ -408,6 +411,80 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         config = dict_keys_snake_to_camel_case(config)
 
         return config
+
+    def prepend_app_name_to_deployment_names(self):
+        """Prepend the app name to all deployment names listed in the config."""
+        app_config = self.dict(exclude_unset=True)
+
+        if "deployments" in app_config and not self.name == "":
+            for idx, deployment in enumerate(app_config["deployments"]):
+                deployment["name"] = (
+                    self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment["name"]
+                )
+                app_config["deployments"][idx] = deployment
+
+        return ServeApplicationSchema.parse_obj(app_config)
+
+    def remove_app_name_from_deployment_names(self):
+        """Remove the app name prefix from all deployment names listed in the config.
+
+        This method should only be called on configs that have been processed internally
+        through prepend_app_name_to_deployment_names, which appends the app name prefix
+        to every deployment name.
+        """
+        app_config = self.dict(exclude_unset=True)
+        if "deployments" in app_config and not self.name == "":
+            for idx, deployment in enumerate(app_config["deployments"]):
+                prefix = self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
+                # This method should not be called on any config that's not processed
+                # internally & returned by prepend_app_name_to_deployment_names
+                assert deployment["name"].startswith(prefix)
+
+                deployment["name"] = deployment["name"][len(prefix) :]
+                app_config["deployments"][idx] = deployment
+
+        return ServeApplicationSchema.parse_obj(app_config)
+
+    def to_deploy_schema(self):
+        return ServeDeploySchema(
+            host=self.host,
+            port=self.port,
+            applications=[self],
+        )
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
+        ),
+    )
+    applications: List[ServeApplicationSchema] = Field(
+        default=[],
+        description=("The set of Serve applications to run on the Ray cluster."),
+    )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty deploy schema dictionary.
+
+        Schema can be used as a representation of an empty Serve deploy config.
+        """
+
+        return {"applications": []}
 
 
 @PublicAPI(stability="beta")

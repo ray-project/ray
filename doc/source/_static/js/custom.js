@@ -61,3 +61,23 @@ window.onload = function() {
         localStorage.removeItem("scroll");
     }
 };
+
+
+let firstLink = document.getElementsByClassName("caption")[0];
+firstLink.classList.add("toctree-l1", "current");
+firstLink.style.textTransform = "none";
+firstLink.style.fontWeight = "normal";
+firstLink.innerText = "";
+
+let home = document.createElement("a");
+home.classList.add("reference", "internal");
+
+const version = window.location.href.split("/")[4];
+const res = (version === "latest" || version === "master") ? version : "latest";
+
+home.href = "https://docs.ray.io/en/" + res + "/index.html";
+home.textContent = "Ray Docs Home";
+
+home.style = firstLink.style;
+home.style.color = "#5a5a5a";
+firstLink.appendChild(home);
