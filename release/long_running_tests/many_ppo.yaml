@@ -19,4 +19,4 @@ aws:
     - ResourceType: "instance"
       Tags:
         - Key: ttl-hours
-          Value: '{{env["EXPIRATION_2D"]}}'
+          Value: '48'

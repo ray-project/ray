@@ -22,4 +22,4 @@ aws:
     - ResourceType: "instance"
       Tags:
         - Key: ttl-hours
-          Value: '{{env["EXPIRATION_1D"]}}'
+          Value: '24'
