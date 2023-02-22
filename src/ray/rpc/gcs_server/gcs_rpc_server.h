@@ -483,6 +483,10 @@ class InternalKVGcsServiceHandler {
                                    InternalKVGetReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
+                                        InternalKVMultiGetReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleInternalKVPut(InternalKVPutRequest request,
                                    InternalKVPutReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
@@ -508,6 +512,7 @@ class InternalKVGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVMultiGet);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
