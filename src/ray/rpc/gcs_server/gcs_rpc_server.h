@@ -226,6 +226,10 @@ class MonitorGcsServiceHandler {
   virtual void HandleDrainAndKillNode(DrainAndKillNodeRequest request,
                                       DrainAndKillNodeReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetSchedulingStatus(GetSchedulingStatusRequest request,
+                                         GetSchedulingStatusReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `MonitorServer`.
@@ -246,6 +250,7 @@ class MonitorGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
     MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
+    MONITOR_SERVICE_RPC_HANDLER(GetSchedulingStatus);
   }
 
  private:
@@ -483,6 +488,10 @@ class InternalKVGcsServiceHandler {
                                    InternalKVGetReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
+                                        InternalKVMultiGetReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleInternalKVPut(InternalKVPutRequest request,
                                    InternalKVPutReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
@@ -508,6 +517,7 @@ class InternalKVGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVMultiGet);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
