@@ -65,14 +65,7 @@ def no_resource_leaks():
 
 @click.command()
 @click.option("--num-tasks", required=True, type=int, help="Number of tasks to launch.")
-@click.option(
-    "--smoke-test",
-    is_flag=True,
-    type=bool,
-    default=False,
-    help="If set, it's a smoke test",
-)
-def test(num_tasks, smoke_test):
+def test(num_tasks):
     addr = ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
@@ -107,6 +100,7 @@ def test(num_tasks, smoke_test):
         f"({rate} tasks/s)"
     )
 
+<<<<<<< Updated upstream
     results = {
         "tasks_per_second": rate,
         "num_tasks": num_tasks,
@@ -131,6 +125,34 @@ def test(num_tasks, smoke_test):
         ]
     dashboard_test.update_release_test_result(results)
     test_utils.safe_write_to_results_json(results)
+=======
+    if "TEST_OUTPUT_JSON" in os.environ:
+        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+        results = {
+            "tasks_per_second": rate,
+            "num_tasks": num_tasks,
+            "time": end_time - start_time,
+            "used_cpus": used_cpus,
+            "success": "1",
+            "_peak_memory": round(used_gb, 2),
+            "_peak_process_memory": usage,
+            "perf_metrics": [
+                {
+                    "perf_metric_name": "tasks_per_second",
+                    "perf_metric_value": rate,
+                    "perf_metric_type": "THROUGHPUT",
+                },
+                {
+                    "perf_metric_name": "used_cpus_by_deadline",
+                    "perf_metric_value": used_cpus,
+                    "perf_metric_type": "THROUGHPUT",
+                },
+            ],
+        }
+
+        dashboard_test.update_release_test_result(results)
+        json.dump(results, out_file)
+>>>>>>> Stashed changes
 
 
 if __name__ == "__main__":
