@@ -105,6 +105,7 @@ class TorchCNN(nn.Module):
         width, height, in_depth = input_dims
         in_size = [width, height]
         for out_depth, kernel, stride in filter_specifiers:
+            # Pad like in tensorflow's SAME mode.
             padding, out_size = same_padding(in_size, kernel, stride)
             # TODO(Artur): Inline SlimConv2d after old models are deprecated.
             core_layers.append(
