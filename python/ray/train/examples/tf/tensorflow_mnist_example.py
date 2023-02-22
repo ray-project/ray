@@ -16,7 +16,7 @@ from ray.air.config import ScalingConfig
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:
-    with FileLock(os.path.join("~/.keras/datasets", ".ray.lock")):
+    with FileLock(os.path.expanduser("~/.mnist_lock")):
         (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
     # The `x` arrays are in uint8 and have values in the [0, 255] range.
     # You need to convert them to float32 with values in the [0, 1] range.
