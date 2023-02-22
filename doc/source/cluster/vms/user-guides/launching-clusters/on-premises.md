@@ -42,7 +42,7 @@ ray start --address=<head-node-address:port>
 As mentioned above, when using a Windows computer, you need to specify the node parameter to connect the working node successfully.The following is an example of the current computer LAN with IP `192.168.31.140`, the Head Node IP and port is `192.168.31.54:6379`.
 
 ```bash
-ray start --node-ip-address=192.168.31.140 --address=192.168.31.54:6377
+ray start --node-ip-address=192.168.31.140 --address=192.168.31.54:6379
 ```
 
 Make sure to replace `head-node-address:port` with the value printed by the command on the head node (it should look something like 123.45.67.89:6379).
