@@ -650,10 +650,13 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         # Concatenate single batches into batches of size `train_batch_size`.
         self.concatenate_batches_and_pre_queue(batches)
-        # Move train batches (of size `train_batch_size`) onto learner queue.
-        self.place_processed_samples_on_learner_queue()
-        # Extract most recent train results from learner thread.
-        train_results = self.process_trained_results()
+        if self.config._enable_learner_api:
+            train_results = self.learn_on_processed_samples()
+        else:
+            # Move train batches (of size `train_batch_size`) onto learner queue.
+            self.place_processed_samples_on_learner_thread_queue()
+            # Extract most recent train results from learner thread.
+            train_results = self.process_trained_results()
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
@@ -662,7 +665,7 @@ class Impala(Algorithm):
                     pids = list(train_results["learner"]["loss"].keys())
                 else:
                     pids = []
-                self.update_workers_learner_api(
+                self.update_workers_from_learner_group(
                     workers_that_need_updates=workers_that_need_updates,
                     policy_ids=pids,
                 )
@@ -792,6 +795,20 @@ class Impala(Algorithm):
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
+        """Get samples from rollout workers for training.
+
+        Args:
+            return_object_refs: If True, return ObjectRefs instead of the samples
+                directly. This is useful when using aggregator workers so that data
+                collected on rollout workers is directly de referenced on the aggregator
+                workers instead of first in the driver and then on the aggregator
+                workers.
+
+        Returns:
+            a list of tuples of (worker_index, sample batch or ObjectRef to a sample
+                batch)
+
+        """
         with self._timers[SAMPLE_TIMER]:
             if self.workers.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
@@ -823,85 +840,111 @@ class Impala(Algorithm):
 
         return sample_batches
 
-    def place_processed_samples_on_learner_queue(self) -> None:
-        if self.config._enable_learner_api:
-            if self.batches_to_place_on_learner:
-                batch = self.batches_to_place_on_learner.pop(0)
-                blocking = self.config.num_learner_workers == 0
-                self._lg_results = self.learner_group.update(
-                    batch, reduce_fn=_reduce_impala_results, block=blocking
-                )
-            else:
-                self._lg_results = None
+    def learn_on_processed_samples(self) -> ResultDict:
+        """Update the learner group with the latest batch of processed samples.
+
+        Returns:
+            Aggregated results from the learner group after an update is completed.
+
+        """
+        result = {}
+        if self.batches_to_place_on_learner:
+            batch = self.batches_to_place_on_learner.pop(0)
+            # If there are no learner workers and learning is directly on the driver
+            # Then we can't do async updates, so we need to block.
+            blocking = self.config.num_learner_workers == 0
+            lg_results = self.learner_group.update(
+                batch, reduce_fn=_reduce_impala_results, block=blocking
+            )
         else:
-            while self.batches_to_place_on_learner:
-                batch = self.batches_to_place_on_learner[0]
-                try:
-                    # Setting block = True prevents the learner thread,
-                    # the main thread, and the gpu loader threads from
-                    # thrashing when there are more samples than the
-                    # learner can reasonable process.
-                    # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
-                    self._learner_thread.inqueue.put(batch, block=True)
-                    self.batches_to_place_on_learner.pop(0)
-                    self._counters["num_samples_added_to_queue"] += (
-                        batch.agent_steps()
-                        if self.config.count_steps_by == "agent_steps"
-                        else batch.count
-                    )
-                except queue.Full:
-                    self._counters["num_times_learner_queue_full"] += 1
+            lg_results = None
+
+        if lg_results:
+            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results["env_steps_trained"]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results["agent_steps_trained"]
+            del lg_results["env_steps_trained"]
+            del lg_results["agent_steps_trained"]
+            result = {"learner": lg_results}
+
+        return result
+
+    def place_processed_samples_on_learner_thread_queue(self) -> None:
+        """Place processed samples on the learner queue for training.
+
+        NOTE: This method is called if self.config._enable_learner_api is False.
+
+        """
+        while self.batches_to_place_on_learner:
+            batch = self.batches_to_place_on_learner[0]
+            try:
+                # Setting block = True prevents the learner thread,
+                # the main thread, and the gpu loader threads from
+                # thrashing when there are more samples than the
+                # learner can reasonable process.
+                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                self._learner_thread.inqueue.put(batch, block=True)
+                self.batches_to_place_on_learner.pop(0)
+                self._counters["num_samples_added_to_queue"] += (
+                    batch.agent_steps()
+                    if self.config.count_steps_by == "agent_steps"
+                    else batch.count
+                )
+            except queue.Full:
+                self._counters["num_times_learner_queue_full"] += 1
 
     def process_trained_results(self) -> ResultDict:
+        """Process training results that are outputed by the learner thread.
+
+        NOTE: This method is called if self.config._enable_learner_api is False.
+
+        Returns:
+            Aggregated results from the learner thread after an update is completed.
+
+        """
         # Get learner outputs/stats from output queue.
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
-        if self.config._enable_learner_api:
-            result = {}
-            if self._lg_results:
-                self._counters[NUM_ENV_STEPS_TRAINED] += self._lg_results[
-                    "env_steps_trained"
-                ]
-                self._counters[NUM_AGENT_STEPS_TRAINED] += self._lg_results[
-                    "agent_steps_trained"
-                ]
-                del self._lg_results["env_steps_trained"]
-                del self._lg_results["agent_steps_trained"]
-                result = {"learner": self._lg_results}
-            return result
+        learner_infos = []
+        # Loop through output queue and update our counts.
+        for _ in range(self._learner_thread.outqueue.qsize()):
+            (
+                env_steps,
+                agent_steps,
+                learner_results,
+            ) = self._learner_thread.outqueue.get(timeout=0.001)
+            num_env_steps_trained += env_steps
+            num_agent_steps_trained += agent_steps
+            if learner_results:
+                learner_infos.append(learner_results)
+        # Nothing new happened since last time, use the same learner stats.
+        if not learner_infos:
+            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        # Accumulate learner stats using the `LearnerInfoBuilder` utility.
         else:
-            learner_infos = []
-            # Loop through output queue and update our counts.
-            for _ in range(self._learner_thread.outqueue.qsize()):
-                (
-                    env_steps,
-                    agent_steps,
-                    learner_results,
-                ) = self._learner_thread.outqueue.get(timeout=0.001)
-                num_env_steps_trained += env_steps
-                num_agent_steps_trained += agent_steps
-                if learner_results:
-                    learner_infos.append(learner_results)
-            # Nothing new happened since last time, use the same learner stats.
-            if not learner_infos:
-                final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
-            # Accumulate learner stats using the `LearnerInfoBuilder` utility.
-            else:
-                builder = LearnerInfoBuilder()
-                for info in learner_infos:
-                    builder.add_learn_on_batch_results_multi_agent(info)
-                final_learner_info = builder.finalize()
+            builder = LearnerInfoBuilder()
+            for info in learner_infos:
+                builder.add_learn_on_batch_results_multi_agent(info)
+            final_learner_info = builder.finalize()
 
-            # Update the steps trained counters.
-            self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
-            self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+        # Update the steps trained counters.
+        self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
-            return final_learner_info
+        return final_learner_info
 
     def process_experiences_directly(
         self,
         worker_to_sample_batches: List[Tuple[int, SampleBatch]],
     ) -> List[SampleBatchType]:
+        """Process sample batches directly on the driver, for training.
+
+        Args:
+            worker_to_sample_batches: List of (worker_id, sample_batch) tuples.
+
+        Returns:
+            Batches that have been processed by the mixin buffer.
+
+        """
         processed_batches = []
         batches = [b for _, b in worker_to_sample_batches]
         if not batches:
@@ -922,6 +965,20 @@ class Impala(Algorithm):
         self,
         worker_to_sample_batches_refs: List[Tuple[int, ObjectRef]],
     ) -> List[SampleBatchType]:
+        """Process sample batches using tree aggregation workers.
+
+        Args:
+            worker_to_sample_batches_refs: List of (worker_id, sample_batch_ref)
+
+        NOTE: This will provide speedup when sample batches have been compressed,
+        and the decompression can happen on the aggregation workers in parallel to
+        the training.
+
+        Returns:
+            Batches that have been processed by the mixin buffers on the aggregation
+            workers.
+
+        """
         for _, batch in worker_to_sample_batches_refs:
             assert isinstance(batch, ObjectRef), (
                 "For efficiency, process_experiences_tree_aggregation should "
@@ -950,11 +1007,23 @@ class Impala(Algorithm):
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
 
-    def update_workers_learner_api(
+    def update_workers_from_learner_group(
         self,
         workers_that_need_updates: Set[int],
         policy_ids: Optional[List[PolicyID]] = None,
     ):
+        """Updates all RolloutWorkers that require updating.
+
+        Updates only if NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS has been
+        reached and the worker has sent samples in this iteration. Also only updates
+        those policies, whose IDs are given via `policies` (if None, update all
+        policies).
+
+        Args:
+            workers_that_need_updates: Set of worker IDs that need to be updated.
+            policy_ids: Optional list of Policy IDs to update. If None, will update all
+                policies on the to-be-updated workers.
+        """
         # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
@@ -992,6 +1061,7 @@ class Impala(Algorithm):
         policies).
 
         Args:
+            workers_that_need_updates: Set of worker IDs that need to be updated.
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
         """
