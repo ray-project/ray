@@ -3,6 +3,7 @@ from typing import Optional, List
 
 from ray.data.block import Block, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.metrics import DataMungingMetrics
 
 
 class BatcherInterface:
@@ -38,6 +39,10 @@ class BatcherInterface:
         """
         raise NotImplementedError()
 
+    def get_metrics(self) -> DataMungingMetrics:
+        """Returns the batching metrics for this Batcher."""
+        raise NotImplementedError()
+
 
 class Batcher(BatcherInterface):
     """Chunks blocks into batches."""
@@ -63,6 +68,7 @@ class Batcher(BatcherInterface):
         self._buffer_size = 0
         self._done_adding = False
         self._ensure_copy = ensure_copy
+        self._metrics = DataMungingMetrics()
 
     def add(self, block: Block):
         """Add a block to the block buffer.
@@ -102,15 +108,18 @@ class Batcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
-        needs_copy = self._ensure_copy
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
-            if needs_copy:
+            if self._ensure_copy:
                 # Copy block if needing to ensure fresh batch copy.
                 block = BlockAccessor.for_block(block)
-                block = block.slice(0, block.num_rows(), copy=True)
+                num_rows = block.num_rows()
+                block = block.slice(0, num_rows, copy=True)
+                self._metrics.num_slices += 1
+                self._metrics.num_copies += 1
+                self._metrics.num_rows_copied += num_rows
             self._buffer = []
             self._buffer_size = 0
             return block
@@ -128,25 +137,42 @@ class Batcher(BatcherInterface):
                 # We need to call `accessor.slice()` to ensure
                 # the subsequent block's type are the same.
                 output.add_block(accessor.slice(0, accessor.num_rows(), copy=False))
+                self._metrics.num_slices += 1
+                # TODO(Clark): Update copy metrics if slicing produces a copy, e.g. for
+                # simple blocks.
                 needed -= accessor.num_rows()
             else:
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
+                self._metrics.num_slices += 1
+                # TODO(Clark): Update copy metrics if slicing produces a copy, e.g. for
+                # simple blocks.
                 # Add the rest of the block to the leftovers.
                 leftover.append(accessor.slice(needed, accessor.num_rows(), copy=False))
+                self._metrics.num_slices += 1
+                # TODO(Clark): Update copy metrics if slicing produces a copy, e.g. for
+                # simple blocks.
                 needed = 0
 
         # Move the leftovers into the block buffer so they're the first
         # blocks consumed on the next batch extraction.
         self._buffer = leftover
         self._buffer_size -= self._batch_size
-        needs_copy = needs_copy and not output.will_build_yield_copy()
+        build_will_yield_copy = output.will_build_yield_copy()
         batch = output.build()
-        if needs_copy:
+        self._metrics = self._metrics.merge_with(output.get_metrics())
+        if self._ensure_copy and not build_will_yield_copy:
             # Need to ensure that the batch is a fresh copy.
             batch = BlockAccessor.for_block(batch)
-            batch = batch.slice(0, batch.num_rows(), copy=True)
+            num_rows = batch.num_rows()
+            batch = batch.slice(0, num_rows, copy=True)
+            self._metrics.num_slices += 1
+            self._metrics.num_copies += 1
+            self._metrics.num_rows_copied += num_rows
         return batch
+
+    def get_metrics(self) -> DataMungingMetrics:
+        return self._metrics
 
 
 class ShufflingBatcher(BatcherInterface):
@@ -215,6 +241,7 @@ class ShufflingBatcher(BatcherInterface):
         self._shuffle_indices: List[int] = None
         self._batch_head = 0
         self._done_adding = False
+        self._metrics = DataMungingMetrics()
 
         if shuffle_seed is not None:
             random.seed(shuffle_seed)
@@ -292,10 +319,16 @@ class ShufflingBatcher(BatcherInterface):
                     self._shuffle_buffer = BlockAccessor.for_block(
                         self._shuffle_buffer
                     ).take(self._shuffle_indices[self._batch_head :])
+                    self._metrics.num_copies += 1
+                    self._metrics.num_rows_copied += BlockAccessor.for_block(
+                        self._shuffle_buffer
+                    ).num_rows()
                 # Add the unyielded rows from the existing shuffle buffer.
                 self._builder.add_block(self._shuffle_buffer)
             # Build the new shuffle buffer.
             self._shuffle_buffer = self._builder.build()
+            # Propagate block building stats from block builder.
+            self._metrics = self._metrics.merge_with(self._builder.get_metrics())
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
             # Invalidate the shuffle indices.
@@ -318,4 +351,9 @@ class ShufflingBatcher(BatcherInterface):
         ]
         self._batch_head += batch_size
         # Yield the shuffled batch.
+        self._metrics.num_copies += 1
+        self._metrics.num_rows_copied += len(batch_indices)
         return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)
+
+    def get_metrics(self) -> DataMungingMetrics:
+        return self._metrics

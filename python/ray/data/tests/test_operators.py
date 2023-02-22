@@ -33,7 +33,7 @@ def _get_blocks(bundle: RefBundle, output_list: List[Block]):
         output_list.append(ray.get(block))
 
 
-def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+def _mul2_transform(block_iter: Iterable[Block], *_) -> Iterable[Block]:
     for block in block_iter:
         yield [b * 2 for b in block]
 
@@ -59,7 +59,7 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 
 def test_all_to_all_operator():
-    def dummy_all_transform(bundles: List[RefBundle], ctx):
+    def dummy_all_transform(bundles: List[RefBundle], *_):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
@@ -244,7 +244,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     # Simple sanity check of batching behavior.
-    def _check_batch(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+    def _check_batch(block_iter: Iterable[Block], *_) -> Iterable[Block]:
         block_iter = list(block_iter)
         assert len(block_iter) == 5, block_iter
         for block in block_iter:
@@ -285,7 +285,7 @@ def test_map_operator_output_unbundling(
 ):
     # Tests that the MapOperator's output queue unbundles the bundles returned from
     # tasks; this facilitates features such as dynamic block splitting.
-    def noop(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+    def noop(block_iter: Iterable[Block], *_) -> Iterable[Block]:
         for block in block_iter:
             yield block
 

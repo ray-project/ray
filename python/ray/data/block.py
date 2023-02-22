@@ -263,6 +263,10 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
+    def does_slice_always_copy(self) -> bool:
+        """Whether slicing this block always copies, even of copy=False is given."""
+        raise NotImplementedError
+
     def take(self, indices: List[int]) -> Block:
         """Return a new block containing the provided row indices.
 

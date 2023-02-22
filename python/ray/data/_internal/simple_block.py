@@ -25,6 +25,7 @@ from ray.data.block import (
     KeyFn,
 )
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.metrics import DataMungingMetrics
 from ray.data._internal.size_estimator import SizeEstimator
 
 
@@ -32,6 +33,7 @@ class SimpleBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         self._items = []
         self._size_estimator = SizeEstimator()
+        self._metrics = DataMungingMetrics()
 
     def add(self, item: T) -> None:
         self._items.append(item)
@@ -47,6 +49,9 @@ class SimpleBlockBuilder(BlockBuilder[T]):
             )
         self._items.extend(block)
         self._size_estimator.add_block(block)
+        self._metrics.num_concatenations += 1
+        self._metrics.num_copies += 1
+        self._metrics.num_rows_copied += len(block)
 
     def num_rows(self) -> int:
         return len(self._items)
@@ -55,10 +60,16 @@ class SimpleBlockBuilder(BlockBuilder[T]):
         return True
 
     def build(self) -> Block:
+        self._metrics.num_copies += 1
+        self._metrics.num_rows_copied += len(self._items)
+        # TODO(Clark): Remove this additional copy?
         return list(self._items)
 
     def get_estimated_memory_usage(self) -> int:
         return self._size_estimator.size_bytes()
+
+    def get_metrics(self) -> DataMungingMetrics:
+        return self._metrics
 
 
 class SimpleBlockAccessor(BlockAccessor):
@@ -72,10 +83,10 @@ class SimpleBlockAccessor(BlockAccessor):
         return iter(self._items)
 
     def slice(self, start: int, end: int, copy: bool = False) -> List[T]:
-        view = self._items[start:end]
-        if copy:
-            view = view.copy()
-        return view
+        return self._items[start:end]
+
+    def does_slice_always_copy(self) -> bool:
+        return True
 
     def take(self, indices: List[int]) -> List[T]:
         return [self._items[i] for i in indices]

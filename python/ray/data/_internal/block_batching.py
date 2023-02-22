@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.metrics import DataMungingMetrics, MetricsCollector
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockAccessor, DataBatch
@@ -136,6 +137,7 @@ def batch_blocks(
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
     prefetch_batches: int = 0,
+    metrics_collector: Optional[MetricsCollector] = None,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.
 
@@ -153,9 +155,11 @@ def batch_blocks(
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
             ensure_copy=ensure_copy,
+            metrics_collector=metrics_collector,
         ),
         batch_format=batch_format,
         stats=stats,
+        metrics_collector=metrics_collector,
     )
 
     if collate_fn is not None:
@@ -309,6 +313,7 @@ def _blocks_to_batches(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    metrics_collector: Optional[MetricsCollector] = None,
 ) -> Iterator[Block]:
     """Given an iterator over blocks, returns an iterator over blocks
     of the appropriate bacth size.
@@ -323,6 +328,7 @@ def _blocks_to_batches(
         drop_last: Whether to drop the last batch if it's incomplete.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+        metrics_collector: Collector for batching metrics.
 
     Returns:
         An iterator over blocks of the given size that are potentially shuffled.
@@ -361,25 +367,50 @@ def _blocks_to_batches(
             batch = batcher.next_batch()
         yield batch
 
+    # Record batching metrics.
+    if metrics_collector is not None:
+        metrics_collector.record_metrics(batcher.get_metrics())
+
 
 def _format_batches(
     block_iter: Iterator[Block],
     batch_format: str,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    metrics_collector: Optional[MetricsCollector] = None,
 ) -> Iterator[DataBatch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
     Args:
         block_iter: An iterator over blocks.
         batch_format: The batch format to use.
+        metrics_collector: Collector for batching metrics.
 
     Returns:
         An iterator over formatted batches.
     """
+    from ray.data._internal.arrow_block import ArrowBlockAccessor
+    from ray.data._internal.pandas_block import PandasBlockAccessor
+    from ray.data._internal.simple_block import SimpleBlockAccessor
+
+    block_type_to_zero_copy_batch_formats = {
+        ArrowBlockAccessor: {"pyarrow"},
+        PandasBlockAccessor: {"pandas", "default"},
+        SimpleBlockAccessor: {"default"},
+    }
+
+    metrics = DataMungingMetrics()
     for block in block_iter:
         with stats.iter_format_batch_s.timer() if stats else nullcontext():
-            batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
+            acc = BlockAccessor.for_block(block)
+            batch = acc.to_batch_format(batch_format)
+            # Update metrics.
+            metrics.num_format_conversions += 1
+            if batch_format not in block_type_to_zero_copy_batch_formats[type(acc)]:
+                metrics.num_copies += 1
+                metrics.num_rows_copied += acc.num_rows()
         yield batch
+    if metrics_collector is not None:
+        metrics_collector.record_metrics(metrics)
 
 
 class BlockPrefetcher:

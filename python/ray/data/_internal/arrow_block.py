@@ -218,6 +218,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             view = _copy_table(view)
         return view
 
+    def does_slice_always_copy(self) -> bool:
+        return False
+
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
         random = np.random.RandomState(random_seed)
         return self.take(random.permutation(self.num_rows()))

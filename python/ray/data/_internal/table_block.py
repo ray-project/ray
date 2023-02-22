@@ -7,6 +7,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.metrics import DataMungingMetrics
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import _is_tensor_schema
 
@@ -41,6 +42,7 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._num_rows = 0
         self._num_compactions = 0
         self._block_type = block_type
+        self._metrics = DataMungingMetrics()
 
     def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
         if isinstance(item, TableRow):
@@ -107,15 +109,24 @@ class TableBlockBuilder(BlockBuilder[T]):
         return self._concat_would_copy() and len(self._tables) > 1
 
     def build(self) -> Block:
+        if self.will_build_yield_copy():
+            self._metrics.num_copies += 1
+            self._metrics.num_rows_copied += self._num_rows
         if self._columns:
             tables = [self._table_from_pydict(self._columns)]
         else:
             tables = []
         tables.extend(self._tables)
-        if len(tables) > 0:
-            return self._concat_tables(tables)
-        else:
+        if len(tables) == 0:
             return self._empty_table()
+        else:
+            if len(tables) > 1:
+                # No concatenation if there's only a single table.
+                self._metrics.num_concatenations += 1
+            # NOTE: We need to go through self._concat_tables() even if there's only a
+            # single table, since this is currently our narrow waist for things like
+            # tensor extension casting; see PandasBlockAccessor._concat_tables().
+            return self._concat_tables(tables)
 
     def num_rows(self) -> int:
         return self._num_rows
@@ -127,6 +138,9 @@ class TableBlockBuilder(BlockBuilder[T]):
             self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
         self._tables_size_cursor = len(self._tables) - 1
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
+
+    def get_metrics(self) -> DataMungingMetrics:
+        return self._metrics
 
     def _compact_if_needed(self) -> None:
         assert self._columns
