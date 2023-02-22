@@ -4,7 +4,7 @@ import ray
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     Repartition,
@@ -123,7 +123,7 @@ def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
     plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(plan)
 
-    inverse_order = iter([Read, AbstractMap, RandomizeBlocks])
+    inverse_order = iter([Read, AbstractUDFMap, RandomizeBlocks])
     for node in optimized_plan.dag.post_order_iter():
         assert isinstance(node, next(inverse_order))
 
@@ -136,7 +136,7 @@ def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
     plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(plan)
 
-    inverse_order = iter([Read, RandomizeBlocks, Repartition, AbstractMap])
+    inverse_order = iter([Read, RandomizeBlocks, Repartition, AbstractUDFMap])
     for node in optimized_plan.dag.post_order_iter():
         assert isinstance(node, next(inverse_order))
 
