@@ -18,8 +18,31 @@ else:
 
 
 class AbstractMap(LogicalOperator):
-    """Abstract class for logical operators should be converted to physical
+    """Abstract class for logical operators that should be converted to physical
     MapOperator.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        input_op: Optional[LogicalOperator] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Args:
+            name: Name for this operator. This is the name that will appear when
+                inspecting the logical plan of a Dataset.
+            input_op: The operator preceding this operator in the plan DAG. The outputs
+                of `input_op` will be the inputs to this operator.
+            ray_remote_args: Args to provide to ray.remote.
+        """
+        super().__init__(name, [input_op] if input_op else [])
+        self._ray_remote_args = ray_remote_args or {}
+
+
+class AbstractUDFMap(AbstractMap):
+    """Abstract class for logical operators performing a UDF that should be converted
+    to physical MapOperator.
     """
 
     def __init__(
@@ -53,7 +76,7 @@ class AbstractMap(LogicalOperator):
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, input_op, ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
@@ -61,10 +84,9 @@ class AbstractMap(LogicalOperator):
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._target_block_size = target_block_size
         self._compute = compute or "tasks"
-        self._ray_remote_args = ray_remote_args or {}
 
 
-class MapBatches(AbstractMap):
+class MapBatches(AbstractUDFMap):
     """Logical operator for map_batches."""
 
     def __init__(
@@ -101,7 +123,7 @@ class MapBatches(AbstractMap):
         self._zero_copy_batch = zero_copy_batch
 
 
-class MapRows(AbstractMap):
+class MapRows(AbstractUDFMap):
     """Logical operator for map."""
 
     def __init__(
@@ -120,7 +142,7 @@ class MapRows(AbstractMap):
         )
 
 
-class Write(AbstractMap):
+class Write(AbstractUDFMap):
     """Logical operator for write."""
 
     def __init__(
@@ -140,7 +162,7 @@ class Write(AbstractMap):
         self._write_args = write_args
 
 
-class Filter(AbstractMap):
+class Filter(AbstractUDFMap):
     """Logical operator for filter."""
 
     def __init__(
@@ -159,7 +181,7 @@ class Filter(AbstractMap):
         )
 
 
-class FlatMap(AbstractMap):
+class FlatMap(AbstractUDFMap):
     """Logical operator for flat_map."""
 
     def __init__(
