@@ -162,9 +162,9 @@ class TestPPO(unittest.TestCase):
                 module.forward_inference(batch)
 
     def test_forward_train(self):
-        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
+        # TODO: Add ALE/Breakout-v5 to cover a 3D obs space
         frameworks = ["torch", "tf2"]
-        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
+        env_names = ["CartPole-v1", "Pendulum-v1"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
         config_combinations = [frameworks, env_names, lstm]

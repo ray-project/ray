@@ -17,7 +17,7 @@ class Catalog:
     By default, that Catalog builds the configs it holds.
     You can modify a Catalog so that it builds different Models by subclassing and
     overriding the build_* methods. Alternatively, you can customize the configs
-    inside RLlib's Catalogs to customize what is being built by Rllib.
+    inside RLlib's Catalogs to customize what is being built by RLlib.
 
     Usage example:
 
