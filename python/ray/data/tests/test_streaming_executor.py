@@ -1,3 +1,4 @@
+import collections
 import pytest
 import time
 from unittest.mock import MagicMock
@@ -14,6 +15,8 @@ from ray.data._internal.execution.streaming_executor import (
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
+    TopologyResourceUsage,
+    DownstreamMemoryInfo,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
@@ -23,6 +26,10 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+
+EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(lambda: DownstreamMemoryInfo(0, 0))
+NO_USAGE = TopologyResourceUsage(ExecutionResources(), EMPTY_DOWNSTREAM_USAGE)
 
 
 @ray.remote
@@ -104,54 +111,30 @@ def test_select_operator_to_run():
     topo = build_streaming_topology(o3, opt)
 
     # Test empty.
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        is None
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) is None
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o2
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
     topo[o1].outqueue.append("dummy2")
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o2
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
     topo[o2].outqueue.append("dummy3")
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o3
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
 
     # Test backpressure includes num active tasks as well.
     o3.num_active_work_refs = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o2
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
     # nternal queue size is added to num active tasks.
     o3.num_active_work_refs = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o2
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
     o2.num_active_work_refs = MagicMock(return_value=2)
     o2.internal_queue_size = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o3
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
     o2.num_active_work_refs = MagicMock(return_value=0)
     o2.internal_queue_size = MagicMock(return_value=2)
-    assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
-        == o3
-    )
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
 
 
 def test_dispatch_next_task():
@@ -210,45 +193,58 @@ def test_validate_topology():
 def test_execution_allowed():
     op = InputDataBuffer([])
 
+    def stub(res: ExecutionResources) -> TopologyResourceUsage:
+        return TopologyResourceUsage(res, EMPTY_DOWNSTREAM_USAGE)
+
     # CPU.
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
-    assert _execution_allowed(op, ExecutionResources(cpu=1), ExecutionResources(cpu=2))
-    assert not _execution_allowed(
-        op, ExecutionResources(cpu=2), ExecutionResources(cpu=2)
+    assert _execution_allowed(
+        op, stub(ExecutionResources(cpu=1)), ExecutionResources(cpu=2)
     )
-    assert _execution_allowed(op, ExecutionResources(cpu=2), ExecutionResources(gpu=2))
+    assert not _execution_allowed(
+        op, stub(ExecutionResources(cpu=2)), ExecutionResources(cpu=2)
+    )
+    assert _execution_allowed(
+        op, stub(ExecutionResources(cpu=2)), ExecutionResources(gpu=2)
+    )
 
     # GPU.
     op.incremental_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=1, gpu=1)
     )
-    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
+    assert _execution_allowed(
+        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+    )
     assert not _execution_allowed(
-        op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
     # Test conversion to indicator (0/1).
     op.incremental_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=100, gpu=100)
     )
-    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
     assert _execution_allowed(
-        op, ExecutionResources(gpu=1.5), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+    )
+    assert _execution_allowed(
+        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
     # Test conversion to indicator (0/1).
     op.incremental_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=0.1, gpu=0.1)
     )
-    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
     assert _execution_allowed(
-        op, ExecutionResources(gpu=1.5), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+    )
+    assert _execution_allowed(
+        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
 
@@ -269,20 +265,29 @@ def test_select_ops_ensure_at_least_one_live_operator():
     o1.num_active_work_refs = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), True
+            topo,
+            TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
+            ExecutionResources(cpu=1),
+            True,
         )
         is None
     )
     o1.num_active_work_refs = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), True
+            topo,
+            TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
+            ExecutionResources(cpu=1),
+            True,
         )
         is o3
     )
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), False
+            topo,
+            TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
+            ExecutionResources(cpu=1),
+            False,
         )
         is None
     )
@@ -307,6 +312,72 @@ def test_configure_output_locality():
     assert isinstance(
         o3._ray_remote_args["scheduling_strategy"],
         NodeAffinitySchedulingStrategy,
+    )
+
+
+def test_calculate_topology_usage():
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2.current_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=5, object_store_memory=500)
+    )
+    o3.current_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=10, object_store_memory=1000)
+    )
+    topo = build_streaming_topology(o3, ExecutionOptions())
+    inputs[0].size_bytes = MagicMock(return_value=200)
+    topo[o2].outqueue = [inputs[0]]
+    usage = TopologyResourceUsage.of(topo)
+    assert len(usage.downstream_memory_usage) == 3, usage
+    assert usage.overall == ExecutionResources(15, 0, 1700)
+    assert usage.downstream_memory_usage[o1].object_store_memory == 1700, usage
+    assert usage.downstream_memory_usage[o1].topology_fraction == 1, usage
+    assert usage.downstream_memory_usage[o2].object_store_memory == 1700, usage
+    assert usage.downstream_memory_usage[o2].topology_fraction == 1, usage
+    assert usage.downstream_memory_usage[o3].object_store_memory == 1000, usage
+    assert usage.downstream_memory_usage[o3].topology_fraction == 0.5, usage
+
+
+def test_execution_allowed_downstream_aware_memory_throttling():
+    op = InputDataBuffer([])
+    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    # Below global.
+    assert _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(1, 1000)},
+        ),
+        ExecutionResources(object_store_memory=1100),
+    )
+    # Above global.
+    assert not _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(1, 1000)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
+    # Above global, but below downstream quota of 50%.
+    assert _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(0.5, 400)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
+    # Above global, and above downstream quota of 50%.
+    assert not _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(0.5, 600)},
+        ),
+        ExecutionResources(object_store_memory=900),
     )
 
 
