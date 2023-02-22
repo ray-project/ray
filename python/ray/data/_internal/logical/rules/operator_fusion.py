@@ -53,7 +53,7 @@ class OperatorFusionRule(Rule):
             * They have compatible remote arguments.
         """
         from ray.data._internal.execution.operators.map_operator import MapOperator
-        from ray.data._internal.logical.operators.map_operator import AbstractMap
+        from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
         from ray.data._internal.logical.operators.read_operator import Read
 
         # We only support fusing MapOperators.
@@ -64,8 +64,8 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map[up_op]
 
         # We only support fusing upstream reads and maps with downstream maps.
-        if not isinstance(down_logical_op, AbstractMap) or not isinstance(
-            up_logical_op, (Read, AbstractMap)
+        if not isinstance(down_logical_op, AbstractUDFMap) or not isinstance(
+            up_logical_op, (Read, AbstractUDFMap)
         ):
             return False
 
@@ -74,7 +74,7 @@ class OperatorFusionRule(Rule):
         # compute if fused.
         if (
             is_task_compute(down_logical_op._compute)
-            and isinstance(up_logical_op, AbstractMap)
+            and isinstance(up_logical_op, AbstractUDFMap)
             and get_compute(up_logical_op._compute)
             != get_compute(down_logical_op._compute)
         ):
@@ -86,7 +86,7 @@ class OperatorFusionRule(Rule):
         # worker.
         if (
             isinstance(down_logical_op._fn, CallableClass)
-            and isinstance(up_logical_op, AbstractMap)
+            and isinstance(up_logical_op, AbstractUDFMap)
             and isinstance(up_logical_op._fn, CallableClass)
             and (
                 up_logical_op._fn != down_logical_op._fn
@@ -112,7 +112,7 @@ class OperatorFusionRule(Rule):
     def _fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator):
         """Fuse the downstream operator with its upstream operator."""
         from ray.data._internal.execution.operators.map_operator import MapOperator
-        from ray.data._internal.logical.operators.map_operator import AbstractMap
+        from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 
         assert self._can_fuse(down_op, up_op)
 
@@ -126,7 +126,7 @@ class OperatorFusionRule(Rule):
         down_target_block_size = down_logical_op._target_block_size
         up_target_block_size = (
             up_logical_op._target_block_size
-            if isinstance(up_logical_op, AbstractMap)
+            if isinstance(up_logical_op, AbstractUDFMap)
             else None
         )
         if down_target_block_size is not None and up_target_block_size is not None:
@@ -167,12 +167,12 @@ class OperatorFusionRule(Rule):
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Clark): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
-        if isinstance(up_logical_op, AbstractMap):
+        if isinstance(up_logical_op, AbstractUDFMap):
             input_op = up_logical_op.input_dependencies[0]
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
-        logical_op = AbstractMap(
+        logical_op = AbstractUDFMap(
             name,
             input_op,
             down_logical_op._fn,

@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor_state import (
     Topology,
+    TopologyResourceUsage,
     OpState,
     build_streaming_topology,
     process_completed_tasks,
@@ -181,7 +182,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
-        cur_usage = self._get_current_usage(topology)
+        cur_usage = TopologyResourceUsage.of(topology)
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(
             topology,
@@ -193,7 +194,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage = self._get_current_usage(topology)
+            cur_usage = TopologyResourceUsage.of(topology)
             op = select_operator_to_run(
                 topology,
                 cur_usage,
@@ -229,25 +230,15 @@ class StreamingExecutor(Executor, threading.Thread):
             else cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_current_usage(self, topology: Topology) -> ExecutionResources:
-        cur_usage = ExecutionResources(0, 0, 0)
-        for op, state in topology.items():
-            cur_usage = cur_usage.add(op.current_resource_usage())
-            if isinstance(op, InputDataBuffer):
-                continue  # Don't count input refs towards dynamic memory usage.
-            for bundle in state.outqueue:
-                cur_usage.object_store_memory += bundle.size_bytes()
-        return cur_usage
-
     def _report_current_usage(
-        self, cur_usage: ExecutionResources, limits: ExecutionResources
+        self, cur_usage: TopologyResourceUsage, limits: ExecutionResources
     ) -> None:
         if self._global_info:
             self._global_info.set_description(
                 "Resource usage vs limits: "
-                f"{cur_usage.cpu}/{limits.cpu} CPU, "
-                f"{cur_usage.gpu}/{limits.gpu} GPU, "
-                f"{cur_usage.object_store_memory_str()}/"
+                f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
+                f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
+                f"{cur_usage.overall.object_store_memory_str()}/"
                 f"{limits.object_store_memory_str()} object_store_memory"
             )
         if self._output_info:
