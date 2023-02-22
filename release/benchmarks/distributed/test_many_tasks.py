@@ -11,6 +11,7 @@ from dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
+    safe_write_to_results_json
 )
 
 sleep_time = 300
@@ -109,32 +110,30 @@ def test(num_tasks, smoke_test):
         f"({rate} tasks/s)"
     )
 
-    if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {
-            "tasks_per_second": rate,
-            "num_tasks": num_tasks,
-            "time": end_time - start_time,
-            "used_cpus": used_cpus,
-            "success": "1",
-            "_peak_memory": round(used_gb, 2),
-            "_peak_process_memory": usage,
-        }
-        if not smoke_test:
-            results["perf_metrics"] = [
-                {
-                    "perf_metric_name": "tasks_per_second",
-                    "perf_metric_value": rate,
-                    "perf_metric_type": "THROUGHPUT",
-                },
-                {
-                    "perf_metric_name": "used_cpus_by_deadline",
-                    "perf_metric_value": used_cpus,
-                    "perf_metric_type": "THROUGHPUT",
-                },
-            ]
-        dashboard_test.update_release_test_result(results)
-        json.dump(results, out_file)
+    results = {
+        "tasks_per_second": rate,
+        "num_tasks": num_tasks,
+        "time": end_time - start_time,
+        "used_cpus": used_cpus,
+        "success": "1",
+        "_peak_memory": round(used_gb, 2),
+        "_peak_process_memory": usage,
+    }
+    if not smoke_test:
+        results["perf_metrics"] = [
+            {
+                "perf_metric_name": "tasks_per_second",
+                "perf_metric_value": rate,
+                "perf_metric_type": "THROUGHPUT",
+            },
+            {
+                "perf_metric_name": "used_cpus_by_deadline",
+                "perf_metric_value": used_cpus,
+                "perf_metric_type": "THROUGHPUT",
+            },
+        ]
+    dashboard_test.update_release_test_result(results)
+    test_utils.safe_write_to_results_json(results)
 
 
 if __name__ == "__main__":
