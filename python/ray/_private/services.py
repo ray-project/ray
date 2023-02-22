@@ -101,6 +101,10 @@ ProcessInfo = collections.namedtuple(
 
 
 def _site_flags() -> List[str]:
+    """Detect whether flags related to site packages are enabled for the current interpreter.
+    To run Ray in hermetic build environments, it helps to pass these flags down to Python
+    workers.
+    """
     flags = []
     # sys.flags hidden behind helper methods for unit testing.
     if _no_site():

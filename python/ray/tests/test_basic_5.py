@@ -254,9 +254,10 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
 @pytest.mark.parametrize("root_process_no_site", [0, 1])
 @pytest.mark.parametrize("root_process_no_user_site", [0, 1])
 def test_site_flag_inherited(shutdown_only, monkeypatch, root_process_no_site, root_process_no_user_site):
-    # The flags we're testing could prevent Ray from being imported in worker processes
-    # in the test environment.
-    # Avoid this by setting the PYTHONPATH.
+    # The flags we're testing could prevent Python workers in the test environment
+    # from locating site packages; the workers would fail to find Ray and would thus fail to start.
+    # To prevent that, set the PYTHONPATH env. The env will be inherited by the Python workers,
+    # so that they are able to import Ray.
     monkeypatch.setenv("PYTHONPATH", ":".join(sys.path))
 
     @ray.remote
