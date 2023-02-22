@@ -1,11 +1,6 @@
-from collections import defaultdict
 from typing import Type, Union, TYPE_CHECKING
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import convert_to_numpy
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -18,7 +13,6 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
 
-_, tf, _ = try_import_tf()
 
 if TYPE_CHECKING:
     import gymnasium as gym
@@ -159,41 +153,3 @@ def add_module_to_learner_or_learner_group(
         module_spec=get_module_spec(framework, env, is_multi_agent=False),
         optimizer_cls=get_optimizer_default_class(framework),
     )
-
-
-def do_rollout_single_agent(
-    rl_module, env, episode_length, policy_id=DEFAULT_POLICY_ID
-):
-    """Do a rollout of the given RLModule on the given environment.
-
-    Args:
-        rl_module: The RLModule to use for the rollout.
-        env: The environment to rollout on.
-        episode_length: The number of steps to rollout for.
-        policy_id: The policy id to use for the rollout.
-
-    Returns:
-        A tuple of (observations, actions, rewards, dones, infos).
-    """
-    batch = defaultdict(list)
-    obs, _ = env.reset()
-    rl_module = rl_module[policy_id]
-    for _ in range(episode_length):
-        if isinstance(rl_module, TfRLModule):
-            obs_for_fwd = tf.expand_dims(
-                tf.convert_to_tensor(obs, dtype=tf.float32), axis=0
-            )
-        fwd_out = rl_module.forward_exploration(
-            SampleBatch(**{SampleBatch.OBS: obs_for_fwd})
-        )
-        action = convert_to_numpy(fwd_out["action_dist"].sample())
-        next_obs, reward, done, _, _ = env.step(action[0])
-        batch[SampleBatch.OBS].append(obs)
-        batch[SampleBatch.ACTIONS].append(action[0])
-        batch[SampleBatch.REWARDS].append(reward)
-        batch[SampleBatch.TERMINATEDS].append(done)
-        for k, v in fwd_out.items():
-            batch[k].append(v)
-        obs = next_obs
-    batch = SampleBatch(**batch)
-    return batch

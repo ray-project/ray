@@ -148,6 +148,14 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
+    def rollouts(self, *args, **kwargs) -> "AlgorithmConfig":
+        super().rollouts(*args, **kwargs)
+        self.learner_hps.rollout_frag_or_episode_len = (
+            self.get_rollout_fragment_length()
+        )
+        return self
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,

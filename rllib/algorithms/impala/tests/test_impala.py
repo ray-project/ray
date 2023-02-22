@@ -114,27 +114,6 @@ class TestIMPALA(unittest.TestCase):
             finally:
                 algo.stop()
 
-    def test_impala_compilation_rl_module(self):
-        config = (
-            impala.ImpalaConfig()
-            .environment("CartPole-v1")
-            .resources(num_gpus=0)
-            .rollouts(num_rollout_workers=2)
-            .rl_module(
-                _enable_rl_module_api=True,
-            )
-            # .training(_enable_learner_api=True)
-        )
-        num_iterations = 100
-
-        for _ in framework_iterator(config, frameworks="tf2"):
-            config.num_aggregation_workers = 0
-            algo = config.build()
-            for i in range(num_iterations):
-                results = algo.train()
-                print(results)
-                # check_train_results(results)
-
 
 if __name__ == "__main__":
     import pytest

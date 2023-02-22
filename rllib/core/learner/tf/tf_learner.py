@@ -157,7 +157,8 @@ class TfLearner(Learner):
             ma_batch[pid] = dict(batch)
         ma_batch = NestedDict(ma_batch)
         for key, value in ma_batch.items():
-            ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+            if not isinstance(value, tf.Tensor):
+                ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return ma_batch
 
     @override(Learner)
