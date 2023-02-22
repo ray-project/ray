@@ -42,8 +42,8 @@ def gradio_summarizer_builder():
 
     return gr.Interface(
         fn=model,
-        inputs=[gr.inputs.Textbox(default=example_input, label="Input prompt")],
-        outputs=[gr.outputs.Textbox(label="Model output")],
+        inputs=[gr.Textbox(value=example_input, label="Input prompt")],
+        outputs=[gr.Textbox(label="Model output")],
     )
     # __doc_gradio_app_end__
 
