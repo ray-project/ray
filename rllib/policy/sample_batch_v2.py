@@ -1234,7 +1234,7 @@ class MultiAgentBatch:
         """
 
         for v in policy_batches.values():
-            assert isinstance(v, SampleBatch)
+            assert isinstance(v, SampleBatchV2)
         self.policy_batches = policy_batches
         # Called "count" for uniformity with SampleBatch.
         # Prefer to access this via the `env_steps()` method when possible
@@ -1582,7 +1582,7 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     env_steps = 0
     for s in samples:
         # Some batches in `samples` may be SampleBatch.
-        if isinstance(s, SampleBatch):
+        if isinstance(s, SampleBatchV2):
             # If empty SampleBatch: ok (just ignore).
             if len(s) <= 0:
                 continue
