@@ -225,12 +225,12 @@ def read_file_from_uri(uri: str) -> bytes:
 def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     """Downloads a directory or file at a URI to a local path.
 
-    If the URI points to a directory, then the full directory contents will be
-    copied, and `local_path` will be the downloaded directory.
-    If the download fails for some reason, the `local_path` contents will be
+    If the URI points to a directory, then the full directory contents are
+    copied, and `local_path` is the downloaded directory.
+    If the download fails, the `local_path` contents are
     cleaned up before raising, if the directory did not previously exist.
-    NOTE: This will create `local_path`'s parent directories if they do not
-    already exist. If the download fails, this will NOT clean up all the parent
+    NOTE: This creates `local_path`'s parent directories if they do not
+    already exist. If the download fails, this does NOT clean up all the parent
     directories that were created.
 
     Args:

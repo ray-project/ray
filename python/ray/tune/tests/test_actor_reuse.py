@@ -483,10 +483,10 @@ def test_artifact_syncing_with_actor_reuse(
 ):
     """Check that artifacts get synced to the right places with actor reuse.
 
-    In this test, there are 4 trials that are getting paused + reused.
+    In this test, 4 trials are paused and reused.
     max_concurrent_trials=2 to force trials to swap places with each other.
-    On each pause + Trianable.reset, artifacts should get synced to their respective
-    location in the target directory.
+    On each pause and Trainable.reset, artifacts should get synced to their respective
+    locations in the target directory.
     """
     tmp_target = str(tmp_path / "target")
     local_dir = str(tmp_path / "local_dir")

@@ -731,7 +731,7 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
 def test_artifact_syncing_on_save_restore(ray_start_2_cpus, temp_data_dirs, tmp_path):
     """Test that the trainable syncs artifacts along with checkpoints.
     In this test:
-    - `tmp_target` == mocked remote storage location where Tune will sync to
+    - `tmp_target` == mocked remote storage location where Tune syncs to
     - `tmp_path/dir1` == local storage location of initial run
     - `tmp_path/dir2` == local storage location of restored trainable
     """
@@ -814,7 +814,7 @@ def test_artifact_syncing_on_stop(ray_start_2_cpus, temp_data_dirs, tmp_path):
 
 
 def test_artifact_syncing_on_reset(ray_start_2_cpus, temp_data_dirs, tmp_path):
-    """Check that artifacts get uploaded on trial reset (ex: paused + reuse actors)."""
+    """Check that artifacts get uploaded on trial reset (for example, paused and reuse actors)."""
     _, tmp_target = temp_data_dirs
 
     trainable = ray.remote(TestTrainable).remote(
@@ -829,9 +829,9 @@ def test_artifact_syncing_on_reset(ray_start_2_cpus, temp_data_dirs, tmp_path):
 
 
 def test_avoid_duplicate_artifact_sync(ray_start_2_cpus, temp_data_dirs, tmp_path):
-    """Checks that artifacts don't get uploaded twice if not needed.
-    For example, a trial will upload artifacts on a final checkpoint, and
-    there is no need to upload again on stop/trial complete."""
+    """Checks that artifacts are not uploaded twice if not needed.
+    For example, a trial uploads artifacts on a final checkpoint, and
+    there is no need to upload again on stop or trial complete."""
     _, tmp_target = temp_data_dirs
 
     trainable = ray.remote(TestTrainable).remote(

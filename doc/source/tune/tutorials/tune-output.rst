@@ -1,7 +1,7 @@
 Logging and Outputs in Tune
 ===========================
 
-Tune by default will log results for TensorBoard, CSV, and JSON formats.
+By default, Tune logs results for TensorBoard, CSV, and JSON formats.
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 You can learn more about logging and customizations here: :ref:`loggers-docstring`.
 
@@ -181,10 +181,10 @@ How do you log arbitrary files from a Tune Trainable?
 -----------------------------------------------------
 
 By default, Tune only logs the *training result dictionaries* and *checkpoints* from your Trainable.
-However, you may want to save a file that visualizes the model weights/model graph,
+However, you may want to save a file that visualizes the model weights or model graph,
 or use a custom logging library that requires multi-process logging.
 For example, you may want to do this if you're trying to log images to TensorBoard.
-We will refer to these saved files as **trial artifacts**.
+We refer to these saved files as **trial artifacts**.
 
 You can save trial artifacts directly in the trainable, as shown below:
 
@@ -243,7 +243,7 @@ You can save trial artifacts directly in the trainable, as shown below:
             def step(self):
                 logging_library.log_model(...)
 
-                # You can also just write to a file directly.
+                # You can also write to a file directly.
                 # The working directory is set to the trial directory, so
                 # you don't need to worry about multiple workers saving
                 # to the same location.
@@ -264,22 +264,22 @@ In the code snippet above, ``logging_library`` refers to whatever 3rd party logg
 Note that ``logging_library.set_log_path(os.getcwd())`` is an imaginary API that we are using
 for demonstation purposes, and it highlights that the third-party library
 should be configured to log to the Trainable's *working directory.* By default,
-the current working directory of both functional and class trainables will be set to the
+the current working directory of both functional and class trainables is set to the
 corresponding trial directory once it's been launched as a remote Ray actor.
 
 When running with multiple nodes using the :ref:`default syncing method <tune-default-syncing>`,
-trial artifacts will be synchronized to the driver node under the specified path.
+trial artifacts are synchronized to the driver node under the specified path.
 This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
 
-When :ref:`specifying a cloud upload directory <tune-cloud-checkpointing>`, trial artifacts will be uploaded to that cloud bucket
-for later analysis. Note that in this case, the driver node will not necessarily contain
+When :ref:`specifying a cloud upload directory <tune-cloud-checkpointing>`, trial artifacts are uploaded to that cloud bucket
+for later analysis. Note that the driver node does not necessarily contain
 artifacts from *all* trials -- only the ones that were running on that node.
 To disable artifacts from being uploaded to the cloud, set ``SyncConfig(sync_artifacts=False)`` in :class:`~ray.tune.syncer.SyncConfig`.
 
 .. warning::
 
-    Appending to trial artifacts upon restoration is not currently supported.
-    To get around this, we recommend saving trial artifacts a separate files with unique filenames.
+    Appending to trial artifacts upon restoration is not supported.
+    As a workaround, save trial artifacts to separate files with unique filenames.
 
     For example, instead of doing this:
 
@@ -290,7 +290,7 @@ To disable artifacts from being uploaded to the cloud, set ``SyncConfig(sync_art
                 with open("./artifact.txt", "a") as f:
                     f.write(f"Some data about iteration {i}\n")
 
-    You should log artifacts as independent files with unique filenames:
+    Log artifacts as independent files with unique filenames:
 
     .. code-block:: python
 
@@ -299,7 +299,7 @@ To disable artifacts from being uploaded to the cloud, set ``SyncConfig(sync_art
                 with open(f"./artifact_{i}.txt", "w") as f:
                     f.write(f"Some data about iteration {i}\n")
 
-    If you are running into issues with this, please `file an issue <https://github.com/ray-project/ray/issues>`_!
+    If you are running into issues, `file an issue <https://github.com/ray-project/ray/issues>`_
 
 
 How to Build Custom Tune Loggers?
