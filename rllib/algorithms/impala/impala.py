@@ -14,6 +14,10 @@ from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
+from ray.rllib.core.learner.learner_group_config import (
+    LearnerGroupConfig,
+    ModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -143,17 +147,18 @@ class ImpalaConfig(AlgorithmConfig):
         self._tf_policy_handles_more_than_one_loss = True
         # __sphinx_doc_end__
         # fmt: on
+        self._learner_hps.discount_factor = self.gamma
+        self._learner_hps.entropy_coeff = self.entropy_coeff
+        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
+        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
+        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
+        self._learner_hps.vtrace_clip_pg_rho_threshold = (
+            self.vtrace_clip_pg_rho_threshold
+        )
+        self._learner_hps.rollout_frag_or_episode_len = self.rollout_fragment_length
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
-
-    @override(AlgorithmConfig)
-    def rollouts(self, *args, **kwargs) -> "AlgorithmConfig":
-        super().rollouts(*args, **kwargs)
-        self.learner_hps.rollout_frag_or_episode_len = (
-            self.get_rollout_fragment_length()
-        )
-        return self
 
     @override(AlgorithmConfig)
     def training(
@@ -163,6 +168,7 @@ class ImpalaConfig(AlgorithmConfig):
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
         vtrace_drop_last_ts: Optional[bool] = NotProvided,
+        gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
@@ -202,6 +208,7 @@ class ImpalaConfig(AlgorithmConfig):
                 especially in sparse reward or reward-at-goal environments.
                 False for not dropping the last timestep.
                 System params.
+            gamma: Float specifying the discount factor of the Markov Decision process.
             num_multi_gpu_tower_stacks: For each stack of multi-GPU towers, how many
                 slots should we reserve for parallel data loading? Set this to >1 to
                 load data into GPUs in parallel. This will increase GPU memory usage
@@ -270,8 +277,6 @@ class ImpalaConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if "gamma" in kwargs:
-            self._learner_hps.discount_factor = kwargs["gamma"]
         if vtrace is not NotProvided:
             self.vtrace = vtrace
         if vtrace_clip_rho_threshold is not NotProvided:
@@ -337,6 +342,9 @@ class ImpalaConfig(AlgorithmConfig):
             self._lr_vf = _lr_vf
         if after_train_step is not NotProvided:
             self.after_train_step = after_train_step
+        if gamma is not NotProvided:
+            self.gamma = gamma
+            self._learner_hps.discount_factor = self.gamma
 
         return self
 
@@ -385,6 +393,17 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+        self._learner_hps.rollout_frag_or_episode_len = (
+            self.get_rollout_fragment_length()
+        )
+
+    @override(AlgorithmConfig)
+    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
+        lg_config = super().get_learner_group_config(module_spec)
+        optim_config = lg_config.optimizer_config
+        optim_config.update({"grad_clip": self.grad_clip})
+        lg_config = lg_config.learner(optimizer_config=optim_config)
+        return lg_config
 
     def get_replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
@@ -477,7 +496,7 @@ class Impala(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if config["_enable_learner_api"] or config["_enable_rl_module_api"]:
+        if config._enable_rl_module_api:
             if config["framework"] == "tf2":
                 if config["vtrace"]:
                     from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
@@ -717,6 +736,8 @@ class Impala(Algorithm):
                 else []
             )
         )
+        # TODO(avnishn): Remove this once we have a way to extend placement group
+        # factories.
         if cf._enable_learner_api:
             # resources for the trainer
             if cf.num_learner_workers == 0:
@@ -784,6 +805,9 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
+            # We should sample from the local worker if there is a local worker and
+            # and all the remote rollout workers are unhealthy, or if we have no
+            # remote rollout workers to begin with.
             elif self.workers.local_worker() and (
                 self.config.create_env_on_local_worker
                 or self.config.num_rollout_workers == 0
@@ -804,11 +828,11 @@ class Impala(Algorithm):
             if self.batches_to_place_on_learner:
                 batch = self.batches_to_place_on_learner.pop(0)
                 blocking = self.config.num_learner_workers == 0
-                self._results = self.learner_group.update(
+                self._lg_results = self.learner_group.update(
                     batch, reduce_fn=_reduce_impala_results, block=blocking
                 )
             else:
-                self._results = []
+                self._lg_results = None
         else:
             while self.batches_to_place_on_learner:
                 batch = self.batches_to_place_on_learner[0]
@@ -834,16 +858,16 @@ class Impala(Algorithm):
         num_agent_steps_trained = 0
         if self.config._enable_learner_api:
             result = {}
-            if self._results:
-                self._counters[NUM_ENV_STEPS_TRAINED] += self._results[
+            if self._lg_results:
+                self._counters[NUM_ENV_STEPS_TRAINED] += self._lg_results[
                     "env_steps_trained"
                 ]
-                self._counters[NUM_AGENT_STEPS_TRAINED] += self._results[
+                self._counters[NUM_AGENT_STEPS_TRAINED] += self._lg_results[
                     "agent_steps_trained"
                 ]
-                del self._results["env_steps_trained"]
-                del self._results["agent_steps_trained"]
-                result = {"learner": self._results}
+                del self._lg_results["env_steps_trained"]
+                del self._lg_results["agent_steps_trained"]
+                result = {"learner": self._lg_results}
             return result
         else:
             learner_infos = []

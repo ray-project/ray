@@ -7,19 +7,16 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
-    KLCoeffMixin,
     LearningRateSchedule,
 )
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
-
 from ray.rllib.utils.tf_utils import (
     explained_variance,
 )
-
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
-
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -33,9 +30,9 @@ class ImpalaTfPolicyWithRLModule(
     EagerTFPolicyV2,
 ):
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
-        # TODO: Move into Policy API, if needed at all here. Why not move this into
-        #  `PPOConfig`?.
+        config = dict(
+            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
+        )
         validate_config(config)
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
@@ -44,10 +41,10 @@ class ImpalaTfPolicyWithRLModule(
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
-        KLCoeffMixin.__init__(self, config)
 
         self.maybe_initialize_optimizer_and_loss()
 
+    @Deprecated(new="ImpalaTfLearner.compute_loss_per_module()", error=False)
     @override(EagerTFPolicyV2)
     def loss(
         self,

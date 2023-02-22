@@ -9,8 +9,8 @@ cartpole-impala:
         framework: tf2
         num_gpus: 0
         vtrace_drop_last_ts: false
-        _enable_rl_module_api: False
-        _enable_learner_api: False
+        _enable_rl_module_api: True
+        _enable_learner_api: True
         grad_clip: 40
         num_workers: 2
-        num_learner_workers: 0
+        num_learner_workers: 1

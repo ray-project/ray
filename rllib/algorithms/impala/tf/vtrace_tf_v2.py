@@ -1,12 +1,14 @@
-from typing import List, Union
+from typing import List, Union, TYPE_CHECKING
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
 
+if TYPE_CHECKING:
+    _, tf, _ = try_import_tf()
+
 
 def make_time_major(
-    tensor: Union[TensorType, List[TensorType]],
+    tensor: Union[tf.Tensor, List[tf.Tensor]],
     *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
@@ -60,14 +62,14 @@ def make_time_major(
 
 def vtrace_tf2(
     *,
-    target_action_log_probs: TensorType,
-    behaviour_action_log_probs: TensorType,
-    discounts: TensorType,
-    rewards: TensorType,
-    values: TensorType,
-    bootstrap_value: TensorType,
-    clip_rho_threshold: Union[float, TensorType] = 1.0,
-    clip_pg_rho_threshold: Union[float, TensorType] = 1.0,
+    target_action_log_probs: tf.Tensor,
+    behaviour_action_log_probs: tf.Tensor,
+    discounts: tf.Tensor,
+    rewards: tf.Tensor,
+    values: tf.Tensor,
+    bootstrap_value: tf.Tensor,
+    clip_rho_threshold: Union[float, tf.Tensor] = 1.0,
+    clip_pg_rho_threshold: Union[float, tf.Tensor] = 1.0,
 ):
     r"""V-trace for softmax policies.
 

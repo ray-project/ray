@@ -31,21 +31,25 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
         )
         num_iterations = 3
         num_aggregation_workers_options = [0, 1]
-        enable_rlm_learner_group_options = [(True, True), (False, False)]
-        for fw in framework_iterator(config, with_eager_tracing=True):
-            # for num_aggregation_workers in [0, 1]:
-            for permutation in itertools.product(
-                num_aggregation_workers_options, enable_rlm_learner_group_options
-            ):
-                num_aggregation_workers = permutation[0]
+        enable_rlm_learner_group_options = [True, False]
+        for permutation in itertools.product(
+            num_aggregation_workers_options, enable_rlm_learner_group_options
+        ):
+            num_aggregation_workers, enable_learner_api = permutation
+            for fw in framework_iterator(config, with_eager_tracing=True):
+
                 # TODO(avnishn): Enable this for torch when we merge the torch learner.
-                enable_rlm = permutation[1][0] if fw == "tf2" else False
-                enable_learner_group = permutation[1][1] if fw == "tf2" else False
+                if enable_learner_api and fw != "tf2":
+                    continue
                 # TODO(kourosh) disable after fixes to tf eager tracing and torch dists.
-                if enable_rlm:
-                    config.eager_tracing = False
-                config._enable_learner_api = enable_learner_group
-                config._enable_rl_module_api = enable_rlm
+                elif enable_learner_api and fw == "tf2":
+                    config.framework(eager_tracing=False)
+                    config.training(_enable_learner_api=enable_learner_api)
+                    config.rl_module(_enable_rl_module_api=enable_learner_api)
+                else:
+                    config.framework(eager_tracing=True)
+                    config.training(_enable_learner_api=False)
+                    config.rl_module(_enable_rl_module_api=False)
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))
                 algo = config.build()

@@ -16,6 +16,32 @@ _, tf, _ = try_import_tf()
 
 @dataclass
 class ImpalaHPs(LearnerHPs):
+    """Hyper-parameters for IMPALA.
+
+    Attributes:
+        rollout_frag_or_episode_len: The length of a rollout fragment or episode.
+            Used when making SampleBatches time major for computing loss.
+        recurrent_seq_len: The length of a recurrent sequence. Used when making
+            SampleBatches time major for computing loss.
+        discount_factor: The discount factor to use for computing returns.
+        vtrace_clip_rho_threshold: The rho threshold to use for clipping the
+            importance weights.
+        vtrace_clip_pg_rho_threshold: The rho threshold to use for clipping the
+            importance weights when computing the policy_gradient loss.
+        vtrace_drop_last_ts: Whether to drop the last timestep when computing the loss.
+            This is useful for stabilizing the loss.
+            NOTE: This shouldn't be True when training on environments where the rewards
+            come at the end of the episode.
+        vf_loss_coeff: The amount to weight the value function loss by when computing
+            the total loss.
+        entropy_coeff: The amount to weight the average entropy of the actions in the
+            SampleBatch towards the total_loss for module updates. The higher this
+            coefficient, the more that the policy network will be encouraged to output
+            distributions with higher entropy/std deviation, which will encourage
+            greater exploration.
+
+    """
+
     rollout_frag_or_episode_len: int = None
     recurrent_seq_len: int = None
     discount_factor: float = 0.99
@@ -58,8 +84,6 @@ class ImpalaTfLearner(TfLearner):
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
 
-        # this is probably a horribly inefficient way to do this. I should be able to
-        # compute this in a batch fashion
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
@@ -89,8 +113,8 @@ class ImpalaTfLearner(TfLearner):
             drop_last=self.vtrace_drop_last_ts,
         )
 
-        # how to compute discouts?
-        # should they be pre computed?
+        # the discount factor that is used should be gamma except for timesteps where
+        # the episode is terminated. In that case, the discount factor should be 0.
         discounts_time_major = (
             1.0
             - tf.cast(
@@ -120,8 +144,8 @@ class ImpalaTfLearner(TfLearner):
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
-        vf_loss = 0.5 * tf.reduce_sum(tf.math.pow(delta, 2.0))
-        mean_vf_loss = 0.5 * tf.reduce_mean(tf.math.pow(delta, 2.0))
+        vf_loss = 0.5 * tf.reduce_sum(delta**2)
+        mean_vf_loss = 0.5 * tf.reduce_mean(delta**2)
 
         # The entropy loss.
         entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)
@@ -153,13 +177,16 @@ class ImpalaTfLearner(TfLearner):
 
 
 def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
-    """Takes the average of all the leaves in the result dict
+    """Reduce/Aggregate a list of results from Impala Learners.
+
+    Average the values of the result dicts. Add keys for the number of agent and env
+    steps trained.
 
     Args:
-        results: list of result dicts to average
+        results: result dicts to reduce.
 
     Returns:
-        Averaged result dict
+        A reduced result dict.
     """
     result = tree.map_structure(lambda *x: np.mean(x), *results)
     agent_steps_trained = sum([r["agent_steps_trained"] for r in results])

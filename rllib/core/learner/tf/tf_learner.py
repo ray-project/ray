@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 from typing import (
     Any,
     Mapping,
@@ -103,8 +104,9 @@ class TfLearner(Learner):
             grad_clip, (int, float, type(None))
         ), "grad_clip must be a number"
         if grad_clip is not None:
-            for k, v in gradients_dict.items():
-                gradients_dict[k] = tf.clip_by_value(v, -grad_clip, grad_clip)
+            gradients_dict = tf.nest.map_structure(
+                lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
+            )
         return gradients_dict
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
@@ -152,12 +154,9 @@ class TfLearner(Learner):
         # tf.function. This messes with input spec checking. Other fields of
         # the sample batch are possibly modified by tf.function which may lead
         # to unwanted consequences. We'll need to further investigate this.
-        ma_batch = dict(batch.policy_batches)
-        for pid, batch in ma_batch.items():
-            ma_batch[pid] = dict(batch)
-        ma_batch = NestedDict(ma_batch)
+        ma_batch = NestedDict(batch.policy_batches)
         for key, value in ma_batch.items():
-            if not isinstance(value, tf.Tensor):
+            if isinstance(value, np.ndarray):
                 ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return ma_batch
 
