@@ -92,7 +92,6 @@ class MLPHeadConfig(ModelConfig):
         Linear(8, 8)
         ReLU()
         Linear(8, 2)
-        Linear()
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
