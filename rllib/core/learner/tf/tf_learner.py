@@ -1,4 +1,5 @@
 import logging
+import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
@@ -8,6 +9,7 @@ from typing import (
     Callable,
     Sequence,
     Hashable,
+    Set,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -94,14 +96,17 @@ class TfLearner(Learner):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
-    def get_weights(self) -> Mapping[str, Any]:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the weights of the underlying MultiAgentRLModule"""
+        module_weights = self._module.get_state()
+        if module_ids is None:
+            return module_weights
+
+        return {k: v for k, v in module_weights.items() if k in module_ids}
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
+        self._module.set_state(weights)
 
     @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
@@ -138,7 +143,7 @@ class TfLearner(Learner):
         # to unwanted consequences. We'll need to further investigate this.
         batch = NestedDict(batch.policy_batches)
         for key, value in batch.items():
-            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+            batch[key] = tf.cast(tf.convert_to_tensor(value), tf.float32)
         return batch.asdict()
 
     @override(Learner)
@@ -252,6 +257,10 @@ class TfLearner(Learner):
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
+            # TODO (Kourosh): We need to go back to NestedDict because that's the
+            # constraint on forward_train and compute_loss APIs. This seems to be
+            # in-efficient. Make it efficient.
+            _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
@@ -260,9 +269,24 @@ class TfLearner(Learner):
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
+
+            # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
+            # needed for compiling the results in a later step (e.g. in
+            # compile_results), but it should not contain anything but tensors, None or
+            # ExtensionTypes, otherwise the tf.function will yell at us because it
+            # won't be able to convert the returned objects to a tensor representation
+            # (for internal reasons). So, in here, we remove anything from fwd_out that
+            # is not a tensor, None or ExtensionType.
+            def filter_fwd_out(x):
+                if isinstance(
+                    x, (tf.Tensor, type(None), tf.experimental.ExtensionType)
+                ):
+                    return x
+                return None
+
             return {
                 "loss": loss,
-                "fwd_out": fwd_out,
+                "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
                 "postprocessed_gradients": gradients,
             }
 

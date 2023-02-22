@@ -209,7 +209,7 @@ class AnyscaleJobManager:
                         msg = "... job not yet running ..."
                     logger.info(
                         f"{msg}({int(now - start_time)} seconds, "
-                        f"{int(timeout_at - now)} seconds to timeout) ..."
+                        f"{int(timeout_at - now)} seconds to job timeout) ..."
                     )
                     next_status += 30
 
@@ -238,7 +238,11 @@ class AnyscaleJobManager:
         self.last_job_result = result
         status = self.last_job_status
         assert status in terminal_state
-        retcode = job_status_to_return_code[status]
+        if status == HaJobStates.TERMINATED and not job_running:
+            # Soft infra error
+            retcode = -4
+        else:
+            retcode = job_status_to_return_code[status]
         duration = time.time() - self.start_time
         return retcode, duration
 
