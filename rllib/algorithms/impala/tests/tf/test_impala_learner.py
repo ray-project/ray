@@ -3,8 +3,6 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.impala as impala
-from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner, ImpalaHPs
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -18,12 +16,22 @@ tf1.enable_eager_execution()
 frag_length = 32
 
 FAKE_BATCH = {
-    SampleBatch.OBS: np.random.uniform(low=0, high=1, size=(frag_length, 4)).astype(np.float32),
+    SampleBatch.OBS: np.random.uniform(low=0, high=1, size=(frag_length, 4)).astype(
+        np.float32
+    ),
     SampleBatch.ACTIONS: np.random.choice(2, frag_length).astype(np.float32),
-    SampleBatch.REWARDS: np.random.uniform(low=-1, high=1, size=(frag_length,)).astype(np.float32),
-    SampleBatch.TERMINATEDS: np.array([False for _ in range(frag_length -1)] + [True]).astype(np.float32),
-    SampleBatch.VF_PREDS: np.array([i for i in reversed(range(frag_length))], dtype=np.float32),
-    SampleBatch.ACTION_LOGP: np.log(np.random.uniform(low=0, high=1, size=(frag_length,))).astype(np.float32),
+    SampleBatch.REWARDS: np.random.uniform(low=-1, high=1, size=(frag_length,)).astype(
+        np.float32
+    ),
+    SampleBatch.TERMINATEDS: np.array(
+        [False for _ in range(frag_length - 1)] + [True]
+    ).astype(np.float32),
+    SampleBatch.VF_PREDS: np.array(
+        list(reversed(range(frag_length))), dtype=np.float32
+    ),
+    SampleBatch.ACTION_LOGP: np.log(
+        np.random.uniform(low=0, high=1, size=(frag_length,))
+    ).astype(np.float32),
 }
 
 
@@ -64,11 +72,12 @@ class TestImpalaTfLearner(unittest.TestCase):
             policy = trainer.get_policy()
 
             if fw == "tf2":
-                train_batch = tf.nest.map_structure(lambda x: tf.convert_to_tensor(x), 
-                                                    FAKE_BATCH)
+                train_batch = tf.nest.map_structure(
+                    lambda x: tf.convert_to_tensor(x), FAKE_BATCH
+                )
             train_batch = SampleBatch(FAKE_BATCH)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
-            
+
             algo_config = config.copy(copy_frozen=False)
             algo_config.training(_enable_learner_api=True)
             algo_config.validate()

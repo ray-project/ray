@@ -530,14 +530,6 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
-        if self.config._enable_learner_api:
-            # TODO: (avnish) find a better solution for this.
-            # Ideally setting hparams should happen in the algo config, but since
-            # get_rollout_fragment_length is only safe to call after the config has been
-            # built, we have to set it here.
-            self.config.learner_hps.rollout_frag_or_episode_len = (
-                self.config.get_rollout_fragment_length()
-            )
         super().setup(config)
 
         # Create extra aggregation workers and assign each rollout worker to
