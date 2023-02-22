@@ -138,7 +138,7 @@ class RaySyncerBidiReactor {
   /// Disconnect will terminate the communication between local and remote node.
   /// It also needs to do proper cleanup.
   void Disconnect() {
-    if(!IsDisconnected()) {
+    if (!IsDisconnected()) {
       DoDisconnect();
       disconnected_ = true;
     }
@@ -176,7 +176,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         message_processor_(std::move(message_processor)) {}
 
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
-    if(IsDisconnected()) {
+    if (IsDisconnected()) {
       return false;
     }
 
@@ -353,7 +353,6 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   ~RayServerBidiReactor() override = default;
 
-
  private:
   void DoDisconnect() override;
   void OnCancel() override;
@@ -380,7 +379,6 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
       std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
   ~RayClientBidiReactor() override = default;
-
 
  private:
   void DoDisconnect() override;

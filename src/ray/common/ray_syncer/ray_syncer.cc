@@ -105,11 +105,7 @@ RayServerBidiReactor::RayServerBidiReactor(
 }
 
 void RayServerBidiReactor::DoDisconnect() {
-  io_context_.dispatch(
-      [this]() {
-        Finish(grpc::Status::OK);
-      },
-      "");
+  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
 }
 
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
