@@ -24,6 +24,12 @@ Choose any node to be the head node and run the following. If the `--port` argum
 ray start --head --port=6379
 ```
 
+If you are using a Windows computer, you need to obtain the LAN IP address of this computer first, and add the `--node-ip-address` parameter to complete the startup of the head node. The same is true for the following work nodes.The following is an example of the current computer LAN with IP `192.168.31.54`.
+
+```bash
+ray start --head --node-ip-address=192.168.31.54 --port=6379
+```
+
 The command will print out the Ray cluster address, which can be passed to `ray start` on other machines to start the worker nodes (see below). If you receive a ConnectionError, check your firewall settings and network configuration.
 
 ### Start Worker Nodes
@@ -32,6 +38,13 @@ Then on each of the other nodes, run the following command to connect to the hea
 ```bash
 ray start --address=<head-node-address:port>
 ```
+
+As mentioned above, when using a Windows computer, you need to specify the node parameter to connect the working node successfully.The following is an example of the current computer LAN with IP `192.168.31.140`, the Head Node IP and port is `192.168.31.54:6379`.
+
+```bash
+ray start --node-ip-address=192.168.31.140 --address=192.168.31.54:6377
+```
+
 Make sure to replace `head-node-address:port` with the value printed by the command on the head node (it should look something like 123.45.67.89:6379).
 
 Note that if your compute nodes are on their own subnetwork with Network Address Translation, the address printed by the head node will not work if connecting from a machine outside that subnetwork. You will need to use a head node address reachable from the remote machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on DNS.
