@@ -2,9 +2,8 @@ import ray
 import argparse
 from time import time, sleep
 from math import floor
-import os
-import json
 from ray._private.test_utils import safe_write_to_results_json
+
 
 @ray.remote
 def simple_task(t):

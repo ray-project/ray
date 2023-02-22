@@ -1,6 +1,4 @@
 import click
-import json
-import os
 import ray
 import ray._private.test_utils as test_utils
 import time
@@ -11,7 +9,7 @@ from dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
-    safe_write_to_results_json
+    safe_write_to_results_json,
 )
 
 sleep_time = 300
@@ -133,7 +131,7 @@ def test(num_tasks, smoke_test):
             },
         ]
     dashboard_test.update_release_test_result(results)
-    test_utils.safe_write_to_results_json(results)
+    safe_write_to_results_json(results)
 
 
 if __name__ == "__main__":

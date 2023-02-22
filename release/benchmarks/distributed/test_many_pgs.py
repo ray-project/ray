@@ -1,4 +1,3 @@
-import json
 import os
 import ray
 import ray._private.test_utils as test_utils
