@@ -376,8 +376,10 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
             std::move(actor), failure_type, scheduling_failure_message);
       };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
-                                         const rpc::PushTaskReply &reply) {
-    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
+                                         const rpc::PushTaskReply &reply,
+                                         const Status &creation_task_status) {
+    gcs_actor_manager_->OnActorCreationSuccess(
+        std::move(actor), reply, creation_task_status);
   };
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);

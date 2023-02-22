@@ -183,6 +183,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
         RAY_CHECK_OK(task_done_());
+
+        if (status.IsCreationTaskError()) {
+          // Actor creation task failure should always return the failure status.
+          reply->set_worker_exiting(true);
+          send_reply_callback(status, nullptr, nullptr);
+          return;
+        }
       }
     }
     if (status.ShouldExitWorker()) {
