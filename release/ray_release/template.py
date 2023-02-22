@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
-    "TIMESTAMP": str(int(datetime.datetime.now().timestamp()))
+    "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
 }
 
 
