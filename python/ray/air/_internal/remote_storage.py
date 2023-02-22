@@ -229,7 +229,9 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     copied, and `local_path` will be the downloaded directory.
     If the download fails for some reason, the `local_path` contents will be
     cleaned up before raising, if the directory did not previously exist.
-    NOTE: This requires that `local_path`'s parent directory already exists.
+    NOTE: This will create `local_path`'s parent directories if they do not
+    already exist. If the download fails, this will NOT clean up all the parent
+    directories that were created.
 
     Args:
         uri: The URI to download from.
@@ -254,7 +256,7 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     _local_path = Path(local_path)
     exists_before = _local_path.exists()
     if is_directory(uri):
-        _local_path.mkdir(parents=False, exist_ok=True)
+        _local_path.mkdir(parents=True, exist_ok=True)
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
