@@ -1,18 +1,17 @@
 diff --git a/opencensus/stats/internal/delta_producer.cc b/opencensus/stats/internal/delta_producer.cc
-index c61b4d9..b1bceba 100644
+index c61b4d9..1d00504 100644
 --- a/opencensus/stats/internal/delta_producer.cc
 +++ b/opencensus/stats/internal/delta_producer.cc
-@@ -117,6 +117,10 @@ void DeltaProducer::Flush() {
- DeltaProducer::DeltaProducer()
-     : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {}
+@@ -139,5 +139,9 @@ void DeltaProducer::RunHarvesterLoop() {
+   }
+ }
  
 +void DeltaProducer::SetHarvestInterval(const absl::Duration interval) {
 +  harvest_interval_ = interval;
 +}
 +
- void DeltaProducer::SwapDeltas() {
-   ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
-   active_delta_.SwapAndReset(registered_boundaries_, &last_delta_);
+ }  // namespace stats
+ }  // namespace opencensus
 diff --git a/opencensus/stats/internal/delta_producer.h b/opencensus/stats/internal/delta_producer.h
 index bec5605..e565f6a 100644
 --- a/opencensus/stats/internal/delta_producer.h
