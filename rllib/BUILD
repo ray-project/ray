@@ -597,7 +597,7 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if 
+# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
 # it would get faster with eager mode once it is enabled.
 # py_test(
 #     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
@@ -636,6 +636,16 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_repeat_after_me_ppo_with_rl_module",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm-with-rl-module.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -3915,8 +3925,8 @@ py_test(
 # --------------------------------------------------------------------
 # examples/learner directory
 #
-# 
-# Description: These are RLlib tests for the new multi-gpu enabled 
+#
+# Description: These are RLlib tests for the new multi-gpu enabled
 # training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
