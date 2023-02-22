@@ -9,7 +9,7 @@
 :card:
 
 ---
-<img src="images/getting_started.svg" alt="getting_started" height="40px" style="pointer-events: none;">
+<img src="images/getting_started.svg" alt="getting_started" height="40px" class="no-scaled-link">
 
 **Getting started**
 ^^^^^^^^^^^^^^^
