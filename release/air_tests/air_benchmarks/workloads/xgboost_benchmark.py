@@ -118,10 +118,6 @@ def run_xgboost_prediction(model_path: str, data_path: str):
         # batch size than default 4096
         batch_size=8192,
     )
-
-    for _ in result.iter_batches():
-        pass
-
     return result
 
 

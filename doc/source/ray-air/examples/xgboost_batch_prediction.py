@@ -38,5 +38,4 @@ checkpoint = result.checkpoint
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
 
 predicted_probabilities = batch_predictor.predict(test_dataset)
-# Call show on the output probabilities to trigger execution.
 predicted_probabilities.show()

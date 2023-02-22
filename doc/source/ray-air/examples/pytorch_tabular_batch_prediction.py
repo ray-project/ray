@@ -40,7 +40,6 @@ batch_predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
 predicted_probabilities = batch_predictor.predict(
     dataset, feature_columns=["concat_features"]
 )
-# Call show on the output probabilities to trigger execution.
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}

@@ -25,6 +25,4 @@ preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictions = predictor.predict(dataset, batch_size=80)
-# Call show on the output probabilities to trigger execution.
-predictions.show()
+predictor.predict(dataset, batch_size=80)
