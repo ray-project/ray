@@ -9,7 +9,7 @@
 :card:
 
 ---
-<img src="images/getting_started.svg" alt="getting_started" height="40px">
+<img src="images/getting_started.svg" alt="getting_started" height="40px" style="pointer-events: none;">
 
 **Getting started**
 ^^^^^^^^^^^^^^^
@@ -22,7 +22,7 @@ Learn how to install Ray, compute an example with the Ray Core API, and use Ray'
 {link-badge}`ray-overview/getting-started.html,"Getting started",cls=badge-light`
 
 ---
-<img src="images/user_guide.svg" alt="user_guide" height="40px">
+<img src="images/user_guide.svg" alt="user_guide" height="40px" style="pointer-events: none;">
 
 **User guides**
 ^^^^^^^^^^^
@@ -38,7 +38,7 @@ Learn about the key concepts and features. Get in-depth information about Ray's 
 {link-badge}`ray-core/user-guide.html,"Core",cls=badge-light`
 {link-badge}`cluster/running-applications/index.html,"Clusters",cls=badge-light`
 ---
-<img src="images/api.svg" alt="api" height="40px">
+<img src="images/api.svg" alt="api" height="40px" style="pointer-events: none;">
 
 **API reference**
 ^^^^^^^^^^^^^
@@ -51,7 +51,7 @@ The reference assumes familiarity with the key concepts.
 {link-badge}`ray-references/api.html,"API reference",cls=badge-light`
 
 ---
-<img src="images/contribute.svg" alt="contribute" height="40px">
+<img src="images/contribute.svg" alt="contribute" height="40px" style="pointer-events: none;">
 
 **Developer guides**
 ^^^^^^^^^^^^^^^
