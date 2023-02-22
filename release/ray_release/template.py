@@ -23,15 +23,6 @@ if TYPE_CHECKING:
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
-    "EXPIRATION_1D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_2D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_3D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-    ),
 }
 
 
