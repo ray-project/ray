@@ -838,15 +838,19 @@ def assert_artifact_existence_and_validity(
         # Ex: checkpoint_5 is the latest checkpoint for trial with id=0
         # -> Expect artifact_data == "0,0,0,0,0,"
         artifact_iter = len(artifact_data.split(",")) - 1  # Subtract extra , at the end
-        max_checkpoint_iter = max(
+        checkpoint_iters = sorted(
             [
                 checkpoint_data["internal_iter"]
                 for _, checkpoint_data in trial_cp.checkpoints
-            ]
+            ],
+            reverse=True,
         )
-        assert artifact_iter >= max_checkpoint_iter, (
+        # TODO(ml-team): Compare to latest checkpoint only after
+        # checkpoint+artifact saving is done atomically.
+        top_two = checkpoint_iters[:2]
+        assert artifact_iter >= min(top_two), (
             "The artifact data is not synced with respect to the latest checkpoint! "
-            f"Expected the artifact to contain at least {max_checkpoint_iter} "
+            f"Expected the artifact to contain at least {min(top_two)} "
             f"iterations of data, but only got {artifact_iter}."
         )
 
