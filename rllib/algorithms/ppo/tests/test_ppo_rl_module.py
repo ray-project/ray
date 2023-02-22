@@ -198,7 +198,7 @@ class TestPPO(unittest.TestCase):
             batch = self.get_input_batch_from_obs(fw, obs)
 
             # TODO (Artur): Un-uncomment once Policy supports RNN
-            # state_in = module._get_initial_state()
+            # state_in = module.get_initial_state()
             # state_in = tree.map_structure(
             #     lambda x: x[None], convert_to_torch_tensor(state_in)
             # )
@@ -233,7 +233,7 @@ class TestPPO(unittest.TestCase):
             tstep = 0
 
             # TODO (Artur): Un-uncomment once Policy supports RNN
-            # state_in = module._get_initial_state()
+            # state_in = module.get_initial_state()
             # state_in = tree.map_structure(
             #     lambda x: x[None], convert_to_torch_tensor(state_in)
             # )
