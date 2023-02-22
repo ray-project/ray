@@ -133,11 +133,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -211,11 +211,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 
@@ -288,11 +288,11 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 
@@ -378,11 +378,11 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert "test2.parquet" in str(input_files)
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        "schema={\n\tone: int64,\n\ttwo: string\n})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 
@@ -435,13 +435,13 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+        "schema={\n\ttwo: string,"
+        "\n\tone: dictionary<values=int32, indices=int32, ordered=0>\n})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+        "schema={\n\ttwo: string,"
+        "\n\tone: dictionary<values=int32, indices=int32, ordered=0>\n})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -521,11 +521,11 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert len(input_files) == 2, input_files
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
+        "schema={\n\ttwo: string,\n\tone: int32\n})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
+        "schema={\n\ttwo: string,\n\tone: int32\n})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 

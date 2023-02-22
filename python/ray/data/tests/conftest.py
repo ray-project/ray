@@ -231,7 +231,7 @@ def assert_base_partitioned_ds():
         count=6,
         num_input_files=2,
         num_rows=6,
-        schema="{one: int64, two: string}",
+        schema="{\n\tone: int64,\n\ttwo: string\n}",
         num_computed=2,
         sorted_values=None,
         ds_take_transform_fn=lambda taken: [[s["one"], s["two"]] for s in taken],
