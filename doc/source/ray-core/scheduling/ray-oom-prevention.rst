@@ -30,7 +30,7 @@ The memory monitor is controlled by the following environment variables:
 
 - ``RAY_memory_monitor_refresh_ms (int, defaults to 250)`` is the interval to check memory usage and kill tasks or actors if needed. Task killing is disabled when this value is 0. The memory monitor selects and kills one task at a time and waits for it to be killed before choosing another one, regardless of how frequent the memory monitor runs.
 
-- ``RAY_memory_usage_threshold (float, defaults to 0.95)`` is the threshold when the node is beyond the memory
+- ``RAY_memory_usage_threshold (float, defaults to 0.9)`` is the threshold when the node is beyond the memory
   capacity. If the memory usage is above this fraction it will start killing processes to free up memory. Ranges from [0, 1].
 
 Using the Memory Monitor
