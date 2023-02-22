@@ -71,7 +71,7 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for fw in framework_iterator(config, ("tf2", "torch")):
+        for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
             trainer = config.build()
             policy = trainer.get_policy()
 
