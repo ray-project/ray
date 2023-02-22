@@ -289,7 +289,6 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
         if (creation_task_status.IsCreationTaskError()) {
           RAY_LOG(INFO) << "Failed to create actor due to init method failure, job id = "
                         << actor_id.JobId() << ", actor id = " << actor_id;
-          RAY_CHECK(creation_task_reply.worker_exiting());
           // Actor creation task failed but we do have the actor worker address.
           reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
           // We still keep track this despite of task failure since we don't destroy the

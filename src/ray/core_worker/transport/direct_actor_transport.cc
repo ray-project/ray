@@ -186,6 +186,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
         if (status.IsCreationTaskError()) {
           // Actor creation task failure should always return the failure status.
+          // NOTE: however, this reply is never copied to the caller client side.
           reply->set_worker_exiting(true);
           send_reply_callback(status, nullptr, nullptr);
           return;

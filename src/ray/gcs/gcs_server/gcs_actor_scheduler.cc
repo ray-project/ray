@@ -458,6 +458,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
+        // NOTE(rickyx): I couldn't figure out why this is always an empty reply?
+        RAY_UNUSED(reply);
         // If the actor is still in the creating map and the status is ok, remove the
         // actor from the creating map and invoke the schedule_success_handler_.
         // Otherwise, create again, because it may be a network exception.
