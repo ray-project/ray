@@ -230,7 +230,7 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
     def _get_current_usage(self, topology: Topology) -> ExecutionResources:
-        cur_usage = ExecutionResources()
+        cur_usage = ExecutionResources(0, 0, 0)
         for op, state in topology.items():
             cur_usage = cur_usage.add(op.current_resource_usage())
             if isinstance(op, InputDataBuffer):
