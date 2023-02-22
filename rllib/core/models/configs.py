@@ -92,7 +92,6 @@ class MLPHeadConfig(ModelConfig):
         Linear(8, 8)
         ReLU()
         Linear(8, 2)
-        Linear()
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
@@ -192,6 +191,7 @@ class CNNEncoderConfig(ModelConfig):
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
         self.output_dim = int(self.output_dim)
+        self.input_dims = [int(i) for i in self.input_dims]
 
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(

@@ -105,6 +105,7 @@ class TorchCNN(nn.Module):
         width, height, in_depth = input_dims
         in_size = [width, height]
         for out_depth, kernel, stride in filter_specifiers:
+            # Pad like in tensorflow's SAME mode.
             padding, out_size = same_padding(in_size, kernel, stride)
             # TODO(Artur): Inline SlimConv2d after old models are deprecated.
             core_layers.append(
@@ -119,6 +120,9 @@ class TorchCNN(nn.Module):
             )
             in_depth = out_depth
             in_size = out_size
+
+        core_cnn = nn.Sequential(*core_layers)
+        layers.append(core_cnn)
 
         # Append a last convolutional layer of depth-only filters to be flattened.
 
@@ -144,16 +148,6 @@ class TorchCNN(nn.Module):
         )
         self.output_width = width
         self.output_height = height
-        core_layers.append(nn.Flatten())
-
-        core_cnn = nn.Sequential(*core_layers)
-        layers.append(core_cnn)
-
-        # Add a final linear layer to make sure that the outputs have the correct
-        # dimensionality.
-        layers.append(nn.Linear(int(width) * int(height), output_dim))
-        if output_activation is not None:
-            layers.append(output_activation())
 
         # Create the cnn that potentially includes a flattened layer
         self.cnn = nn.Sequential(*layers)
