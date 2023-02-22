@@ -4,14 +4,15 @@ for state_in/out. This is a temporary solution until we can refactor the sample_
 class to be compatible with RLModule API."""
 
 import collections
-import numpy as np
+import itertools
 import sys
-import tree  # pip install dm_tree
-from typing import Dict, Iterator, List, Optional, Set, Union
 from numbers import Number
+from typing import Dict, Iterator, List, Optional, Set, Union
 
-from ray.util import log_once
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -19,10 +20,12 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    PolicyID,
     TensorType,
     SampleBatchType,
     ViewRequirementsDict,
 )
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -33,36 +36,35 @@ DEFAULT_POLICY_ID = "default_policy"
 
 @DeveloperAPI
 def attempt_count_timesteps(tensor_dict: dict):
-    """Attempt to count timesteps based on dimensions of individual elements
+    """Attempt to count timesteps based on dimensions of individual elements.
 
-    tensor_dict should be a SampleBatch or another dict. We do not attempt to count
-    on INFOS or any state_in* and state_out* keys. The number of timesteps we count
-    in cases where we are unable to count is zero.
+    Returns the first successfully counted number of timesteps.
+    We do not attempt to count on INFOS or any state_in_* and state_out_* keys. The
+    number of timesteps we count in cases where we are unable to count is zero.
+
+    Args:
+        tensor_dict: A SampleBatch or another dict.
 
     Returns:
         count: The inferred number of timesteps >= 0.
     """
     # Try to infer the "length" of the SampleBatch by finding the first
     # value that is actually a ndarray/tensor.
-    lengths = []
-    copy_ = {k: v for k, v in tensor_dict.items() if k != SampleBatch.SEQ_LENS}
-
-    for k, v in copy_.items():
-        # TODO: Drop support for lists and Numbers as values.
-        # Convert lists of int|float into numpy arrays make sure all data
-        # has same length.
-        if isinstance(v, (Number, list)):
-            tensor_dict[k] = np.array(v)
-
     # Skip manual counting routine if we can directly infer count from sequence lengths
     if (
         tensor_dict.get(SampleBatch.SEQ_LENS) is not None
         and not (tf and tf.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]))
         and len(tensor_dict[SampleBatch.SEQ_LENS]) > 0
     ):
-        return sum(tensor_dict[SampleBatch.SEQ_LENS])
+        if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
+            return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
+        else:
+            return sum(tensor_dict[SampleBatch.SEQ_LENS])
 
-    for k, v in copy_.items():
+    for k, v in tensor_dict.items():
+        if k == SampleBatch.SEQ_LENS:
+            continue
+
         assert isinstance(k, str), tensor_dict
 
         if (
@@ -89,68 +91,64 @@ def attempt_count_timesteps(tensor_dict: dict):
             # Add one of the elements' length, since they are all the same
             _len = len(v_list[0])
             if _len:
-                lengths.append(_len)
+                return _len
         except Exception:
             pass
-        else:
-            # If we were able to figure out a length, all lengths of
-            # elements of nested structure must be the same
-            try:
-                same_lengths = all(
-                    len(sub_space) == len(v_list[0]) for sub_space in v_list
-                )
-            except TypeError:
-                # If input contains scalar arrays (that don't have a length),
-                # they should all be scalar arrays
-                same_lengths = all([sub_space.size == 0 for sub_space in v_list])
-            if not same_lengths:
-                if log_once("flattened_elements_have_different_lengths"):
-                    deprecation_warning(
-                        old="Usage of nested elements in SampleBatch "
-                        "with different lengths",
-                        help="Found nested elements in SampleBatch with "
-                        "different lengths. This might be because one or "
-                        "more elements are lists or of different lengths. "
-                        "Construct SampleBatch only from Tensors of same length "
-                        "to avoid this warning.",
-                        error=False,
-                    )
-                # Could not infer length
-                # TODO(Artur): raise error instead of setting length to zero once
-                #  we have deprecated non-tensor inputs
-                lengths = [0]
-                break
 
-    # Return from lengths if we found anything to count from except INFOS and states
-    return lengths[0] if lengths else 0
+    # Return zero if we are unable to count
+    return 0
 
 
 @PublicAPI
-class SampleBatchV2(SampleBatch):
+class SampleBatchV2(dict):
     """Wrapper around a dictionary with string keys and array-like values.
 
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
     samples, each with an "obs" and "reward" attribute.
     """
 
-    # Outputs from interacting with the environment
-    OBS = "obs"
-    CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
-    ACTIONS = "actions"
-    REWARDS = "rewards"
-    PREV_ACTIONS = "prev_actions"
-    PREV_REWARDS = "prev_rewards"
-    DONES = "dones"
-    INFOS = "infos"
-    SEQ_LENS = "seq_lens"
-    # This is only computed and used when RE3 exploration strategy is enabled
-    OBS_EMBEDS = "obs_embeds"
-    T = "t"
+    # On rows in SampleBatch:
+    # Each comment signifies how values relate to each other within a given row.
+    # A row generally signifies one timestep. Most importantly, at t=0, SampleBatch.OBS
+    # will usually be the reset-observation, while SampleBatch.ACTIONS will be the
+    # action based on the reset-observation and so on. This scheme is derived from
+    # RLlib's sampling logic.
 
-    # decision transformer
-    RETURNS_TO_GO = "returns_to_go"
-    ATTENTION_MASKS = "attention_masks"
+    # Outputs from interacting with the environment:
+
+    # Observation that we compute SampleBatch.ACTIONS from.
+    OBS = "obs"
+    # Observation returned after stepping with SampleBatch.ACTIONS.
+    NEXT_OBS = "new_obs"
+    # Action based on SampleBatch.OBS.
+    ACTIONS = "actions"
+    # Reward returned after stepping with SampleBatch.ACTIONS.
+    REWARDS = "rewards"
+    # Action chosen before SampleBatch.ACTIONS.
+    PREV_ACTIONS = "prev_actions"
+    # Reward received before SampleBatch.REWARDS.
+    PREV_REWARDS = "prev_rewards"
+    # Is the episode finished after stepping via SampleBatch.ACTIONS?
+    TERMINATEDS = "terminateds"
+    # Is the episode truncated (e.g. time limit) after stepping via SampleBatch.ACTIONS?
+    TRUNCATEDS = "truncateds"
+    # Infos returned after stepping with SampleBatch.ACTIONS
+    INFOS = "infos"
+
+    # Additional keys filled by RLlib to manage the data above:
+
+    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
+    T = "t"  # Timestep counter
+    EPS_ID = "eps_id"  # Uniquely identifies an episode
+    ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
+    AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
+
+    # Uniquely identifies a sample batch. This is important to distinguish RNN
+    # sequences from the same episode when multiple sample batches are
+    # concatenated (fusing sequences across batches can be unsafe).
+    UNROLL_ID = "unroll_id"
+
+    # Algorithm-specific keys:
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
@@ -158,21 +156,25 @@ class SampleBatchV2(SampleBatch):
     ACTION_LOGP = "action_logp"
     ACTION_DIST = "action_dist"
 
-    # Uniquely identifies an episode.
-    EPS_ID = "eps_id"
-    # An env ID (e.g. the index for a vectorized sub-env).
-    ENV_ID = "env_id"
-
-    # Uniquely identifies a sample batch. This is important to distinguish RNN
-    # sequences from the same episode when multiple sample batches are
-    # concatenated (fusing sequences across batches can be unsafe).
-    UNROLL_ID = "unroll_id"
-
-    # Uniquely identifies an agent within an episode.
-    AGENT_INDEX = "agent_index"
-
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
+
+    # RE 3
+    # This is only computed and used when RE3 exploration strategy is enabled.
+    OBS_EMBEDS = "obs_embeds"
+
+    # Decision Transformer
+    RETURNS_TO_GO = "returns_to_go"
+    ATTENTION_MASKS = "attention_masks"
+
+    # Deprecated keys:
+
+    # SampleBatches must already not be constructed anymore by setting this key
+    # directly. Instead, the values under this key are auto-computed via the values of
+    # the new TERMINATEDS and TRUNCATEDS keys.
+    DONES = "dones"
+    # Use SampleBatch.OBS instead.
+    CUR_OBS = "obs"
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
@@ -194,6 +196,13 @@ class SampleBatchV2(SampleBatch):
                 training. If False, batch may be used for e.g. action
                 computations (inference).
         """
+
+        if SampleBatch.DONES in kwargs:
+            raise KeyError(
+                "SampleBatch cannot be constructed anymore with a `DONES` key! "
+                "Instead, set the new TERMINATEDS and TRUNCATEDS keys. The values under"
+                " DONES will then be automatically computed using terminated|truncated."
+            )
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
@@ -238,10 +247,20 @@ class SampleBatchV2(SampleBatch):
             and not (tf and tf.is_tensor(seq_lens_))
             and len(seq_lens_) > 0
         ):
-            self.max_seq_len = max(seq_lens_)
+            if torch and torch.is_tensor(seq_lens_):
+                self.max_seq_len = seq_lens_.max().item()
+            else:
+                self.max_seq_len = max(seq_lens_)
 
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
+
+        for k, v in self.items():
+            # TODO: Drop support for lists and Numbers as values.
+            # Convert lists of int|float into numpy arrays make sure all data
+            # has same length.
+            if isinstance(v, (Number, list)):
+                self[k] = np.array(v)
 
         self.count = attempt_count_timesteps(self)
 
@@ -280,6 +299,25 @@ class SampleBatchV2(SampleBatch):
     ) -> Union["SampleBatch", "MultiAgentBatch"]:
         return concat_samples(samples)
 
+    @ExperimentalAPI
+    def is_terminated_or_truncated(self) -> bool:
+        """Returns True if `self` is either terminated or truncated at idx -1."""
+        return self[SampleBatch.TERMINATEDS][-1] or (
+            SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][-1]
+        )
+
+    @ExperimentalAPI
+    def is_single_trajectory(self) -> bool:
+        """Returns True if this SampleBatch only contains one trajectory.
+
+        This is determined by checking all timesteps (except for the last) for being
+        not terminated AND (if applicable) not truncated.
+        """
+        return not any(self[SampleBatch.TERMINATEDS][:-1]) and (
+            SampleBatch.TRUNCATEDS not in self
+            or not any(self[SampleBatch.TRUNCATEDS][:-1])
+        )
+
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
         """Concatenates `other` to this one and returns a new SampleBatch.
@@ -298,7 +336,7 @@ class SampleBatchV2(SampleBatch):
             >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
-        return self.concat_samples([self, other])
+        return concat_samples([self, other])
 
     @PublicAPI
     def copy(self, shallow: bool = False) -> "SampleBatch":
@@ -464,6 +502,11 @@ class SampleBatchV2(SampleBatch):
             [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
+        assert key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES], (
+            f"`SampleBatch.split_by_episode(key={key})` invalid! "
+            f"Must be [None|'dones'|'eps_id']."
+        )
+
         def slice_by_eps_id():
             slices = []
             # Produce a new slice whenever we find a new episode ID.
@@ -479,11 +522,13 @@ class SampleBatchV2(SampleBatch):
             slices.append(self[offset : self.count])
             return slices
 
-        def slice_by_dones():
+        def slice_by_terminateds_or_truncateds():
             slices = []
             offset = 0
             for i in range(self.count):
-                if self[SampleBatch.DONES][i]:
+                if self[SampleBatch.TERMINATEDS][i] or (
+                    SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][i]
+                ):
                     # Since self[i] is the last timestep of the episode,
                     # append it to the batch, then set offset to the start
                     # of the next batch
@@ -496,7 +541,7 @@ class SampleBatchV2(SampleBatch):
 
         key_to_method = {
             SampleBatch.EPS_ID: slice_by_eps_id,
-            SampleBatch.DONES: slice_by_dones,
+            SampleBatch.DONES: slice_by_terminateds_or_truncateds,
         }
 
         # If key not specified, default to this order.
@@ -505,13 +550,13 @@ class SampleBatchV2(SampleBatch):
         slices = None
         if key is not None:
             # If key specified, directly use it.
-            if key not in self:
+            if key == SampleBatch.EPS_ID and key not in self:
                 raise KeyError(f"{self} does not have key `{key}`!")
             slices = key_to_method[key]()
         else:
             # If key not specified, go in order.
             for key in key_resolve_order:
-                if key in self:
+                if key == SampleBatch.DONES or key in self:
                     slices = key_to_method[key]()
                     break
             if slices is None:
@@ -554,7 +599,7 @@ class SampleBatchV2(SampleBatch):
                 data = {
                     k: tree.map_structure(lambda s: s[start:end], v)
                     for k, v in self.items()
-                    if k != SampleBatch.SEQ_LENS and not k.startswith("state_in_")
+                    if k != SampleBatch.SEQ_LENS and not k.startswith("state_in")
                 }
             if state_start is not None:
                 assert state_end is not None
@@ -756,7 +801,7 @@ class SampleBatchV2(SampleBatch):
     def size_bytes(self) -> int:
         """Returns sum over number of bytes of all data buffers.
 
-        For numpy arrays, we use `.nbytes`. For all other value types, we use
+        For numpy arrays, we use ``.nbytes``. For all other value types, we use
         sys.getsizeof(...).
 
         Returns:
@@ -797,8 +842,12 @@ class SampleBatchV2(SampleBatch):
         if isinstance(key, slice):
             return self._slice(key)
 
+        # Special key DONES -> Translate to `TERMINATEDS | TRUNCATEDS` to reflect
+        # the old meaning of DONES.
+        if key == SampleBatch.DONES:
+            return self[SampleBatch.TERMINATEDS]
         # Backward compatibility for when "input-dicts" were used.
-        if key == "is_training":
+        elif key == "is_training":
             if log_once("SampleBatch['is_training']"):
                 deprecation_warning(
                     old="SampleBatch['is_training']",
@@ -825,9 +874,16 @@ class SampleBatchV2(SampleBatch):
             key: The column name to set a value for.
             item: The data to insert.
         """
+        # Disallow setting DONES key directly.
+        if key == SampleBatch.DONES:
+            raise KeyError(
+                "Cannot set `DONES` anymore in a SampleBatch! "
+                "Instead, set the new TERMINATEDS and TRUNCATEDS keys. The values under"
+                " DONES will then be automatically computed using terminated|truncated."
+            )
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
-        if not hasattr(self, "added_keys"):
+        elif not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
 
@@ -949,7 +1005,7 @@ class SampleBatchV2(SampleBatch):
                 f"SampleBatch({self.count} " f"(seqs={len(self['seq_lens'])}): {keys})"
             )
 
-    def _slice(self, slice_: slice) -> "SampleBatch":
+    def _slice(self, slice_: slice) -> "SampleBatchV2":
         """Helper method to handle SampleBatch slicing using a slice object.
 
         The returned SampleBatch uses the same underlying data object as
@@ -1000,7 +1056,7 @@ class SampleBatchV2(SampleBatch):
 
             def map_(path, value):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
-                    "state_in"
+                    "state_in_"
                 ):
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]
@@ -1083,7 +1139,7 @@ class SampleBatchV2(SampleBatch):
         self,
         view_requirements: ViewRequirementsDict,
         index: Union[str, int] = "last",
-    ) -> "SampleBatch":
+    ) -> "SampleBatchV2":
         """Creates single ts SampleBatch at given index from `self`.
 
         For usage as input-dict for model (action or value function) calls.
@@ -1153,6 +1209,221 @@ class SampleBatchV2(SampleBatch):
                 ]
 
         return SampleBatchV2(input_dict, seq_lens=np.array([1], dtype=np.int32))
+
+
+@PublicAPI
+class MultiAgentBatch:
+    """A batch of experiences from multiple agents in the environment.
+
+    Attributes:
+        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
+            ids to SampleBatches of experiences.
+        count: The number of env steps in this batch.
+    """
+
+    @PublicAPI
+    def __init__(self, policy_batches: Dict[PolicyID, SampleBatch], env_steps: int):
+        """Initialize a MultiAgentBatch instance.
+
+        Args:
+            policy_batches: Mapping from policy
+                ids to SampleBatches of experiences.
+            env_steps: The number of environment steps in the environment
+                this batch contains. This will be less than the number of
+                transitions this batch contains across all policies in total.
+        """
+
+        for v in policy_batches.values():
+            assert isinstance(v, SampleBatch)
+        self.policy_batches = policy_batches
+        # Called "count" for uniformity with SampleBatch.
+        # Prefer to access this via the `env_steps()` method when possible
+        # for clarity.
+        self.count = env_steps
+
+    @PublicAPI
+    def env_steps(self) -> int:
+        """The number of env steps (there are >= 1 agent steps per env step).
+
+        Returns:
+            The number of environment steps contained in this batch.
+        """
+        return self.count
+
+    @PublicAPI
+    def __len__(self) -> int:
+        """Same as `self.env_steps()`."""
+        return self.count
+
+    @PublicAPI
+    def agent_steps(self) -> int:
+        """The number of agent steps (there are >= 1 agent steps per env step).
+
+        Returns:
+            The number of agent steps total in this batch.
+        """
+        ct = 0
+        for batch in self.policy_batches.values():
+            ct += batch.count
+        return ct
+
+    @PublicAPI
+    def timeslices(self, k: int) -> List["MultiAgentBatch"]:
+        """Returns k-step batches holding data for each agent at those steps.
+
+        For examples, suppose we have agent1 observations [a1t1, a1t2, a1t3],
+        for agent2, [a2t1, a2t3], and for agent3, [a3t3] only.
+
+        Calling timeslices(1) would return three MultiAgentBatches containing
+        [a1t1, a2t1], [a1t2], and [a1t3, a2t3, a3t3].
+
+        Calling timeslices(2) would return two MultiAgentBatches containing
+        [a1t1, a1t2, a2t1], and [a1t3, a2t3, a3t3].
+
+        This method is used to implement "lockstep" replay mode. Note that this
+        method does not guarantee each batch contains only data from a single
+        unroll. Batches might contain data from multiple different envs.
+        """
+        from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
+
+        # Build a sorted set of (eps_id, t, policy_id, data...)
+        steps = []
+        for policy_id, batch in self.policy_batches.items():
+            for row in batch.rows():
+                steps.append(
+                    (
+                        row[SampleBatch.EPS_ID],
+                        row[SampleBatch.T],
+                        row[SampleBatch.AGENT_INDEX],
+                        policy_id,
+                        row,
+                    )
+                )
+        steps.sort()
+
+        finished_slices = []
+        cur_slice = collections.defaultdict(SampleBatchBuilder)
+        cur_slice_size = 0
+
+        def finish_slice():
+            nonlocal cur_slice_size
+            assert cur_slice_size > 0
+            batch = MultiAgentBatch(
+                {k: v.build_and_reset() for k, v in cur_slice.items()}, cur_slice_size
+            )
+            cur_slice_size = 0
+            cur_slice.clear()
+            finished_slices.append(batch)
+
+        # For each unique env timestep.
+        for _, group in itertools.groupby(steps, lambda x: x[:2]):
+            # Accumulate into the current slice.
+            for _, _, _, policy_id, row in group:
+                cur_slice[policy_id].add_values(**row)
+            cur_slice_size += 1
+            # Slice has reached target number of env steps.
+            if cur_slice_size >= k:
+                finish_slice()
+                assert cur_slice_size == 0
+
+        if cur_slice_size > 0:
+            finish_slice()
+
+        assert len(finished_slices) > 0, finished_slices
+        return finished_slices
+
+    @staticmethod
+    @PublicAPI
+    def wrap_as_needed(
+        policy_batches: Dict[PolicyID, SampleBatch], env_steps: int
+    ) -> Union[SampleBatch, "MultiAgentBatch"]:
+        """Returns SampleBatch or MultiAgentBatch, depending on given policies.
+        If policy_batches is empty (i.e. {}) it returns an empty MultiAgentBatch.
+
+        Args:
+            policy_batches: Mapping from policy ids to SampleBatch.
+            env_steps: Number of env steps in the batch.
+
+        Returns:
+            The single default policy's SampleBatch or a MultiAgentBatch
+            (more than one policy).
+        """
+        if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
+            return policy_batches[DEFAULT_POLICY_ID]
+        return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
+
+    @PublicAPI
+    def copy(self) -> "MultiAgentBatch":
+        """Deep-copies self into a new MultiAgentBatch.
+
+        Returns:
+            The copy of self with deep-copied data.
+        """
+        return MultiAgentBatch(
+            {k: v.copy() for (k, v) in self.policy_batches.items()}, self.count
+        )
+
+    @PublicAPI
+    def size_bytes(self) -> int:
+        """
+        Returns:
+            The overall size in bytes of all policy batches (all columns).
+        """
+        return sum(b.size_bytes() for b in self.policy_batches.values())
+
+    @DeveloperAPI
+    def compress(
+        self, bulk: bool = False, columns: Set[str] = frozenset(["obs", "new_obs"])
+    ) -> None:
+        """Compresses each policy batch (per column) in place.
+
+        Args:
+            bulk: Whether to compress across the batch dimension (0)
+                as well. If False will compress n separate list items, where n
+                is the batch size.
+            columns: Set of column names to compress.
+        """
+        for batch in self.policy_batches.values():
+            batch.compress(bulk=bulk, columns=columns)
+
+    @DeveloperAPI
+    def decompress_if_needed(
+        self, columns: Set[str] = frozenset(["obs", "new_obs"])
+    ) -> "MultiAgentBatch":
+        """Decompresses each policy batch (per column), if already compressed.
+
+        Args:
+            columns: Set of column names to decompress.
+
+        Returns:
+            Self.
+        """
+        for batch in self.policy_batches.values():
+            batch.decompress_if_needed(columns)
+        return self
+
+    @DeveloperAPI
+    def as_multi_agent(self) -> "MultiAgentBatch":
+        """Simply returns `self` (already a MultiAgentBatch).
+
+        Returns:
+            This very instance of MultiAgentBatch.
+        """
+        return self
+
+    def __getitem__(self, key: str) -> SampleBatch:
+        """Returns the SampleBatch for the given policy id."""
+        return self.policy_batches[key]
+
+    def __str__(self):
+        return "MultiAgentBatch({}, env_steps={})".format(
+            str(self.policy_batches), self.count
+        )
+
+    def __repr__(self):
+        return "MultiAgentBatch({}, env_steps={})".format(
+            str(self.policy_batches), self.count
+        )
 
 
 @PublicAPI

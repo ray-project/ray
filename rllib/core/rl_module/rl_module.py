@@ -456,11 +456,11 @@ class RLModule(abc.ABC):
                 space=act_space, used_for_compute_actions=False
             ),
             SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.TERMINATEDS: ViewRequirement(),
+            SampleBatch.TRUNCATEDS: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
             SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.T: ViewRequirement(),
         }

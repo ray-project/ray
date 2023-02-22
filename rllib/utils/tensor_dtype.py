@@ -11,7 +11,7 @@ _, tf, _ = try_import_tf()
 # Dict of NumPy dtype -> torch dtype
 if torch:
     numpy_to_torch_dtype_dict = {
-        np.bool: torch.bool,
+        np.bool_: torch.bool,
         np.uint8: torch.uint8,
         np.int8: torch.int8,
         np.int16: torch.int16,
@@ -29,7 +29,7 @@ else:
 # Dict of NumPy dtype -> tf dtype
 if tf:
     numpy_to_tf_dtype_dict = {
-        np.bool: tf.bool,
+        np.bool_: tf.bool,
         np.uint8: tf.uint8,
         np.int8: tf.int8,
         np.int16: tf.int16,
