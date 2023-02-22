@@ -140,6 +140,16 @@ class ExecutionResources:
             return False
         return True
 
+    def scale(self, f: float) -> "ExecutionResources":
+        """Return copy with all set values scaled by `f`."""
+        return ExecutionResources(
+            cpu=self.cpu * f if self.cpu is not None else None,
+            gpu=self.gpu * f if self.gpu is not None else None,
+            object_store_memory=self.object_store_memory * f
+            if self.object_store_memory is not None
+            else None,
+        )
+
 
 @dataclass
 class ExecutionOptions:
