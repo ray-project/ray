@@ -1,10 +1,8 @@
 import argparse
 import os
-import math
 from time import sleep, perf_counter
 import json
 import ray
-import psutil
 
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
@@ -47,31 +45,7 @@ def parse_script_args():
     return parser.parse_known_args()
 
 
-def scale_cluster_up(num_cpus):
-    print(f"Start to scale up to {num_cpus} cpus")
-
-    def get_curr_cpus():
-        return int(sum([r.get("Resources", {}).get("CPU", 0) for r in ray.nodes()]))
-
-    step = 1000
-    curr_cpus = get_curr_cpus()
-    target_cpus = curr_cpus
-
-    while curr_cpus < num_cpus:
-        curr_cpus = get_curr_cpus()
-        new_target_cpus = min(curr_cpus + step, num_cpus)
-        if new_target_cpus != target_cpus:
-            target_cpus = new_target_cpus
-            ray.autoscaler.sdk.request_resources(num_cpus=target_cpus)
-        print(f"Waiting for cluster to be up: {curr_cpus}->{target_cpus}->{num_cpus}")
-        sleep(10)
-
-
 def run_one(total_actors, cpus_per_actor, no_wait):
-    total_cpus = cpus_per_actor * total_actors + psutil.cpu_count()
-    total_cpus = int(math.ceil(total_cpus))
-    # scale_cluster_up(total_cpus)
-
     actor_launch_start = perf_counter()
     actors = test_max_actors_launch(cpus_per_actor, total_actors)
     actor_launch_end = perf_counter()
