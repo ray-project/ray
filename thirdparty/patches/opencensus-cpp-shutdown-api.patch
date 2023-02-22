@@ -82,13 +82,18 @@ index e565f6a..453b4ef 100644
  
  }  // namespace stats
 diff --git a/opencensus/stats/internal/stats_exporter.cc b/opencensus/stats/internal/stats_exporter.cc
-index 7de96d6..2c65039 100644
+index 7de96d6..f9cac57 100644
 --- a/opencensus/stats/internal/stats_exporter.cc
 +++ b/opencensus/stats/internal/stats_exporter.cc
-@@ -99,21 +99,53 @@ void StatsExporterImpl::StartExportThread() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-   thread_started_ = true;
+@@ -95,25 +95,57 @@ void StatsExporterImpl::ClearHandlersForTesting() {
  }
  
+ void StatsExporterImpl::StartExportThread() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+-  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
+   thread_started_ = true;
++  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
++}
++
 +void StatsExporterImpl::Shutdown() {
 +  {
 +    absl::MutexLock l(&mu_);
@@ -101,8 +106,8 @@ index 7de96d6..2c65039 100644
 +  if (t_.joinable()) {
 +    t_.join();
 +  }
-+}
-+
+ }
+ 
  void StatsExporterImpl::RunWorkerLoop() {
    absl::Time next_export_time = GetNextExportTime();
    while (true) {
