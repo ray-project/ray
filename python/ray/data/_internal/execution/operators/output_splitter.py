@@ -55,14 +55,23 @@ class OutputSplitter(PhysicalOperator):
         if not self._equal:
             return
         buffer_size = sum(b.num_rows() for b in self._buffer)
-        buffer_requirement = self._calculate_buffer_requirement(self._num_output)
-        assert buffer_size >= buffer_requirement, (
-            buffer_size,
-            buffer_requirement,
-            self._num_output,
-        )
-        # TODO: launch tasks to do the split and block until completion.
-        raise NotImplementedError
+        max_n = max(self._num_output)
+
+        # First calculate the min rows to add per output to equalize them.
+        allocation = [max_n - n for n in self._num_output]
+        remainder = sum(allocation) - buffer_size
+        assert remainder >= 0, (buffer_size, allocation)
+
+        # Equally distribute remaining rows in buffer to outputs.
+        x = remainder // len(allocation)
+        allocation = [a + x for a in allocation]
+
+        # Execute the split.
+        for i, count in enumerate(allocation):
+            bundles = self._split_from_buffer(count)
+            for b in bundles:
+                b.shard = i
+                self._output_queue.append(b)
 
     def progress_str(self) -> str:
         if self._equal:
@@ -109,3 +118,25 @@ class OutputSplitter(PhysicalOperator):
         # distribution after the bundle dispatch.
         max_n = max(output_distribution)
         return sum([max_n - n for n in output_distribution])
+
+    def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
+        output = []
+        n = 0
+        while n < nrow:
+            b = self._buffer.pop()
+            if n + b.num_rows() < nrow:
+                output.append(b)
+                n += b.num_rows()
+            else:
+                left, right = _split(b, nrow - n)
+                output.append(left)
+                n += left.num_rows()
+                assert n == nrow, (n, nrow)
+                self._buffer.append(right)
+
+        assert sum(b.num_rows() for b in output) == nrow, (n, nrow)
+        return output
+
+
+def _split(bundle: RefBundle, n: int) -> (RefBundle, RefBundle):
+    pass
