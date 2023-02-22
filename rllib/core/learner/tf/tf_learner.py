@@ -1,4 +1,5 @@
 import logging
+import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
@@ -268,9 +269,24 @@ class TfLearner(Learner):
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
+
+            # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
+            # needed for compiling the results in a later step (e.g. in
+            # compile_results), but it should not contain anything but tensors, None or
+            # ExtensionTypes, otherwise the tf.function will yell at us because it
+            # won't be able to convert the returned objects to a tensor representation
+            # (for internal reasons). So, in here, we remove anything from fwd_out that
+            # is not a tensor, None or ExtensionType.
+            def filter_fwd_out(x):
+                if isinstance(
+                    x, (tf.Tensor, type(None), tf.experimental.ExtensionType)
+                ):
+                    return x
+                return None
+
             return {
                 "loss": loss,
-                "fwd_out": fwd_out,
+                "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
                 "postprocessed_gradients": gradients,
             }
 

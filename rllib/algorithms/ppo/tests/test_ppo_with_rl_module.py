@@ -112,10 +112,8 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (avnish): re enable eager tracing when we get this working with the new
-        # sampler.
         for fw in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=False
+            config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
             for env in ["CartPole-v1", "Pendulum-v1"]:
@@ -159,8 +157,9 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        # TODO (Kourosh) Test against all frameworks.
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+        for fw in framework_iterator(
+            config, frameworks=("torch", "tf2"), with_eager_tracing=True
+        ):
             # Default Agent should be setup with StochasticSampling.
             trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
