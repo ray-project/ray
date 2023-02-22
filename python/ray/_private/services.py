@@ -1494,6 +1494,7 @@ def start_raylet(
         ]
         + _site_flags()  # Inherit "-S" and "-s" flags from the current Python interpreter.
         + [
+            worker_path,
             f"--node-ip-address={node_ip_address}",
             "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
             f"--object-store-name={plasma_store_name}",
