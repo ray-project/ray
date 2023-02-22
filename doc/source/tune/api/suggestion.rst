@@ -331,8 +331,13 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Searcher
+
+.. autosummary::
+    :toctree: doc/
+
     Searcher.suggest
     Searcher.save
     Searcher.restore

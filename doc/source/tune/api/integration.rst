@@ -12,6 +12,7 @@ External library integrations for Ray Tune
 .. currentmodule:: ray
 
 .. _tune-monitoring-integrations:
+.. _air-builtin-callbacks:
 
 Tune Experiment Monitoring Integrations
 ----------------------------------------

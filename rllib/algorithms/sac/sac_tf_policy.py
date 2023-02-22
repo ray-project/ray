@@ -18,7 +18,7 @@ from ray.rllib.algorithms.dqn.dqn_tf_policy import (
 from ray.rllib.algorithms.sac.sac_tf_model import SACTFModel
 from ray.rllib.algorithms.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import (
     Beta,
@@ -71,9 +71,9 @@ def build_sac_model(
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's `q_model_config` and
     # `policy_model_config` config settings.
-    policy_model_config = copy.deepcopy(MODEL_DEFAULTS)
+    policy_model_config = copy.deepcopy(config["model"])
     policy_model_config.update(config["policy_model_config"])
-    q_model_config = copy.deepcopy(MODEL_DEFAULTS)
+    q_model_config = copy.deepcopy(config["model"])
     q_model_config.update(config["q_model_config"])
 
     default_model_cls = SACTorchModel if config["framework"] == "torch" else SACTFModel

@@ -27,6 +27,7 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
+from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -57,6 +58,7 @@ _EXCLUDE_FROM_SYNC = [
     "./checkpoint_tmp*",
     "./save_to_object*",
     "./rank_*",
+    f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
 
