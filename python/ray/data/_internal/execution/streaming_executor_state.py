@@ -299,6 +299,14 @@ def _execution_allowed(
 ) -> bool:
     """Return whether an operator is allowed to execute given resource usage.
 
+    Operators are throttled globally based on CPU and GPU limits for the stream.
+
+    For an N operator DAG, we only throttle the kth operator (in the source-to-sink
+    ordering) on object store utilization if the cumulative object store utilization
+    for the kth operator and every operator downstream from it is greater than
+    k/N * global_limit; i.e., the N - k operator sub-DAG is using more object store
+    memory than it's share.
+
     Args:
         op: The operator to check.
         global_usage: Resource usage across the entire topology.
