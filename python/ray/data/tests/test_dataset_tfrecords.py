@@ -227,17 +227,17 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
                 "bytes_empty": None,
             },
             # Row two.
-            # {
-            #     "int_item": 2,
-            #     "int_list": [3, 3, 4],
-            #     "int_empty": [9, 2],
-            #     "float_item": 2.0,
-            #     "float_list": [5.0, 6.0, 7.0],
-            #     "float_empty": None,
-            #     "bytes_item": b"ghi",
-            #     "bytes_list": [b"jkl", b"5678"],
-            #     "bytes_empty": b"hello",
-            # },
+            {
+                "int_item": 2,
+                "int_list": [3, 3, 4],
+                "int_empty": [9, 2],
+                "float_item": 2.0,
+                "float_list": [5.0, 6.0, 7.0],
+                "float_empty": None,
+                "bytes_item": b"ghi",
+                "bytes_list": [b"jkl", b"5678"],
+                "bytes_empty": b"hello",
+            },
         ],
         # Here and in the read_tfrecords call below, we specify `parallelism=1`
         # to ensure that all rows end up in the same block, which is required
@@ -245,20 +245,11 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
         parallelism=1,
     )
 
-    print("XXX tmppath:", tmp_path)
-
-    print("XXXX old: datasetformat: ", ds.dataset_format(), " schema:", ds.schema())
-    ds.show()
-
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path)
 
     # Read the TFRecords.
     readback_ds = ray.data.read_tfrecords(tmp_path)
-
-    readback_ds.show()
-    print("XXXX new : format:", readback_ds.dataset_format(), " schema:", ds.schema())
-
     assert ds.take() == readback_ds.take()
 
 
