@@ -260,12 +260,14 @@ class RLModule(abc.ABC):
         if init_state:
             init_state = tree.map_structure(lambda x: x[None], init_state)
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
+            max_seq_len = self.config.max_seq_len
+            assert max_seq_len is not None
             vr["state_in"] = ViewRequirement(
                 data_col="state_out",
                 shift=-1,
                 used_for_compute_actions=True,
                 used_for_training=True,
-                batch_repeat_value=self.config.max_seq_len,
+                batch_repeat_value=max_seq_len,
                 space=space,
             )
 

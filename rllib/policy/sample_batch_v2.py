@@ -1054,7 +1054,7 @@ class SampleBatchV2(SampleBatch):
 
             def map_(path, value):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
-                    "state_in_"
+                    "state_in"
                 ):
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]

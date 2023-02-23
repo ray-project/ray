@@ -5,7 +5,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
+from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.configs import (
     MLPHeadConfig,
     MLPEncoderConfig,
@@ -58,12 +58,15 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
+        max_seq_len: The maximum sequence length for recurrent models. If the model
+            is not recurrent, this should be set to 1.
     """
 
     encoder_config: ActorCriticEncoderConfig = None
     pi_config: MLPHeadConfig = None
     vf_config: MLPHeadConfig = None
     free_log_std: bool = False
+    max_seq_len: int = 1
 
 
 class PPOTorchRLModule(TorchRLModule):
@@ -169,18 +172,18 @@ class PPOTorchRLModule(TorchRLModule):
             pi_config=pi_config,
             vf_config=vf_config,
             free_log_std=model_config["free_log_std"],
+            max_seq_len=model_config["max_seq_len"],
         )
 
         module = PPOTorchRLModule(config_)
         return module
 
-    # TODO(Artur): Comment in again as soon as we support RNNs from Polciy side
-    # @override(RLModule)
-    # def get_initial_state(self) -> NestedDict:
-    #     if hasattr(self.encoder, "get_initial_state"):
-    #         return self.encoder.get_initial_state()
-    #     else:
-    #         return NestedDict({})
+    @override(RLModule)
+    def get_initial_state(self) -> NestedDict:
+        if hasattr(self.encoder, "get_initial_state"):
+            return self.encoder.get_initial_state()
+        else:
+            return NestedDict({})
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
@@ -193,19 +196,8 @@ class PPOTorchRLModule(TorchRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
-
         encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
@@ -246,20 +238,9 @@ class PPOTorchRLModule(TorchRLModule):
         """
         output = {}
 
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
-
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -312,20 +293,9 @@ class PPOTorchRLModule(TorchRLModule):
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
-
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
