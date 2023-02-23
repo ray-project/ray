@@ -1,0 +1,34 @@
+diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
+--- opencensus/stats/internal/delta_producer.cc
++++ opencensus/stats/internal/delta_producer.cc
+@@ -139,5 +139,9 @@ void DeltaProducer::RunHarvesterLoop() {
+   }
+ }
+ 
++void DeltaProducer::SetHarvestInterval(const absl::Duration interval) {
++  harvest_interval_ = interval;
++}
++
+ }  // namespace stats
+ }  // namespace opencensus
+diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
+--- opencensus/stats/internal/delta_producer.h
++++ opencensus/stats/internal/delta_producer.h
+@@ -84,6 +84,8 @@ class DeltaProducer final {
+   // Flushes the active delta and blocks until it is harvested.
+   void Flush() LOCKS_EXCLUDED(delta_mu_, harvester_mu_);
+ 
++  void SetHarvestInterval(const absl::Duration interval);
++
+  private:
+   DeltaProducer();
+ 
+@@ -100,7 +102,7 @@ class DeltaProducer final {
+   // every harvest_interval_.
+   void RunHarvesterLoop();
+ 
+-  const absl::Duration harvest_interval_ = absl::Seconds(5);
++  absl::Duration harvest_interval_ = absl::Seconds(5);
+ 
+   // Guards the active delta and its configuration. Anything that changes the
+   // delta configuration (e.g. adding a measure or BucketBoundaries) must
