@@ -600,6 +600,7 @@ class LazyBlockList(BlockList):
                 .remote(
                     i=task_idx,
                     task=task,
+                    context=DatasetContext.get_current(),
                     stats_uuid=self._stats_uuid,
                     stats_actor=stats_actor,
                 ),
@@ -612,6 +613,7 @@ class LazyBlockList(BlockList):
                 .remote(
                     i=task_idx,
                     task=task,
+                    context=DatasetContext.get_current(),
                     stats_uuid=self._stats_uuid,
                     stats_actor=stats_actor,
                 )
@@ -638,9 +640,11 @@ class LazyBlockList(BlockList):
 def _execute_read_task_nosplit(
     i: int,
     task: ReadTask,
+    context: DatasetContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
 ) -> Tuple[Block, BlockMetadata]:
+    DatasetContext._set_current(context)
     stats = BlockExecStats.builder()
 
     # Execute the task. Expect only one block returned when dynamic block splitting is
@@ -660,6 +664,7 @@ def _execute_read_task_nosplit(
 def _execute_read_task_split(
     i: int,
     task: ReadTask,
+    context: DatasetContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
 ) -> Iterable[Union[Block, List[BlockMetadata]]]:
@@ -669,6 +674,7 @@ def _execute_read_task_split(
     Example of return value for 3 blocks:
     (Block1, Block2, Block3, [BlockMetadata1, BlockMetadata2, BlockMetadata3])
     """
+    DatasetContext._set_current(context)
 
     # Execute the task.
     blocks = task()

@@ -88,8 +88,7 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        ctx = DatasetContext.get_current()
-        actor = self._cls.remote(ctx)
+        actor = self._cls.remote()
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -279,9 +278,6 @@ class ActorPoolMapOperator(MapOperator):
 
 class _MapWorker:
     """An actor worker for MapOperator."""
-
-    def __init__(self, ctx: DatasetContext):
-        DatasetContext._set_current(ctx)
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
