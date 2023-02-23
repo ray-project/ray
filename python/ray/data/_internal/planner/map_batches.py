@@ -1,5 +1,5 @@
 import sys
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterator, Optional, Generator
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
@@ -82,11 +82,14 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
-            validate_batch(batch)
-            # Add output batch to output buffer.
-            output_buffer.add_batch(batch)
-            if output_buffer.has_next():
-                yield output_buffer.next()
+            if not isinstance(batch, Generator):
+                batch = [batch]
+
+            for b in batch:
+                validate_batch(b)
+                output_buffer.add_batch(b)
+                if output_buffer.has_next():
+                    yield output_buffer.next()
 
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
