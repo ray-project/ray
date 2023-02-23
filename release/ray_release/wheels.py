@@ -104,7 +104,7 @@ def get_wheels_filename(
     suffix = "m" if python_version[1] <= 7 else ""
     return (
         f"ray-{ray_version}-cp{version_str}-cp{version_str}{suffix}-"
-        f"manylinux2014_x86_64.whl"
+        f"manylinux_2_28_x86_64.whl"
     )
 
 
@@ -113,7 +113,8 @@ def parse_wheels_filename(
 ) -> Tuple[Optional[str], Optional[Tuple[int, int]]]:
     """Parse filename and return Ray version + python version"""
     matched = re.search(
-        r"ray-([0-9a-z\.]+)-cp([0-9]{2,3})-cp([0-9]{2,3})m?-manylinux2014_x86_64\.whl$",
+        r"ray-([0-9a-z\.]+)-cp([0-9]{2,3})-cp([0-9]{2,3})m?-"
+        r"manylinux_2_28_x86_64\.whl$",
         filename,
     )
     if not matched:
@@ -375,14 +376,14 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
             "No Ray wheels found - can't install matching Ray wheels locally!"
         )
         return
-    assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
+    assert "manylinux_2_28_x86_64" in ray_wheels, ray_wheels
     if sys.platform == "darwin":
         platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
         platform = "win_amd64"
     else:
-        platform = "manylinux2014_x86_64"
-    ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
+        platform = "manylinux_2_28_x86_64"
+    ray_wheels = ray_wheels.replace("manylinux_2_28_x86_64", platform)
     logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
     subprocess.check_output(
         "pip uninstall -y ray", shell=True, env=os.environ, text=True

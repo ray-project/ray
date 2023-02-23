@@ -71,7 +71,7 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``. 
+You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``.
 
 .. tabbed:: conda
 
@@ -85,9 +85,9 @@ You probably want some type of Python virtual environment. For example, you can 
     Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
     .. code-block:: shell
-		    
+
         conda activate ray
-        
+
     You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
 .. tabbed:: venv
@@ -132,7 +132,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 .. code-block:: shell
 
     # For example, for Python 3.8:
-    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux_2_28_x86_64.whl
 
 4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``. Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed Ray.
 

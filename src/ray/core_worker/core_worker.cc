@@ -693,7 +693,7 @@ void CoreWorker::Disconnect(
   // Force task state events push before exiting the worker.
   task_event_buffer_->FlushEvents(/* forced */ true);
 
-  opencensus::stats::StatsExporter::ExportNow();
+  // opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
@@ -2902,7 +2902,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     // the task execution service.
     direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
     task_execution_service_.post(
-        [=] {
+        [=, this] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (exiting_) return;
@@ -2924,7 +2924,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [=] {
+      [=, this] {
         RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
         task_argument_waiter_->OnWaitComplete(request.tag());
       },

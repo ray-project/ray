@@ -20,18 +20,18 @@ download_wheel() {
 
 # Linux.
 echo "Downloading Ray core Linux wheels (x86_64)"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-manylinux2014_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-manylinux_2_28_x86_64.whl"
 
 echo "Downloading Ray core Linux wheels (aarch64)"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux2014_aarch64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux2014_aarch64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux2014_aarch64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-manylinux2014_aarch64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-manylinux2014_aarch64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux_2_28_aarch64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux_2_28_aarch64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux_2_28_aarch64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-manylinux_2_28_aarch64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-manylinux_2_28_aarch64.whl"
 
 # macOS.
 echo "Downloading Ray core MacOS wheels"
@@ -50,11 +50,11 @@ download_wheel "https://ray-wheels.s3-us-west-2.amazonaws.com/releases/$RAY_VERS
 
 # Linux CPP.
 echo "Downloading Ray CPP Linux wheels"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp36-cp36m-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp37-cp37m-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp38-cp38-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp39-cp39-manylinux2014_x86_64.whl"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp310-cp310-manylinux2014_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp36-cp36m-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp37-cp37m-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp38-cp38-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp39-cp39-manylinux_2_28_x86_64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp310-cp310-manylinux_2_28_x86_64.whl"
 
 # macOS CPP.
 echo "Downloading Ray CPP MacOS wheels"

@@ -1,13 +1,13 @@
 #!/bin/bash
 # This script is for users to build docker images locally. It is most useful for users wishing to edit the
-# base-deps, ray-deps, or ray images. This script is *not* tested, so please look at the 
+# base-deps, ray-deps, or ray images. This script is *not* tested, so please look at the
 # scripts/build-docker-images.py if there are problems with using this script.
 
 set -x
 
 GPU=""
-BASE_IMAGE="ubuntu:focal"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+BASE_IMAGE="ubuntu:jammy"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux_2_28_x86_64.whl"
 PYTHON_VERSION="3.7.16"
 
 
@@ -17,7 +17,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
     ;;
     --base-image)
     # Override for the base image.
@@ -34,8 +34,8 @@ case $key in
     BUILD_EXAMPLES=YES
     ;;
     --shas-only)
-    # output the SHA sum of each build. This is useful for scripting tests, 
-    # especially when builds of different versions are running on the same machine. 
+    # output the SHA sum of each build. This is useful for scripting tests,
+    # especially when builds of different versions are running on the same machine.
     # It also can facilitate cleanup.
     OUTPUT_SHA=YES
     ;;
@@ -72,11 +72,11 @@ do
         docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t rayproject/$IMAGE:nightly$GPU docker/$IMAGE
     fi
     rm "docker/$IMAGE/$(basename "$WHEEL")"
-done 
+done
 
 
 # Build the current Ray source
-if [ $BUILD_DEV ]; then 
+if [ $BUILD_DEV ]; then
     git rev-parse HEAD > ./docker/development/git-rev
     git archive -o ./docker/development/ray.tar "$(git rev-parse HEAD)"
     if [ $OUTPUT_SHA ]; then
@@ -88,7 +88,7 @@ if [ $BUILD_DEV ]; then
     rm ./docker/development/ray.tar ./docker/development/git-rev
 fi
 
-if [ $BUILD_EXAMPLES ]; then 
+if [ $BUILD_EXAMPLES ]; then
     if [ $OUTPUT_SHA ]; then
         IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/examples docker/examples)
         echo "rayproject/examples:latest SHA:$IMAGE_SHA"

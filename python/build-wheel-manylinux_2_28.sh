@@ -30,10 +30,12 @@ yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
 
+ln -sf /opt/python/cp39-cp39/bin/python3 /usr/bin/python
+
 if [ "${HOSTTYPE-}" = "x86_64" ]; then
-  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
-  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
-  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+  yum install "libasan.${HOSTTYPE}" -y
+  yum install "libubsan.${HOSTTYPE}" -y
+  yum install "gcc-toolset-12-libasan-devel.${HOSTTYPE}" -y
 fi
 
 java -version
@@ -46,9 +48,6 @@ export JAVA_HOME="$java_home"
 # Put bazel into the PATH if building Bazel from source
 # export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
 
-# If converting down to manylinux2010, the following configuration should
-# be set for bazel
-#echo "build --config=manylinux2010" >> /root/.bazelrc
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
@@ -71,8 +70,8 @@ pushd python/ray/dashboard/client
 popd
 set -x
 
-# Add the repo folder to the safe.dictory global variable to avoid the failure 
-# because of secruity check from git, when executing the following command 
+# Add the repo folder to the safe.dictory global variable to avoid the failure
+# because of secruity check from git, when executing the following command
 # `git clean ...`,  while building wheel locally.
 git config --global --add safe.directory /ray
 
@@ -114,7 +113,7 @@ done
 # hack, we should use auditwheel instead.
 for path in .whl/*.whl; do
   if [ -f "${path}" ]; then
-    out="${path//-linux/-manylinux2014}"
+    out="${path//-linux/-manylinux_2_28}"
     if [ "$out" != "$path" ]; then
         mv "${path}" "${out}"
     fi

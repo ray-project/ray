@@ -622,7 +622,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ray_util",
-        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_github_jupp0r_prometheus_cpp//core",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -698,7 +698,7 @@ cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
         "@boost//:system",
-        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_github_jupp0r_prometheus_cpp//core",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -761,7 +761,7 @@ cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
         "@boost//:system",
-        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_github_jupp0r_prometheus_cpp//core",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -2769,7 +2769,7 @@ pyx_library(
     # shared lib, see python/ray/__init__.py.
     cc_kwargs = dict(
         srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS,
+        copts = COPTS + PYX_COPTS + ["-Wno-volatile"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@bazel_tools//src/conditions:darwin": [

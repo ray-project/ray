@@ -65,7 +65,7 @@ available_node_types:
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      VolumeSize: 100
+                      VolumeSize: 140
             # Additional options in the boto docs.
     # CPU workers.
     ray.worker.default:
@@ -115,8 +115,8 @@ file_mounts: {
 # List of shell commands to run to set up nodes.
 # NOTE: rayproject/ray:latest has ray latest bundled
 setup_commands: []
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
-    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux_2_28_x86_64.whl
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux_2_28_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

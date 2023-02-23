@@ -205,7 +205,7 @@ std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
 void RaySyncer::Connect(const std::string &node_id,
                         std::shared_ptr<grpc::Channel> channel) {
   io_context_.dispatch(
-      [=]() {
+      [=, this]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
         auto reactor = new RayClientBidiReactor(
             /* remote_node_id */ node_id,

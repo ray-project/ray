@@ -554,8 +554,8 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  const auto wrap_buffer = [=](const ObjectID &object_id,
-                               const std::shared_ptr<Buffer> &buffer) {
+  const auto wrap_buffer = [=, this](const ObjectID &object_id,
+                                     const std::shared_ptr<Buffer> &buffer) {
     return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
   };
   const size_t num_objects = object_ids.size();

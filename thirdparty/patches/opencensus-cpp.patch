@@ -1,29 +1,8 @@
-diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
-index c61b4d9..b3e4ef2 100644
---- opencensus/stats/internal/delta_producer.cc
-+++ opencensus/stats/internal/delta_producer.cc
-@@ -75,6 +75,20 @@ DeltaProducer* DeltaProducer::Get() {
-   return global_delta_producer;
- }
- 
-+void DeltaProducer::Shutdown() {
-+  {
-+    absl::MutexLock l(&mu_);
-+    if (!thread_started_) {
-+      return;
-+    }
-+    thread_started_ = false;
-+  }
-+  // Join loop thread when shutdown.
-+  if (harvester_thread_.joinable()) {
-+    harvester_thread_.join();
-+  }
-+}
-+
- void DeltaProducer::AddMeasure() {
-   delta_mu_.Lock();
-   absl::MutexLock harvester_lock(&harvester_mu_);
-@@ -115,7 +129,10 @@ void DeltaProducer::Flush() {
+diff --git a/opencensus/stats/internal/delta_producer.cc b/opencensus/stats/internal/delta_producer.cc
+index c61b4d9..cae8883 100644
+--- a/opencensus/stats/internal/delta_producer.cc
++++ b/opencensus/stats/internal/delta_producer.cc
+@@ -115,7 +115,10 @@ void DeltaProducer::Flush() {
  }
  
  DeltaProducer::DeltaProducer()
@@ -35,7 +14,7 @@ index c61b4d9..b3e4ef2 100644
  
  void DeltaProducer::SwapDeltas() {
    ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
-@@ -131,11 +148,19 @@ void DeltaProducer::RunHarvesterLoop() {
+@@ -131,11 +134,37 @@ void DeltaProducer::RunHarvesterLoop() {
    absl::Time next_harvest_time = absl::Now() + harvest_interval_;
    while (true) {
      const absl::Time now = absl::Now();
@@ -55,13 +34,31 @@ index c61b4d9..b3e4ef2 100644
 +        break;
 +      }
 +    }
++  }
++}
++
++void DeltaProducer::SetHarvestInterval(const absl::Duration interval) {
++  harvest_interval_ = interval;
++}
++
++void DeltaProducer::Shutdown() {
++  {
++    absl::MutexLock l(&mu_);
++    if (!thread_started_) {
++      return;
++    }
++    thread_started_ = false;
++  }
++  // Join loop thread when shutdown.
++  if (harvester_thread_.joinable()) {
++    harvester_thread_.join();
    }
  }
  
-diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
-index 2cff522..c8e2e95 100644
---- opencensus/stats/internal/delta_producer.h
-+++ opencensus/stats/internal/delta_producer.h
+diff --git a/opencensus/stats/internal/delta_producer.h b/opencensus/stats/internal/delta_producer.h
+index bec5605..453b4ef 100644
+--- a/opencensus/stats/internal/delta_producer.h
++++ b/opencensus/stats/internal/delta_producer.h
 @@ -71,6 +71,8 @@ class DeltaProducer final {
    // Returns a pointer to the singleton DeltaProducer.
    static DeltaProducer* Get();
@@ -71,29 +68,42 @@ index 2cff522..c8e2e95 100644
    // Adds a new Measure.
    void AddMeasure();
  
-@@ -122,6 +124,9 @@ class DeltaProducer final {
+@@ -84,6 +86,8 @@ class DeltaProducer final {
+   // Flushes the active delta and blocks until it is harvested.
+   void Flush() ABSL_LOCKS_EXCLUDED(delta_mu_, harvester_mu_);
+ 
++  void SetHarvestInterval(const absl::Duration interval);
++
+  private:
+   DeltaProducer();
+ 
+@@ -100,7 +104,7 @@ class DeltaProducer final {
+   // every harvest_interval_.
+   void RunHarvesterLoop();
+ 
+-  const absl::Duration harvest_interval_ = absl::Seconds(5);
++  absl::Duration harvest_interval_ = absl::Seconds(5);
+ 
+   // Guards the active delta and its configuration. Anything that changes the
+   // delta configuration (e.g. adding a measure or BucketBoundaries) must
+@@ -122,6 +126,9 @@ class DeltaProducer final {
    // thread when calling a flush during harvesting.
-   Delta last_delta_ GUARDED_BY(harvester_mu_);
-   std::thread harvester_thread_ GUARDED_BY(harvester_mu_);
+   Delta last_delta_ ABSL_GUARDED_BY(harvester_mu_);
+   std::thread harvester_thread_ ABSL_GUARDED_BY(harvester_mu_);
 +
 +  mutable absl::Mutex mu_;
 +  bool thread_started_ GUARDED_BY(mu_) = false;
  };
  
  }  // namespace stats
-diff --git opencensus/stats/internal/stats_exporter.cc opencensus/stats/internal/stats_exporter.cc
-index 43ddbc7..37b4ae1 100644
---- opencensus/stats/internal/stats_exporter.cc
-+++ opencensus/stats/internal/stats_exporter.cc
-@@ -95,25 +95,57 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+diff --git a/opencensus/stats/internal/stats_exporter.cc b/opencensus/stats/internal/stats_exporter.cc
+index 7de96d6..2aef19d 100644
+--- a/opencensus/stats/internal/stats_exporter.cc
++++ b/opencensus/stats/internal/stats_exporter.cc
+@@ -94,26 +94,58 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+   handlers_.clear();
  }
  
- void StatsExporterImpl::StartExportThread() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
--  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
-   thread_started_ = true;
-+  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
-+}
-+
 +void StatsExporterImpl::Shutdown() {
 +  {
 +    absl::MutexLock l(&mu_);
@@ -106,6 +116,12 @@ index 43ddbc7..37b4ae1 100644
 +  if (t_.joinable()) {
 +    t_.join();
 +  }
++}
++
+ void StatsExporterImpl::StartExportThread() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+-  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
+   thread_started_ = true;
++  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
  }
  
  void StatsExporterImpl::RunWorkerLoop() {
@@ -147,10 +163,10 @@ index 43ddbc7..37b4ae1 100644
  // static
  void StatsExporter::SetInterval(absl::Duration interval) {
    StatsExporterImpl::Get()->SetInterval(interval);
-diff --git opencensus/stats/internal/stats_exporter_impl.h opencensus/stats/internal/stats_exporter_impl.h
-index 11ae3c4..ebe9c4d 100644
---- opencensus/stats/internal/stats_exporter_impl.h
-+++ opencensus/stats/internal/stats_exporter_impl.h
+diff --git a/opencensus/stats/internal/stats_exporter_impl.h b/opencensus/stats/internal/stats_exporter_impl.h
+index abbd13e..823471e 100644
+--- a/opencensus/stats/internal/stats_exporter_impl.h
++++ b/opencensus/stats/internal/stats_exporter_impl.h
 @@ -34,6 +34,7 @@ class StatsExporterImpl {
   public:
    static StatsExporterImpl* Get();
@@ -159,10 +175,10 @@ index 11ae3c4..ebe9c4d 100644
    absl::Time GetNextExportTime() const;
    void AddView(const ViewDescriptor& view);
    void RemoveView(absl::string_view name);
-diff --git opencensus/stats/stats_exporter.h opencensus/stats/stats_exporter.h
-index 6756858..65e0262 100644
---- opencensus/stats/stats_exporter.h
-+++ opencensus/stats/stats_exporter.h
+diff --git a/opencensus/stats/stats_exporter.h b/opencensus/stats/stats_exporter.h
+index 6756858..7aebf21 100644
+--- a/opencensus/stats/stats_exporter.h
++++ b/opencensus/stats/stats_exporter.h
 @@ -45,6 +45,9 @@ class StatsExporter final {
    // Removes the view with 'name' from the registry, if one is registered.
    static void RemoveView(absl::string_view name);

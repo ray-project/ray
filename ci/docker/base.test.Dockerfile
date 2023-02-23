@@ -1,4 +1,4 @@
-ARG DOCKER_IMAGE_BASE_UBUNTU=ubuntu:focal
+ARG DOCKER_IMAGE_BASE_UBUNTU=ubuntu:jammy
 FROM $DOCKER_IMAGE_BASE_UBUNTU
 
 ARG REMOTE_CACHE_URL
@@ -36,10 +36,11 @@ RUN apt-get install -y -qq \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     liblz4-dev libunwind-dev libncurses5 \
     clang-format-12 jq \
-    clang-tidy-12 clang-12
-# Make using GCC 9 explicit.
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
+    clang-tidy-12 clang-12 \
+    gcc-12 g++-12
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
+    --slave /usr/bin/gcov gcov /usr/bin/gcov-12
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang

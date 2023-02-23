@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
@@ -36,8 +36,8 @@ RUN apt-get install -y -qq \
     clang-format-12 jq \
     clang-tidy-12 clang-12
 # Make using GCC 9 explicit.
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 90 --slave /usr/bin/g++ g++ /usr/bin/g++-11 \
+    --slave /usr/bin/gcov gcov /usr/bin/gcov-11
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang

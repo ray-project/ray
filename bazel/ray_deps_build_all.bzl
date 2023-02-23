@@ -10,7 +10,6 @@ load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_depende
 load("@rules_foreign_cc_thirdparty//openssl:openssl_setup.bzl", "openssl_setup")
 
 
-
 def ray_deps_build_all():
   bazel_skylib_workspace()
   gen_java_deps()

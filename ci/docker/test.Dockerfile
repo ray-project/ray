@@ -9,7 +9,7 @@ RUN rm -rf /ray
 RUN mkdir /ray
 WORKDIR /ray
 
-# Copy new ray files
+# Copy new ray files.
 COPY . .
 
 # Install Ray

@@ -1266,7 +1266,7 @@ def get_wheel_filename(
 
     Returns:
         The wheel file name.  Examples:
-            ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+            ray-3.0.0.dev0-cp38-cp38-manylinux_2_28_x86_64.whl
     """
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
@@ -1281,9 +1281,9 @@ def get_wheel_filename(
     architecture = architecture or platform.processor()
 
     if architecture == "aarch64":
-        linux_os_string = "manylinux2014_aarch64"
+        linux_os_string = "manylinux_2_28_aarch64"
     else:
-        linux_os_string = "manylinux2014_x86_64"
+        linux_os_string = "manylinux_2_28_x86_64"
 
     os_strings = {
         "darwin": darwin_os_string,

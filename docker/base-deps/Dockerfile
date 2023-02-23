@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
 # The GPU options are NVIDIA CUDA developer images.
-ARG BASE_IMAGE="ubuntu:focal"
+ARG BASE_IMAGE="ubuntu:jammy"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -35,7 +35,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         libjemalloc-dev \
         wget \
         cmake \
-        g++ \ 
+        g++ \
         zlib1g-dev \
         $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         tmux \
@@ -47,7 +47,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
-    && $HOME/anaconda3/bin/conda init \ 
+    && $HOME/anaconda3/bin/conda init \
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
@@ -61,13 +61,13 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         psutil \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-    && $HOME/anaconda3/bin/pip uninstall -y dask \ 
+    && $HOME/anaconda3/bin/pip uninstall -y dask \
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
         $(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \
         g++; fi) \
-    # Either install kubectl or remove wget 
+    # Either install kubectl or remove wget
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
         then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
         && sudo touch /etc/apt/sources.list.d/kubernetes.list \

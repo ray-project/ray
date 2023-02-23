@@ -123,6 +123,7 @@ install_miniconda() {
         # Unfortunately it inhibits PATH modifications as a side effect.
         "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
+        $conda install -c conda-forge libstdcxx-ng -y
         ;;
     esac
   fi
