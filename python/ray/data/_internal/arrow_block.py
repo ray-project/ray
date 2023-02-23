@@ -127,6 +127,10 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
         return transform_pyarrow.concat(tables)
 
     @staticmethod
+    def _concat_would_copy() -> bool:
+        return False
+
+    @staticmethod
     def _empty_table() -> "pyarrow.Table":
         return pyarrow.Table.from_pydict({})
 

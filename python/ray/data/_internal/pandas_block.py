@@ -106,13 +106,17 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
         if len(tables) > 1:
             df = pandas.concat(tables, ignore_index=True)
+            df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
-        df.reset_index(drop=True, inplace=True)
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
         return df
+
+    @staticmethod
+    def _concat_would_copy() -> bool:
+        return True
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":
