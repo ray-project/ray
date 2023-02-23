@@ -12,10 +12,11 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Tuple,
     Union,
 )
 import warnings
+
+import numpy as np
 
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
@@ -33,7 +34,7 @@ from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.util import _is_tensor_schema
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U, TensorflowFeatureTypeSpec
+from ray.data.dataset import Dataset, T, U
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
     import torch
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +174,7 @@ class DatasetPipeline(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the data in the pipeline.
 
@@ -232,6 +235,7 @@ class DatasetPipeline(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            collate_fn=_collate_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -1080,11 +1084,15 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[Union["torch.Tensor", Dict[str, "torch.Tensor"]]]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Call
         :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
         over the stream of output batches from the pipeline."""
@@ -1092,6 +1100,9 @@ class DatasetPipeline(Generic[T]):
             self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -1106,28 +1117,26 @@ class DatasetPipeline(Generic[T]):
 
     def to_tf(
         self,
+        feature_columns: Union[str, List[str]],
+        label_columns: Union[str, List[str]],
         *,
-        output_signature: Union[
-            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
-        ],
-        label_column: Optional[str] = None,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], Dict[str, List[str]]]
-        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
         output batches from the pipeline"""
         return Dataset.to_tf(
             self,
-            output_signature=output_signature,
-            label_column=label_column,
             feature_columns=feature_columns,
+            label_columns=label_columns,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
         )
 
     def to_torch(
@@ -1344,3 +1353,6 @@ class DatasetPipeline(Generic[T]):
                 uuid = self._get_uuid() or ds._get_uuid()
             ds._set_uuid(f"{uuid}_{i:06}")
             write_fn(ds)
+
+    def _synchronize_progress_bar(self):
+        pass

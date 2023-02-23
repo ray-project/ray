@@ -77,46 +77,47 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
     they might not implement all storage_units.
 
     Examples:
-        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, # doctest: +SKIP
-        ...                         StorageUnit # doctest: +SKIP
-        >>> from ray.rllib.policy.sample_batch import SampleBatch # doctest: +SKIP
-        >>> # Store any batch as a whole
-        >>> buffer = ReplayBuffer(capacity=10,
-        ...                         storage_unit=StorageUnit.FRAGMENTS) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]})) # doctest: +SKIP
-        >>> print(buffer.sample(1)) # doctest: +SKIP
-        >>> # SampleBatch(1: ['a', 'b'])
-        >>> # Store only complete episodes
-        >>> buffer = ReplayBuffer(capacity=10,
-        ...                         storage_unit=StorageUnit.EPISODES) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4], # doctest: +SKIP
-        ...                        SampleBatch.T: [0, 1, 0, 1],
-        ...                        SampleBatch.TERMINATEDS: [False, True, False, True],
-        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]})) # doctest: +SKIP
-        >>> eps_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(eps_n[SampleBatch.EPS_ID]) # doctest: +SKIP
-        >>> # [1 1]
-        >>> # Store single timesteps
-        >>> buffer = ReplayBuffer(capacity=2,  # doctest: +SKIP
-        ...                         storage_unit=StorageUnit.TIMESTEPS) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"a": [1, 2],
-        ...                         SampleBatch.T: [0, 1]})) # doctest: +SKIP
-        >>> t_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(t_n["a"]) # doctest: +SKIP
-        >>> # [2]
-        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]})) # doctest: +SKIP
-        >>> print(buffer._eviction_started) # doctest: +SKIP
-        >>> # True
-        >>> t_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(t_n["a"]) # doctest: +SKIP
-        >>> # [3] # doctest: +SKIP
-        >>> buffer = ReplayBuffer(capacity=10, # doctest: +SKIP
-        ...                         storage_unit=StorageUnit.SEQUENCES) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3], # doctest: +SKIP
-        ...                        SampleBatch.SEQ_LENS: [1, 2]})) # doctest: +SKIP
-        >>> seq_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(seq_n["c"]) # doctest: +SKIP
-        >>> # [1]
+
+    .. testcode::
+
+        from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+        from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+        from ray.rllib.policy.sample_batch import SampleBatch
+
+        # Store any batch as a whole
+        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
+        buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
+        buffer.sample(1)
+
+        # Store only complete episodes
+        buffer = ReplayBuffer(capacity=10,
+                                storage_unit=StorageUnit.EPISODES)
+        buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+                                SampleBatch.T: [0, 1, 0, 1],
+                                SampleBatch.TERMINATEDS: [False, True, False, True],
+                                SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        buffer.sample(1)
+
+        # Store single timesteps
+        buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
+        buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
+        buffer.sample(1)
+
+        buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
+        print(buffer._eviction_started)
+        buffer.sample(1)
+
+        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
+        buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
+        buffer.sample(1)
+
+    .. testoutput::
+
+        True
+
+    `True` is not the output of the above testcode, but an artifact of unexpected
+    behaviour of sphinx doctests.
+    (see https://github.com/ray-project/ray/pull/32477#discussion_r1106776101)
     """
 
     def __init__(

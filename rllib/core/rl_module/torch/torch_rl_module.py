@@ -69,9 +69,9 @@ class TorchDDPRLModule(nn.parallel.DistributedDataParallel, RLModule):
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         # TODO (Kourosh): Not to sure about this make_distributed api belonging to
-        # RLModule or the RLTrainer? For now the logic is kept in RLTrainer.
+        # RLModule or the Learner? For now the logic is kept in Learner.
         # We should see if we can use this api end-point for both tf
-        # and torch instead of doing it in the trainer.
+        # and torch instead of doing it in the learner.
         pass
 
     @override(RLModule)

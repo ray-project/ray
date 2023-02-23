@@ -388,16 +388,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     // Add the driver task info.
     if (task_event_buffer_->Enabled()) {
-      rpc::TaskEvents task_event;
       const auto spec = builder.Build();
-      auto task_info = task_manager_->MakeTaskInfoEntry(spec);
-      task_event.set_task_id(task_id.Binary());
-      task_event.set_job_id(spec.JobId().Binary());
-      task_event.set_attempt_number(0);
-      task_event.mutable_task_info()->Swap(&task_info);
-      gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::RUNNING,
-                                    absl::GetCurrentTimeNanos(),
-                                    task_event.mutable_state_updates());
+      auto task_event = std::make_unique<worker::TaskStatusEvent>(
+          task_id,
+          spec.JobId(),
+          /* attempt_number */ 0,
+          rpc::TaskStatus::RUNNING,
+          /* timestamp */ absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(spec));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -683,14 +681,12 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
-    // Mark Driver as finished.
-    rpc::TaskEvents task_event;
-    task_event.set_task_id(worker_context_.GetCurrentTaskID().Binary());
-    task_event.set_job_id(worker_context_.GetCurrentJobID().Binary());
-    task_event.set_attempt_number(0);
-    gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::FINISHED,
-                                  absl::GetCurrentTimeNanos(),
-                                  task_event.mutable_state_updates());
+    auto task_event = std::make_unique<worker::TaskStatusEvent>(
+        worker_context_.GetCurrentTaskID(),
+        worker_context_.GetCurrentJobID(),
+        /* attempt_number */ 0,
+        rpc::TaskStatus::FINISHED,
+        /* timestamp */ absl::GetCurrentTimeNanos());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -1254,8 +1250,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  }
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1416,8 +1416,12 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  }
 
   results->resize(ids.size(), false);
 
@@ -3584,12 +3588,21 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
-  reply->set_success(is_idle);
+  bool force_exit = request.force_exit();
+  RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
+  if (!is_idle && force_exit) {
+    RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
+                     "workers that depends on the object to lose it. "
+                  << "Own objects: " << own_objects
+                  << " # Pins in flight: " << pins_in_flight;
+  }
+  bool will_exit = is_idle || force_exit;
+  reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),
-      [this, is_idle]() {
+      [this, will_exit]() {
         // If the worker is idle, we exit.
-        if (is_idle) {
+        if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");

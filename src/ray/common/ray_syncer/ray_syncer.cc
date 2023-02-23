@@ -105,7 +105,14 @@ RayServerBidiReactor::RayServerBidiReactor(
 }
 
 void RayServerBidiReactor::Disconnect() {
-  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
+  io_context_.dispatch(
+      [this]() {
+        if (!disconnected_) {
+          disconnected_ = true;
+          Finish(grpc::Status::OK);
+        }
+      },
+      "");
 }
 
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
@@ -132,6 +139,10 @@ RayClientBidiReactor::RayClientBidiReactor(
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   stub_->async()->StartSync(&client_context_, this);
+  // Prevent this call from being terminated.
+  // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
+  // for details.
+  AddHold();
   StartPull();
 }
 
@@ -145,7 +156,16 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
 }
 
 void RayClientBidiReactor::Disconnect() {
-  io_context_.dispatch([this]() { StartWritesDone(); }, "");
+  io_context_.dispatch(
+      [this]() {
+        if (!disconnected_) {
+          disconnected_ = true;
+          StartWritesDone();
+          // Free the hold to allow OnDone being called.
+          RemoveHold();
+        }
+      },
+      "");
 }
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
@@ -232,12 +252,12 @@ void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  std::promise<RaySyncerBidiReactor *> promise;
+  std::promise<void> promise;
   io_context_.dispatch(
       [&]() {
         auto iter = sync_reactors_.find(node_id);
         if (iter == sync_reactors_.end()) {
-          promise.set_value(nullptr);
+          promise.set_value();
           return;
         }
 
@@ -245,13 +265,11 @@ void RaySyncer::Disconnect(const std::string &node_id) {
         if (iter != sync_reactors_.end()) {
           sync_reactors_.erase(iter);
         }
-        promise.set_value(reactor);
+        reactor->Disconnect();
+        promise.set_value();
       },
       "RaySyncerDisconnect");
-  auto reactor = promise.get_future().get();
-  if (reactor != nullptr) {
-    reactor->Disconnect();
-  }
+  promise.get_future().get();
 }
 
 void RaySyncer::Register(MessageType message_type,

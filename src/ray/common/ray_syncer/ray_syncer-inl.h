@@ -267,11 +267,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     if (ok) {
       io_context_.dispatch([this]() { SendNext(); }, "");
     } else {
-      // No need to resent the message since if ok=false, it's the end
-      // of gRPC call and client will reconnect in case of a failure.
-      // In gRPC, OnDone will be called after.
       RAY_LOG_EVERY_N(ERROR, 100)
           << "Failed to send the message to: " << NodeID::FromBinary(GetRemoteNodeID());
+      Disconnect();
     }
   }
 
@@ -285,11 +283,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           },
           "");
     } else {
-      // No need to resent the message since if ok=false, it's the end
-      // of gRPC call and client will reconnect in case of a failure.
-      // In gRPC, OnDone will be called after.
       RAY_LOG_EVERY_N(ERROR, 100)
           << "Failed to read the message from: " << NodeID::FromBinary(GetRemoteNodeID());
+      Disconnect();
     }
   }
 
@@ -354,6 +350,8 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
+  bool disconnected_ = false;
+  FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
 
 /// Reactor for gRPC client side. It defines the client's specific behavior for a
@@ -383,6 +381,7 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
   grpc::ClientContext client_context_;
 
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+  bool disconnected_ = false;
 };
 
 }  // namespace syncer
