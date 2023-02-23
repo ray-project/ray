@@ -83,7 +83,7 @@ class TfMLP(tf.Module):
 
         assert input_dim is not None, "Input dimension must not be None"
         assert output_dim is not None, "Output dimension must not be None"
-        layers = []
+        layers = list()
 
         # input = tf.keras.layers.Dense(input_dim, activation=activation)
         layers.append(tf.keras.Input(shape=(input_dim,)))
