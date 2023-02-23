@@ -109,9 +109,7 @@ void RayServerBidiReactor::DoDisconnect() {
 }
 
 void RayServerBidiReactor::OnCancel() {
-  io_context_.dispatch([this]() {
-    Disconnect();
-  }, "");
+  io_context_.dispatch([this]() { Disconnect(); }, "");
 }
 
 void RayServerBidiReactor::OnDone() {
