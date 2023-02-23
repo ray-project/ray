@@ -1,7 +1,8 @@
 import gymnasium as gym
 from typing import Any, Mapping, Optional
+from dataclasses import dataclass
 
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, ModuleID
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.models.specs.typing import SpecType
@@ -12,13 +13,28 @@ from ray.rllib.utils.nested_dict import NestedDict
 torch, nn = try_import_torch()
 
 
+@dataclass
+class DiscreteBCTorchModuleConfig(RLModuleConfig):
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    model_config: Mapping[str, Any] = None
+
+    def build(self, framework):
+        if framework != "torch":
+            raise ValueError("Only torch framework is supported")
+        DiscreteBCTorchModule(self)
+
+
 class DiscreteBCTorchModule(TorchRLModule):
     def __init__(
         self,
-        input_dim: int,
-        hidden_dim: int,
-        output_dim: int,
+        config: DiscreteBCTorchModuleConfig,
     ) -> None:
+        self.config = config
+        input_dim = config.observation_space.shape[0]
+        hidden_dim = config.model_config["fcnet_hiddens"][0]
+        output_dim = config.action_space.n
+
         super().__init__(
             input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim
         )
@@ -67,13 +83,28 @@ class DiscreteBCTorchModule(TorchRLModule):
         model_config: Mapping[str, Any],
     ) -> "DiscreteBCTorchModule":
 
-        config = {
-            "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config["fcnet_hiddens"][0],
-            "output_dim": action_space.n,
-        }
+        config = DiscreteBCTorchModuleConfig(
+            observation_space=observation_space,
+            action_space=action_space,
+            model_config=model_config,
+        )
 
-        return cls(**config)
+        return cls(config)
+
+
+@dataclass
+class BCTorchRLModuleWithSharedGlobalEncoderConfig(RLModuleConfig):
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    encoder: RLModule = None
+    local_dim: int = 0
+    hidden_dim: int = 0
+    action_dim: int = 0
+
+    def build(self, framework):
+        if framework != "torch":
+            raise ValueError("Only torch framework is supported")
+        return BCTorchRLModuleWithSharedGlobalEncoder(self)
 
 
 class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
@@ -89,16 +120,16 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
 
     """
 
-    def __init__(
-        self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
-    ) -> None:
+    def __init__(self, config: BCTorchRLModuleWithSharedGlobalEncoderConfig) -> None:
         super().__init__()
+        self.config = config
 
-        self.encoder = encoder
+        self.encoder = config.encoder
+
         self.policy_head = nn.Sequential(
-            nn.Linear(hidden_dim + local_dim, hidden_dim),
+            nn.Linear(config.hidden_dim + config.local_dim, config.hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim),
+            nn.Linear(config.hidden_dim, config.action_dim),
         )
 
     @override(RLModule)
@@ -146,21 +177,20 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
             nn.Linear(hidden_dim, hidden_dim),
         )
 
+        config = BCTorchRLModuleWithSharedGlobalEncoderConfig(
+            observation_space=module_spec.observation_space,
+            action_space=module_spec.action_space,
+            encoder=shared_encoder,
+            local_dim=module_spec.observation_space["local"].shape[0],
+            hidden_dim=hidden_dim,
+            action_dim=module_spec.action_space.n,
+        )
+
         if module_id:
-            return module_spec.module_class(
-                encoder=shared_encoder,
-                local_dim=module_spec.observation_space["local"].shape[0],
-                hidden_dim=hidden_dim,
-                action_dim=module_spec.action_space.n,
-            )
+            return module_spec.module_class(config)
 
         rl_modules = {}
         for module_id, module_spec in self.module_specs.items():
-            rl_modules[module_id] = module_spec.module_class(
-                encoder=shared_encoder,
-                local_dim=module_spec.observation_space["local"].shape[0],
-                hidden_dim=hidden_dim,
-                action_dim=module_spec.action_space.n,
-            )
+            rl_modules[module_id] = module_spec.module_class(config)
 
         return self.marl_module_class(rl_modules)

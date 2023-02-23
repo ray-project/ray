@@ -21,7 +21,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 class TestLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
