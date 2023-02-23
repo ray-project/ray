@@ -66,7 +66,6 @@ class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specif
     pi_config: MLPHeadConfig = None
     vf_config: MLPHeadConfig = None
     free_log_std: bool = False
-    max_seq_len: int = 1
 
 
 class PPOTorchRLModule(TorchRLModule):

@@ -16,7 +16,7 @@ from ray.rllib.models.tf.tf_distributions import (
 )
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -30,7 +30,7 @@ tf1.enable_eager_execution()
 
 
 class PPOTfRLModule(TfRLModule):
-    def __init__(self, config: RLModuleConfig):
+    def __init__(self, config: PPOModuleConfig):
         super().__init__()
         self.config = config
 

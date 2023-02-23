@@ -81,7 +81,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    max_seq_len: int = None
+    max_seq_len: int = 1
 
 
 @ExperimentalAPI
