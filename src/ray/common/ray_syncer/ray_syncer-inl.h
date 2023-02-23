@@ -139,8 +139,8 @@ class RaySyncerBidiReactor {
   /// It also needs to do proper cleanup.
   void Disconnect() {
     if (!IsDisconnected()) {
-      DoDisconnect();
       disconnected_ = true;
+      DoDisconnect();
     }
   };
 
@@ -268,7 +268,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
     RAY_LOG(DEBUG) << "[BidiReactor] Sending message to "
                    << NodeID::FromBinary(GetRemoteNodeID()) << " about node "
-                   << NodeID::FromBinary(sending_message_->node_id());
+                   << NodeID::FromBinary(sending_message_->node_id()) << " with flush "
+                   << flush;
     StartWrite(sending_message_.get(), opts);
   }
 
@@ -278,29 +279,33 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   using T::StartWrite;
 
   void OnWriteDone(bool ok) override {
-    if (ok) {
-      io_context_.dispatch([this]() { SendNext(); }, "");
-    } else {
-      RAY_LOG_EVERY_N(ERROR, 100)
-          << "Failed to send the message to: " << NodeID::FromBinary(GetRemoteNodeID());
-      Disconnect();
-    }
+    io_context_.dispatch(
+        [this, ok]() {
+          if (ok) {
+            SendNext();
+          } else {
+            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to send the message to: "
+                                        << NodeID::FromBinary(GetRemoteNodeID());
+            Disconnect();
+          }
+        },
+        "");
   }
 
   void OnReadDone(bool ok) override {
-    if (ok) {
-      io_context_.dispatch(
-          [this, msg = std::move(receiving_message_)]() mutable {
+    io_context_.dispatch(
+        [this, ok, msg = std::move(receiving_message_)]() mutable {
+          if (ok) {
             RAY_CHECK(!msg->node_id().empty());
             ReceiveUpdate(std::move(msg));
             StartPull();
-          },
-          "");
-    } else {
-      RAY_LOG_EVERY_N(ERROR, 100)
-          << "Failed to read the message from: " << NodeID::FromBinary(GetRemoteNodeID());
-      Disconnect();
-    }
+          } else {
+            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to read the message from: "
+                                        << NodeID::FromBinary(GetRemoteNodeID());
+            Disconnect();
+          }
+        },
+        "");
   }
 
   /// grpc requests for sending and receiving
