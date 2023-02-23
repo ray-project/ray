@@ -814,7 +814,8 @@ def test_artifact_syncing_on_stop(ray_start_2_cpus, temp_data_dirs, tmp_path):
 
 
 def test_artifact_syncing_on_reset(ray_start_2_cpus, temp_data_dirs, tmp_path):
-    """Check that artifacts get uploaded on trial reset (for example, paused and reuse actors)."""
+    """Check that artifacts get uploaded on trial reset
+    (for paused actors when actor reuse is enabled)."""
     _, tmp_target = temp_data_dirs
 
     trainable = ray.remote(TestTrainable).remote(
