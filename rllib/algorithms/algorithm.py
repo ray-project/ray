@@ -2631,10 +2631,13 @@ class Algorithm(Trainable):
                 if pid in policy_ids
             }
 
-            # Compile actual config object.
+            # Get Algorithm class.
             algo_cls = state["algorithm_class"]
             if isinstance(algo_cls, str):
-                algo_cls = get_trainable_cls(algo_cls)
+                # Try unserializing from a full classpath.
+                # Or as a last resort: Tune registered algorithm name.
+                algo_cls = unserialize_type(algo_cls) or get_trainable_cls(algo_cls)
+            # Compile actual config object.
             default_config = algo_cls.get_default_config()
             if isinstance(default_config, AlgorithmConfig):
                 new_config = default_config.update_from_dict(state["config"])
@@ -2675,7 +2678,7 @@ class Algorithm(Trainable):
                     )
 
                 with open(policy_state_file, "rb") as f:
-                    if msgpack:
+                    if msgpack is not None:
                         worker_state["policy_states"][pid] = msgpack.load(f)
                     else:
                         worker_state["policy_states"][pid] = pickle.load(f)

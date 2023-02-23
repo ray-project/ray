@@ -1972,10 +1972,15 @@ class AlgorithmConfig(_Config):
             self.policy_map_capacity = policy_map_capacity
 
         if policy_mapping_fn is not NotProvided:
-            # Attempt to create a `policy_mapping_fn` from config dict. Helpful
-            # is users would like to specify custom callable classes in yaml files.
             if isinstance(policy_mapping_fn, dict):
-                policy_mapping_fn = from_config(policy_mapping_fn)
+                # Try unserializing from a source-code dict.
+                # Or as a last resort: Create `policy_mapping_fn` from config dict.
+                # Helpful is users would like to specify custom callable classes in
+                # yaml files.
+                policy_mapping_fn = (
+                    unserialize_function(policy_mapping_fn)
+                    or from_config(policy_mapping_fn)
+                )
             self.policy_mapping_fn = policy_mapping_fn
 
         if observation_fn is not NotProvided:

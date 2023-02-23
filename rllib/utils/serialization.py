@@ -2,7 +2,7 @@ import base64
 import inspect
 import io
 import zlib
-from typing import Any, Callable, Dict, Sequence, Type, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Type, Union
 
 import numpy as np
 
@@ -354,6 +354,15 @@ def serialize_function(function: Union[Callable, dict]) -> dict:
 
 
 @DeveloperAPI
+def deserialize_function(function_dict: str) -> Callable:
+    # Already deserialized.
+    if callable(function_dict):
+        return function_dict
+
+    exec(function_dict["source_code"], function_dict["closures_globals"])
+
+
+@DeveloperAPI
 def serialize_type(type_: Union[Type, str]) -> str:
     """Converts a type into its full classpath ([module file] + "." + [class name]).
 
@@ -368,3 +377,16 @@ def serialize_type(type_: Union[Type, str]) -> str:
         return type_
 
     return type_.__module__ + "." + type_.__name__
+
+
+@DeveloperAPI
+def deserialize_type(type_str: str) -> Optional[type]:
+    """TODO: docstr"""
+    if type_str.find(".") != -1:
+        module_name, function_name = type_.rsplit(".", 1)
+        try:
+            module = importlib.import_module(module_name)
+            constructor = getattr(module, function_name)
+        # Module not found.
+        except (ModuleNotFoundError, ImportError, AttributeError):
+            pass
