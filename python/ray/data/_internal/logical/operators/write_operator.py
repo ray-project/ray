@@ -1,10 +1,11 @@
 from typing import Any, Dict, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasource import Datasource
 
 
-class Write(LogicalOperator):
+class Write(AbstractMap):
     """Logical operator for write."""
 
     def __init__(
@@ -16,11 +17,11 @@ class Write(LogicalOperator):
     ):
         super().__init__(
             "Write",
-            [input_op],
+            input_op,
+            ray_remote_args,
         )
         self._datasource = datasource
         self._write_args = write_args
-        self._ray_remote_args = ray_remote_args
         # Always use task to write.
         self._compute = "tasks"
         # Take the input blocks unchanged while writing.
