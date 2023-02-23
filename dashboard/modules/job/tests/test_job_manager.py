@@ -1028,5 +1028,20 @@ async def test_failed_job_logs_max_char(job_manager):
     )
 
 
+@pytest.mark.asyncio
+async def test_simultaneous_drivers(job_manager):
+    """Test that multiple drivers can be used to submit jobs at the same time."""
+
+    cmd = "python -c 'import ray; ray.init(); ray.shutdown();'"
+    job_id = await job_manager.submit_job(
+        entrypoint=f"{cmd} & {cmd} && wait && echo 'done'"
+    )
+
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+    assert "done" in job_manager.get_job_logs(job_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
