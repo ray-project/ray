@@ -1220,8 +1220,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   if (creation_task_status.IsCreationTaskError()) {
     RAY_LOG(INFO) << "Actor created failed, actor id = " << actor_id
                   << ", job id = " << actor_id.JobId();
-    // Actor creation failed
-    RAY_CHECK(actor->GetState() == rpc::ActorTableData::PENDING_CREATION);
     // NOTE: we could also destroy the actor here right away. The actor will be eventually
     // destroyed since the CoreWorker runs the creation task will exit eventually due to
     // the creation task failure.
