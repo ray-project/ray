@@ -189,12 +189,12 @@ class TestStatusOverview:
 def test_running_replica_info():
     """Test hash value of RunningReplicaInfo"""
 
-    class FakeHandler:
+    class FakeActorHandler:
         def __init__(self, actor_id):
             self._actor_id = actor_id
 
-    fake_h1 = FakeHandler("1")
-    fake_h2 = FakeHandler("1")
+    fake_h1 = FakeActorHandler("1")
+    fake_h2 = FakeActorHandler("1")
     assert fake_h1 != fake_h2
     replica1 = RunningReplicaInfo("my_deployment", "1", fake_h1, 1, False)
     replica2 = RunningReplicaInfo("my_deployment", "1", fake_h2, 1, False)
