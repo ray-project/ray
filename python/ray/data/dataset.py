@@ -2695,10 +2695,15 @@ class Dataset(Generic[T]):
             )
 
         if type(datasource).write != Datasource.write:
+            write_fn = generate_write_fn(datasource, **write_args)
+
+            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+                return write_fn(blocks, ctx)
+
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    generate_write_fn(datasource, **write_args),
+                    write_fn_wrapper,
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,

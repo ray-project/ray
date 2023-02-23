@@ -53,6 +53,7 @@ class OperatorFusionRule(Rule):
             * They have compatible remote arguments.
         """
         from ray.data._internal.execution.operators.map_operator import MapOperator
+        from ray.data._internal.logical.operators.map_operator import AbstractMap
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
         from ray.data._internal.logical.operators.read_operator import Read
         from ray.data._internal.logical.operators.write_operator import Write
@@ -64,9 +65,14 @@ class OperatorFusionRule(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
-        # We only support fusing upstream reads and maps with downstream maps.
-        if not isinstance(down_logical_op, AbstractUDFMap) or not isinstance(
-            up_logical_op, (Read, AbstractUDFMap)
+        # Having Read as downstream or Write as upstream is invalid: Read can only be
+        # the first operator and Write can only be the last operator.
+        if isinstance(down_logical_op, Read) or isinstance(up_logical_op, Write):
+            return False
+
+        # We only support fusing AbstractMap -> AbstractMap operators.
+        if not isinstance(down_logical_op, AbstractMap) or not isinstance(
+            up_logical_op, AbstractMap
         ):
             return False
 
