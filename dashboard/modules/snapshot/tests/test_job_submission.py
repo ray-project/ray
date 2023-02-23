@@ -195,6 +195,7 @@ def test_multiple_ray_init(
     disable_aiohttp_cache,
     enable_test_module,
 ):
+    """Test that multiple drivers in a single job have the same submission ID."""
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
     address = format_web_url(address)
