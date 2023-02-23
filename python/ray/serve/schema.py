@@ -477,6 +477,35 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         description=("The set of Serve applications to run on the Ray cluster."),
     )
 
+    @validator("applications")
+    def application_names_unique(cls, v):
+        # Ensure there are no duplicate applications listed
+        names = [app.name for app in v]
+        duplicates = set([f'"{name}"' for name in names if names.count(name) > 1])
+        if len(duplicates):
+            apps_str = ("application " if len(duplicates) == 1 else "applications ") + (
+                ", ".join(duplicates)
+            )
+            raise ValueError(
+                f"Found multiple configs for {apps_str}. Please remove all duplicates."
+            )
+        return v
+
+    @validator("applications")
+    def application_routes_unique(cls, v):
+        # Ensure there are no duplicate applications listed
+        routes = [app.route_prefix for app in v]
+        duplicates = set([f'"{route}"' for route in routes if routes.count(route) > 1])
+        if len(duplicates):
+            apps_str = (
+                "route prefix " if len(duplicates) == 1 else "route prefixes "
+            ) + (", ".join(duplicates))
+            raise ValueError(
+                f"Found duplicate applications with {apps_str}. Please remove all "
+                "duplicates."
+            )
+        return v
+
     @staticmethod
     def get_empty_schema_dict() -> Dict:
         """Returns an empty deploy schema dictionary.

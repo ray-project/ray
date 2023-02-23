@@ -18,6 +18,7 @@ from ray.serve.schema import (
     DeploymentSchema,
     ServeApplicationSchema,
     ServeStatusSchema,
+    ServeDeploySchema,
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
@@ -646,6 +647,60 @@ class TestServeDeploySchema:
             "port": 7470,
             "applications": [app_config_dict],
         }
+
+    def test_deploy_config_duplicate_apps(self):
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {"name": "app1", "route_prefix": "/alice"},
+                {"name": "app2", "route_prefix": "/charlie"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate app1
+        deploy_config_dict["applications"].append(
+            {"name": "app1", "route_prefix": "/bob"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" not in str(e.value)
+
+        # Duplicate app2
+        deploy_config_dict["applications"].append(
+            {"name": "app2", "route_prefix": "/david"}
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" in str(e.value)
+
+    def test_deploy_config_duplicate_routes(self):
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {"name": "app1", "route_prefix": "/alice"},
+                {"name": "app2", "route_prefix": "/bob"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate route prefix /alice
+        deploy_config_dict["applications"].append(
+            {"name": "app3", "route_prefix": "/alice"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" not in str(e.value)
+
+        # Duplicate route prefix /bob
+        deploy_config_dict["applications"].append(
+            {"name": "app4", "route_prefix": "/bob"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" in str(e.value)
 
 
 class TestServeStatusSchema:
