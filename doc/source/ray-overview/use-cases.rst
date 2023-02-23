@@ -45,11 +45,11 @@ Batch inference refers to generating model predictions over a set of input obser
 
 Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's :ref:`Batch Predictor <air-predictors>` scales predictions on batches across workers.
 
-Learn more about batch inference with the following resources.
-
 .. figure:: /images/batch_inference.png
   
   Using Ray AIR's ``BatchPredictor`` for batch inference.
+
+Learn more about batch inference with the following resources.
 
 .. panels::
     :container: container pb-3
@@ -122,8 +122,6 @@ Alternative solutions exist for less common cases:
 #. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`). 
 
 Learn more about many model training with the following resources.
-.. TODO
-  Add link to many model training blog.
 
 .. panels::
     :container: container pb-3
