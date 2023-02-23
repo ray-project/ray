@@ -2705,7 +2705,7 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if hasattr(datasource, "write"):
+        if type(datasource).write != Datasource.write:
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
@@ -2837,7 +2837,7 @@ class Dataset(Generic[T]):
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
-            batch = BlockAccessor.for_block(batch)
+            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
                 yield row
 

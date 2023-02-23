@@ -7,9 +7,9 @@ import tempfile
 import time
 import logging
 from collections import Counter, defaultdict
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
@@ -30,6 +30,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.cross_language import java_actor_class
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -847,6 +848,30 @@ def test_repr_inheritance():
         print("", flush=True, file=sys.stderr)
         f2 = f2.getvalue()
         assert "ThisIsMyCustomActorName" in f2 and "MySubclass" not in f2
+
+
+def test_ray_does_not_break_makeRecord():
+    """Importing Ray used to cause `logging.makeRecord` to use the default record factory,
+    rather than the factory set by `logging.setRecordFactory`.
+
+    This tests validates that this bug is fixed.
+    """
+    # Make a call with the cli logger to be sure that invoking the
+    # cli logger does not mess up logging.makeRecord.
+    with redirect_stdout(None):
+        cli_logger.info("Cli logger invoked.")
+
+    mockRecordFactory = Mock()
+    try:
+        logging.setLogRecordFactory(mockRecordFactory)
+        # makeRecord needs 7 positional args. What the args are isn't consequential.
+        makeRecord_args = [None] * 7
+        logging.Logger("").makeRecord(*makeRecord_args)
+        # makeRecord called the expected factory.
+        mockRecordFactory.assert_called_once()
+    finally:
+        # Set it back to the default factory.
+        logging.setLogRecordFactory(logging.LogRecord)
 
 
 if __name__ == "__main__":
