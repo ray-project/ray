@@ -1,3 +1,29 @@
+diff --git a/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc b/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc
+index 3bb5962..706b9b4 100644
+--- a/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc
++++ b/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc
+@@ -25,7 +25,7 @@ namespace opencensus {
+ namespace exporters {
+ namespace stats {
+ 
+-std::vector<prometheus::MetricFamily> PrometheusExporter::Collect() const {
++std::vector<prometheus::MetricFamily> PrometheusExporter::Collect() {
+   const auto data = opencensus::stats::StatsExporter::GetViewData();
+   std::vector<prometheus::MetricFamily> output(data.size());
+   for (int i = 0; i < data.size(); ++i) {
+diff --git a/opencensus/exporters/stats/prometheus/prometheus_exporter.h b/opencensus/exporters/stats/prometheus/prometheus_exporter.h
+index bbb285d..ab6471f 100644
+--- a/opencensus/exporters/stats/prometheus/prometheus_exporter.h
++++ b/opencensus/exporters/stats/prometheus/prometheus_exporter.h
+@@ -41,7 +41,7 @@ namespace stats {
+ // PrometheusExporter is thread-safe.
+ class PrometheusExporter final : public ::prometheus::Collectable {
+  public:
+-  std::vector<prometheus::MetricFamily> Collect() const override;
++  std::vector<prometheus::MetricFamily> Collect() override;
+ };
+ 
+ }  // namespace stats
 diff --git a/opencensus/stats/internal/delta_producer.cc b/opencensus/stats/internal/delta_producer.cc
 index 1d00504..7eb0d8a 100644
 --- a/opencensus/stats/internal/delta_producer.cc
