@@ -286,9 +286,10 @@ class _ReduceStageIterator:
             merge_idx = self._stage.merge_schedule.get_merge_idx_for_reducer_idx(
                 reduce_idx
             )
-            reduce_arg_blocks = [
-                merge_results.pop(0) for merge_results in all_merge_results[merge_idx]
-            ]
+            reduce_arg_blocks = []
+            for merge_results in all_merge_results[merge_idx]:
+                if len(merge_results) > 0:
+                    reduce_arg_blocks.append(merge_results.pop(0))
             self._reduce_arg_blocks.append((reduce_idx, reduce_arg_blocks))
         assert len(self._reduce_arg_blocks) == stage.merge_schedule.output_num_blocks
 
