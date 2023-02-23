@@ -85,6 +85,7 @@ class LearnerGroup:
             self._learner = learner_class(**learner_spec.get_params_dict())
             self._learner.build()
             self._worker_manager = None
+            self._in_queue = []
         else:
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
