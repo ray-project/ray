@@ -28,16 +28,18 @@ class SizeEstimator:
             self._running_mean.add(self._real_size(item), weight=100)
 
     def add_block(self, block: List[Any]) -> None:
-        self._count += len(block)
         if self._count < 10:
-            for item in block[: 10 - self._count]:
-                self._running_mean.add(self._real_size(item), weight=1)
-        elif self._count < 100:
-            for item in block[self._count % 10 : 100 - self._count : 10]:
-                self._running_mean.add(self._real_size(item), weight=10)
-        elif (len(block) + (self._count % 100)) // 100 > 1:
-            for item in block[self._count % 100 :: 100]:
-                self._running_mean.add(self._real_size(item), weight=100)
+            for i in range(min(10 - self._count, len(block))):
+                self._running_mean.add(self._real_size(block[i]), weight=1)
+        if self._count < 100:
+            for i in range(
+                10 - (self._count % 10), min(100 - self._count, len(block)), 10
+            ):
+                self._running_mean.add(self._real_size(block[i]), weight=10)
+        if (len(block) + (self._count % 100)) // 100 > 1:
+            for i in range(100 - (self._count % 100), len(block), 100):
+                self._running_mean.add(self._real_size(block[i]), weight=100)
+        self._count += len(block)
 
     def size_bytes(self) -> int:
         return int(self._running_mean.mean * self._count)
