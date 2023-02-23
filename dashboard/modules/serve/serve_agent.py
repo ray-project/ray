@@ -176,7 +176,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     "host, shut down Serve on this Ray cluster using the "
                     "`serve shutdown` CLI command or by sending a DELETE "
                     "request to this Ray cluster's "
-                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    '"/api/serve/deployments" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
                 ),
             )
@@ -193,7 +193,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     "port, shut down Serve on this Ray cluster using the "
                     "`serve shutdown` CLI command or by sending a DELETE "
                     "request to this Ray cluster's "
-                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    '"/api/serve/deployments" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
                 ),
             )
