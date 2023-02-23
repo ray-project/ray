@@ -266,11 +266,13 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
+    owns_blocks = True
     for ref_bundle in bundles:
+        if not ref_bundle.owns_blocks:
+            owns_blocks = False
         for block, meta in ref_bundle.blocks:
             blocks.append(block)
             metadata.append(meta)
-    owns_blocks = all(b.owns_blocks for b in bundles)
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 
