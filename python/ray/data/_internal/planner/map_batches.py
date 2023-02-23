@@ -112,4 +112,3 @@ def generate_map_batches_fn(
             yield output_buffer.next()
 
     return fn
-g
