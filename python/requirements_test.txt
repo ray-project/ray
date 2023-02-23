@@ -87,6 +87,6 @@ polars==0.14.21
 tensorboardX==2.4.1
 starlette==0.17.1
 h11==0.12.0
-markdown-it-py==1.1.0
+markdown-it-py==2.2.0
 attrs==21.4.0
 importlib-metadata==4.13.0
