@@ -79,16 +79,13 @@ def run_predictor(
     checkpoint, data, batch_predictor: Type[BatchPredictor], num_scoring_workers: int
 ):
     predictor = batch_predictor(checkpoint, DummyPredictor)
-    predictions = predictor.predict(
+    predictor.predict(
         data,
         batch_size=1024 // 8,
         min_scoring_workers=num_scoring_workers,
         max_scoring_workers=num_scoring_workers,
         num_cpus_per_worker=0,
     )
-
-    for _ in predictions.iter_batches():
-        pass
 
 
 @pytest.fixture

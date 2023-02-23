@@ -138,6 +138,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 
     if (!FLAGS_ray_code_search_path.CurrentValue().empty()) {
       // Code search path like this "/path1/xxx.so:/path2".
+      RAY_LOG(DEBUG) << "The code search path is "
+                     << FLAGS_ray_code_search_path.CurrentValue();
       code_search_path = absl::StrSplit(
           FLAGS_ray_code_search_path.CurrentValue(), ':', absl::SkipEmpty());
     }
