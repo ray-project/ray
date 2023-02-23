@@ -4654,8 +4654,6 @@
     test_suite: k8s_tests
 
   stable: false
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: serve
@@ -4667,7 +4665,6 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
-    type: sdk_command
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
@@ -4678,8 +4675,6 @@
 
   stable: false
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -4690,4 +4685,3 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
-    type: sdk_command
