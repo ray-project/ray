@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import tempfile
@@ -17,7 +18,7 @@ from ray import tune
 from ray.air import session, Checkpoint, RunConfig
 from ray.air._internal.uri_utils import URI
 from ray.tune import TuneError
-from ray.tune.syncer import Syncer, _DefaultSyncer
+from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
 from ray._private.test_utils import simulate_storage
@@ -103,10 +104,24 @@ def assert_file(exists: bool, root: str, path: str):
 
 
 class TestTrainable(tune.Trainable):
+    def __init__(self, logdir=None, **kwargs):
+        super().__init__(**kwargs)
+        if logdir:
+            self._logdir = logdir
+
     def save_checkpoint(self, checkpoint_dir: str):
         with open(os.path.join(checkpoint_dir, "checkpoint.data"), "w") as f:
             f.write("Data")
         return checkpoint_dir
+
+    def load_checkpoint(self, checkpoint):
+        pass
+
+    def step(self):
+        # Mock some artifact logging (appending to a log)
+        with open(os.path.join(self.logdir, "artifact.txt"), "a") as f:
+            f.write("test\n")
+        return {"loss": 1}
 
 
 class CustomSyncer(Syncer):
@@ -517,8 +532,8 @@ def test_syncer_delete(temp_data_dirs):
     assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
-def test_syncer_wait_or_retry(temp_data_dirs):
-    """Check that the wait or retry API works"""
+def test_syncer_wait_or_retry_failure(temp_data_dirs):
+    """Check that the wait or retry API fails after max_retries."""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer(sync_period=60)
@@ -530,6 +545,66 @@ def test_syncer_wait_or_retry(temp_data_dirs):
     with pytest.raises(TuneError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
         assert "Failed sync even after 3 retries." in str(e)
+
+
+def test_syncer_wait_or_retry_timeout(temp_data_dirs):
+    """Check that the wait or retry API raises a timeout error after `sync_timeout`."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    def slow_upload(*args, **kwargs):
+        time.sleep(5)
+
+    class HangingSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            return (
+                slow_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    syncer = HangingSyncer(sync_period=60, sync_timeout=0.1)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
+    with pytest.raises(TuneError) as e:
+        syncer.wait_or_retry(max_retries=3, backoff_s=0)
+        assert "Failed sync even after 3 retries." in str(e.value)
+        assert isinstance(e.value.__cause__, TimeoutError)
+
+
+def test_syncer_wait_or_retry_eventual_success(temp_data_dirs, tmp_path):
+    """Check that the wait or retry API succeeds for a sync_down that
+    fails, times out, then succeeds."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    success = tmp_path / "success"
+    fail_marker = tmp_path / "fail_marker"
+    hang_marker = tmp_path / "hang_marker"
+
+    def eventual_upload(*args, **kwargs):
+        if not fail_marker.exists():
+            fail_marker.write_text(".", encoding="utf-8")
+            raise RuntimeError("Failing")
+        elif not hang_marker.exists():
+            hang_marker.write_text(".", encoding="utf-8")
+            time.sleep(5)
+        else:
+            success.write_text(".", encoding="utf-8")
+
+    class EventualSuccessSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            return (
+                eventual_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    syncer = EventualSuccessSyncer(sync_period=60, sync_timeout=0.5)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
+    syncer.wait_or_retry(max_retries=3, backoff_s=0)
+    assert success.exists()
 
 
 def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
@@ -566,13 +641,21 @@ def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
         },
     )
 
-    class FaultyCheckpoint(Checkpoint):
-        def to_uri(self, uri: str) -> str:
-            raise subprocess.CalledProcessError(-1, "dummy")
+    class FailingSyncer(_DefaultSyncer):
+        def _sync_up_command(
+            self, local_path: str, uri: str, exclude: Optional[List] = None
+        ):
+            def failing_upload(*args, **kwargs):
+                raise RuntimeError("Upload failing!")
+
+            return (
+                failing_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    syncer = FailingSyncer(sync_period=60, sync_timeout=0.1)
 
     class TestTrainableRetry(TestTrainable):
-        _checkpoint_cls = FaultyCheckpoint
-
         def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
             from ray.tune.trainable.trainable import logger
 
@@ -587,7 +670,8 @@ def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
             return ret
 
     trainable = ray.remote(TestTrainableRetry).remote(
-        remote_checkpoint_dir=f"file://{tmp_target}"
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        sync_config=SyncConfig(upload_dir="not_used", syncer=syncer),
     )
 
     ray.get(trainable.save.remote())
@@ -597,9 +681,14 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
 
+    sync_config = SyncConfig(
+        # upload_dir not actually used, but needed for SyncConfig validation
+        upload_dir="file://not_used",
+        syncer=CustomSyncer(),
+    )
     trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
-        custom_syncer=CustomSyncer(),
+        sync_config=sync_config,
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())
@@ -617,13 +706,17 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
 
-    trainable = ray.remote(TestTrainable).remote(
-        remote_checkpoint_dir=f"file://{tmp_target}",
-        custom_syncer=CustomCommandSyncer(
+    sync_config = SyncConfig(
+        upload_dir="file://not_used",
+        syncer=CustomCommandSyncer(
             sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
             sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
             delete_template="rm -rf `echo '{target}' | cut -c 8-`",
         ),
+    )
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        sync_config=sync_config,
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())
@@ -635,8 +728,134 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
+def test_artifact_syncing_on_save_restore(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Test that the trainable syncs artifacts along with checkpoints.
+    In this test:
+    - `tmp_target` == mocked remote storage location where Tune syncs to
+    - `tmp_path/dir1` == local storage location of initial run
+    - `tmp_path/dir2` == local storage location of restored trainable
+    """
+    _, tmp_target = temp_data_dirs
+
+    local_dir_1 = tmp_path / "dir1"
+    local_dir_2 = tmp_path / "dir2"
+    local_dir_1.mkdir()
+    local_dir_2.mkdir()
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_1)
+    )
+
+    for i in range(1, 4):
+        # Step, save, then check that artifacts are uploaded
+        ray.get(trainable.train.remote())
+        checkpoint_dir = ray.get(trainable.save.remote())
+        assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+        assert_file(True, tmp_target, "artifact.txt")
+        with open(os.path.join(tmp_target, "artifact.txt"), "r") as f:
+            artifact_data = f.read()
+            assert artifact_data.split("\n")[:-1] == ["test"] * i
+
+    # Check that artifacts are syncd when a trainable is restored.
+    shutil.rmtree(local_dir_1)
+    restored_trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_2)
+    )
+
+    new_ckpt_dir = str(local_dir_2 / Path(checkpoint_dir).relative_to(local_dir_1))
+    ray.get(restored_trainable.restore.remote(new_ckpt_dir))
+    with open(os.path.join(local_dir_2, "artifact.txt"), "r") as f:
+        artifact_data = f.read()
+        assert artifact_data.split("\n")[:-1] == ["test"] * 3
+
+
+def test_artifact_syncing_disabled(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Test that the trainable does NOT sync artifacts when disabled via SyncConfig."""
+    _, tmp_target = temp_data_dirs
+
+    local_dir_1 = tmp_path / "dir1"
+    local_dir_2 = tmp_path / "dir2"
+    local_dir_1.mkdir()
+    local_dir_2.mkdir()
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(local_dir_1),
+        sync_config=SyncConfig(
+            upload_dir="file:///not_used", syncer="auto", sync_artifacts=False
+        ),
+    )
+
+    ray.get(trainable.train.remote())
+    checkpoint_dir = ray.get(trainable.save.remote())
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+    assert_file(False, tmp_target, "artifact.txt")
+
+    restored_trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_2)
+    )
+    ray.get(restored_trainable.restore.remote(checkpoint_dir))
+    assert_file(False, str(local_dir_2), "artifact.txt")
+
+
+def test_artifact_syncing_on_stop(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Check that artifacts get uploaded on trial stop (ex: on complete/error)."""
+    _, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(tmp_path),
+    )
+
+    ray.get(trainable.train.remote())
+    assert_file(False, tmp_target, "artifact.txt")
+    ray.get(trainable.stop.remote())
+    assert_file(True, tmp_target, "artifact.txt")
+
+
+def test_artifact_syncing_on_reset(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Check that artifacts get uploaded on trial reset
+    (for paused actors when actor reuse is enabled)."""
+    _, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(tmp_path),
+    )
+
+    ray.get(trainable.train.remote())
+    assert_file(False, tmp_target, "artifact.txt")
+    ray.get(trainable.reset.remote(new_config={}))
+    assert_file(True, tmp_target, "artifact.txt")
+
+
+def test_avoid_duplicate_artifact_sync(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Checks that artifacts are not uploaded twice if not needed.
+    For example, a trial uploads artifacts on a final checkpoint, and
+    there is no need to upload again on stop or trial complete."""
+    _, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(tmp_path),
+    )
+
+    ray.get(trainable.train.remote())
+    ray.get(trainable.save.remote())  # Saves an artifact
+    assert_file(True, tmp_target, "artifact.txt")
+    # Delete the artifact to check if it gets uploaded again.
+    os.remove(os.path.join(tmp_target, "artifact.txt"))
+    # Should skip saving the artifact again...
+    ray.get(trainable._maybe_save_artifacts_to_cloud.remote())
+    assert_file(False, tmp_target, "artifact.txt")
+
+    # Step again, then stop --> this time, it should save.
+    ray.get(trainable.train.remote())
+    ray.get(trainable.stop.remote())  # Saves an artifact
+    assert_file(True, tmp_target, "artifact.txt")
+
+
 def test_syncer_serialize(temp_data_dirs):
-    """Check that syncing up and down works"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer()
@@ -645,7 +864,9 @@ def test_syncer_serialize(temp_data_dirs):
         local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down"
     )
 
-    pickle.dumps(syncer)
+    serialized = pickle.dumps(syncer)
+    loaded_syncer = pickle.loads(serialized)
+    assert not loaded_syncer._sync_process
 
 
 def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
