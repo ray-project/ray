@@ -463,9 +463,11 @@ cdef prepare_args_internal(
                     (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function
 
         else:
-            # The type check is because some custom types may not implement __eq__ well.
-            # So, we only handle the args which type and value are exactly match the DUMMY_TYPE.
-            # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the DUMMY_TYPE None.
+            # The type check is because some custom types may not implement __eq__
+            # well. So, we only handle the args which type and value are exactly match
+            # the DUMMY_TYPE.
+            # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the
+            # DUMMY_TYPE None.
             if type(arg) is bytes and arg == DUMMY_TYPE:
                 global dummy_type_serialized_arg
                 if dummy_type_serialized_arg is None:
