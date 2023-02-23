@@ -1,7 +1,7 @@
 .. algorithm-reference-docs:
 
-Algorithm API
-=============
+Algorithms
+==========
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib.
 It allows you to train and evaluate policies, save an experiment's progress and restore from
@@ -22,6 +22,23 @@ and thus fully supports distributed hyperparameter tuning for RL.
     a set of :py:class:`~ray.rllib.policy.Policy`(ies)
     and their NN models per worker, and a (already vectorized)
     RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` per worker.
+
+.. _algo-config-api:
+
+Defining Algorithms with the AlgorithmConfig Class
+--------------------------------------------------
+
+The :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class represents
+the primary way of configuring and building an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+You don't use ``AlgorithmConfig`` directly in practice, but rather use its algorithm-specific
+implementations such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`, which each come
+with their own set of arguments to their respective ``.training()`` method.
+
+Here's how you work with an ``AlgorithmConfig``.
+
+.. autoclass:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig
+    :noindex:
+    :members:
 
 
 Building Custom Algorithm Classes
@@ -46,8 +63,16 @@ and override one or more of its methods. Those are in particular:
 `See here for an example on how to override Algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`_.
 
 
-Algorithm base class (ray.rllib.algorithms.algorithm.Algorithm)
----------------------------------------------------------------
+.. _rllib-algorithm-api:
+
+Interacting with an Algorithm
+-----------------------------
+
+Once you've built an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+and retrieve an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from it via
+the ``build()`` method , you can use it to train and evaluate your experiments.
+
+Here's the full ``Algorithm`` API reference.
 
 .. autoclass:: ray.rllib.algorithms.algorithm.Algorithm
     :special-members: __init__

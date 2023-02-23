@@ -1,12 +1,62 @@
-import { Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
-import { NodeDetail } from "../../type/node";
-import { Worker } from "../../type/worker";
-import {
-  GPU_COL_WIDTH,
-  NodeGPUEntry,
-  WorkerGPUEntry,
-} from "../dashboard/node-info/features/GPU";
+import { RightPaddedTypography } from "../../common/CustomTypography";
+import UsageBar from "../../common/UsageBar";
+import { GPUStats, NodeDetail } from "../../type/node";
+import { ResourceSlot, Worker } from "../../type/worker";
+
+export const GPU_COL_WIDTH = 120;
+
+type WorkerGPUEntryProps = {
+  resourceSlot: ResourceSlot;
+};
+
+export const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({
+  resourceSlot,
+}) => {
+  const { allocation, slot } = resourceSlot;
+  // This is a bit of  a dirty hack . For some reason, the slot GPU slot
+  // 0 as assigned always shows up as undefined in the API response.
+  // There are other times, such as a partial allocation, where we truly don't
+  // know the slot, however this will just plug the hole of 0s coming through
+  // as undefined. I have not been able to figure out the root cause.
+  const slotMsg =
+    allocation >= 1 && slot === undefined
+      ? "0"
+      : slot === undefined
+      ? "?"
+      : slot.toString();
+  return (
+    <Typography variant="body1">
+      [{slotMsg}]: {allocation}
+    </Typography>
+  );
+};
+
+export type NodeGPUEntryProps = {
+  slot: number;
+  gpu: GPUStats;
+};
+
+export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
+  return (
+    <Box display="flex" style={{ minWidth: GPU_COL_WIDTH }}>
+      <Tooltip title={gpu.name}>
+        <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
+      </Tooltip>
+      {gpu.utilizationGpu !== undefined ? (
+        <UsageBar
+          percent={gpu.utilizationGpu}
+          text={`${gpu.utilizationGpu.toFixed(1)}%`}
+        />
+      ) : (
+        <Typography color="textSecondary" component="span" variant="inherit">
+          N/A
+        </Typography>
+      )}
+    </Box>
+  );
+};
 
 export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
   return (

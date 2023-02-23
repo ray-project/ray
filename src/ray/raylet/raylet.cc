@@ -91,6 +91,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
   auto resource_map = node_manager_config.resource_config.ToResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
+  self_node_info_.set_start_time_ms(current_sys_time_ms());
 }
 
 Raylet::~Raylet() {}

@@ -3,6 +3,7 @@ import pytest
 import ray
 from ray import air
 from ray import tune
+from ray.tune.registry import get_trainable_cls
 
 
 @pytest.mark.parametrize("algorithm", ["PPO", "APEX", "IMPALA"])
@@ -15,16 +16,16 @@ def test_custom_resource(algorithm):
         include_dashboard=False,
     )
 
-    config = {
-        "env": "CartPole-v0",
-        "num_workers": 1,
-        "num_gpus": 0,
-        "framework": "torch",
-        "custom_resources_per_worker": {"custom_resource": 0.01},
-    }
-
+    config = (
+        get_trainable_cls(algorithm)
+        .get_default_config()
+        .environment("CartPole-v1")
+        .framework("torch")
+        .rollouts(num_rollout_workers=1)
+        .resources(num_gpus=0, custom_resources_per_worker={"custom_resource": 0.01})
+    )
     if algorithm == "APEX":
-        config["num_steps_sampled_before_learning_starts"] = 0
+        config.num_steps_sampled_before_learning_starts = 0
 
     stop = {"training_iteration": 1}
 

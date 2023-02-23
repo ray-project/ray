@@ -119,6 +119,8 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars: Override environment variables for the raylet.
+        session_name: The name of the session of the ray cluster.
+        webui: The url of the UI.
     """
 
     def __init__(
@@ -176,6 +178,8 @@ class RayParams:
         tracing_startup_hook=None,
         no_monitor: Optional[bool] = False,
         env_vars: Optional[Dict[str, str]] = None,
+        session_name: Optional[str] = None,
+        webui: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -232,6 +236,8 @@ class RayParams:
         )
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
+        self.session_name = session_name
+        self.webui = webui
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
@@ -390,13 +396,22 @@ class RayParams:
                 )
 
         if self.resources is not None:
-            assert "CPU" not in self.resources, (
-                "'CPU' should not be included in the resource dictionary. Use "
-                "num_cpus instead."
-            )
-            assert "GPU" not in self.resources, (
-                "'GPU' should not be included in the resource dictionary. Use "
-                "num_gpus instead."
+
+            def build_error(resource, alternative):
+                return (
+                    f"{self.resources} -> `{resource}` cannot be a "
+                    "custom resource because it is one of the default resources "
+                    f"({ray_constants.DEFAULT_RESOURCES}). "
+                    f"Use `{alternative}` instead. For example, use `ray start "
+                    f"--{alternative.replace('_', '-')}=1` instead of "
+                    f"`ray start --resources={{'{resource}': 1}}`"
+                )
+
+            assert "CPU" not in self.resources, build_error("CPU", "num_cpus")
+            assert "GPU" not in self.resources, build_error("GPU", "num_gpus")
+            assert "memory" not in self.resources, build_error("memory", "memory")
+            assert "object_store_memory" not in self.resources, build_error(
+                "object_store_memory", "object_store_memory"
             )
 
         if self.redirect_output is not None:

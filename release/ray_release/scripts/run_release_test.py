@@ -1,6 +1,7 @@
 import os
 import sys
 from typing import Optional
+from pathlib import Path
 
 import click
 from ray_release.aws import maybe_fetch_api_token
@@ -18,7 +19,6 @@ from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
-from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -74,7 +74,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 @click.option(
     "--env",
     default=None,
-    type=click.Choice(["prod", "staging"]),
+    # Get the names without suffixes of all files in "../environments"
+    type=click.Choice(
+        [x.stem for x in (Path(__file__).parent.parent / "environments").glob("*.env")]
+    ),
     help="Environment to use. Will overwrite environment used in test config.",
 )
 @click.option(
@@ -82,7 +85,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     type=bool,
     is_flag=True,
-    help="Do not terminate cluster after test.",
+    help=(
+        "Do not terminate cluster after test. "
+        "Will switch `anyscale_job` run type to `job` (Ray Job)."
+    ),
 )
 def main(
     test_name: str,
@@ -139,7 +145,6 @@ def main(
         reporters.append(ArtifactsReporter())
 
     if report:
-        reporters.append(LegacyRDSReporter())
         reporters.append(DBReporter())
 
     try:
@@ -163,7 +168,7 @@ def main(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"
     )
-    sys.exit(result.return_code)
+    sys.exit(return_code)
 
 
 if __name__ == "__main__":

@@ -55,9 +55,10 @@ std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_t
 bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
   auto &current = cluster_view_[message->node_id()][message->message_type()];
 
-  RAY_LOG(DEBUG) << "ConsumeSyncMessage: " << (current ? current->version() : -1)
-                 << " message_version: " << message->version()
-                 << ", message_from: " << NodeID::FromBinary(message->node_id());
+  RAY_LOG(DEBUG) << "ConsumeSyncMessage: local_version="
+                 << (current ? current->version() : -1)
+                 << " message_version=" << message->version()
+                 << ", message_from=" << NodeID::FromBinary(message->node_id());
   // Check whether newer version of this message has been received.
   if (current && current->version() >= message->version()) {
     return false;
@@ -66,180 +67,105 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   current = message;
   auto receiver = receivers_[message->message_type()];
   if (receiver != nullptr) {
+    RAY_LOG(DEBUG) << "Consume message from: " << NodeID::FromBinary(message->node_id());
     receiver->ConsumeSyncMessage(message);
   }
   return true;
 }
 
-NodeSyncConnection::NodeSyncConnection(
+namespace {
+
+std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_context) {
+  const auto &metadata = server_context->client_metadata();
+  auto iter = metadata.find("node_id");
+  RAY_CHECK(iter != metadata.end());
+  return NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
+}
+
+}  // namespace
+
+RayServerBidiReactor::RayServerBidiReactor(
+    grpc::CallbackServerContext *server_context,
     instrumented_io_context &io_context,
-    std::string remote_node_id,
-    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor)
-    : io_context_(io_context),
-      remote_node_id_(std::move(remote_node_id)),
-      message_processor_(std::move(message_processor)) {}
+    const std::string &local_node_id,
+    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+    std::function<void(const std::string &, bool)> cleanup_cb)
+    : RaySyncerBidiReactorBase<ServerBidiReactor>(
+          io_context,
+          GetNodeIDFromServerContext(server_context),
+          std::move(message_processor)),
+      cleanup_cb_(std::move(cleanup_cb)),
+      server_context_(server_context) {
+  // Send the local node id to the remote
+  server_context_->AddInitialMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
+  StartSendInitialMetadata();
 
-void NodeSyncConnection::ReceiveUpdate(RaySyncMessages messages) {
-  for (auto &message : *messages.mutable_sync_messages()) {
-    auto &node_versions = GetNodeComponentVersions(message.node_id());
-    RAY_LOG(DEBUG) << "Receive update: "
-                   << " message_type=" << message.message_type()
-                   << ", message_version=" << message.version()
-                   << ", local_message_version=" << node_versions[message.message_type()];
-    if (node_versions[message.message_type()] < message.version()) {
-      node_versions[message.message_type()] = message.version();
-      message_processor_(std::make_shared<RaySyncMessage>(std::move(message)));
-    }
-  }
+  // Start pulling from remote
+  StartPull();
 }
 
-bool NodeSyncConnection::PushToSendingQueue(
-    std::shared_ptr<const RaySyncMessage> message) {
-  // Try to filter out the messages the target node already has.
-  // Usually it'll be the case when the message is generated from the
-  // target node or it's sent from the target node.
-  if (message->node_id() == GetRemoteNodeID()) {
-    // Skip the message when it's about the node of this connection.
-    return false;
-  }
-
-  auto &node_versions = GetNodeComponentVersions(message->node_id());
-  if (node_versions[message->message_type()] < message->version()) {
-    node_versions[message->message_type()] = message->version();
-    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-        message;
-    return true;
-  }
-  return false;
-}
-
-std::array<int64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVersions(
-    const std::string &node_id) {
-  auto iter = node_versions_.find(node_id);
-  if (iter == node_versions_.end()) {
-    iter =
-        node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>()).first;
-    iter->second.fill(-1);
-  }
-  return iter->second;
-}
-
-ClientSyncConnection::ClientSyncConnection(
-    instrumented_io_context &io_context,
-    const std::string &node_id,
-    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
-    std::shared_ptr<grpc::Channel> channel)
-    : NodeSyncConnection(io_context, node_id, std::move(message_processor)),
-      stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
-  for (int64_t i = 0; i < RayConfig::instance().ray_syncer_polling_buffer(); ++i) {
-    StartLongPolling();
-  }
-}
-
-void ClientSyncConnection::StartLongPolling() {
-  // This will be a long-polling request. The node will only reply if
-  //    1. there is a new version of message
-  //    2. and it has passed X ms since last update.
-  auto client_context = std::make_shared<grpc::ClientContext>();
-  auto in_message = std::make_shared<ray::rpc::syncer::RaySyncMessages>();
-  stub_->async()->LongPolling(
-      client_context.get(),
-      &dummy_,
-      in_message.get(),
-      [this, client_context, in_message](grpc::Status status) mutable {
-        if (status.ok()) {
-          io_context_.dispatch(
-              [this, messages = std::move(*in_message)]() mutable {
-                ReceiveUpdate(std::move(messages));
-              },
-              "LongPollingCallback");
-          // Start the next polling.
-          StartLongPolling();
+void RayServerBidiReactor::Disconnect() {
+  io_context_.dispatch(
+      [this]() {
+        if (!disconnected_) {
+          disconnected_ = true;
+          Finish(grpc::Status::OK);
         }
-      });
+      },
+      "");
 }
 
-void ClientSyncConnection::DoSend() {
-  if (sending_buffer_.empty()) {
-    return;
-  }
+void RayServerBidiReactor::OnCancel() { Disconnect(); }
 
-  auto client_context = std::make_shared<grpc::ClientContext>();
-  auto arena = std::make_shared<google::protobuf::Arena>();
-  auto request = google::protobuf::Arena::CreateMessage<RaySyncMessages>(arena.get());
-  auto response = google::protobuf::Arena::CreateMessage<DummyResponse>(arena.get());
-
-  std::vector<std::shared_ptr<const RaySyncMessage>> holder;
-
-  size_t message_bytes = 0;
-  auto iter = sending_buffer_.begin();
-  while (message_bytes < RayConfig::instance().max_sync_message_batch_bytes() &&
-         iter != sending_buffer_.end()) {
-    message_bytes += iter->second->sync_message().size();
-    // TODO (iycheng): Use arena allocator for optimization
-    request->mutable_sync_messages()->UnsafeArenaAddAllocated(
-        const_cast<RaySyncMessage *>(iter->second.get()));
-    holder.push_back(iter->second);
-    sending_buffer_.erase(iter++);
-  }
-  if (request->sync_messages_size() != 0) {
-    stub_->async()->Update(
-        client_context.get(),
-        request,
-        response,
-        [arena, client_context, holder = std::move(holder)](grpc::Status status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Sending request failed because of "
-                           << status.error_message();
-          }
-        });
-  }
+void RayServerBidiReactor::OnDone() {
+  io_context_.dispatch(
+      [this]() {
+        cleanup_cb_(GetRemoteNodeID(), false);
+        delete this;
+      },
+      "");
 }
 
-ServerSyncConnection::ServerSyncConnection(
-    instrumented_io_context &io_context,
+RayClientBidiReactor::RayClientBidiReactor(
     const std::string &remote_node_id,
-    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor)
-    : NodeSyncConnection(io_context, remote_node_id, std::move(message_processor)) {}
-
-ServerSyncConnection::~ServerSyncConnection() {
-  // If there is a pending request, we need to cancel it. Otherwise, rpc will
-  // hang there forever.
-  while (!unary_reactors_.empty()) {
-    unary_reactors_.back()->Finish(grpc::Status::CANCELLED);
-    unary_reactors_.pop_back();
-  }
+    const std::string &local_node_id,
+    instrumented_io_context &io_context,
+    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+    std::function<void(const std::string &, bool)> cleanup_cb,
+    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
+    : RaySyncerBidiReactorBase<ClientBidiReactor>(
+          io_context, remote_node_id, std::move(message_processor)),
+      cleanup_cb_(std::move(cleanup_cb)),
+      stub_(std::move(stub)) {
+  client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
+  stub_->async()->StartSync(&client_context_, this);
+  // Prevent this call from being terminated.
+  // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
+  // for details.
+  AddHold();
+  StartPull();
 }
 
-void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
-                                                    RaySyncMessages *response) {
-  unary_reactors_.push_back(reactor);
-  responses_.push_back(response);
+void RayClientBidiReactor::OnDone(const grpc::Status &status) {
+  io_context_.dispatch(
+      [this, status]() {
+        cleanup_cb_(GetRemoteNodeID(), !status.ok());
+        delete this;
+      },
+      "");
 }
 
-void ServerSyncConnection::DoSend() {
-  // There is no receive request
-  if (unary_reactors_.empty() || sending_buffer_.empty()) {
-    return;
-  }
-
-  RAY_CHECK(!responses_.empty());
-
-  size_t message_bytes = 0;
-  auto iter = sending_buffer_.begin();
-  while (message_bytes < RayConfig::instance().max_sync_message_batch_bytes() &&
-         iter != sending_buffer_.end()) {
-    message_bytes += iter->second->sync_message().size();
-    // TODO (iycheng): Use arena allocator for optimization
-    responses_.back()->add_sync_messages()->CopyFrom(*iter->second);
-    sending_buffer_.erase(iter++);
-  }
-
-  if (responses_.back()->sync_messages_size() != 0) {
-    unary_reactors_.back()->Finish(grpc::Status::OK);
-    responses_.pop_back();
-    unary_reactors_.pop_back();
-  }
+void RayClientBidiReactor::Disconnect() {
+  io_context_.dispatch(
+      [this]() {
+        if (!disconnected_) {
+          disconnected_ = true;
+          StartWritesDone();
+          // Free the hold to allow OnDone being called.
+          RemoveHold();
+        }
+      },
+      "");
 }
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
@@ -249,100 +175,131 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
       node_state_(std::make_unique<NodeState>()),
       timer_(io_context) {
   stopped_ = std::make_shared<bool>(false);
-  timer_.RunFnPeriodically(
-      [this]() {
-        for (auto &[_, sync_connection] : sync_connections_) {
-          sync_connection->DoSend();
+}
+
+RaySyncer::~RaySyncer() {
+  *stopped_ = true;
+  io_context_.dispatch(
+      [reactors = sync_reactors_]() {
+        for (auto [_, reactor] : reactors) {
+          reactor->Disconnect();
         }
       },
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
+      "");
 }
 
-RaySyncer::~RaySyncer() { *stopped_ = true; }
-
-void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
-  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-  auto request = std::make_shared<StartSyncRequest>();
-  request->set_node_id(local_node_id_);
-  auto response = std::make_shared<StartSyncResponse>();
-
-  auto client_context = std::make_shared<grpc::ClientContext>();
-  stub->async()->StartSync(
-      client_context.get(),
-      request.get(),
-      response.get(),
-      [this, channel, request, response, client_context, stopped = this->stopped_](
-          grpc::Status status) {
-        if (*stopped) {
-          return;
-        }
-        if (status.ok()) {
-          io_context_.dispatch(
-              [this, channel, response]() {
-                auto connection = std::make_unique<ClientSyncConnection>(
-                    io_context_,
-                    response->node_id(),
-                    [this](auto msg) { BroadcastMessage(msg); },
-                    channel);
-                Connect(std::move(connection));
-              },
-              "StartSyncCallback");
-        }
-      });
-}
-
-void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
-  // Somehow connection=std::move(connection) won't be compiled here.
-  // Potentially it might have a leak here if the function is not executed.
+std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
+  std::promise<std::vector<std::string>> promise;
   io_context_.dispatch(
-      [this, connection = connection.release()]() mutable {
-        RAY_CHECK(connection != nullptr);
-        RAY_CHECK(sync_connections_[connection->GetRemoteNodeID()] == nullptr);
-        auto &conn = *connection;
-        sync_connections_[connection->GetRemoteNodeID()].reset(connection);
+      [&]() {
+        std::vector<std::string> nodes;
+        for (auto [node_id, _] : sync_reactors_) {
+          nodes.push_back(node_id);
+        }
+        promise.set_value(std::move(nodes));
+      },
+      "");
+  return promise.get_future().get();
+}
+
+void RaySyncer::Connect(const std::string &node_id,
+                        std::shared_ptr<grpc::Channel> channel) {
+  io_context_.dispatch(
+      [=]() {
+        auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
+        auto reactor = new RayClientBidiReactor(
+            /* remote_node_id */ node_id,
+            /* local_node_id */ GetLocalNodeID(),
+            /* io_context */ io_context_,
+            /* message_processor */ [this](auto msg) { BroadcastRaySyncMessage(msg); },
+            /* cleanup_cb */
+            [this, channel](const std::string &node_id, bool restart) {
+              sync_reactors_.erase(node_id);
+              if (restart) {
+                RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
+                              << NodeID::FromBinary(node_id);
+                Connect(node_id, channel);
+              }
+            },
+            /* stub */ std::move(stub));
+        Connect(reactor);
+        reactor->StartCall();
+      },
+      "");
+}
+
+void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
+  io_context_.dispatch(
+      [this, reactor]() {
+        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) ==
+                  sync_reactors_.end());
+        sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
+        // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
-          for (auto &message : messages) {
+          for (const auto &message : messages) {
             if (!message) {
               continue;
             }
-            conn.PushToSendingQueue(message);
+            RAY_LOG(DEBUG) << "Push init view from: "
+                           << NodeID::FromBinary(GetLocalNodeID()) << " to "
+                           << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
+                           << NodeID::FromBinary(message->node_id());
+            reactor->PushToSendingQueue(message);
           }
         }
       },
-      "RaySyncer::Connect");
+      "RaySyncerConnect");
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
+  std::promise<void> promise;
   io_context_.dispatch(
-      [this, node_id]() {
-        auto iter = sync_connections_.find(node_id);
-        if (iter != sync_connections_.end()) {
-          sync_connections_.erase(iter);
+      [&]() {
+        auto iter = sync_reactors_.find(node_id);
+        if (iter == sync_reactors_.end()) {
+          promise.set_value();
+          return;
         }
+
+        auto reactor = iter->second;
+        if (iter != sync_reactors_.end()) {
+          sync_reactors_.erase(iter);
+        }
+        reactor->Disconnect();
+        promise.set_value();
       },
       "RaySyncerDisconnect");
+  promise.get_future().get();
 }
 
-bool RaySyncer::Register(MessageType message_type,
+void RaySyncer::Register(MessageType message_type,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  if (!node_state_->SetComponent(message_type, reporter, receiver)) {
-    return false;
-  }
+  io_context_.dispatch(
+      [this, message_type, reporter, receiver, pull_from_reporter_interval_ms]() mutable {
+        if (!node_state_->SetComponent(message_type, reporter, receiver)) {
+          return;
+        }
 
-  // Set job to pull from reporter periodically
-  if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
-    timer_.RunFnPeriodically(
-        [this, message_type]() { OnDemandBroadcasting(message_type); },
-        pull_from_reporter_interval_ms);
-  }
+        // Set job to pull from reporter periodically
+        if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
+          timer_.RunFnPeriodically(
+              [this, stopped = stopped_, message_type]() {
+                if (*stopped) {
+                  return;
+                }
+                OnDemandBroadcasting(message_type);
+              },
+              pull_from_reporter_interval_ms);
+        }
 
-  RAY_LOG(DEBUG) << "Registered components: "
-                 << "message_type:" << message_type << ", reporter:" << reporter
-                 << ", receiver:" << receiver
-                 << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms;
-  return true;
+        RAY_LOG(DEBUG) << "Registered components: "
+                       << "message_type:" << message_type << ", reporter:" << reporter
+                       << ", receiver:" << receiver << ", pull_from_reporter_interval_ms:"
+                       << pull_from_reporter_interval_ms;
+      },
+      "RaySyncerRegister");
 }
 
 bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
@@ -355,94 +312,46 @@ bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
   return false;
 }
 
+void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message) {
+  BroadcastMessage(std::move(message));
+}
+
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
   io_context_.dispatch(
       [this, message] {
         // The message is stale. Just skip this one.
+        RAY_LOG(DEBUG) << "Receive message from: "
+                       << NodeID::FromBinary(message->node_id()) << " to "
+                       << NodeID::FromBinary(GetLocalNodeID());
         if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
-        for (auto &connection : sync_connections_) {
-          connection.second->PushToSendingQueue(message);
+        for (auto &reactor : sync_reactors_) {
+          reactor.second->PushToSendingQueue(message);
         }
       },
       "RaySyncer.BroadcastMessage");
 }
 
-grpc::ServerUnaryReactor *RaySyncerService::StartSync(
-    grpc::CallbackServerContext *context,
-    const StartSyncRequest *request,
-    StartSyncResponse *response) {
-  auto *reactor = context->DefaultReactor();
-  // Make sure server only have one client
-  if (!remote_node_id_.empty()) {
-    RAY_LOG(WARNING) << "Get a new sync request from "
-                     << NodeID::FromBinary(request->node_id()) << ". "
-                     << "Now disconnect from " << NodeID::FromBinary(remote_node_id_);
-    syncer_.Disconnect(remote_node_id_);
-  }
-  remote_node_id_ = request->node_id();
-  RAY_LOG(DEBUG) << "Get connect from: " << NodeID::FromBinary(remote_node_id_);
-  syncer_.GetIOContext().dispatch(
-      [this, response, reactor, context]() {
-        if (context->IsCancelled()) {
-          reactor->Finish(grpc::Status::CANCELLED);
-          return;
-        }
-
-        syncer_.Connect(std::make_unique<ServerSyncConnection>(
-            syncer_.GetIOContext(), remote_node_id_, [this](auto msg) {
-              syncer_.BroadcastMessage(msg);
-            }));
-        response->set_node_id(syncer_.GetLocalNodeID());
-        reactor->Finish(grpc::Status::OK);
-      },
-      "RaySyncer::StartSync");
+ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
+  auto reactor = new RayServerBidiReactor(
+      context,
+      syncer_.GetIOContext(),
+      syncer_.GetLocalNodeID(),
+      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      [this](const std::string &node_id, bool reconnect) mutable {
+        // No need to reconnect for server side.
+        RAY_CHECK(!reconnect);
+        syncer_.sync_reactors_.erase(node_id);
+      });
+  RAY_LOG(DEBUG) << "Get connection from "
+                 << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "
+                 << NodeID::FromBinary(syncer_.GetLocalNodeID());
+  syncer_.Connect(reactor);
   return reactor;
 }
 
-grpc::ServerUnaryReactor *RaySyncerService::Update(grpc::CallbackServerContext *context,
-                                                   const RaySyncMessages *request,
-                                                   DummyResponse *) {
-  auto *reactor = context->DefaultReactor();
-  // Make sure request is allocated from heap so that it can be moved safely.
-  RAY_CHECK(request->GetArena() == nullptr);
-  syncer_.GetIOContext().dispatch(
-      [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
-        auto *sync_connection = dynamic_cast<ServerSyncConnection *>(
-            syncer_.GetSyncConnection(remote_node_id_));
-        if (sync_connection != nullptr) {
-          sync_connection->ReceiveUpdate(std::move(request));
-        } else {
-          RAY_LOG(FATAL) << "Fail to get the sync context";
-        }
-      },
-      "SyncerUpdate");
-  reactor->Finish(grpc::Status::OK);
-  return reactor;
-}
-
-grpc::ServerUnaryReactor *RaySyncerService::LongPolling(
-    grpc::CallbackServerContext *context,
-    const DummyRequest *,
-    RaySyncMessages *response) {
-  auto *reactor = context->DefaultReactor();
-  syncer_.GetIOContext().dispatch(
-      [this, reactor, response]() mutable {
-        auto *sync_connection = dynamic_cast<ServerSyncConnection *>(
-            syncer_.GetSyncConnection(remote_node_id_));
-        if (sync_connection != nullptr) {
-          sync_connection->HandleLongPollingRequest(reactor, response);
-        } else {
-          RAY_LOG(ERROR) << "Fail to setup long-polling";
-          reactor->Finish(grpc::Status::CANCELLED);
-        }
-      },
-      "SyncLongPolling");
-  return reactor;
-}
-
-RaySyncerService::~RaySyncerService() { syncer_.Disconnect(remote_node_id_); }
+RaySyncerService::~RaySyncerService() {}
 
 }  // namespace syncer
 }  // namespace ray

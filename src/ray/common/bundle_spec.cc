@@ -118,30 +118,23 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
 }
 
-bool IsBundleIndex(const std::string &resource,
-                   const PlacementGroupID &group_id,
-                   const int bundle_index) {
-  return resource.find(kGroupKeyword + std::to_string(bundle_index) + "_" +
-                       group_id.Hex()) != std::string::npos;
-}
-
 std::string GetOriginalResourceName(const std::string &resource) {
-  auto idx = resource.find(kGroupKeyword);
-  RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
-  return resource.substr(0, idx);
+  auto data = ParsePgFormattedResource(
+      resource, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
+  RAY_CHECK(data) << "This isn't a placement group resource " << resource;
+  return data->original_resource;
 }
 
 std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource) {
-  static const std::regex wild_card_resource_pattern("^(.*)_group_([0-9a-f]+)$");
-  std::smatch match_groups;
-  if (!std::regex_match(resource, match_groups, wild_card_resource_pattern) ||
-      match_groups.size() != 3) {
+  auto data = ParsePgFormattedResource(
+      resource, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ false);
+  if (!data) {
     return "";
+  } else {
+    RAY_CHECK(data->original_resource != "");
+    RAY_CHECK(data->bundle_index == -1);
+    return data->original_resource;
   }
-
-  // group 0: resource
-  // group 1: pg id
-  return match_groups[1].str();
 }
 
 std::optional<PgFormattedResourceData> ParsePgFormattedResource(
@@ -224,6 +217,12 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
                        .placement_group_bundle_index();
   }
   return AddPlacementGroupConstraint(resources, placement_group_id, bundle_index);
+}
+
+std::string GetGroupIDFromResource(const std::string &resource) {
+  size_t pg_suffix_len = 2 * PlacementGroupID::Size();
+  RAY_CHECK(resource.size() > pg_suffix_len);
+  return resource.substr(resource.size() - pg_suffix_len, pg_suffix_len);
 }
 
 }  // namespace ray

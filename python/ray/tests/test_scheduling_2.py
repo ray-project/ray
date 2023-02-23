@@ -453,7 +453,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote
         def get_node_id():
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().get_node_id()
 
         worker_node_ids = {
             ray.get(get_node_id.options(resources={f"foo:{i}": 1}).remote())
@@ -467,12 +467,12 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
             internal_kv._internal_kv_put("test_task1", "task1")
             while internal_kv._internal_kv_exists("test_task1"):
                 time.sleep(0.1)
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().get_node_id()
 
         @ray.remote
         def task2():
             internal_kv._internal_kv_put("test_task2", "task2")
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().get_node_id()
 
         locations = []
         locations.append(task1.remote())
@@ -494,7 +494,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         @ray.remote(num_cpus=1)
         class Actor:
             def ping(self):
-                return ray.get_runtime_context().node_id.hex()
+                return ray.get_runtime_context().get_node_id()
 
         actors = []
         locations = []

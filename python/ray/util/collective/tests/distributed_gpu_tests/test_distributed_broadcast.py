@@ -29,7 +29,7 @@ def test_broadcast_different_name(
         assert (results[i] == cp.ones((10,), dtype=cp.float32) * (src_rank + 2)).all()
 
 
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("src_rank", [0, 1, 2, 3])
 def test_broadcast_different_array_size(
     ray_start_distributed_2_nodes_4_gpus, array_size, src_rank

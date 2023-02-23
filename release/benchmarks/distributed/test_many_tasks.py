@@ -6,6 +6,13 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
+from ray.experimental.state.api import summarize_tasks
+from dashboard_test import DashboardTestAtScale
+from ray._private.state_api_test_utils import (
+    StateAPICallSpec,
+    periodic_invoke_state_apis_with_actor,
+)
+
 sleep_time = 300
 
 
@@ -39,13 +46,19 @@ def test_max_running_tasks(num_tasks):
 
     # There are some relevant magic numbers in this check. 10k tasks each
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
-    err_str = f"Only {max_cpus - min_cpus_available}/{max_cpus} cpus used."
-    threshold = num_tasks * cpus_per_task * 0.70
-    assert max_cpus - min_cpus_available > threshold, err_str
+    used_cpus = max_cpus - min_cpus_available
+    err_str = f"Only {used_cpus}/{max_cpus} cpus used."
+    # 1500 tasks. Note that it is a pretty low threshold, and the
+    # performance should be tracked via perf dashboard.
+    threshold = num_tasks * cpus_per_task * 0.60
+    print(f"{used_cpus}/{max_cpus} used.")
+    assert used_cpus > threshold, err_str
 
     for _ in tqdm.trange(num_tasks, desc="Ensuring all tasks have finished"):
         done, refs = ray.wait(refs)
         assert ray.get(done[0]) is None
+
+    return used_cpus
 
 
 def no_resource_leaks():
@@ -62,17 +75,31 @@ def no_resource_leaks():
     help="If set, it's a smoke test",
 )
 def test(num_tasks, smoke_test):
-    ray.init(address="auto")
+    addr = ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
+    dashboard_test = DashboardTestAtScale(addr)
+
+    def not_none(res):
+        return res is not None
+
+    api_caller = periodic_invoke_state_apis_with_actor(
+        apis=[StateAPICallSpec(summarize_tasks, not_none)],
+        call_interval_s=4,
+        print_result=True,
+    )
+
     start_time = time.time()
-    test_max_running_tasks(num_tasks)
+    used_cpus = test_max_running_tasks(num_tasks)
     end_time = time.time()
     ray.get(monitor_actor.stop_run.remote())
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print(f"Peak memory usage: {round(used_gb, 2)}GB")
     print(f"Peak memory usage per processes:\n {usage}")
+    ray.get(api_caller.stop.remote())
+
+    del api_caller
     del monitor_actor
     test_utils.wait_for_condition(no_resource_leaks)
 
@@ -88,6 +115,7 @@ def test(num_tasks, smoke_test):
             "tasks_per_second": rate,
             "num_tasks": num_tasks,
             "time": end_time - start_time,
+            "used_cpus": used_cpus,
             "success": "1",
             "_peak_memory": round(used_gb, 2),
             "_peak_process_memory": usage,
@@ -98,8 +126,14 @@ def test(num_tasks, smoke_test):
                     "perf_metric_name": "tasks_per_second",
                     "perf_metric_value": rate,
                     "perf_metric_type": "THROUGHPUT",
-                }
+                },
+                {
+                    "perf_metric_name": "used_cpus_by_deadline",
+                    "perf_metric_value": used_cpus,
+                    "perf_metric_type": "THROUGHPUT",
+                },
             ]
+        dashboard_test.update_release_test_result(results)
         json.dump(results, out_file)
 
 

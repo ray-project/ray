@@ -11,7 +11,11 @@ from transformers import (
 import ray.data
 from ray.exceptions import RayTaskError
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.train.huggingface import (
+    HuggingFacePredictor,
+    HuggingFaceTrainer,
+    HuggingFaceCheckpoint,
+)
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
@@ -54,9 +58,12 @@ def ray_start_8_cpus():
 def train_function(train_dataset, eval_dataset=None, **config):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
+    evaluation_strategy = (
+        config.pop("evaluation_strategy", "epoch") if eval_dataset else "no"
+    )
     training_args = TrainingArguments(
         f"{model_checkpoint}-wikitext2",
-        evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
+        evaluation_strategy=evaluation_strategy,
         logging_strategy=config.pop("logging_strategy", "epoch"),
         num_train_epochs=config.pop("epochs", 3),
         learning_rate=config.pop("learning_rate", 2e-5),
@@ -91,6 +98,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
+    assert isinstance(result.checkpoint, HuggingFaceCheckpoint)
     assert "eval_loss" in result.metrics
 
     trainer2 = HuggingFaceTrainer(
@@ -108,6 +116,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
+    assert isinstance(result2.checkpoint, HuggingFaceCheckpoint)
     assert "eval_loss" in result2.metrics
 
     predictor = BatchPredictor.from_checkpoint(

@@ -1,7 +1,5 @@
 # This workload stresses distributed reference counting by passing and
 # returning serialized ObjectRefs.
-import json
-import os
 import time
 import random
 
@@ -9,20 +7,17 @@ import numpy as np
 
 import ray
 from ray.cluster_utils import Cluster
+from ray._private.test_utils import safe_write_to_results_json
 
 
 def update_progress(result):
     result["last_update"] = time.time()
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
-    )
-    with open(test_output_json, "wt") as f:
-        json.dump(result, f)
+    safe_write_to_results_json(result)
 
 
 num_redis_shards = 5
-redis_max_memory = 10 ** 8
-object_store_memory = 10 ** 8
+redis_max_memory = 10**8
+object_store_memory = 10**8
 num_nodes = 10
 
 message = (

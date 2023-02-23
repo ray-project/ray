@@ -84,7 +84,9 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        session_name(""),
+        entrypoint("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -147,8 +149,9 @@ struct CoreWorkerOptions {
   std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
-  // Function that tries to interrupt the currently running Python thread.
-  std::function<bool()> kill_main;
+  // Function that tries to interrupt the currently running Python thread if its
+  // task ID matches the one given.
+  std::function<bool(const TaskID &task_id)> kill_main;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
@@ -177,6 +180,9 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
+  /// Session name (Cluster ID) of the cluster.
+  std::string session_name;
+  std::string entrypoint;
 };
 }  // namespace core
 }  // namespace ray

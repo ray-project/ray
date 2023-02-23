@@ -12,6 +12,7 @@ import threading
 import time
 from typing import List
 import unittest
+from unittest import mock
 
 import ray
 from ray import tune
@@ -314,6 +315,68 @@ class TuneFailResumeGridTest(unittest.TestCase):
         )
         assert len(analysis.trials) == 27
 
+    @mock.patch.dict(os.environ, {"TUNE_MAX_PENDING_TRIALS_PG": "1"})
+    def testConfigUpdateInResume(self):
+        class FakeDataset:
+            def __init__(self, name):
+                self.name = name
+
+        config = dict(
+            num_samples=1,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search(
+                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+                ),
+                "test2": tune.grid_search(
+                    [
+                        FakeDataset("4"),
+                        FakeDataset("5"),
+                        FakeDataset("6"),
+                        FakeDataset("7"),
+                    ]
+                ),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1,
+        )
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[
+                    self.FailureInjectorCallback(num_trials=1),
+                    self.CheckTrialResourcesCallback(1),
+                ],
+                **config,
+            )
+
+        config["config"] = {
+            "test": tune.grid_search(
+                [FakeDataset("8"), FakeDataset("9"), FakeDataset("10")]
+            ),
+            "test2": tune.grid_search(
+                [
+                    FakeDataset("11"),
+                    FakeDataset("12"),
+                    FakeDataset("13"),
+                    FakeDataset("14"),
+                ]
+            ),
+        }
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            **config,
+        )
+        assert len(analysis.trials) == 12
+        for t in analysis.trials:
+            # Make sure that test and test2 are updated.
+            assert t.config["test"].name in ["8", "9", "10"]
+            assert t.config["test2"].name in ["11", "12", "13", "14"]
+
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
@@ -462,7 +525,7 @@ class TuneExampleTest(unittest.TestCase):
 
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
-        from tensorflow.python.keras.datasets import cifar10
+        from tensorflow.keras.datasets import cifar10
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
@@ -521,14 +584,17 @@ class SearcherTest(unittest.TestCase):
 
 class WorkingDirectoryTest(unittest.TestCase):
     def testWorkingDir(self):
-        """Trainables should know the original working dir on driver through env
-        variable."""
+        """Trainables should know the original working dir through env variable."""
+
+        os.environ.pop("TUNE_ORIG_WORKING_DIR", None)
         working_dir = os.getcwd()
 
         def f(config):
             assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
 
+        ray.init(num_cpus=1)
         tune.run(f)
+        ray.shutdown()
 
 
 class TrainableCrashWithFailFast(unittest.TestCase):

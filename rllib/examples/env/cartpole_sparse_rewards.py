@@ -1,15 +1,15 @@
 from copy import deepcopy
 
-import gym
+import gymnasium as gym
 import numpy as np
-from gym.spaces import Discrete, Dict, Box
+from gymnasium.spaces import Discrete, Dict, Box
 
 
 class CartPoleSparseRewards(gym.Env):
     """Wrapper for gym CartPole environment where reward is accumulated to the end."""
 
     def __init__(self, config=None):
-        self.env = gym.make("CartPole-v0")
+        self.env = gym.make("CartPole-v1")
         self.action_space = Discrete(2)
         self.observation_space = Dict(
             {
@@ -19,21 +19,23 @@ class CartPoleSparseRewards(gym.Env):
         )
         self.running_reward = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.running_reward = 0
+        obs, infos = self.env.reset()
         return {
-            "obs": self.env.reset(),
+            "obs": obs,
             "action_mask": np.array([1, 1], dtype=np.float32),
-        }
+        }, infos
 
     def step(self, action):
-        obs, rew, done, info = self.env.step(action)
+        obs, rew, terminated, truncated, info = self.env.step(action)
         self.running_reward += rew
-        score = self.running_reward if done else 0
+        score = self.running_reward if terminated else 0
         return (
             {"obs": obs, "action_mask": np.array([1, 1], dtype=np.float32)},
             score,
-            done,
+            terminated,
+            truncated,
             info,
         )
 

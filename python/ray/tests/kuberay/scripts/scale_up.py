@@ -1,6 +1,5 @@
 import ray
 from ray._private import test_utils
-import time
 
 
 @test_utils.wait_for_stdout(
@@ -15,8 +14,6 @@ def main():
     flakiness.
     """
     ray.autoscaler.sdk.request_resources(num_cpus=2)
-    while ray.cluster_resources().get("CPU", 0) < 2:
-        time.sleep(0.1)
 
 
 if __name__ == "__main__":

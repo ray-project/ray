@@ -1,7 +1,7 @@
 .. _train-key-concepts:
 
-Key Concepts
-============
+Key Concepts of Ray Train
+=========================
 
 There are four main concepts in the Ray Train library.
 
@@ -21,6 +21,10 @@ Trainers are responsible for executing (distributed) training runs.
 The output of a Trainer run is a :ref:`Result <train-key-concepts-results>` that contains
 metrics from the training run and the latest saved :ref:`Checkpoint <air-checkpoint-ref>`.
 Trainers can also be configured with :ref:`Datasets <air-ingest>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
+
+
+Deep Learning, Tree-Based, and other Trainers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 There are three categories of built-in Trainers:
 
@@ -65,8 +69,8 @@ There are three categories of built-in Trainers:
 
 .. _train-key-concepts-config:
 
-Configuration
--------------
+Train Configuration
+-------------------
 
 Trainers are configured with configuration objects. There are two main configuration classes,
 the :class:`ScalingConfig <ray.air.config.ScalingConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
@@ -77,8 +81,8 @@ Check out the :ref:`Configurations User Guide <train-config>` for an in-depth gu
 
 .. _train-key-concepts-results:
 
-Checkpoints
------------
+Train Checkpoints
+-----------------
 
 Calling ``Trainer.fit()`` returns a :class:`Result <ray.air.result.Result>` object, which includes
 information about the run such as the reported metrics and the saved checkpoints.
@@ -91,8 +95,8 @@ Checkpoints have the following purposes:
 
 .. _train-key-concepts-predictors:
 
-Predictors
-----------
+Train Predictors
+----------------
 
 Predictors are the counterpart to Trainers. A Trainer trains a model on a dataset, and a predictor
 uses the resulting model and performs inference on it.

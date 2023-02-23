@@ -5,6 +5,8 @@ import numpy as np
 
 
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -18,6 +20,7 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     TensorType,
 )
+
 
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
@@ -252,9 +255,13 @@ class TargetNetworkMixin:
     def variables(self) -> List[TensorType]:
         return self.model.variables()
 
-    @override(TFPolicy)
     def set_weights(self, weights):
-        TFPolicy.set_weights(self, weights)
+        if isinstance(self, TFPolicy):
+            TFPolicy.set_weights(self, weights)
+        elif isinstance(self, EagerTFPolicyV2):  # Handle TF2V2 policies.
+            EagerTFPolicyV2.set_weights(self, weights)
+        elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
+            EagerTFPolicy.set_weights(self, weights)
         self.update_target(self.config.get("tau", 1.0))
 
 

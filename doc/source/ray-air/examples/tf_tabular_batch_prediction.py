@@ -1,4 +1,3 @@
-from typing import List
 import numpy as np
 
 import ray
@@ -22,11 +21,14 @@ def create_model(input_features):
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-all_features: List[str] = dataset.schema().names
-all_features.remove("target")
-num_features = len(all_features)
 
-prep = Concatenator(dtype=np.float32)
+# All columns are features except the target column.
+num_features = len(dataset.schema().names) - 1
+
+# Specify a preprocessor to concatenate all feature columns.
+prep = Concatenator(
+    output_column_name="concat_features", exclude=["target"], dtype=np.float32
+)
 
 checkpoint = TensorflowCheckpoint.from_model(
     model=create_model(num_features), preprocessor=prep
@@ -38,7 +40,9 @@ batch_predictor = BatchPredictor.from_checkpoint(
     checkpoint, TensorflowPredictor, model_definition=lambda: create_model(num_features)
 )
 
-predicted_probabilities = batch_predictor.predict(dataset, feature_columns=all_features)
+predicted_probabilities = batch_predictor.predict(
+    dataset, feature_columns=["concat_features"]
+)
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}

@@ -70,12 +70,10 @@ if __name__ == "__main__":
     death_probability = args.death_probability
 
     # Wait until the expected number of nodes have joined the cluster.
-    while True:
-        num_nodes = len(ray.nodes())
-        logger.info("Waiting for nodes {}/{}".format(num_nodes, num_remote_nodes + 1))
-        if num_nodes >= num_remote_nodes + 1:
-            break
-        time.sleep(5)
+    num_nodes = len(ray.nodes())
+    assert (
+        num_nodes >= num_remote_nodes + 1
+    ), f"Expect {num_remote_nodes+1}, but only {num_nodes} joined."
     logger.info(
         "Nodes have all joined. There are %s resources.", ray.cluster_resources()
     )

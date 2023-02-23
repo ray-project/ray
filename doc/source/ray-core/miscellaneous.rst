@@ -75,24 +75,6 @@ appear as the task name in the logs.
 .. image:: images/task_name_dashboard.png
 
 
-.. _accelerator-types:
-
-Accelerator Types
-------------------
-
-Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a custom resource demand of ``"accelerator_type:<type>": 0.001``. This forces the task to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
-
-.. code-block:: python
-
-    from ray.accelerators import NVIDIA_TESLA_V100
-
-    @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
-    def train(data):
-        return "This function was run on a node with a Tesla V100 GPU"
-
-See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
-
-
 Overloaded Functions
 --------------------
 Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
@@ -216,3 +198,96 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+Running Large Ray Clusters
+--------------------------
+
+Here are some tips to run Ray with more than 1k nodes. When running Ray with such
+a large number of nodes, several system settings may need to be tuned to enable
+communication between such a large number of machines.
+
+Tuning Operating System Settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because all nodes and workers connect to the GCS, many network connections will
+be created and the operating system has to support that number of connections.
+
+Maximum open files
+******************
+
+The OS has to be configured to support opening many TCP connections since every
+worker and raylet connects to the GCS. In POSIX systems, the current limit can
+be checked by ``ulimit -n`` and if it's small, it should be increased according to
+the OS manual.
+
+ARP cache
+*********
+
+Another thing that needs to be configured is the ARP cache. In a large cluster,
+all the worker nodes connect to the head node, which adds a lot of entries to
+the ARP table. Ensure that the ARP cache size is large enough to handle this
+many nodes.
+Failure to do this will result in the head node hanging. When this happens,
+``dmesg`` will show errors like ``neighbor table overflow message``.
+
+In Ubuntu, the ARP cache size can be tuned in ``/etc/sysctl.conf`` by increasing
+the value of ``net.ipv4.neigh.default.gc_thresh1`` - ``net.ipv4.neigh.default.gc_thresh3``.
+For more details, please refer to the OS manual.
+
+Tuning Ray Settings
+~~~~~~~~~~~~~~~~~~~
+
+.. note::
+  There is an ongoing `project <https://github.com/ray-project/ray/projects/15>`_ focusing on
+  improving Ray's scalability and stability. Feel free to share your thoughts and use cases.
+
+To run a large cluster, several parameters need to be tuned in Ray.
+
+Resource broadcasting
+*********************
+
+In Ray 2.3+, lightweight resource broadcasting is supported as an experimental feature.
+Turning it on can significantly reduce GCS load and thus
+improve its overall stability and scalability. To turn it on, this OS environment
+should be set: ``RAY_use_ray_syncer=true``. This feature will be turned on by
+default in 2.4+.
+
+Benchmark
+~~~~~~~~~
+
+The machine setup:
+
+- 1 head node: m5.4xlarge (16 vCPUs/64GB mem)
+- 2000 worker nodes: m5.large (2 vCPUs/8GB mem)
+
+The OS setup:
+
+- Set the maximum number of opening files to 1048576
+- Increase the ARP cache size:
+    - ``net.ipv4.neigh.default.gc_thresh1=2048``
+    - ``net.ipv4.neigh.default.gc_thresh2=4096``
+    - ``net.ipv4.neigh.default.gc_thresh3=8192``
+
+
+The Ray setup:
+
+- ``RAY_use_ray_syncer=true``
+- ``RAY_event_stats=false``
+
+Test workload:
+
+- Test script: `code <https://github.com/ray-project/ray/blob/master/release/benchmarks/distributed/many_nodes_tests/actor_test.py>`_
+
+
+
+.. list-table:: Benchmark result
+   :header-rows: 1
+
+   * - Number of actors
+     - Actor launch time
+     - Actor ready time
+     - Total time
+   * - 20k (10 actors / node)
+     - 14.5s
+     - 136.1s
+     - 150.7s

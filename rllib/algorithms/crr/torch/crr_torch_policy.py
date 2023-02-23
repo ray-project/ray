@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from typing import (
@@ -392,7 +392,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             target = (
                 train_batch[SampleBatch.REWARDS]
                 + discount
-                * (1.0 - train_batch[SampleBatch.DONES].float())
+                * (1.0 - train_batch[SampleBatch.TERMINATEDS].float())
                 * target_q_next
             )
 
@@ -413,8 +413,8 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         loss = torch.mean(loss_fn(torch.cat((td_error_q1, td_error_q2), dim=0)))
 
         # logging
-        self.log("td_error_q1", (td_error_q1 ** 2).mean())
-        self.log("td_error_q2", (td_error_q2 ** 2).mean())
+        self.log("td_error_q1", (td_error_q1**2).mean())
+        self.log("td_error_q2", (td_error_q2**2).mean())
         self.log("td_error", loss)
         self.log("targets_avg", target.mean())
         self.log("targets_max", target.max())

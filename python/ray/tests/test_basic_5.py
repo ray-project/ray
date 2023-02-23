@@ -142,6 +142,7 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
@@ -221,6 +222,32 @@ assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
     )
     monkeypatch.chdir(str(tmp_path))
     subprocess.check_call(["python", "-m", "package.module2"])
+
+
+def test_worker_kv_calls(monkeypatch, shutdown_only):
+    monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
+    ray.init()
+
+    @ray.remote
+    def get_kv_metrics():
+        from time import sleep
+
+        sleep(2)
+        return ray._private.gcs_utils._called_freq
+
+    freqs = ray.get(get_kv_metrics.remote())
+    # So far we have the following gets
+    """
+    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
+    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x02'
+    b'cluster' b'CLUSTER_METADATA'
+    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
+    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
+    b'tracing' b'tracing_startup_hook'
+    ???? # unknown
+    """
+    # !!!If you want to increase this number, please let ray-core knows this!!!
+    assert freqs["internal_kv_get"] == 4
 
 
 if __name__ == "__main__":

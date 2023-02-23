@@ -4,7 +4,7 @@ import time
 
 import ray
 
-from ray.train.examples.torch_linear_example import train_linear
+from ray.train.examples.pytorch.torch_linear_example import train_linear
 
 if __name__ == "__main__":
     start = time.time()

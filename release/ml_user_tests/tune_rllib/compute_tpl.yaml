@@ -1,22 +1,23 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_workers: 10
+max_workers: 8
 
 head_node_type:
     name: head_node
     instance_type: m5.xlarge
 
+# We should be good with 2 GPUs and 50 CPUs.
 worker_node_types:
     - name: worker_node_cpu
-      instance_type: m5.xlarge
-      min_workers: 0
-      max_workers: 10
+      instance_type: m5.xlarge  # 4 CPU
+      min_workers: 6
+      max_workers: 6
       use_spot: false
     - name: worker_node_gpu
-      instance_type: g3.4xlarge
-      min_workers: 0
-      max_workers: 10
+      instance_type: g3.4xlarge  # 1 GPU and 16 CPU
+      min_workers: 2
+      max_workers: 2
       use_spot: false
 
 aws:

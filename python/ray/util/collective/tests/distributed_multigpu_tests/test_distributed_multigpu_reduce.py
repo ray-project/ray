@@ -38,7 +38,7 @@ def test_reduce_different_name(
                 assert (results[i][j] == cp.ones((10,), dtype=cp.float32)).all()
 
 
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("dst_rank", [0, 1])
 @pytest.mark.parametrize("dst_gpu_index", [0, 1])
 def test_reduce_different_array_size(

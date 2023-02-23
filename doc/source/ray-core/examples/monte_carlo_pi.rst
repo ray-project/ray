@@ -19,7 +19,7 @@ To get started, install Ray via ``pip install -U ray``. See :ref:`Installing Ray
 
 Starting Ray
 ------------
-First, let's include all modules needed for this tutorial and start a local Ray cluster with :ref:`ray.init() <ray-init-ref>`:
+First, let's include all modules needed for this tutorial and start a local Ray cluster with :func:`ray.init() <ray.init>`:
 
 .. literalinclude:: ../doc_code/monte_carlo_pi.py
     :language: python
@@ -41,7 +41,7 @@ Ray actors are essentially stateful services that anyone with an instance (a han
     :start-after: __defining_actor_start__
     :end-before: __defining_actor_end__
 
-We define a Ray actor by decorating a normal Python class with :ref:`ray.remote() <ray-remote-ref>`.
+We define a Ray actor by decorating a normal Python class with :func:`ray.remote <ray.remote>`.
 The progress actor has ``report_progress()`` method that will be called by sampling tasks to update their progress individually
 and ``get_progress()`` method to get the overall progress.
 
@@ -55,7 +55,7 @@ Ray tasks are stateless functions. They execute asynchronously, and run in paral
     :start-after: __defining_task_start__
     :end-before: __defining_task_end__
 
-To convert a normal Python function as a Ray task, we decorate the function with :ref:`ray.remote() <ray-remote-ref>`.
+To convert a normal Python function as a Ray task, we decorate the function with :func:`ray.remote <ray.remote>`.
 The sampling task takes a progress actor handle as an input and reports progress to it.
 The above code shows an example of calling actor methods from tasks.
 
@@ -97,7 +97,7 @@ While sampling tasks are running, we can periodically query the progress by call
 To call an actor method, use ``actor_handle.method.remote()``.
 This invocation immediately returns an ``ObjectRef`` as a future
 and then executes the method asynchronously on the remote actor process.
-To fetch the actual returned value of ``ObjectRef``, we use the blocking :ref:`ray.get() <ray-get-ref>`.
+To fetch the actual returned value of ``ObjectRef``, we use the blocking :func:`ray.get() <ray.get>`.
 
 Calculating π
 -------------
@@ -108,7 +108,7 @@ Finally, we get number of samples inside the circle from the remote sampling tas
     :start-after: __calculating_pi_start__
     :end-before: __calculating_pi_end__
 
-As we can see from the above code, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
+As we can see from the above code, besides a single ``ObjectRef``, :func:`ray.get() <ray.get>` can also take a list of ``ObjectRef`` and return a list of results.
 
 If you run this tutorial, you will see output like:
 

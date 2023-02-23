@@ -12,24 +12,28 @@ from ray.air.constants import (  # noqa: F401
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+    LAZY_CHECKPOINT_MARKER_FILE,
 )
 
 # Autofilled session.report() metrics. Keys should be consistent with Tune.
-TIMESTAMP = "_timestamp"
-TIME_THIS_ITER_S = "_time_this_iter_s"
-TRAINING_ITERATION = "_training_iteration"
+# The train provided `TIME_THIS_ITER_S` and `TIMESTAMP` will triumph what's
+# auto-filled by Tune session.
+# TODO: Combine the following two with tune's, once there is a centralized
+#  file for both tune/train constants.
+TIMESTAMP = "timestamp"
+TIME_THIS_ITER_S = "time_this_iter_s"
 
-BASIC_AUTOFILLED_KEYS = {TIMESTAMP, TIME_THIS_ITER_S, TRAINING_ITERATION}
-
-DATE = "_date"
-HOSTNAME = "_hostname"
-NODE_IP = "_node_ip"
-PID = "_pid"
 TIME_TOTAL_S = "_time_total_s"
+
+WORKER_HOSTNAME = "_hostname"
+WORKER_NODE_IP = "_node_ip"
+WORKER_PID = "_pid"
 
 # Will not be reported unless ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 # env var is not 0
-DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
+DETAILED_AUTOFILLED_KEYS = {WORKER_HOSTNAME, WORKER_NODE_IP, WORKER_PID, TIME_TOTAL_S}
 
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
@@ -62,22 +66,9 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
-# The key used to identify whether we have already warned about ray.train
-# functions being used outside of the session
-SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
 
-# Reserved keyword used by the ``TorchWorkerProfiler`` and
-# ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
-# through ``session.report()``
-PYTORCH_PROFILER_KEY = "_train_torch_profiler"
+# Blacklist virtualized networking.
+DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,veth"
 
-# Reserved keys used across all Callbacks.
-# By default these will be filtered out from ``session.report()``.
-# See ``TrainingCallback._preprocess_results`` for more details.
-ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
-
-# Default NCCL_SOCKET_IFNAME.
-# Use ethernet when possible.
-# NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
-# "en".
-DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"
+# Key for AIR Checkpoint metadata in TrainingResult metadata
+CHECKPOINT_METADATA_KEY = "checkpoint_metadata"

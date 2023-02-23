@@ -22,8 +22,7 @@ class HuggingFaceCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with HuggingFace-specific
     functionality.
 
-    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
-    ``HuggingFaceCheckpoint.from_checkpoint(ckpt)``
+    Use ``HuggingFaceCheckpoint.from_model`` to create this type of checkpoint.
     """
 
     @classmethod

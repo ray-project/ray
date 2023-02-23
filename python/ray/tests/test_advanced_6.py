@@ -133,6 +133,17 @@ def test_max_call_tasks(ray_start_regular):
     wait_for_pid_to_exit(pid1)
 
 
+def test_max_call_set_for_gpu_tasks(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    @ray.remote(num_gpus=0.1)
+    def f():
+        return os.getpid()
+
+    pid = ray.get(f.remote())
+    wait_for_pid_to_exit(pid)
+
+
 # This case tests that the worker leaked issue when task finished with errors.
 # See https://github.com/ray-project/ray/issues/19639.
 #

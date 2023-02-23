@@ -1,16 +1,19 @@
-import gym
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
+import tree  # pip install dm_tree
 import unittest
-from gym.spaces import Box
 
-from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
@@ -30,7 +33,7 @@ class TestAgentConnector(unittest.TestCase):
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
 
@@ -48,7 +51,7 @@ class TestAgentConnector(unittest.TestCase):
         c = ObsPreprocessorConnector(ctx)
         name, params = c.to_state()
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
 
         obs = obs_space.sample()
@@ -79,7 +82,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipRewardAgentConnector))
 
         d = AgentConnectorDataType(
@@ -100,7 +103,7 @@ class TestAgentConnector(unittest.TestCase):
         c = FlattenDataAgentConnector(ctx)
 
         name, params = c.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
         sample_batch = {
@@ -160,6 +163,87 @@ class TestAgentConnector(unittest.TestCase):
         with_buffered = c([d])
         self.assertEqual(len(with_buffered), 1)
         self.assertEqual(with_buffered[0].data[SampleBatch.ACTIONS], [1, 2, 3])
+
+    def test_mean_std_observation_filter_connector(self):
+        for bounds in [
+            (-1, 1),  # normalized
+            (-2, 2),  # scaled
+            (0, 2),  # shifted
+            (0, 4),  # scaled and shifted
+        ]:
+            print("Testing uniform sampling with bounds: {}".format(bounds))
+
+            observation_space = Box(bounds[0], bounds[1], (3, 64, 64))
+            ctx = ConnectorContext(observation_space=observation_space)
+            filter_connector = MeanStdObservationFilterAgentConnector(ctx)
+
+            # Warm up Mean-Std filter
+            for i in range(1000):
+                obs = observation_space.sample()
+                sample_batch = {
+                    SampleBatch.NEXT_OBS: obs,
+                }
+                ac = AgentConnectorDataType(0, 0, sample_batch)
+                filter_connector.transform(ac)
+
+            # Create another connector to set state to
+            _, state = filter_connector.to_state()
+            another_filter_connector = (
+                MeanStdObservationFilterAgentConnector.from_state(ctx, state)
+            )
+
+            another_filter_connector.in_eval()
+
+            # Collect transformed observations
+            transformed_observations = []
+            for i in range(1000):
+                obs = observation_space.sample()
+                sample_batch = {
+                    SampleBatch.NEXT_OBS: obs,
+                }
+                ac = AgentConnectorDataType(0, 0, sample_batch)
+                connector_output = another_filter_connector.transform(ac)
+                transformed_observations.append(
+                    connector_output.data[SampleBatch.NEXT_OBS]
+                )
+
+            # Check if transformed observations are actually mean-std filtered
+            self.assertTrue(np.isclose(np.mean(transformed_observations), 0, atol=0.1))
+            self.assertTrue(np.isclose(np.var(transformed_observations), 1, atol=0.1))
+
+            # Check if filter parameters where frozen because we are not training
+            self.assertTrue(
+                filter_connector.filter.running_stats.num_pushes
+                == another_filter_connector.filter.running_stats.num_pushes,
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.running_stats.mean_array
+                    == another_filter_connector.filter.running_stats.mean_array,
+                )
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.running_stats.std_array
+                    == another_filter_connector.filter.running_stats.std_array,
+                )
+            )
+            self.assertTrue(
+                filter_connector.filter.buffer.num_pushes
+                == another_filter_connector.filter.buffer.num_pushes,
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.buffer.mean_array
+                    == another_filter_connector.filter.buffer.mean_array,
+                )
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.buffer.std_array
+                    == another_filter_connector.filter.buffer.std_array,
+                )
+            )
 
 
 class TestViewRequirementAgentConnector(unittest.TestCase):
@@ -238,9 +322,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])  # env.reset() for t == -1 else env.step()
             sample_batch = processed[0].data.sample_batch
             # add cur obs to the list
@@ -275,9 +357,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
 
@@ -316,14 +396,23 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         # without reward-to-go.
         view_rq_dict = {
             # obs[t-context_len+1:t]
-            "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
+            "context_obs": ViewRequirement(
+                "obs",
+                shift=f"-{context_len-1}:0",
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
+            ),
             # next_obs[t-context_len+1:t]
             "context_next_obs": ViewRequirement(
-                "obs", shift=f"-{context_len}:1", used_for_compute_actions=False
+                "obs",
+                shift=f"-{context_len}:1",
+                used_for_compute_actions=False,
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
             ),
             # act[t-context_len+1:t]
             "context_act": ViewRequirement(
-                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+                SampleBatch.ACTIONS,
+                shift=f"-{context_len-1}:-1",
+                space=Box(-np.inf, np.inf, shape=(1,)),
             ),
         }
 
@@ -342,11 +431,9 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             # next state and action at time t-1 are the following
             timestep_data = {
                 SampleBatch.NEXT_OBS: obs_arrs[t],
-                SampleBatch.ACTIONS: (
-                    np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t - 1]
-                ),
-                SampleBatch.T: t - 1,
             }
+            if t > 0:
+                timestep_data[SampleBatch.ACTIONS] = act_arrs[t - 1]
             data = AgentConnectorDataType(0, 1, timestep_data)
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
@@ -363,8 +450,13 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 act_list.append(act_arrs[t - 1])
 
             self.assertTrue("context_next_obs" not in sample_batch)
+            # We should have the 5 (context_len) most recent observations here
             check(sample_batch["context_obs"], np.stack(obs_list)[None])
-            check(sample_batch["context_act"], np.stack(act_list[:-1])[None])
+            # The context for actions is [t-context_len+1:t]. Since we build sample
+            # batch for inference in ViewRequirementAgentConnector, it always
+            # includes everything up until the last action (at t-1), but not the
+            # action current action (at t).
+            check(sample_batch["context_act"], np.stack(act_list[1:])[None])
 
     def test_connector_pipline_with_view_requirement(self):
         """A very minimal test that checks wheter pipeline connectors work in a
@@ -373,13 +465,16 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .rollouts(create_env_on_local_worker=True)
         )
-        algo = PPO(config)
-        rollout_worker = algo.workers.local_worker()
-        policy = rollout_worker.get_policy()
-        env = rollout_worker.env
+
+        env = gym.make("CartPole-v1")
+        policy = PPOTorchPolicy(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            config=config.to_dict(),
+        )
 
         # create a connector context
         ctx = ConnectorContext(
@@ -400,14 +495,14 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
         name, params = agent_connector.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
             check(restored.connectors[cidx].to_state(), c.to_state())
 
         # simulate a rollout
         n_steps = 10
-        obs = env.reset()
+        obs, info = env.reset()
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
@@ -418,19 +513,22 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             policy_output = policy.compute_actions_from_input_dict(
                 agent_obs.data.sample_batch
             )
+            # Removes batch dimension
+            policy_output = tree.map_structure(lambda x: x[0], policy_output)
+
             agent_connector.on_policy_output(
                 ActionConnectorDataType(0, 1, {}, policy_output)
             )
-            action = policy_output[0][0]
+            action = policy_output[0]
 
-            next_obs, rewards, dones, info = env.step(action)
+            next_obs, rewards, terminateds, truncateds, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.DONES: dones,
+                SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
-                SampleBatch.T: t,
                 # state_out
             }
             env_out = AgentConnectorDataType(0, 1, env_out_dict)
@@ -477,88 +575,50 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         # Data matches the latest timestep.
         self.assertTrue(np.array_equal(obs_data[0], np.array([4, 5, 6, 7])))
 
-    def test_mean_std_observation_filter_connector(self):
-        for bounds in [
-            (-1, 1),  # normalized
-            (-2, 2),  # scaled
-            (0, 2),  # shifted
-            (0, 4),  # scaled and shifted
-        ]:
-            print("Testing uniform sampling with bounds: {}".format(bounds))
+    def test_vr_connector_default_agent_collector_is_empty(self):
+        """Tests that after reset() the view_requirement connector will
+        create a fresh new agent collector.
+        """
+        view_rqs = {
+            "obs": ViewRequirement(
+                None, used_for_training=True, used_for_compute_actions=True
+            ),
+        }
 
-            observation_space = Box(bounds[0], bounds[1], (3, 64, 64))
-            ctx = ConnectorContext(observation_space=observation_space)
-            filter_connector = MeanStdObservationFilterAgentConnector(ctx)
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(
+            view_requirements=view_rqs,
+            config=config,
+            is_policy_recurrent=False,
+        )
 
-            # Warm up Mean-Std filter
-            for i in range(1000):
-                obs = observation_space.sample()
-                sample_batch = {
-                    SampleBatch.NEXT_OBS: obs,
-                }
-                ac = AgentConnectorDataType(0, 0, sample_batch)
-                filter_connector.transform(ac)
+        c = ViewRequirementAgentConnector(ctx)
+        c.in_training()
 
-            # Create another connector to set state to
-            _, state = filter_connector.to_state()
-            another_filter_connector = (
-                MeanStdObservationFilterAgentConnector.from_state(ctx, state)
-            )
+        for i in range(5):
+            obs_arr = np.array([0, 1, 2, 3]) + i
+            agent_data = {SampleBatch.NEXT_OBS: obs_arr}
+            data = AgentConnectorDataType(0, 1, agent_data)
 
-            another_filter_connector.in_eval()
+            # Feed ViewRequirementAgentConnector 5 samples.
+            c([data])
 
-            # Collector transformed observations
-            transformed_observations = []
-            for i in range(1000):
-                obs = observation_space.sample()
-                sample_batch = {
-                    SampleBatch.NEXT_OBS: obs,
-                }
-                ac = AgentConnectorDataType(0, 0, sample_batch)
-                connector_output = another_filter_connector.transform(ac)
-                transformed_observations.append(
-                    connector_output.data[SampleBatch.NEXT_OBS]
-                )
+        # 1 init_obs, plus 4 agent steps.
+        self.assertEqual(c.agent_collectors[0][1].agent_steps, 4)
 
-            # Check if transformed observations are actually mean-std filtered
-            self.assertTrue(
-                np.isclose(np.mean(transformed_observations), 0, atol=0.001)
-            )
-            self.assertTrue(np.isclose(np.var(transformed_observations), 1, atol=0.01))
+        # Reset.
+        c.reset(0)  # env_id = 0
 
-            # Check if filter parameters where frozen because we are not training
-            self.assertTrue(
-                filter_connector.filter.running_stats.num_pushes
-                == another_filter_connector.filter.running_stats.num_pushes,
-            )
-            self.assertTrue(
-                np.all(
-                    filter_connector.filter.running_stats.mean_array
-                    == another_filter_connector.filter.running_stats.mean_array,
-                )
-            )
-            self.assertTrue(
-                np.all(
-                    filter_connector.filter.running_stats.std_array
-                    == another_filter_connector.filter.running_stats.std_array,
-                )
-            )
-            self.assertTrue(
-                filter_connector.filter.buffer.num_pushes
-                == another_filter_connector.filter.buffer.num_pushes,
-            )
-            self.assertTrue(
-                np.all(
-                    filter_connector.filter.buffer.mean_array
-                    == another_filter_connector.filter.buffer.mean_array,
-                )
-            )
-            self.assertTrue(
-                np.all(
-                    filter_connector.filter.buffer.std_array
-                    == another_filter_connector.filter.buffer.std_array,
-                )
-            )
+        # Process a new timestep.
+        obs_arr = np.array([0, 1, 2, 3]) + i
+        agent_data = {SampleBatch.NEXT_OBS: obs_arr}
+        data = AgentConnectorDataType(0, 1, agent_data)
+
+        # Feed ViewRequirementAgentConnector 5 samples.
+        c([data])
+
+        # Start fresh with 0 agent step.
+        self.assertEqual(c.agent_collectors[0][1].agent_steps, 0)
 
 
 if __name__ == "__main__":

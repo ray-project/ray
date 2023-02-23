@@ -18,9 +18,7 @@ import click
 import yaml
 
 import ray
-import ray._private.services as services
 from ray._private.usage import usage_lib
-from ray._private.worker import global_worker  # type: ignore
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -83,22 +81,11 @@ except ImportError:  # py2
 
 logger = logging.getLogger(__name__)
 
-redis_client = None
-
 RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 POLL_INTERVAL = 5
 
 Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
-
-
-def _redis():
-    global redis_client
-    if redis_client is None:
-        redis_client = services.create_redis_client(
-            global_worker.node.redis_address, password=global_worker.node.redis_password
-        )
-    return redis_client
 
 
 def try_logging_config(config: Dict[str, Any]) -> None:

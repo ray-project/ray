@@ -1,9 +1,10 @@
-import gym
+import gymnasium as gym
 import unittest
 
 import ray
 from ray import air
 from ray import tune
+from ray.rllib.algorithms.a2c import A2CConfig
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.examples.models.neural_computer import DNCMemory
@@ -45,25 +46,29 @@ class TestDNC(unittest.TestCase):
 
     def test_dnc_learning(self):
         ModelCatalog.register_custom_model("dnc", DNCMemory)
-        config = {
-            "env": StatelessCartPole,
-            "gamma": 0.99,
-            "num_envs_per_worker": 5,
-            "framework": "torch",
-            "num_workers": 1,
-            "num_cpus_per_worker": 2.0,
-            "lr": 0.01,
-            "entropy_coeff": 0.0005,
-            "vf_loss_coeff": 1e-5,
-            "model": {
-                "custom_model": "dnc",
-                "max_seq_len": 64,
-                "custom_model_config": {
-                    "nr_cells": 10,
-                    "cell_size": 8,
+
+        config = (
+            A2CConfig()
+            .environment(StatelessCartPole)
+            .framework("torch")
+            .rollouts(num_envs_per_worker=5, num_rollout_workers=1)
+            .training(
+                gamma=0.99,
+                lr=0.01,
+                entropy_coeff=0.0005,
+                vf_loss_coeff=1e-5,
+                model={
+                    "custom_model": "dnc",
+                    "max_seq_len": 64,
+                    "custom_model_config": {
+                        "nr_cells": 10,
+                        "cell_size": 8,
+                    },
                 },
-            },
-        }
+            )
+            .resources(num_cpus_per_worker=2.0)
+        )
+
         tune.Tuner(
             "A2C",
             param_space=config,

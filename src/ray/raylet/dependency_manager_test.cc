@@ -33,7 +33,7 @@ class MockObjectManager : public ObjectManagerInterface {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority prio,
-                const std::string &task_name) {
+                const TaskMetricsKey &task_key) {
     if (prio == BundlePriority::GET_REQUEST) {
       active_get_requests.insert(req_id);
     } else if (prio == BundlePriority::WAIT_REQUEST) {
@@ -56,6 +56,10 @@ class MockObjectManager : public ObjectManagerInterface {
            active_task_requests.count(request_id);
   }
 
+  int64_t PullManagerNumInactivePullsByTaskName(const TaskMetricsKey &task_key) const {
+    return 0;
+  }
+
   uint64_t req_id = 1;
   std::unordered_set<uint64_t> active_get_requests;
   std::unordered_set<uint64_t> active_wait_requests;
@@ -67,11 +71,18 @@ class DependencyManagerTest : public ::testing::Test {
   DependencyManagerTest()
       : object_manager_mock_(), dependency_manager_(object_manager_mock_) {}
 
+  int64_t NumWaiting(const std::string &task_name) {
+    return dependency_manager_.waiting_tasks_counter_.Get({task_name, false});
+  }
+
+  int64_t NumWaitingTotal() { return dependency_manager_.waiting_tasks_counter_.Total(); }
+
   void AssertNoLeaks() {
     ASSERT_TRUE(dependency_manager_.required_objects_.empty());
     ASSERT_TRUE(dependency_manager_.queued_task_requests_.empty());
     ASSERT_TRUE(dependency_manager_.get_requests_.empty());
     ASSERT_TRUE(dependency_manager_.wait_requests_.empty());
+    ASSERT_TRUE(dependency_manager_.waiting_tasks_counter_.Total() == 0);
     // All pull requests are canceled.
     ASSERT_TRUE(object_manager_mock_.active_task_requests.empty());
     ASSERT_TRUE(object_manager_mock_.active_get_requests.empty());
@@ -93,9 +104,11 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
   }
   TaskID task_id = RandomTaskId();
   bool ready = dependency_manager_.RequestTaskDependencies(
-      task_id, ObjectIdsToRefs(arguments), "");
+      task_id, ObjectIdsToRefs(arguments), {"foo", false});
   ASSERT_FALSE(ready);
-  ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
+  ASSERT_EQ(NumWaiting("bar"), 0);
+  ASSERT_EQ(NumWaiting("foo"), 1);
+  ASSERT_EQ(NumWaitingTotal(), 1);
 
   // For each argument, tell the task dependency manager that the argument is
   // local. All arguments should be canceled as they become available locally.
@@ -107,6 +120,9 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
   ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[2]);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
+  ASSERT_EQ(NumWaiting("bar"), 0);
+  ASSERT_EQ(NumWaiting("foo"), 0);
+  ASSERT_EQ(NumWaitingTotal(), 0);
 
   // Remove the task.
   dependency_manager_.RemoveTaskDependencies(task_id);
@@ -124,11 +140,14 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     bool ready = dependency_manager_.RequestTaskDependencies(
-        task_id, ObjectIdsToRefs({argument_id}), "");
+        task_id, ObjectIdsToRefs({argument_id}), {"foo", false});
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each task.
     ASSERT_EQ(object_manager_mock_.active_task_requests.size(), i + 1);
   }
+  ASSERT_EQ(NumWaiting("bar"), 0);
+  ASSERT_EQ(NumWaiting("foo"), 3);
+  ASSERT_EQ(NumWaitingTotal(), 3);
 
   // Tell the task dependency manager that the object is local.
   auto ready_task_ids = dependency_manager_.HandleObjectLocal(argument_id);
@@ -157,7 +176,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
   }
   TaskID task_id = RandomTaskId();
   bool ready = dependency_manager_.RequestTaskDependencies(
-      task_id, ObjectIdsToRefs(arguments), "");
+      task_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
 
   // Tell the task dependency manager that each of the arguments is now
@@ -327,7 +346,7 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
   }
   TaskID task_id = RandomTaskId();
   bool ready = dependency_manager_.RequestTaskDependencies(
-      task_id, ObjectIdsToRefs(arguments), "");
+      task_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
 
@@ -338,7 +357,7 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
 
   TaskID task_id2 = RandomTaskId();
   ready = dependency_manager_.RequestTaskDependencies(
-      task_id2, ObjectIdsToRefs(arguments), "");
+      task_id2, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_TRUE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
   dependency_manager_.RemoveTaskDependencies(task_id2);

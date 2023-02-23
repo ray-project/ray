@@ -42,8 +42,14 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// Task stats from core workers.
+/// Tasks stats, broken down by state.
 DECLARE_stats(tasks);
+
+/// Actor stats, broken down by state.
+DECLARE_stats(actors);
+
+/// Placement group stats, broken down by state.
+DECLARE_stats(placement_groups);
 
 /// Event stats
 DECLARE_stats(operation_count);
@@ -94,6 +100,10 @@ DECLARE_stats(spill_manager_throughput_mb);
 /// GCS Storage
 DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
+DECLARE_stats(gcs_task_manager_task_events_dropped);
+DECLARE_stats(gcs_task_manager_task_events_stored);
+DECLARE_stats(gcs_task_manager_task_events_stored_bytes);
+DECLARE_stats(gcs_task_manager_task_events_reported);
 
 /// Object Store
 DECLARE_stats(object_store_memory);
@@ -191,15 +201,6 @@ static Gauge ObjectDirectoryRemovedLocations(
     "Number of object locations removed per second. If this is high, a lot of objects "
     "have been removed from this node.",
     "removals");
-
-/// Node Manager
-static Histogram HeartbeatReportMs(
-    "heartbeat_report_ms",
-    "Heartbeat report time in raylet. If this value is high, that means there's a high "
-    "system load. It is possible that this node will be killed because of missing "
-    "heartbeats.",
-    "ms",
-    {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
 
 /// Worker Pool
 static Histogram ProcessStartupTimeMs("process_startup_time_ms",

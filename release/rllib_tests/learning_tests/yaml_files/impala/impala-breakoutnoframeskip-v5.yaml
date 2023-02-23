@@ -1,0 +1,22 @@
+impala-breakoutnoframeskip-v5:
+    env: ALE/Breakout-v5
+    run: IMPALA
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 200.0
+        timesteps_total: 6000000
+    stop:
+        time_total_s: 2400
+    config:
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
+        rollout_fragment_length: 50
+        train_batch_size: 500
+        num_workers: 10
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr: 0.0005
+        num_gpus: 1

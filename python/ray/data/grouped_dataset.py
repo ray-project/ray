@@ -3,6 +3,8 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -28,7 +30,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DatasetContext
-from ray.data.dataset import BatchType, Dataset
+from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
 
@@ -130,22 +132,39 @@ class GroupedDataset(Generic[T]):
         self._dataset = dataset
         self._key = key
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
+        )
+
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
 
-        This is a blocking operation.
-
         Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import AggregateFn
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> grouped_ds = ds.groupby(lambda x: x % 3) # doctest: +SKIP
-            >>> grouped_ds.aggregate(AggregateFn( # doctest: +SKIP
-            ...     init=lambda k: [], # doctest: +SKIP
-            ...     accumulate=lambda a, r: a + [r], # doctest: +SKIP
-            ...     merge=lambda a1, a2: a1 + a2, # doctest: +SKIP
-            ...     finalize=lambda a: a # doctest: +SKIP
-            ... )) # doctest: +SKIP
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import AggregateFn
+                ds = ray.data.range(100)
+                grouped_ds = ds.groupby(lambda x: x % 3)
+                result = grouped_ds.aggregate(AggregateFn(
+                    init=lambda k: [],
+                    accumulate_row=lambda a, r: a + [r],
+                    merge=lambda a1, a2: a1 + a2,
+                    finalize=lambda a: sorted(a)
+                ))
+                result.show()
+
+            .. testoutput::
+
+                (0, [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, \
+51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99])
+                (1, [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46, 49, \
+52, 55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, 88, 91, 94, 97])
+                (2, [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50, \
+53, 56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86, 89, 92, 95, 98])
+
 
         Args:
             aggs: Aggregations to do.
@@ -200,10 +219,20 @@ class GroupedDataset(Generic[T]):
             )
 
         plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             self._dataset._epoch,
             self._dataset._lazy,
+            logical_plan,
         )
 
     def _aggregate_on(
@@ -228,7 +257,7 @@ class GroupedDataset(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "default",
@@ -243,8 +272,6 @@ class GroupedDataset(Generic[T]):
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
-
-        This is a blocking operation.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -310,8 +337,7 @@ class GroupedDataset(Generic[T]):
 
             boundaries = []
             # Get the keys of the batch in numpy array format
-            keys_block = block_accessor.select([self._key])
-            keys = BlockAccessor.for_block(keys_block).to_numpy()
+            keys = block_accessor.to_numpy(self._key)
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
@@ -322,7 +348,8 @@ class GroupedDataset(Generic[T]):
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
-            block_accessor = BlockAccessor.for_block(batch)
+            block = BlockAccessor.batch_to_block(batch)
+            block_accessor = BlockAccessor.for_block(block)
             if self._key:
                 boundaries = get_key_boundaries(block_accessor)
             else:
@@ -330,9 +357,14 @@ class GroupedDataset(Generic[T]):
             builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
-                group = block_accessor.slice(start, end, False)
-                applied = fn(group)
-                builder.add_block(applied)
+                group_block = block_accessor.slice(start, end)
+                group_block_accessor = BlockAccessor.for_block(group_block)
+                # Convert block of each group to batch format here, because the
+                # block format here can be different from batch format
+                # (e.g. block is Arrow format, and batch is NumPy format).
+                group_batch = group_block_accessor.to_batch_format(batch_format)
+                applied = fn(group_batch)
+                builder.add_batch(applied)
                 start = end
             rs = builder.build()
             return rs
@@ -349,8 +381,6 @@ class GroupedDataset(Generic[T]):
 
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -370,9 +400,7 @@ class GroupedDataset(Generic[T]):
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
-        """Compute grouped sum aggregation.
-
-        This is a blocking operation.
+        r"""Compute grouped sum aggregation.
 
         Examples:
             >>> import ray
@@ -433,8 +461,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped min aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
@@ -494,8 +520,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped max aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
@@ -554,8 +578,6 @@ class GroupedDataset(Generic[T]):
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
         """Compute grouped mean aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -619,8 +641,6 @@ class GroupedDataset(Generic[T]):
         ignore_nulls: bool = True,
     ) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray

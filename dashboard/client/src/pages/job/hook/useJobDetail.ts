@@ -1,73 +1,33 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { useContext, useState } from "react";
+import { useParams } from "react-router-dom";
+import useSWR from "swr";
 import { GlobalContext } from "../../../App";
+import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getJobDetail } from "../../../service/job";
-import { JobDetail } from "../../../type/job";
 
-export const useJobDetail = (props: RouteComponentProps<{ id: string }>) => {
-  const {
-    match: { params },
-  } = props;
-  const [job, setJob] = useState<JobDetail>();
+export const useJobDetail = () => {
+  const params = useParams() as { id: string };
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);
-  const [selectedTab, setTab] = useState("info");
   const { ipLogMap } = useContext(GlobalContext);
-  const tot = useRef<NodeJS.Timeout>();
-  const handleChange = (event: React.ChangeEvent<{}>, newValue: string) => {
-    setTab(newValue);
-  };
-  const handleSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRefresh(event.target.checked);
-  };
-  const getJob = useCallback(async () => {
-    if (!refreshing) {
-      return;
-    }
-    const rsp = await getJobDetail(params.id);
-
-    if (rsp.data?.data?.detail) {
-      setJob(rsp.data.data.detail);
-    }
-
-    if (rsp.data?.msg) {
-      setMsg(rsp.data.msg || "");
-    }
-
-    if (rsp.data.result === false) {
-      setMsg("Job Query Error Please Check JobId");
-      setJob(undefined);
-      setRefresh(false);
-    }
-
-    tot.current = setTimeout(getJob, 4000);
-  }, [refreshing, params.id]);
-
-  useEffect(() => {
-    if (tot.current) {
-      clearTimeout(tot.current);
-    }
-    getJob();
-    return () => {
-      if (tot.current) {
-        clearTimeout(tot.current);
+  const { data: job } = useSWR(
+    "useJobDetail",
+    async () => {
+      try {
+        const rsp = await getJobDetail(params.id);
+        return rsp.data;
+      } catch (e) {
+        setMsg("Job Query Error Please Check JobId");
+        setRefresh(false);
       }
-    };
-  }, [getJob]);
-
-  const { jobInfo } = job || {};
-  const actorMap = job?.jobActors;
+    },
+    { refreshInterval: refreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
 
   return {
-    actorMap,
-    jobInfo,
     job,
     msg,
-    selectedTab,
-    handleChange,
-    handleSwitchChange,
     params,
-    refreshing,
     ipLogMap,
   };
 };

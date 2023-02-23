@@ -115,8 +115,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
 
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-      // Decrease to account for the dummy object id.
+    if (task_spec.IsActorCreationTask()) {
+      // Decrease to account for the dummy object id returned by the actor
+      // creation task.
       num_returns--;
     }
     RAY_CHECK(num_returns >= 0);
@@ -200,11 +201,20 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto reject_callback = [](rpc::SendReplyCallback send_reply_callback) {
-    send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+  auto cancel_callback = [reply, task_spec](rpc::SendReplyCallback send_reply_callback) {
+    if (task_spec.IsActorTask()) {
+      // We consider cancellation of actor tasks to be a push task RPC failure.
+      send_reply_callback(
+          Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+    } else {
+      // We consider cancellation of normal tasks to be an in-band cancellation of a
+      // successful RPC.
+      reply->set_was_cancelled_before_running(true);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    }
   };
 
-  auto dependencies = task_spec.GetDependencies(false);
+  auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
@@ -239,7 +249,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
                     std::move(accept_callback),
-                    std::move(reject_callback),
+                    std::move(cancel_callback),
                     std::move(send_reply_callback),
                     task_spec.ConcurrencyGroupName(),
                     task_spec.FunctionDescriptor(),
@@ -252,7 +262,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
-                                  std::move(reject_callback),
+                                  std::move(cancel_callback),
                                   std::move(send_reply_callback),
                                   "",
                                   task_spec.FunctionDescriptor(),

@@ -23,6 +23,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
@@ -38,16 +39,17 @@ class TestApexDQN(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
-            results = trainer.train()
+            algo = config.build()
+            results = algo.train()
             check_train_results(results)
             print(results)
-            trainer.stop()
+            algo.stop()
 
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether APEXDQN can be built on all frameworks."""
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
@@ -63,34 +65,31 @@ class TestApexDQN(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build()
 
             # Test per-worker epsilon distribution.
-            infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state()
-            )
+            infos = algo.workers.foreach_policy(lambda p, _: p.get_exploration_state())
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
             for i in range(2):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
             # Test again per-worker epsilon distribution
             # (should not have changed).
-            infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state()
-            )
+            infos = algo.workers.foreach_policy(lambda p, _: p.get_exploration_state())
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            trainer.stop()
+            algo.stop()
 
     def test_apex_lr_schedule(self):
         config = (
             apex_dqn.ApexDQNConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=1,
                 rollout_fragment_length=5,
@@ -143,7 +142,7 @@ class TestApexDQN(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
 
             lr = _step_n_times(algo, 3)  # 50 timesteps
             # Close to 0.2

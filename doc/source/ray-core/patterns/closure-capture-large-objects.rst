@@ -3,13 +3,13 @@ Anti-pattern: Closure capturing large objects harms performance
 
 **TLDR:** Avoid closure capturing large objects in remote functions or classes, use object store instead.
 
-When you define a :ref:`ray.remote() <ray-remote-ref>` function or class,
+When you define a :func:`ray.remote <ray.remote>` function or class,
 it is easy to accidentally capture large (more than a few MB) objects implicitly in the definition.
 This can lead to slow performance or even OOM since Ray is not designed to handle serialized functions or classes that are very large.
 
 For such large objects, there are two options to resolve this problem:
 
-- Use :ref:`ray.put() <ray-put-ref>` to put the large objects in the Ray object store, and then pass object references as arguments to the remote functions or classes (*"better approach #1"* below)
+- Use :func:`ray.put() <ray.put>` to put the large objects in the Ray object store, and then pass object references as arguments to the remote functions or classes (*"better approach #1"* below)
 - Create the large objects inside the remote functions or classes by passing a lambda method (*"better approach #2"*). This is also the only option for using unserializable objects.
 
 

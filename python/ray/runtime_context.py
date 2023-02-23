@@ -36,8 +36,8 @@ class RuntimeContext(object):
 
         return context
 
-    @Deprecated(message="Use get_job_id() instead.")
     @property
+    @Deprecated(message="Use get_job_id() instead", warning=True)
     def job_id(self):
         """Get current job ID for this worker or driver.
 
@@ -61,13 +61,19 @@ class RuntimeContext(object):
             If called by a driver, this returns the job ID. If called in
             a task, return the job ID of the associated driver. The
             job ID will be hex format.
+
+        Raises:
+            AssertionError: If not called in a driver or worker. Generally,
+                this means that ray.init() was not called.
         """
+        assert ray.is_initialized(), (
+            "Job ID is not available because " "Ray has not been initialized."
+        )
         job_id = self.worker.current_job_id
-        assert not job_id.is_nil()
         return job_id.hex()
 
-    @Deprecated(message="Use get_node_id() instead.")
     @property
+    @Deprecated(message="Use get_node_id() instead", warning=True)
     def node_id(self):
         """Get current node ID for this worker or driver.
 
@@ -88,13 +94,19 @@ class RuntimeContext(object):
 
         Returns:
             A node id in hex format for this worker or driver.
+
+        Raises:
+            AssertionError: If not called in a driver or worker. Generally,
+                this means that ray.init() was not called.
         """
+        assert ray.is_initialized(), (
+            "Node ID is not available because " "Ray has not been initialized."
+        )
         node_id = self.worker.current_node_id
-        assert not node_id.is_nil()
         return node_id.hex()
 
-    @Deprecated(message="Use get_task_id() instead")
     @property
+    @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
         """Get current task ID for this worker or driver.
 
@@ -169,8 +181,8 @@ class RuntimeContext(object):
         task_id = self.worker.current_task_id
         return task_id.hex() if not task_id.is_nil() else None
 
-    @Deprecated(message="Use get_actor_id() instead")
     @property
+    @Deprecated(message="Use get_actor_id() instead", warning=True)
     def actor_id(self):
         """Get the current actor ID in this worker.
 
@@ -231,8 +243,8 @@ class RuntimeContext(object):
         actor_info = ray._private.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
-    @Deprecated(message="Use get_placement_group_id() instead")
     @property
+    @Deprecated(message="Use get_placement_group_id() instead", warning=True)
     def current_placement_group_id(self):
         """Get the current Placement group ID of this worker.
 

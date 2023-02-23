@@ -1,6 +1,6 @@
 """PyTorch policy class used for SlateQ."""
 
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 from typing import Dict, Tuple, Type
@@ -158,7 +158,7 @@ def build_slateq_losses(
     next_q_target_max, _ = torch.max(next_q_target_slate, dim=1)
 
     target = reward + policy.config["gamma"] * next_q_target_max * (
-        1.0 - train_batch["dones"].float()
+        1.0 - train_batch[SampleBatch.TERMINATEDS].float()
     )
     target = target.detach()
 
@@ -391,7 +391,7 @@ def postprocess_fn_add_next_actions_for_sarsa(
 ) -> SampleBatch:
     """Add next_actions to SampleBatch for SARSA training"""
     if policy.config["slateq_strategy"] == "SARSA":
-        if not batch["dones"][-1] and policy._no_tracing is False:
+        if not batch.is_terminated_or_truncated() and policy._no_tracing is False:
             raise RuntimeError(
                 "Expected a complete episode in each sample batch. "
                 f"But this batch is not: {batch}."

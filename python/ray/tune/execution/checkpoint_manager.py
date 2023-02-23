@@ -19,9 +19,8 @@ class _CheckpointManager(CommonCheckpointManager):
     initialized to Checkpoint objects with values of None.
 
     Args:
-        keep_checkpoints_num: Keep at least this many checkpoints.
-        checkpoint_score_attr: Attribute to use to determine which
-            checkpoints to keep.
+        checkpoint_config: An optional checkpoint configuration that
+            determines checkpointing strategy.
         delete_fn: Function that deletes checkpoints. Must be
             idempotent.
     """
@@ -34,13 +33,6 @@ class _CheckpointManager(CommonCheckpointManager):
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         checkpoint_config = checkpoint_config or CheckpointConfig()
-
-        if checkpoint_config.num_to_keep == 0:
-            raise RuntimeError(
-                "If checkpointing is enabled, Ray Tune requires `keep_checkpoints_num` "
-                "to be None or a number greater than 0"
-            )
-
         super().__init__(checkpoint_strategy=checkpoint_config, delete_fn=delete_fn)
 
     def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -112,7 +104,7 @@ class _CheckpointManager(CommonCheckpointManager):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
         state["_newest_memory_checkpoint"] = _TrackedCheckpoint(
-            CheckpointStorage.MEMORY, None
+            dir_or_data=None, storage_mode=CheckpointStorage.MEMORY
         )
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("_delete_fn")

@@ -4,7 +4,7 @@ import pytest
 import ray
 from ray.tests.conftest import _ray_start_cluster
 
-num_tasks_submitted = [10 ** n for n in range(0, 6)]
+num_tasks_submitted = [10**n for n in range(0, 6)]
 num_tasks_ids = ["{}_tasks".format(i) for i in num_tasks_submitted]
 
 
@@ -20,7 +20,7 @@ def benchmark_task_submission(num_tasks):
 
 
 def warmup():
-    x = np.zeros(10 ** 6, dtype=np.uint8)
+    x = np.zeros(10**6, dtype=np.uint8)
     for _ in range(5):
         for _ in range(5):
             ray.put(x)
@@ -50,8 +50,8 @@ def benchmark_task_forward(f, num_tasks):
 @pytest.mark.benchmark
 @pytest.mark.parametrize(
     "num_tasks",
-    [10 ** 3, 10 ** 4],
-    ids=[str(num) + "_tasks" for num in [10 ** 3, 10 ** 4]],
+    [10**3, 10**4],
+    ids=[str(num) + "_tasks" for num in [10**3, 10**4]],
 )
 def test_task_forward(benchmark, num_tasks):
     with _ray_start_cluster(
@@ -87,7 +87,7 @@ def test_transfer_performance(
     benchmark, ray_start_cluster_head, object_number, data_size
 ):
     cluster = ray_start_cluster_head
-    cluster.add_node(resources={"my_resource": 1}, object_store_memory=10 ** 9)
+    cluster.add_node(resources={"my_resource": 1}, object_store_memory=10**9)
 
     @ray.remote(resources={"my_resource": 1})
     class ObjectActor:

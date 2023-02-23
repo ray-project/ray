@@ -40,7 +40,7 @@ class TestDRLearning(unittest.TestCase):
             "n_iters": 800,
             "minibatch_size": 64,
             "polyak_coef": 1.0,
-            "model": {
+            "model_config": {
                 "fcnet_hiddens": [32, 32, 32],
                 "activation": "relu",
             },

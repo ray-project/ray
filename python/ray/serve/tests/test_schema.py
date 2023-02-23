@@ -533,6 +533,120 @@ class TestServeApplicationSchema:
             ],
         }
 
+    def test_prepend_app_name_to_deployment_names(self):
+        config = ServeApplicationSchema.parse_obj(
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+                "deployments": [
+                    {
+                        "name": "alice",
+                        "num_replicas": 2,
+                    },
+                    {
+                        "name": "bob",
+                        "num_replicas": 3,
+                    },
+                ],
+            }
+        )
+        transformed_config = ServeApplicationSchema.parse_obj(
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+                "deployments": [
+                    {
+                        "name": "app1_alice",
+                        "num_replicas": 2,
+                    },
+                    {
+                        "name": "app1_bob",
+                        "num_replicas": 3,
+                    },
+                ],
+            }
+        )
+        assert transformed_config == config.prepend_app_name_to_deployment_names()
+
+    def test_remove_app_name_from_deployment_names(self):
+        config_dict = {
+            "name": "app1",
+            "route_prefix": "/app1",
+            "import_path": "module.graph",
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+
+        # Applying prepend_app_name_to_deployment_names then
+        # remove_app_name_from_deployment_names should give original config
+        config = ServeApplicationSchema.parse_obj(config_dict)
+        transformed_config = config.prepend_app_name_to_deployment_names()
+        assert config == transformed_config.remove_app_name_from_deployment_names()
+
+        malformed_config = ServeApplicationSchema.parse_obj(
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+                "deployments": [
+                    {
+                        "name": "app1_alice",
+                        "num_replicas": 2,
+                    },
+                    {
+                        "name": "bob",
+                        "num_replicas": 3,
+                    },
+                ],
+            }
+        )
+
+        # If the deployment names don't have app name as a prefix, should raise error
+        with pytest.raises(AssertionError):
+            malformed_config.remove_app_name_from_deployment_names()
+        with pytest.raises(AssertionError):
+            config.remove_app_name_from_deployment_names()
+
+
+class TestServeDeploySchema:
+    def test_serve_application_to_deploy_config(self):
+        app_config_dict = {
+            "import_path": "module.graph",
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "alice",
+                    "num_replicas": 2,
+                    "route_prefix": "/A",
+                },
+                {
+                    "name": "bob",
+                    "num_replicas": 3,
+                },
+            ],
+        }
+        app_config = ServeApplicationSchema.parse_obj(app_config_dict)
+        deploy_config = app_config.to_deploy_schema()
+
+        assert deploy_config.applications[0].name == ""
+        assert deploy_config.dict(exclude_unset=True) == {
+            "host": "1.1.1.1",
+            "port": 7470,
+            "applications": [app_config_dict],
+        }
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
@@ -664,22 +778,23 @@ def test_status_schema_helpers():
     def f2():
         pass
 
-    f1._func_or_class = "ray.serve.tests.test_schema.global_f"
-    f2._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     client = serve.start()
-
-    f1.deploy()
-    f2.deploy()
+    serve.run(f1.bind(), name="app1")
+    serve.run(f2.bind(), name="app2")
 
     # Check statuses
-    statuses = serve_status_to_schema(client.get_serve_status()).deployment_statuses
-    deployment_names = {"f1", "f2"}
-    for deployment_status in statuses:
-        assert deployment_status.status in {"UPDATING", "HEALTHY"}
-        assert deployment_status.name in deployment_names
-        deployment_names.remove(deployment_status.name)
-    assert len(deployment_names) == 0
+    f1_statuses = serve_status_to_schema(
+        client.get_serve_status("app1")
+    ).deployment_statuses
+    f2_statuses = serve_status_to_schema(
+        client.get_serve_status("app2")
+    ).deployment_statuses
+    assert len(f1_statuses) == 1
+    assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f1_statuses[0].name == "app1_f1"
+    assert len(f2_statuses) == 1
+    assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f2_statuses[0].name == "app2_f2"
 
     serve.shutdown()
 

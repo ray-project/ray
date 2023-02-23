@@ -4,6 +4,8 @@ from ray.data.preprocessor import Preprocessor
 
 
 class DummyPreprocessor(Preprocessor):
+    _is_fittable = False
+
     def __init__(self, transform=lambda b: b):
         self.id = uuid.uuid4()
         self.transform = transform
@@ -11,6 +13,9 @@ class DummyPreprocessor(Preprocessor):
     def transform_batch(self, batch):
         self._batch_transformed = True
         return self.transform(batch)
+
+    def _transform_pandas(self, df):
+        return df
 
     @property
     def has_preprocessed(self):

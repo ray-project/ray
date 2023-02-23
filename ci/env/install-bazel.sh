@@ -5,7 +5,7 @@ ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || ech
 
 arg1="${1-}"
 
-achitecture="${HOSTTYPE}"
+
 platform="unknown"
 case "${OSTYPE}" in
   msys)
@@ -25,6 +25,9 @@ case "${OSTYPE}" in
     echo "Unrecognized platform."
     exit 1
 esac
+
+architecture="${HOSTTYPE}"
+echo "Architecture is $architecture"
 
 if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
   # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
@@ -50,26 +53,57 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
   if [ "${OSTYPE}" = "msys" ]; then
     target="${MINGW_DIR-/usr}/bin/bazel.exe"
     mkdir -p "${target%/*}"
-    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${architecture}.exe"
   else
-    target="./install.sh"
-    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
-    chmod +x "${target}"
+
+    # Buildkite mac instances
     if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
-      "${target}" --user
+      mkdir -p "$HOME/bin"
       # Add bazel to the path.
       # shellcheck disable=SC2016
-      printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+      printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshenv
       # shellcheck disable=SC1090
-      source ~/.zshrc
+      source ~/.zshenv
+      INSTALL_USER=1
+    # Buildkite linux instance
     elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
-      "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
+      INSTALL_USER=0
+    # User
     else
-      "${target}" --user > /dev/null
+      mkdir -p "$HOME/bin"
+      INSTALL_USER=1
       export PATH=$PATH:"$HOME/bin"
     fi
-    which bazel
-    rm -f "${target}"
+
+    if [ "${architecture}" = "aarch64" ]; then
+      # architecture is "aarch64", but the bazel tag is "arm64"
+      url="https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-arm64"
+
+      if [ "$INSTALL_USER" = "1" ]; then
+        target="$HOME/bin/bazel"
+        curl -f -s -L -R -o "${target}" "${url}"
+        chmod +x "${target}"
+      else
+        target="/bin/bazel"
+        sudo curl -f -s -L -R -o "${target}" "${url}"
+        sudo chmod +x "${target}"
+      fi
+
+      which bazel
+
+    else
+      target="./install.sh"
+      curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${architecture}.sh"
+      chmod +x "${target}"
+
+      if [ "$INSTALL_USER" = "1" ]; then
+        "${target}" --user
+      else
+        "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
+      fi
+      which bazel
+      rm -f "${target}"
+    fi
   fi
 fi
 

@@ -4,7 +4,13 @@ import React from "react";
 import { ProgressBar, ProgressBarSegment } from "../../components/ProgressBar";
 import { TaskProgress } from "../../type/job";
 
-export type TaskProgressBarProps = TaskProgress;
+export type TaskProgressBarProps = TaskProgress & {
+  showAsComplete?: boolean;
+  showTooltip?: boolean;
+  expanded?: boolean;
+  onClick?: () => void;
+  total?: number;
+};
 
 export const TaskProgressBar = ({
   numFinished = 0,
@@ -12,7 +18,13 @@ export const TaskProgressBar = ({
   numPendingArgsAvail = 0,
   numPendingNodeAssignment = 0,
   numSubmittedToWorker = 0,
+  numFailed = 0,
   numUnknown = 0,
+  showAsComplete = false,
+  showTooltip = true,
+  expanded,
+  onClick,
+  total,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   const progress: ProgressBarSegment[] = [
@@ -20,6 +32,11 @@ export const TaskProgressBar = ({
       label: "Finished",
       value: numFinished,
       color: theme.palette.success.main,
+    },
+    {
+      label: "Failed",
+      value: numFailed,
+      color: theme.palette.error.main,
     },
     {
       label: "Running",
@@ -42,7 +59,16 @@ export const TaskProgressBar = ({
       color: "#5f6469",
     },
   ];
-  return <ProgressBar progress={progress} />;
+  return (
+    <ProgressBar
+      progress={progress}
+      expanded={expanded}
+      showTooltip={showTooltip}
+      onClick={onClick}
+      showTotalProgress={numFinished}
+      total={total}
+    />
+  );
 };
 
 export type MiniTaskProgressBarProps = TaskProgress & {
@@ -55,6 +81,10 @@ export type MiniTaskProgressBarProps = TaskProgress & {
    * Whether to show tooltip.
    */
   showTooltip?: boolean;
+  /**
+   * Whether to show the total finished to the right of the progress bar.
+   */
+  showTotal?: boolean;
 };
 
 export const MiniTaskProgressBar = ({
@@ -64,8 +94,10 @@ export const MiniTaskProgressBar = ({
   numPendingNodeAssignment = 0,
   numSubmittedToWorker = 0,
   numUnknown = 0,
+  numFailed = 0,
   showAsComplete = false,
   showTooltip = true,
+  showTotal = false,
 }: MiniTaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   if (showAsComplete) {
@@ -75,14 +107,20 @@ export const MiniTaskProgressBar = ({
       numPendingArgsAvail +
       numPendingNodeAssignment +
       numSubmittedToWorker +
+      numFailed +
       numUnknown;
     return (
       <ProgressBar
         progress={[
           {
             label: "Finished",
-            value: total,
+            value: total - numFailed,
             color: theme.palette.success.main,
+          },
+          {
+            label: "Failed",
+            value: numFailed,
+            color: theme.palette.error.main,
           },
         ]}
         showLegend={false}
@@ -95,6 +133,11 @@ export const MiniTaskProgressBar = ({
         label: "Finished",
         value: numFinished,
         color: theme.palette.success.main,
+      },
+      {
+        label: "Failed",
+        value: numFailed,
+        color: theme.palette.error.main,
       },
       {
         label: "Running",
@@ -122,6 +165,7 @@ export const MiniTaskProgressBar = ({
         progress={progress}
         showLegend={false}
         showTooltip={showTooltip}
+        showTotalProgress={showTotal ? numFinished : undefined}
       />
     );
   }

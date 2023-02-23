@@ -3,7 +3,7 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gym
+import gymnasium as gym
 import logging
 import os
 import threading
@@ -33,7 +33,11 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -53,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class EagerTFPolicyV2(Policy):
-    """A TF-eageer / TF2 based tensorflow policy.
+    """A TF-eager / TF2 based tensorflow policy.
 
     This class is intended to be used and extended by sub-classing.
     """
@@ -75,9 +79,6 @@ class EagerTFPolicyV2(Policy):
         )
 
         Policy.__init__(self, observation_space, action_space, config)
-
-        config = dict(self.get_default_config(), **config)
-        self.config = config
 
         self._is_training = False
         # Global timestep should be a tensor.
@@ -101,14 +102,18 @@ class EagerTFPolicyV2(Policy):
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
-        self._max_seq_len = config["model"]["max_seq_len"]
+        self._max_seq_len = self.config["model"]["max_seq_len"]
 
-        self.validate_spaces(observation_space, action_space, config)
+        self.validate_spaces(observation_space, action_space, self.config)
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        self.dist_class = self._init_dist_class()
-        self.model = self.make_model()
+        if self.config.get("_enable_rl_module_api", False):
+            self.model = self.make_rl_module()
+            self.dist_class = None
+        else:
+            self.dist_class = self._init_dist_class()
+            self.model = self.make_model()
 
         self._init_view_requirements()
 
@@ -143,11 +148,6 @@ class EagerTFPolicyV2(Policy):
         # have been activated yet.
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
-
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def get_default_config(self) -> AlgorithmConfigDict:
-        return {}
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -592,12 +592,22 @@ class EagerTFPolicyV2(Policy):
         postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
         postprocessed_batch.set_training(True)
         stats = self._learn_on_batch_helper(postprocessed_batch)
+        self.num_grad_updates += 1
+
         stats.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
+                ),
             }
         )
+
         return convert_to_numpy(stats)
 
     @override(Policy)
@@ -686,12 +696,15 @@ class EagerTFPolicyV2(Policy):
         # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
-            logger.warning(
-                "Cannot restore an optimizer's state for tf eager! Keras "
-                "is not able to save the v1.x optimizers (from "
-                "tf.compat.v1.train) since they aren't compatible with "
-                "checkpoints."
-            )
+            if not type(self).__name__.endswith("_traced") and log_once(
+                "set_state_optimizer_vars_tf_eager_policy_v2"
+            ):
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints."
+                )
             for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
                 opt_var.assign(value)
         # Set exploration's state.
@@ -762,7 +775,10 @@ class EagerTFPolicyV2(Policy):
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
-        self._re_trace_counter += 1
+        # NOTE: On the new RLModule API, we won't trace the sampling side, so we should
+        # not increment this counter to trigger excess re-tracing error.
+        if not self.config.get("_enable_rl_module_api", False):
+            self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -773,7 +789,28 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if is_overridden(self.action_sampler_fn):
+            if self.config.get("_enable_rl_module_api", False):
+
+                if explore:
+                    fwd_out = self.model.forward_exploration(input_dict)
+                else:
+                    fwd_out = self.model.forward_inference(input_dict)
+
+                action_dist = fwd_out[SampleBatch.ACTION_DIST]
+                if explore:
+                    actions, logp = action_dist.sample(return_logp=True)
+                else:
+                    actions = action_dist.sample()
+                    logp = None
+                state_out = fwd_out.get("state_out", {})
+
+                # anything but action_dist and state_out is an extra fetch
+                for k, v in fwd_out.items():
+                    if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                        extra_fetches[k] = v
+                dist_inputs = None
+
+            elif is_overridden(self.action_sampler_fn):
                 dist_inputs = None
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(

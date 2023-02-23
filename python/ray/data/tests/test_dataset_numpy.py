@@ -87,7 +87,7 @@ def test_to_numpy_refs(ray_start_regular_shared):
 
     # Table Dataset
     ds = ray.data.range_table(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
+    arr = np.concatenate([t["value"] for t in ray.get(ds.to_numpy_refs())])
     np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Test multi-column Arrow dataset.
@@ -122,7 +122,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=None, "
+        "Dataset(num_blocks=2, num_rows=?, "
         "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])

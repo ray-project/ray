@@ -17,6 +17,8 @@
 #include <list>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
 
 /// \class CounterMap
@@ -40,33 +42,60 @@ class CounterMap {
   CounterMap &operator=(const CounterMap &other) = delete;
 
   /// Set a function `f((key, count))` to run when the count for the key changes.
-  void SetOnChangeCallback(std::function<void(const K &, int64_t)> on_change) {
+  /// Changes are buffered until `FlushOnChangeCallbacks()` is called to enable
+  /// batching for performance reasons.
+  void SetOnChangeCallback(std::function<void(const K &)> on_change) {
     on_change_ = on_change;
   }
 
-  /// Increment the specified key by one.
-  void Increment(const K &key) {
-    counters_[key] += 1;
-    total_ += 1;
+  /// Flush any pending on change callbacks.
+  void FlushOnChangeCallbacks() {
     if (on_change_ != nullptr) {
-      on_change_(key, counters_[key]);
+      for (const auto &key : pending_changes_) {
+        on_change_(key);
+      }
+    }
+    pending_changes_.clear();
+  }
+
+  /// Increment the specified key by `val`, default to 1.
+  void Increment(const K &key, int64_t val = 1) {
+    // If value is 0, it is no-op and only registers the callback.
+    if (val == 0) {
+      if (on_change_ != nullptr) {
+        pending_changes_.insert(key);
+      }
+      return;
+    }
+
+    counters_[key] += val;
+    total_ += val;
+    if (on_change_ != nullptr) {
+      pending_changes_.insert(key);
     }
   }
 
-  /// Decrement the specified key by one. If the count for the key drops to zero,
-  /// the entry for the key is erased from the counter. It is not allowed for
-  /// the count to be decremented below zero.
-  void Decrement(const K &key) {
+  /// Decrement the specified key by `val`, default to 1. If the count for the key drops
+  /// to zero, the entry for the key is erased from the counter. It is not allowed for the
+  /// count to be decremented below zero.
+  void Decrement(const K &key, int64_t val = 1) {
+    // If value is 0, it is no-op and only registers the callback.
+    if (val == 0) {
+      if (on_change_ != nullptr) {
+        pending_changes_.insert(key);
+      }
+      return;
+    }
     auto it = counters_.find(key);
     RAY_CHECK(it != counters_.end());
-    it->second -= 1;
-    total_ -= 1;
+    it->second -= val;
+    total_ -= val;
     int64_t new_value = it->second;
     if (new_value <= 0) {
       counters_.erase(it);
     }
     if (on_change_ != nullptr) {
-      on_change_(key, new_value);
+      pending_changes_.insert(key);
     }
   }
 
@@ -81,11 +110,11 @@ class CounterMap {
     }
   }
 
-  /// Decrement `old_key` by one and increment `new_key` by one.
-  void Swap(const K &old_key, const K &new_key) {
+  /// Decrement `old_key` by one and increment `new_key` by `val`, default to 1.
+  void Swap(const K &old_key, const K &new_key, int64_t val = 1) {
     if (old_key != new_key) {
-      Decrement(old_key);
-      Increment(new_key);
+      Decrement(old_key, val);
+      Increment(new_key, val);
     }
   }
 
@@ -95,6 +124,9 @@ class CounterMap {
   /// Return the total count across all keys in this counter.
   size_t Total() const { return total_; }
 
+  /// For testing, return the number of pending change callbacks.
+  size_t NumPendingCallbacks() const { return pending_changes_.size(); }
+
   /// Run the given function `f((key, count))` for every tracked entry.
   void ForEachEntry(std::function<void(const K &, int64_t)> callback) const {
     for (const auto &it : counters_) {
@@ -102,8 +134,79 @@ class CounterMap {
     }
   }
 
+  /// Return a snapshot of all the counters.
+  absl::flat_hash_map<K, int64_t> GetAll() const { return counters_; }
+
  private:
   absl::flat_hash_map<K, int64_t> counters_;
-  std::function<void(const K &, int64_t)> on_change_;
+  absl::flat_hash_set<K> pending_changes_;
+  std::function<void(const K &)> on_change_;
   size_t total_ = 0;
+};
+
+/// \class A thread safe version of CounterMap with mutex guarded all methods.
+template <typename K>
+class CounterMapThreadSafe {
+ public:
+  CounterMapThreadSafe() = default;
+
+  void SetOnChangeCallback(std::function<void(const K &)> on_change)
+      LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.SetOnChangeCallback(std::move(on_change));
+  }
+
+  void FlushOnChangeCallbacks() LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.FlushOnChangeCallbacks();
+  }
+
+  void Increment(const K &key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.Increment(key, val);
+  }
+
+  void Decrement(const K &key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.Decrement(key, val);
+  }
+
+  int64_t Get(const K &key) {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.Get(key);
+  }
+
+  void Swap(const K &old_key, const K &new_key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+    absl::WriterMutexLock lock(&mutex_);
+    counter_map_.Swap(old_key, new_key, val);
+  }
+
+  size_t Size() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.Size();
+  }
+
+  size_t Total() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.Total();
+  }
+
+  size_t NumPendingCallbacks() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.NumPendingCallbacks();
+  }
+
+  void ForEachEntry(std::function<void(const K &, int64_t)> callback) {
+    absl::ReaderMutexLock lock(&mutex_);
+    counter_map_.ForEachEntry(std::move(callback));
+  }
+
+  absl::flat_hash_map<K, int64_t> GetAll() {
+    absl::ReaderMutexLock lock(&mutex_);
+    return counter_map_.GetAll();
+  }
+
+ private:
+  absl::Mutex mutex_;
+  CounterMap<K> counter_map_;
 };

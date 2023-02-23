@@ -15,6 +15,7 @@ from typing import (
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -97,7 +98,7 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs per node
+        _max_cpu_fraction_per_node: [Experimental] The max fraction of CPUs per node
             that Train will use for scheduling training actors. The remaining CPUs
             can be used for dataset tasks. It is highly recommended that you set this
             to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
@@ -106,6 +107,8 @@ class ScalingConfig:
             not trigger properly).
     """
 
+    # If adding new attributes here, please also update
+    # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
     num_workers: Optional[Union[int, SampleRange]] = None
     use_gpu: Union[bool, SampleRange] = False
@@ -305,15 +308,15 @@ class DatasetConfig:
         transform: Whether to transform the dataset with the fitted preprocessor.
             This must be enabled at least for the dataset that is fit.
             True by default.
-        use_stream_api: Whether the dataset should be streamed into memory using
-            pipelined reads. When enabled, get_dataset_shard() returns DatasetPipeline
-            instead of Dataset. The amount of memory to use is controlled
-            by `stream_window_size`. False by default.
-        stream_window_size: Configure the streaming window size in bytes.
-            A good value is something like 20% of object store memory.
-            If set to -1, then an infinite window size will be used (similar to
-            bulk ingest). This only has an effect if use_stream_api is set.
-            Set to 1.0 GiB by default.
+        max_object_store_memory_fraction [Experimental]: The maximum fraction
+            of Ray's shared-memory object store to use for the dataset. The
+            default value is -1, meaning that the preprocessed dataset should
+            be cached, which may cause spilling if its size is larger than the
+            object store's capacity. Pipelined ingest (all other values, 0 or
+            higher) is experimental. Note that the absolute memory capacity
+            used is based on the object store capacity at invocation time; this
+            does not currently cover autoscaling cases where the size of the
+            cluster may change.
         global_shuffle: Whether to enable global shuffle (per pipeline window
             in streaming mode). Note that this is an expensive all-to-all operation,
             and most likely you want to use local shuffle instead.
@@ -324,6 +327,13 @@ class DatasetConfig:
             The main purpose of this is to prevent data fetching hotspots in the
             cluster when running many parallel workers / trials on the same data.
             We recommend enabling it always. True by default.
+        per_epoch_preprocessor [Experimental]: A preprocessor to re-apply on
+            each pass of the dataset. The main use case for this is to apply a
+            random transform on a training dataset on each epoch. The
+            per-epoch preprocessor will be applied *after* all other
+            preprocessors and in parallel with the dataset consumer.
+        use_stream_api: Deprecated. Use max_object_store_memory_fraction instead.
+        stream_window_size: Deprecated. Use max_object_store_memory_fraction instead.
     """
 
     # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
@@ -333,10 +343,13 @@ class DatasetConfig:
     split: Optional[bool] = None
     required: Optional[bool] = None
     transform: Optional[bool] = None
-    use_stream_api: Optional[bool] = None
-    stream_window_size: Optional[float] = None
+    max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    per_epoch_preprocessor: Optional["Preprocessor"] = None
+    # Deprecated.
+    use_stream_api: Optional[int] = None
+    stream_window_size: Optional[int] = None
 
     def __repr__(self):
         return _repr_dataclass(self)
@@ -346,21 +359,32 @@ class DatasetConfig:
             title = type(self).__name__
         return make_table_html_repr(obj=self, title=title)
 
+    def __post_init__(self):
+        if self.use_stream_api is not None or self.stream_window_size is not None:
+            raise DeprecationWarning(
+                "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
+                "have been removed as of Ray 2.3. Instead, use "
+                "DatasetConfig.max_object_store_memory_fraction with a value "
+                "0 or greater "
+                "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
+                "#ray.air.config.DatasetConfig)."
+            )
+
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
         return DatasetConfig(
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            use_stream_api=self.use_stream_api or False,
-            stream_window_size=self.stream_window_size
-            if self.stream_window_size is not None
-            else 1024 * 1024 * 1024,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            if self.max_object_store_memory_fraction is not None
+            else -1,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
             randomize_block_order=self.randomize_block_order
             if self.randomize_block_order is not None
             else True,
+            per_epoch_preprocessor=self.per_epoch_preprocessor,
         )
 
     @staticmethod
@@ -411,6 +435,38 @@ class DatasetConfig:
                     raise ValueError(
                         f"The required dataset `{k}` was not found in {datasets}."
                     )
+            if not isinstance(v.max_object_store_memory_fraction, (float, int)):
+                raise ValueError(
+                    f"Error configuring dataset `{k}`: "
+                    "max_object_store_memory_fraction "
+                    "must be None or a float with value -1 or >=0, but got "
+                    f"{v.max_object_store_memory_fraction}."
+                )
+            if not (
+                v.max_object_store_memory_fraction == -1
+                or v.max_object_store_memory_fraction >= 0
+            ):
+                raise ValueError(
+                    f"Error configuring dataset `{k}`: "
+                    "max_object_store_memory_fraction "
+                    "must be None or a float with value -1 or >=0, but got "
+                    f"{v.max_object_store_memory_fraction}."
+                )
+            if v.per_epoch_preprocessor is not None:
+                if not isinstance(v.per_epoch_preprocessor, Preprocessor):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
+                        f"but got {v.per_epoch_preprocessor}."
+                    )
+                if (
+                    v.per_epoch_preprocessor.fit_status()
+                    != Preprocessor.FitStatus.NOT_FITTABLE
+                ):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` currently does not support "
+                        "fittable ray.data.Preprocessors."
+                    )
+
         if len(fittable) > 1:
             raise ValueError(
                 f"More than one dataset was specified to be fit: {fittable}"
@@ -431,18 +487,18 @@ class DatasetConfig:
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
             transform=self.transform if other.transform is None else other.transform,
-            use_stream_api=self.use_stream_api
-            if other.use_stream_api is None
-            else other.use_stream_api,
-            stream_window_size=self.stream_window_size
-            if other.stream_window_size is None
-            else other.stream_window_size,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            if other.max_object_store_memory_fraction is None
+            else other.max_object_store_memory_fraction,
             global_shuffle=self.global_shuffle
             if other.global_shuffle is None
             else other.global_shuffle,
             randomize_block_order=self.randomize_block_order
             if other.randomize_block_order is None
             else other.randomize_block_order,
+            per_epoch_preprocessor=self.per_epoch_preprocessor
+            if other.per_epoch_preprocessor is None
+            else other.per_epoch_preprocessor,
         )
         return new_config
 
@@ -475,7 +531,7 @@ class FailureConfig:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
         # Same check as in TrialRunner
-        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() != "RAISE"):
+        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
             )
@@ -520,8 +576,7 @@ class CheckpointConfig:
             on disk for this run. If a checkpoint is persisted to disk after
             there are already this many checkpoints, then an existing
             checkpoint will be deleted. If this is ``None`` then checkpoints
-            will not be deleted. If this is ``0`` then no checkpoints will be
-            persisted to disk.
+            will not be deleted. Must be >= 1.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
@@ -553,11 +608,11 @@ class CheckpointConfig:
     checkpoint_at_end: Optional[bool] = None
 
     def __post_init__(self):
-        if self.num_to_keep is not None and self.num_to_keep < 0:
+        if self.num_to_keep is not None and self.num_to_keep <= 0:
             raise ValueError(
                 f"Received invalid num_to_keep: "
                 f"{self.num_to_keep}. "
-                f"Must be None or non-negative integer."
+                f"Must be None or an integer >= 1."
             )
         if self.checkpoint_score_order not in (MAX, MIN):
             raise ValueError(

@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
@@ -446,7 +446,7 @@ class SquashedGaussian(TFActionDistribution):
         # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
         log_prob = log_prob_gaussian - tf.reduce_sum(
-            tf.math.log(1 - unsquashed_values_tanhd ** 2 + SMALL_NUMBER), axis=-1
+            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), axis=-1
         )
         return log_prob
 

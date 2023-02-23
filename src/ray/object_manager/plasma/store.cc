@@ -117,6 +117,10 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
       RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
   }
+
+  if (RayConfig::instance().metrics_report_interval_ms() > 0) {
+    ScheduleRecordMetrics();
+  }
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
@@ -315,8 +319,11 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
         boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
         std::move(socket_));
   }
-  // We're ready to accept another client.
-  DoAccept();
+
+  if (error != boost::asio::error::operation_aborted) {
+    // We're ready to accept another client.
+    DoAccept();
+  }
 }
 
 void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
@@ -544,7 +551,6 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 
 void PlasmaStore::PrintAndRecordDebugDump() const {
   absl::MutexLock lock(&mutex_);
-  RecordMetrics();
   RAY_LOG(INFO) << GetDebugDump();
   stats_timer_ = execute_after(
       io_context_,
@@ -552,7 +558,17 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
       RayConfig::instance().event_stats_print_interval_ms());
 }
 
-void PlasmaStore::RecordMetrics() const { object_lifecycle_mgr_.RecordMetrics(); }
+void PlasmaStore::ScheduleRecordMetrics() const {
+  absl::MutexLock lock(&mutex_);
+  object_lifecycle_mgr_.RecordMetrics();
+
+  metric_timer_ = execute_after(
+      io_context_,
+      [this]() { ScheduleRecordMetrics(); },
+      // divide by 2 to make sure record happens before reporting
+      // this also matches with  NodeManager::RecordMetrics interval
+      RayConfig::instance().metrics_report_interval_ms() / 2);
+}
 
 std::string PlasmaStore::GetDebugDump() const {
   std::stringstream buffer;

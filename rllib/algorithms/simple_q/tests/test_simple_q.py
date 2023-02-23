@@ -45,16 +45,16 @@ class TestSimpleQ(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="CartPole-v0")
-            rw = trainer.workers.local_worker()
+            algo = config.build(env="CartPole-v1")
+            rw = algo.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
                 assert sb.count == config.rollout_fragment_length
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
@@ -66,11 +66,11 @@ class TestSimpleQ(unittest.TestCase):
                 "fcnet_activation": "linear",
             },
             num_steps_sampled_before_learning_starts=0,
-        )
+        ).environment("CartPole-v1")
 
         for fw in framework_iterator(config):
             # Generate Algorithm and get its default Policy object.
-            trainer = simple_q.SimpleQ(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
             # Batch of size=2.
             input_ = SampleBatch(
@@ -78,7 +78,7 @@ class TestSimpleQ(unittest.TestCase):
                     SampleBatch.CUR_OBS: np.random.random(size=(2, 4)),
                     SampleBatch.ACTIONS: np.array([0, 1]),
                     SampleBatch.REWARDS: np.array([0.4, -1.23]),
-                    SampleBatch.DONES: np.array([False, False]),
+                    SampleBatch.TERMINATEDS: np.array([False, False]),
                     SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
                     SampleBatch.EPS_ID: np.array([1234, 1234]),
                     SampleBatch.AGENT_INDEX: np.array([0, 0]),
@@ -180,7 +180,7 @@ class TestSimpleQ(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             lr = _step_n_times(algo, 1)  # 50 timesteps
             # Close to 0.2

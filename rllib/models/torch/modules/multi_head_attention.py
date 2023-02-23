@@ -51,7 +51,7 @@ class MultiHeadAttention(nn.Module):
         values = torch.reshape(values, [-1, L, H, D])
 
         score = torch.einsum("bihd,bjhd->bijh", queries, keys)
-        score = score / D ** 0.5
+        score = score / D**0.5
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(torch.arange(1, L + 1), dtype=score.dtype)

@@ -3,7 +3,7 @@ from typing import Set, Callable
 
 default_logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024 ** 3) * 10  # 10 GB
+DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**3) * 10  # 10 GB
 
 
 class URICache:

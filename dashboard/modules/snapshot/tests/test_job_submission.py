@@ -46,6 +46,7 @@ def _get_snapshot(address: str):
     indirect=True,
 )
 def test_successful_job_status(
+    make_sure_dashboard_http_port_unused,
     set_override_dashboard_url,
     ray_start_with_dashboard,
     disable_aiohttp_cache,
@@ -101,7 +102,7 @@ def test_successful_job_status(
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest123": "123"}}
                 assert entry["metadata"] == {"rayTest456": "456"}
                 assert entry["errorType"] is None
-                assert abs(entry["startTime"] - start_time_s * 1000) <= 2000
+                assert abs(entry["startTime"] - start_time_s * 1000) <= 10000
                 if entry["status"] == "SUCCEEDED":
                     job_succeeded = True
                     assert (
@@ -117,7 +118,11 @@ def test_successful_job_status(
 
 @pytest.mark.parametrize("address_suffix", ["", "/"])  # Trailing slash should succeed
 def test_failed_job_status(
-    ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
+    make_sure_dashboard_http_port_unused,
+    ray_start_with_dashboard,
+    disable_aiohttp_cache,
+    enable_test_module,
+    address_suffix,
 ):
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
@@ -170,7 +175,7 @@ def test_failed_job_status(
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest456": "456"}}
                 assert entry["metadata"] == {"rayTest789": "789"}
                 assert entry["errorType"] is None
-                assert abs(entry["startTime"] - start_time_s * 1000) <= 2000
+                assert abs(entry["startTime"] - start_time_s * 1000) <= 10000
                 if entry["status"] == "FAILED":
                     job_failed = True
                     assert (

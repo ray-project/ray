@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -20,13 +20,22 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+    TensorStructType,
+)
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -142,7 +151,7 @@ def _traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
     This is enabled by the `--trace`/`eager_tracing=True` config when
-    framework=[tf2|tfe].
+    framework=tf2.
     """
 
     class TracedEagerPolicy(eager_policy_cls):
@@ -165,13 +174,20 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
+            # NOTE: In the new RLModule stack the sampling side is not traced with this
+            # justification that in order to speed up sampling we need to use more
+            # actors.
             # Create a traced version of `self._compute_actions_helper`.
-            if self._traced_compute_actions_helper is False and not self._no_tracing:
+            if (
+                not self.config.get("_enable_rl_module_api", False)
+                and self._traced_compute_actions_helper is False
+                and not self._no_tracing
+            ):
                 self._compute_actions_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_actions_helper = True
@@ -197,7 +213,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_learn_on_batch_helper = True
@@ -217,7 +233,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_gradients_helper = True
@@ -237,7 +253,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._apply_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_apply_gradients_helper = True
@@ -296,8 +312,8 @@ def _build_eager_tf_policy(
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"framework": "tfe"} in the Algorithm's config to have
-    it automatically be converted to an eager policy.
+    graph policy and use set `.framework("tf2", eager_tracing=False) in your
+    AlgorithmConfig to have it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
 
@@ -322,7 +338,7 @@ def _build_eager_tf_policy(
             # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            self.framework = config.get("framework", "tfe")
+            self.framework = config.get("framework", "tf2")
             EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
@@ -499,16 +515,16 @@ def _build_eager_tf_policy(
         @override(Policy)
         def compute_actions(
             self,
-            obs_batch,
-            state_batches=None,
-            prev_action_batch=None,
-            prev_reward_batch=None,
-            info_batch=None,
-            episodes=None,
-            explore=None,
-            timestep=None,
+            obs_batch: Union[List[TensorStructType], TensorStructType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+            info_batch: Optional[Dict[str, list]] = None,
+            episodes: Optional[List["Episode"]] = None,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
             **kwargs,
-        ):
+        ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             # Create input dict to simply pass the entire call to
             # self.compute_actions_from_input_dict().
             input_dict = SampleBatch(
@@ -622,10 +638,20 @@ def _build_eager_tf_policy(
             postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
             postprocessed_batch.set_training(True)
             stats = self._learn_on_batch_helper(postprocessed_batch)
+            self.num_grad_updates += 1
+
             stats.update(
                 {
                     "custom_metrics": learn_stats,
                     NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates
+                        - 1
+                        - (postprocessed_batch.num_grad_updates or 0)
+                    ),
                 }
             )
             return convert_to_numpy(stats)
@@ -714,12 +740,15 @@ def _build_eager_tf_policy(
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
-                logger.warning(
-                    "Cannot restore an optimizer's state for tf eager! Keras "
-                    "is not able to save the v1.x optimizers (from "
-                    "tf.compat.v1.train) since they aren't compatible with "
-                    "checkpoints."
-                )
+                if not type(self).__name__.endswith("_traced") and log_once(
+                    "set_state_optimizer_vars_tf_eager_policy_v2"
+                ):
+                    logger.warning(
+                        "Cannot restore an optimizer's state for tf eager! Keras "
+                        "is not able to save the v1.x optimizers (from "
+                        "tf.compat.v1.train) since they aren't compatible with "
+                        "checkpoints."
+                    )
                 for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
                     opt_var.assign(value)
             # Set exploration's state.
@@ -741,7 +770,7 @@ def _build_eager_tf_policy(
             within this TfModelV2 class that is-a tf.keras.Model. This base model
             will be used here for the export.
             TODO (kourosh): This restriction will be resolved once we move Policy and
-             ModelV2 to the new RLTrainer/RLModule APIs.
+            ModelV2 to the new Learner/RLModule APIs.
 
             Args:
                 export_dir: Local writable directory.

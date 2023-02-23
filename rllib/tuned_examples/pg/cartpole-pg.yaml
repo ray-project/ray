@@ -1,5 +1,5 @@
 cartpole-pg:
-    env: CartPole-v0
+    env: CartPole-v1
     run: PG
     stop:
         episode_reward_mean: 150

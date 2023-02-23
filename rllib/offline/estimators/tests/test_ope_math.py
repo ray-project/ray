@@ -1,6 +1,6 @@
 import unittest
 import time
-import gym
+import gymnasium as gym
 import torch
 
 import numpy as np
@@ -108,7 +108,8 @@ class TestOPEMath(unittest.TestCase):
                 SampleBatch.REWARDS: np.random.randint(
                     1, 3, size=bsize
                 ),  # rewards are 1 or 2
-                SampleBatch.DONES: np.ones(bsize),
+                SampleBatch.TERMINATEDS: np.ones(bsize),
+                SampleBatch.TRUNCATEDS: np.zeros(bsize),
                 SampleBatch.EPS_ID: np.arange(bsize),
                 SampleBatch.ACTION_PROB: np.ones(bsize) / action_dim,
             }
@@ -128,8 +129,11 @@ class TestOPEMath(unittest.TestCase):
         ray.shutdown()
 
     def test_is_and_wis_math(self):
-        """Tests that the importance sampling and weighted importance sampling
-        methods are correct based on the math."""
+        """Tests that the importance sampling methods.
+
+        It checks whether is and wis methods outputs are consistent when
+        split_batch_by_episode is True or False (RL vs. Bandits)
+        """
 
         ope_classes = [
             ImportanceSampling,
@@ -171,9 +175,11 @@ class TestOPEMath(unittest.TestCase):
                 )
 
     def test_dm_dr_math(self):
-        """Tests that the Direct Method and Doubly Robust methods are correct in terms
-        of RL vs. bandits. This does not check if v_gain > 1.0 because it needs a real
-        target policy to train on."""
+        """Tests the Direct Method and Doubly Robust methods.
+
+        It checks whether DM and DR methods outputs are consistent when
+        split_batch_by_episode is True or False (RL vs. Bandits)
+        """
 
         ope_classes = [
             DirectMethod,
