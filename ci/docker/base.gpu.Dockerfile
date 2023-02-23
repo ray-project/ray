@@ -19,7 +19,6 @@ ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
 # For wheel build
-# https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
 ENV DOCKER_TLS_CERTDIR=/certs
 ENV DOCKER_HOST=tcp://docker:2376
 ENV DOCKER_TLS_VERIFY=1
@@ -35,9 +34,9 @@ RUN apt-get install -y -qq \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     clang-format-12 jq \
     clang-tidy-12 clang-12
-# Make using GCC 9 explicit.
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 90 --slave /usr/bin/g++ g++ /usr/bin/g++-11 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-11
+# Make using GCC 12 explicit.
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
+    --slave /usr/bin/gcov gcov /usr/bin/gcov-12
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang
