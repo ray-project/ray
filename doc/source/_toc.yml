@@ -151,7 +151,6 @@ parts:
               - file: tune/tutorials/tune-run
                 title: "Running Basic Experiments"
               - file: tune/tutorials/tune-output
-                title: "Logging Tune Runs"
               - file: tune/tutorials/tune-resources
                 title: "Setting Trial Resources"
               - file: tune/tutorials/tune-search-spaces

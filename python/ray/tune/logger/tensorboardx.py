@@ -157,6 +157,8 @@ class TBXLoggerCallback(LoggerCallback):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
+    _SAVED_FILE_TEMPLATES = ["events.out.tfevents.*"]
+
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
     VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
 

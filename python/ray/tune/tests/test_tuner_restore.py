@@ -774,6 +774,8 @@ def test_tuner_restore_from_moved_cloud_uri(
     """Test that restoring an experiment that was moved to a new remote URI
     resumes and continues saving new results at that URI."""
 
+    (tmp_path / "moved").mkdir()
+
     def failing_fn(config):
         data = {"score": 1}
         session.report(data, checkpoint=Checkpoint.from_dict(data))

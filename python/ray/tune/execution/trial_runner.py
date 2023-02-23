@@ -42,7 +42,7 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
@@ -150,7 +150,11 @@ class TrialRunner:
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
-            trainable_kwargs={"sync_timeout": self._sync_config.sync_timeout},
+            # TODO(ml-team): Remove these in 2.6.
+            trainable_kwargs={
+                "sync_timeout": self._sync_config.sync_timeout,
+                "custom_syncer": get_node_to_storage_syncer(self._sync_config),
+            },
         )
 
         self._metric = metric

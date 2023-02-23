@@ -35,7 +35,7 @@ from ray.tune.result import (
     TRIAL_ID,
     DEBUG_METRICS,
 )
-from ray.tune.syncer import SyncConfig, Syncer
+from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -347,10 +347,6 @@ class Trial:
 
         # Checkpoint syncing
         self.sync_config = sync_config or SyncConfig()
-
-        self.custom_syncer = None
-        if isinstance(self.sync_config.syncer, Syncer):
-            self.custom_syncer = sync_config.syncer
 
         # Checkpoint config
         checkpoint_config = checkpoint_config or CheckpointConfig()
