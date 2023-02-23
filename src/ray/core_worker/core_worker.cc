@@ -693,7 +693,7 @@ void CoreWorker::Disconnect(
   // Force task state events push before exiting the worker.
   task_event_buffer_->FlushEvents(/* forced */ true);
 
-  // opencensus::stats::StatsExporter::ExportNow();
+  opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;

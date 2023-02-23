@@ -1,6 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 debian_packages: []
-env_vars: {"RAY_use_ray_syncer": "true", "RAY_event_stats": "false"}
 
 python:
   pip_packages: []
