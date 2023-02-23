@@ -189,5 +189,45 @@ def test_failed_job_status(
     wait_for_condition(wait_for_job_to_fail, timeout=45)
 
 
+def test_multiple_ray_init(
+    make_sure_dashboard_http_port_unused,
+    ray_start_with_dashboard,
+    disable_aiohttp_cache,
+    enable_test_module,
+):
+    """Test that multiple drivers in a single job have the same submission ID."""
+    address = ray._private.worker._global_node.webui_url
+    assert wait_until_server_available(address)
+    address = format_web_url(address)
+
+    # Define an entrypoint that runs four ray.init() calls total (parallelism=2).
+    cmd = (
+        "python -c 'import ray; ray.init(); ray.shutdown(); "
+        "ray.init(); ray.shutdown()'"
+    )
+    entrypoint = f"{cmd} & {cmd} && wait && echo 'done'"
+
+    client = JobSubmissionClient(address)
+    job_id = client.submit_job(entrypoint=entrypoint)
+    print(f"Submitted job with ID {job_id}")
+
+    def wait_for_four_drivers():
+        data = _get_snapshot(address)
+
+        # Check that four drivers correspond to this job.
+        succeeded_driver_ids = set()
+        for driver_id, job_entry in data["data"]["snapshot"]["jobs"].items():
+            print(job_entry)
+            if (
+                job_entry["status"] == "SUCCEEDED"
+                and job_entry["config"]["metadata"]["jobSubmissionId"] == job_id
+            ):
+                succeeded_driver_ids.add(driver_id)
+        print(f"Succeeded driver IDs: {succeeded_driver_ids}")
+        return len(succeeded_driver_ids) == 4
+
+    wait_for_condition(wait_for_four_drivers, retry_interval_ms=1000)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
