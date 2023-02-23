@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 def make_time_major(
-    tensor: Union[tf.Tensor, List[tf.Tensor]],
+    tensor: Union["tf.Tensor", List["tf.Tensor"]],
     *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
@@ -62,14 +62,14 @@ def make_time_major(
 
 def vtrace_tf2(
     *,
-    target_action_log_probs: tf.Tensor,
-    behaviour_action_log_probs: tf.Tensor,
-    discounts: tf.Tensor,
-    rewards: tf.Tensor,
-    values: tf.Tensor,
-    bootstrap_value: tf.Tensor,
-    clip_rho_threshold: Union[float, tf.Tensor] = 1.0,
-    clip_pg_rho_threshold: Union[float, tf.Tensor] = 1.0,
+    target_action_log_probs: "tf.Tensor",
+    behaviour_action_log_probs: "tf.Tensor",
+    discounts: "tf.Tensor",
+    rewards: "tf.Tensor",
+    values: "tf.Tensor",
+    bootstrap_value: "tf.Tensor",
+    clip_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
+    clip_pg_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
 ):
     r"""V-trace for softmax policies.
 
