@@ -7,6 +7,7 @@ from typing import Any, Dict, Union
 
 import ray
 from ray.air.checkpoint import Checkpoint
+from ray.rllib.utils.serialization import serialize_function
 from ray.util.annotations import PublicAPI
 
 # The current checkpoint version used by RLlib for Algorithm and Policy checkpoints.
@@ -47,6 +48,7 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     # Default checkpoint info.
     info = {
         "type": "Algorithm",
+        "format": "cloudpickle",
         "checkpoint_version": version.Version("1.0"),
         "checkpoint_dir": None,
         "state_file": None,
@@ -79,27 +81,38 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         # No old checkpoint file found.
 
         # Policy checkpoint file found.
-        if os.path.isfile(os.path.join(checkpoint, "policy_state.pkl")):
-            info.update(
-                {
-                    "type": "Policy",
-                    "checkpoint_version": version.Version("1.0"),
-                    "checkpoint_dir": checkpoint,
-                    "state_file": os.path.join(checkpoint, "policy_state.pkl"),
-                }
-            )
-            return info
+        for extension in ["pkl", "msgpck"]:
+            if os.path.isfile(os.path.join(checkpoint, "policy_state.pkl")):
+                info.update(
+                    {
+                        "type": "Policy",
+                        "format": "cloudpickle" if extension == "pkl" else "msgpack",
+                        "checkpoint_version": version.Version("1.0"),
+                        "checkpoint_dir": checkpoint,
+                        "state_file": os.path.join(
+                            checkpoint, f"policy_state.{extension}"
+                        ),
+                    }
+                )
+                return info
 
-        # >v0 Algorithm checkpoint file found?
-        state_file = os.path.join(checkpoint, "algorithm_state.pkl")
-        if not os.path.isfile(state_file):
+        # Valid Algorithm checkpoint >v0 file found?
+        format = None
+        state_file = None
+        for extension in ["pkl", "msgpck"]:
+            state_file = os.path.join(checkpoint, f"algorithm_state.{extension}")
+            if os.path.isfile(state_file):
+                format = "cloudpickle" if extension == "pkl" else "msgpack"
+                break
+        if format is None:
             raise ValueError(
-                "Given checkpoint does not seem to be valid! No file "
-                "with the name `algorithm_state.pkl` (or `checkpoint-[0-9]+`) found."
+                "Given checkpoint does not seem to be valid! No file with the name "
+                "`algorithm_state.[pkl|msgpck]` (or `checkpoint-[0-9]+`) found."
             )
 
         info.update(
             {
+                "format": format,
                 "checkpoint_dir": checkpoint,
                 "state_file": state_file,
             }
@@ -134,23 +147,27 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
 
 @PublicAPI(stability="beta")
-def create_python_version_independent_checkpoint(
+def create_msgpack_checkpoint(
     checkpoint: Union[str, Checkpoint],
-    python_version_independent_checkpoint_dir: str,
+    msgpack_checkpoint_dir: str,
 ) -> None:
     from ray.rllib.algorithms import Algorithm
+    from ray.rllib.utils.policy import validate_policy_id
+
+    # Try to import msgpack and msgpack_numpy.    
+    msgpack = try_import_msgpack(error=True)
 
     # Restore the Algorithm using the python version dependent checkpoint.
     algo = Algorithm.from_checkpoint(checkpoint)
     state = algo.__getstate__()
 
-    # TEST
-    msgpack_able_state = state.copy()
-    del msgpack_able_state["config"]
-    del msgpack_able_state["algorithm_class"]
-    del msgpack_able_state["worker"]["policy_states"]
-    del msgpack_able_state["worker"]["policy_mapping_fn"]
-    # END:TEST
+    # Convert all code in state into serializable data.
+    # Algorithm class.
+    algo_class = state["algorithm_class"]
+    algo_class = algo_class.__module__ + "." + algo_class.__name__
+    state["algorithm_class"] = algo_class
+    # All keys in `config`.
+    state["config"] = state["config"].to_dict(serializable=True)
 
     # Extract policy states from worker state (Policies get their own
     # checkpoint sub-dirs).
@@ -158,21 +175,31 @@ def create_python_version_independent_checkpoint(
     if "worker" in state and "policy_states" in state["worker"]:
         policy_states = state["worker"].pop("policy_states", {})
 
-    # Add RLlib checkpoint version.
-    state["checkpoint_version"] = CHECKPOINT_VERSION
+    # Policy mapping fn.
+    pol_map_fn = state["worker"]["policy_mapping_fn"]
+    if callable(pol_map_fn):
+        state["worker"]["policy_mapping_fn"] = serialize_function(
+            pol_map_fn
+        )
+    # Is Policy to train function.
+    is_pol_to_train = state["worker"]["is_policy_to_train"]
+    if callable(is_pol_to_train):
+        state["worker"]["is_policy_to_train"] = serialize_function(is_pol_to_train)
+
+    # Add RLlib checkpoint version (as string).
+    state["checkpoint_version"] = str(CHECKPOINT_VERSION)
 
     # Write state (w/o policies) to disk.
-    checkpoint_dir = python_version_independent_checkpoint_dir
-    state_file = os.path.join(checkpoint_dir, "algorithm_state.msgpck")
+    state_file = os.path.join(msgpack_checkpoint_dir, "algorithm_state.msgpck")
     with open(state_file, "wb") as f:
-        pickle.dump(state, f)
+        msgpack.dump(state, f)
 
     # Write rllib_checkpoint.json.
-    with open(os.path.join(checkpoint_dir, "rllib_checkpoint.json"), "w") as f:
+    with open(os.path.join(msgpack_checkpoint_dir, "rllib_checkpoint.json"), "w") as f:
         json.dump(
             {
                 "type": "Algorithm",
-                "checkpoint_version": str(state["checkpoint_version"]),
+                "checkpoint_version": state["checkpoint_version"],
                 "format": "msgpack",
                 "ray_version": ray.__version__,
                 "ray_commit": ray.__commit__,
@@ -182,9 +209,44 @@ def create_python_version_independent_checkpoint(
 
     # Write individual policies to disk, each in their own sub-directory.
     for pid, policy_state in policy_states.items():
-        # From here on, disallow policyIDs that would not work as directory names.
-        validate_policy_id(pid, error=True)
-        policy_dir = os.path.join(checkpoint_dir, "policies", pid)
+        # From here on, disallow policyIDs that would not work as directory names.        validate_policy_id(pid, error=True)
+        policy_dir = os.path.join(msgpack_checkpoint_dir, "policies", pid)
         os.makedirs(policy_dir, exist_ok=True)
         policy = algo.get_policy(pid)
-        policy.export_checkpoint(policy_dir, policy_state=policy_state)
+        policy.export_checkpoint(
+            policy_dir,
+            policy_state=policy_state,
+            checkpoint_format="msgpack",
+        )
+
+
+@PublicAPI
+def try_import_msgpack(error: bool = False):
+    """Tries importing msgpack and msgpack_numpy and returns the patched msgpack module.
+
+    Returns None if error is False and msgpack or msgpack_numpy is not installed.
+    Raises an error, if error is True and the modules could not be imported.
+
+    Args:
+        error: Whether to raise an error if msgpack/msgpack_numpy cannot be imported.
+
+    Returns:
+        The `msgpack` module.
+
+    Raises:
+        ImportError: If error=True and msgpack/msgpack_numpy is not installed.
+    """
+    try:
+        import msgpack
+        import msgpack_numpy
+        # Make msgpack_numpy look like msgpack.
+        msgpack_numpy.patch()
+
+        return msgpack
+
+    except Exception:
+        if error:
+            raise ImportError(
+                "Could not import or setup msgpack and msgpack_numpy! "
+                "Try running `pip install msgpack msgpack_numpy` first."
+            )

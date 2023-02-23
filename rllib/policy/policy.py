@@ -43,7 +43,11 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
+from ray.rllib.utils.checkpoints import (
+    CHECKPOINT_VERSION,
+    get_checkpoint_info,
+    try_import_msgpack,
+)
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -118,6 +122,7 @@ class PolicySpec:
         )
 
     def serialize(self) -> Dict:
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         from ray.rllib.algorithms.registry import get_policy_class_name
 
         # Try to figure out a durable name for this policy.
@@ -136,9 +141,9 @@ class PolicySpec:
             "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
-            # TODO(jungong) : try making the config dict durable by maybe
-            # getting rid of all the fields that are not JSON serializable.
-            "config": self.config,
+            # Make the config dict durable by getting rid of all the fields
+            # that are code (not JSON serializable).
+            "config": AlgorithmConfig.make_config_dict_serializable(self.config),
         }
 
     @classmethod
@@ -1101,6 +1106,7 @@ class Policy(metaclass=ABCMeta):
         filename_prefix=DEPRECATED_VALUE,
         *,
         policy_state: Optional[PolicyState] = None,
+        checkpoint_format: str = "cloudpickle",
     ) -> None:
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
@@ -1110,6 +1116,7 @@ class Policy(metaclass=ABCMeta):
             policy_state: An optional PolicyState to write to disk. Used by
                 `Algorithm.save_checkpoint()` to save on the additional
                 `self.get_state()` calls of its different Policies.
+            checkpoint_format: Either one of 'cloudpickle' or 'msgpack'.
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
@@ -1123,14 +1130,25 @@ class Policy(metaclass=ABCMeta):
                 old="Policy.export_checkpoint(filename_prefix=...)",
                 error=True,
             )
+        assert checkpoint_format in ["cloudpickle", "msgpack"], (
+            f"Value of `checkpoint_format` ({checkpoint_format}) must either be "
+            "'cloudpickle' or 'msgpack'!"
+        )
+
         if policy_state is None:
             policy_state = self.get_state()
-        policy_state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write main policy state file.
         os.makedirs(export_dir, exist_ok=True)
-        with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
-            pickle.dump(policy_state, f)
+        if checkpoint_format == "cloudpickle":
+            policy_state["checkpoint_version"] = CHECKPOINT_VERSION
+            with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
+                pickle.dump(policy_state, f)
+        else:
+            msgpack = try_import_msgpack(error=True)
+            policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
+            with open(os.path.join(export_dir, "policy_state.msgpck"), "w+b") as f:
+                msgpack.dump(policy_state, f)
 
         # Write RLlib checkpoint json.
         with open(os.path.join(export_dir, "rllib_checkpoint.json"), "w") as f:
@@ -1138,6 +1156,7 @@ class Policy(metaclass=ABCMeta):
                 {
                     "type": "Policy",
                     "checkpoint_version": str(policy_state["checkpoint_version"]),
+                    "format": checkpoint_format,
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },

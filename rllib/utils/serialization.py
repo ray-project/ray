@@ -1,8 +1,10 @@
 import base64
-import numpy as np
+import inspect
 import io
 import zlib
-from typing import Dict, Any, Sequence
+from typing import Any, Callable, Dict, Sequence, Type, Union
+
+import numpy as np
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -325,3 +327,44 @@ def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any
                 f"Found non-serializable keyword argument: {k} = {v}.\n"
                 f"Original serialization error: {e}"
             )
+
+
+@DeveloperAPI
+def serialize_function(function: Union[Callable, dict]) -> dict:
+    """Converts a function into a dict of source-code- and closure information.
+
+    Args:
+        function: The callable to convert.
+
+    Returns:
+        A dict with keys: 'source_code' (value: source code string) and
+        'closures_globals' (value: dict mapping global variable names to their values).
+    """
+    # Already serialized.
+    if isinstance(function, dict):
+        return function
+
+    source_code = inspect.getsource(function)
+    globals = inspect.getclosurevars(function).globals
+
+    return {
+        "source_code": source_code,
+        "closures_globals": globals,
+    }
+
+
+@DeveloperAPI
+def serialize_type(type_: Union[Type, str]) -> str:
+    """Converts a type into its full classpath ([module file] + "." + [class name]).
+
+    Args:
+        type_: The type to convert.
+
+    Returns:
+        The full classpath of the given type, e.g. "ray.rllib.algorithms.ppo.PPOConfig".
+    """
+    # Already serialized.
+    if isinstance(type_, str):
+        return type_
+
+    return type_.__module__ + "." + type_.__name__

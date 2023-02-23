@@ -73,7 +73,11 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     override,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
+from ray.rllib.utils.checkpoints import (
+    CHECKPOINT_VERSION,
+    get_checkpoint_info,
+    try_import_msgpack,
+)
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -2671,7 +2675,10 @@ class Algorithm(Trainable):
                     )
 
                 with open(policy_state_file, "rb") as f:
-                    worker_state["policy_states"][pid] = pickle.load(f)
+                    if msgpack:
+                        worker_state["policy_states"][pid] = msgpack.load(f)
+                    else:
+                        worker_state["policy_states"][pid] = pickle.load(f)
 
             if policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn

@@ -4,7 +4,10 @@ import tempfile
 import unittest
 
 import ray
-from ray.rllib.utils.checkpoints import get_checkpoint_info
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.simple_q import SimpleQConfig
+from ray.rllib.utils.checkpoints import get_checkpoint_info, create_msgpack_checkpoint
+from ray.rllib.utils.test_utils import check
 
 
 class TestCheckpointUtils(unittest.TestCase):
@@ -69,6 +72,22 @@ class TestCheckpointUtils(unittest.TestCase):
             self.assertTrue(info["checkpoint_dir"] == checkpoint_dir)
             self.assertTrue(info["state_file"] == policy_state_file)
             self.assertTrue(info["policy_ids"] is None)
+
+    def test_msgpack_checkpoint_translation(self):
+        """Tests, whether a checkpoint can be translated into a msgpack-checkpoint."""
+        config = SimpleQConfig().environment("CartPole-v1")
+        algo1 = config.build()
+        pickle_state = algo1.__getstate__()
+        # Create standard pickle-based checkpoint.
+        with tempfile.TemporaryDirectory() as pickle_cp_dir:
+            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            # Convert pickle checkpoint to msgpack.
+            with tempfile.TemporaryDirectory() as msgpack_cp_dir:
+                create_msgpack_checkpoint(pickle_cp_dir, msgpack_cp_dir)
+                algo2 = Algorithm.from_checkpoint(msgpack_cp_dir)
+        msgpack_state = algo2.__getstate__()
+
+        check(pickle_state["config"], msgpack_state["config"])
 
 
 if __name__ == "__main__":
