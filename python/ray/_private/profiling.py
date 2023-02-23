@@ -1,7 +1,8 @@
 import os
 import json
 from collections import defaultdict
-from typing import List
+from dataclasses import dataclass, asdict
+from typing import List, Dict, Union
 
 import ray
 
@@ -38,6 +39,46 @@ _default_color_mapping = defaultdict(
         "register_remote_function": "detailed_memory_dump",
     },
 )
+
+
+@dataclass(init=True)
+class ChromeTracingCompleteEvent:
+    # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lpfof2aylapb # noqa
+    # The event categories. This is a comma separated list of categories
+    # for the event. The categories can be used to hide events in
+    # the Trace Viewer UI.
+    cat: str
+    # The string displayed on the event.
+    name: str
+    # The identifier for the group of rows that the event
+    # appears in.
+    pid: int
+    # The identifier for the row that the event appears in.
+    tid: int
+    # The start time in microseconds.
+    ts: int
+    # The duration in microseconds.
+    dur: int
+    # This is the name of the color to display the box in.
+    cname: str
+    # The extra user-defined data.
+    args: Dict[str, Union[str, int]]
+    # The event type (X means the complete event).
+    ph: str = "X"
+
+
+@dataclass(init=True)
+class ChromeTracingMetadataEvent:
+    # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#bookmark=id.iycbnb4z7i9g # noqa
+    name: str
+    # Metadata arguments. E.g., name: <metadata_name>
+    args: Dict[str, str]
+    # The process id of this event. In Ray, pid indicates the node.
+    pid: int
+    # The thread id of this event. In Ray, tid indicates each worker.
+    tid: int = None
+    # M means the metadata event.
+    ph: str = "M"
 
 
 def profile(event_type, extra_data=None):
@@ -156,58 +197,50 @@ def chrome_tracing_dump(
                     ] = worker_idx  # noqa
                     worker_idx += 1
 
-                new_event = {
-                    # The category of the event.
-                    "cat": event_name,
-                    # The string displayed on the event.
-                    "name": event_name,
-                    # The identifier for the group of rows that the event
-                    # appears in.
-                    "pid": node_to_index[node_ip_address],
-                    # The identifier for the row that the event appears in.
-                    "tid": worker_to_index[
-                        (node_to_index[node_ip_address], component_id)
-                    ],
-                    # The start time is in ms. Convert it to microseconds.
-                    "ts": event["start_time"] * 10e3,
-                    # The duration is in ms. Convert it to microseconds.
-                    "dur": (event["end_time"] * 10e3) - (event["start_time"] * 10e3),
-                    # What is this?
-                    "ph": "X",
-                    # This is the name of the color to display the box in.
-                    "cname": _default_color_mapping[event["event_name"]],
-                    # The extra user-defined data.
-                    "args": extra_data,
-                }
+                # Modify the name with the additional user-defined extra data.
+                cname = _default_color_mapping[event["event_name"]]
+                name = event_name
 
-                # Modify the json with the additional user-defined extra data.
-                # This can be used to add fields or override existing fields.
                 if "cname" in extra_data:
-                    new_event["cname"] = event["extra_data"]["cname"]
+                    cname = _default_color_mapping[event["extra_data"]["cname"]]
                 if "name" in extra_data:
-                    new_event["name"] = extra_data["name"]
-                all_events.append(new_event)
+                    name = extra_data["name"]
 
-            for node, i in node_to_index.items():
-                all_events.append(
-                    {
-                        "name": "process_name",
-                        "ph": "M",
-                        "pid": i,
-                        "args": {"name": f"Node {node}"},
-                    }
+                new_event = ChromeTracingCompleteEvent(
+                    cat=event_name,
+                    name=name,
+                    pid=node_to_index[node_ip_address],
+                    tid=worker_to_index[(node_to_index[node_ip_address], component_id)],
+                    ts=event["start_time"] * 1e3,
+                    dur=(event["end_time"] * 1e3) - (event["start_time"] * 1e3),
+                    cname=cname,
+                    args=extra_data,
                 )
+                all_events.append(asdict(new_event))
 
-            for worker, i in worker_to_index.items():
-                all_events.append(
-                    {
-                        "name": "thread_name",
-                        "ph": "M",
-                        "tid": i,
-                        "pid": worker[0],
-                        "args": {"name": worker[1]},
-                    }
+    for node, i in node_to_index.items():
+        all_events.append(
+            asdict(
+                ChromeTracingMetadataEvent(
+                    name="process_name",
+                    pid=i,
+                    args={"name": f"Node {node}"},
                 )
+            )
+        )
+
+    for worker, i in worker_to_index.items():
+        all_events.append(
+            asdict(
+                ChromeTracingMetadataEvent(
+                    name="thread_name",
+                    ph="M",
+                    tid=i,
+                    pid=worker[0],
+                    args={"name": worker[1]},
+                )
+            )
+        )
 
     # Handle task event disabled.
     return json.dumps(all_events)

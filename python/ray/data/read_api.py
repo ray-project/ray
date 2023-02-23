@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
@@ -128,7 +127,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -279,8 +278,7 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    # TODO(ekl) remove this feature flag.
-    force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    force_local = False
     cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
@@ -1049,6 +1047,22 @@ def read_tfrecords(
            length  width    species
         0     5.1    3.5  b'setosa'
 
+        We can also read compressed TFRecord files which uses one of the
+        `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
+
+        >>> compressed_path = os.path.join(tempfile.gettempdir(), "data_compressed.tfrecords")
+        >>> options = tf.io.TFRecordOptions(compression_type="GZIP") # "ZLIB" also supported by TensorFlow
+        >>> with tf.io.TFRecordWriter(path=compressed_path, options=options) as writer:
+        ...     writer.write(example.SerializeToString())
+
+        >>> ds = ray.data.read_tfrecords(
+        ...     [compressed_path],
+        ...     arrow_open_stream_args={"compression": "gzip"},
+        ... )
+        >>> ds.to_pandas()  # doctest: +SKIP
+           length  width    species
+        0     5.1    3.5  b'setosa'
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -1056,7 +1070,9 @@ def read_tfrecords(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files in the dataset.
         arrow_open_stream_args: Key-word arguments passed to
-            ``pyarrow.fs.FileSystem.open_input_stream``.
+            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
+            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -1264,7 +1280,7 @@ def from_pandas_refs(
                 run_by_consumer=False,
             ),
             0,
-            False,
+            True,
         )
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
@@ -1279,7 +1295,7 @@ def from_pandas_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1338,7 +1354,7 @@ def from_numpy_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1390,7 +1406,7 @@ def from_arrow_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
