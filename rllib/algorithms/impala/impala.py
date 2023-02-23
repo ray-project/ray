@@ -1108,7 +1108,11 @@ class Impala(Algorithm):
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
-        if not self.config._enable_learner_api:
+        if self.config._enable_learner_api:
+            result["custom_metrics"] = {
+                "learner_group_queue_size": self.learner_group.in_queue_size
+            }
+        else:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )

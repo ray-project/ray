@@ -113,6 +113,15 @@ class LearnerGroup:
             self._in_queue = deque(maxlen=max_queue_len)
 
     @property
+    def in_queue_size(self) -> int:
+        """Returns the number of batches currently in the in queue to be processed.
+
+        If the queue is reaching its max size, then this learner group likely needs
+        more workers to process incoming batches.
+        """
+        return len(self._in_queue)
+
+    @property
     def is_local(self) -> bool:
         return self._is_local
 
