@@ -447,6 +447,8 @@ class ServeController:
             name, deployment_args_list
         )
         self.delete_deployments(deployments_to_delete)
+        for args in deployment_args_list:
+            del args["fastapi_docs_path"]
         return [self.deploy(**args) for args in deployment_args_list]
 
     def deploy_apps(
@@ -718,6 +720,10 @@ class ServeController:
         if not status:
             return None
         return status[0].to_proto().SerializeToString()
+
+    def get_fastapi_docs_path(self, name: str):
+        """FastAPI docs path for application."""
+        return self.application_state_manager.get_fastapi_docs_path(name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names

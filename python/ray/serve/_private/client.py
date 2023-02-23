@@ -273,6 +273,7 @@ class ServeControllerClient:
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
+                    fastapi_docs_path=deployment["fastapi_docs_path"],
                 )
             )
 
@@ -415,6 +416,10 @@ class ServeControllerClient:
             )
             for status_bytes in statuses_bytes
         ]
+    
+    @_ensure_connected
+    def get_fastapi_docs_path(self, name: str):
+        return ray.get(self._controller.get_fastapi_docs_path.remote(name))
 
     @_ensure_connected
     def get_handle(
@@ -493,6 +498,7 @@ class ServeControllerClient:
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         is_driver_deployment: Optional[str] = None,
+        fastapi_docs_path: Optional[str] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -548,6 +554,7 @@ class ServeControllerClient:
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "is_driver_deployment": is_driver_deployment,
+            "fastapi_docs_path": fastapi_docs_path,
         }
 
         return controller_deploy_args

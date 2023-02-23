@@ -43,8 +43,9 @@ class Deployment:
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
-        _internal=False,
         is_driver_deployment: Optional[bool] = False,
+        fastapi_docs_path: Optional[str] = None,
+        _internal=False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -96,6 +97,7 @@ class Deployment:
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
         self._is_driver_deployment = is_driver_deployment
+        self._fastapi_docs_path = fastapi_docs_path
 
     @property
     def name(self) -> str:
