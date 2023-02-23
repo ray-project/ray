@@ -32,6 +32,8 @@ class TableBlockBuilder(BlockBuilder[T]):
         # Cursor into tables indicating up to which table we've accumulated table sizes.
         # This is used to defer table size calculation, which can be expensive for e.g.
         # Pandas DataFrames.
+        # This cursor points to the first table for which we haven't accumulated a table
+        # size.
         self._tables_size_cursor = 0
         # Accumulated table sizes, up to the table in _tables pointed to by
         # _tables_size_cursor.
@@ -123,9 +125,9 @@ class TableBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
-        for table in self._tables[self._tables_size_cursor + 1 :]:
+        for table in self._tables[self._tables_size_cursor :]:
             self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
-        self._tables_size_cursor = len(self._tables) - 1
+        self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
 
     def _compact_if_needed(self) -> None:
