@@ -170,8 +170,12 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
-# The cached serialized dummy arg b`__RAY_DUMMY__`
-dummy_type_serialized_arg = None
+# The cached serialized dummy arg b`__RAY_DUMMY__`.
+cdef dummy_type_serialized_arg = None
+# The type of DUMMY_TYPE.
+cdef dummy_type_type = type(DUMMY_TYPE)
+# The value of DUMMY_TYPE, cdef DUMMY_TYPE to avoid global lookup.
+cdef dummy_type_value = DUMMY_TYPE
 
 
 class ObjectRefGenerator:
@@ -446,6 +450,7 @@ cdef prepare_args_internal(
         CAddress c_owner_address
         CRayStatus op_status
 
+
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
@@ -468,7 +473,7 @@ cdef prepare_args_internal(
             # the DUMMY_TYPE.
             # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the
             # DUMMY_TYPE None.
-            if type(arg) is bytes and arg == DUMMY_TYPE:
+            if type(arg) is dummy_type_type and arg == dummy_type_value:
                 global dummy_type_serialized_arg
                 if dummy_type_serialized_arg is None:
                     # Cache the serialized dummy arg.
