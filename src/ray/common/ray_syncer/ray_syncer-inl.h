@@ -151,6 +151,8 @@ class RaySyncerBidiReactor {
   virtual void DoDisconnect() = 0;
   std::string remote_node_id_;
   bool disconnected_ = false;
+
+  FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
 
 /// This class implements the communication between two nodes except the initialization
