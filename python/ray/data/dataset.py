@@ -3990,7 +3990,9 @@ class Dataset(Generic[T]):
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
         manually triggered via ``.fully_executed()``.
         """
-        ds = Dataset(self._plan, self._epoch, lazy=True)
+        ds = Dataset(
+            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
+        )
         ds._set_uuid(self._get_uuid())
         return ds
 
