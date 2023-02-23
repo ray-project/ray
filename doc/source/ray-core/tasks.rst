@@ -164,7 +164,7 @@ Waiting for Partial Results
 ---------------------------
 
 Calling **ray.get** on Ray task results will block until the task finished execution. After launching a number of tasks, you may want to know which ones have
-finished executing without blocking on all of them. This could be achieved by (:ref:`ray-wait-ref`). The function
+finished executing without blocking on all of them. This could be achieved by :func:`ray.wait() <ray.wait>`. The function
 works as follows.
 
 .. tabbed:: Python
@@ -215,7 +215,7 @@ For tasks that return multiple objects, Ray also supports remote generators that
 Cancelling tasks
 ----------------
 
-Ray tasks can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref.
+Ray tasks can be canceled by calling :func:`ray.cancel() <ray.cancel>` on the returned Object ref.
 
 .. tabbed:: Python
 
@@ -242,7 +242,7 @@ By default, Ray will :ref:`retry <task-retries>` failed tasks
 due to system failures and specified application-level failures.
 You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options
-in :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
+in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
 

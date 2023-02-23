@@ -1,7 +1,7 @@
 name: Documentation
 title: "[<Ray component: Core|RLlib|etc...>] "
 description: Report an issue with the Ray documentation
-labels: [docs]
+labels: [docs, triage]
 body:
   - type: markdown
     attributes:
