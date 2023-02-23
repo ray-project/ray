@@ -31,6 +31,10 @@ public class Counter {
     return str;
   }
 
+  public byte[] echoBytes(byte[] bytes) {
+    return bytes;
+  }
+
   public String createChildActor(String actorName) {
     childActor = Ray.actor(Counter::new, 0).setName(actorName).remote();
     Assert.assertEquals(Integer.valueOf(0), childActor.task(Counter::getValue).remote().get());

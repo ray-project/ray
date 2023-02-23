@@ -126,6 +126,22 @@ def _shutdown_torch(destroy_process_group=False):
         torch.cuda.empty_cache()
 
 
+def _set_torch_distributed_env_vars():
+    # Same env vars as in
+    # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
+    from ray.air import session
+    from ray.train.torch.train_loop_utils import get_device
+
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["NODE_RANK"] = str(session.get_node_rank())
+
+    # Makes sure Hugging Face Accelerate uses the correct device
+    os.environ["ACCELERATE_TORCH_DEVICE"] = str(get_device())
+
+
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
@@ -185,6 +201,11 @@ class _TorchBackend(Backend):
         worker_group.execute(
             _shutdown_torch, destroy_process_group=len(worker_group) > 1
         )
+
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: BackendConfig
+    ):
+        worker_group.execute(_set_torch_distributed_env_vars)
 
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint):
