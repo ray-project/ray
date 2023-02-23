@@ -135,6 +135,122 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+def test_v1_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in 1.x case.
+
+    Ensures that after deploying deployments using 1.x API, serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    f.deploy()
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
+def test_single_app_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in single-app case
+
+    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind())
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
+def test_multi_app_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in multi-app case.
+
+    Ensures that after deploying multiple distinct applications, serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app1", route_prefix="/app1")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:app1_f",
+        "ServeReplica:app2_f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
 def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
