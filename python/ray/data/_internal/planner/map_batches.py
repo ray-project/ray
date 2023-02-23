@@ -1,3 +1,4 @@
+import collections
 import sys
 from typing import Callable, Iterator, Optional
 
@@ -82,11 +83,15 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
-            validate_batch(batch)
-            # Add output batch to output buffer.
-            output_buffer.add_batch(batch)
-            if output_buffer.has_next():
-                yield output_buffer.next()
+            if not isinstance(batch, collections.Iterable):
+                batch = [batch]
+
+
+            for b in batch:
+                # Add output batch to output buffer.
+                output_buffer.add_batch(b)
+                if output_buffer.has_next():
+                    yield output_buffer.next()
 
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
@@ -107,3 +112,4 @@ def generate_map_batches_fn(
             yield output_buffer.next()
 
     return fn
+g
