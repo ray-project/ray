@@ -29,9 +29,7 @@ namespace gcs {
 class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
  public:
   explicit MockGcsPlacementGroupManager(GcsResourceManager &gcs_resource_manager)
-      : GcsPlacementGroupManager(context_, gcs_resource_manager) {
-    RAY_LOG(ERROR) << "adfsadf";
-  }
+      : GcsPlacementGroupManager(context_, gcs_resource_manager) {}
   MOCK_METHOD(void,
               HandleCreatePlacementGroup,
               (rpc::CreatePlacementGroupRequest request,
