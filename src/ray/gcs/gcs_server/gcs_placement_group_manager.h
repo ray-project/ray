@@ -373,7 +373,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Get a read only view of the pending placement groups.
   ///
   /// \return Pending placement groups.
-  const std::unordered_multimap<
+  const absl::btree_multimap<
       int64_t,
       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
       &GetPendingPlacementGroups() const;
@@ -463,9 +463,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// inserting an element into the queue with a bigger key. With this, we don't
   /// need to post retry job to io context. And when schedule pending placement
   /// group, we always start with the one with the smallest key.
-  std::unordered_multimap<
-      int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+  absl::btree_multimap<int64_t,
+                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
       pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.

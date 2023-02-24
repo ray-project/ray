@@ -974,7 +974,7 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
   return false;
 }
 
-const std::unordered_multimap<
+const absl::btree_multimap<
     int64_t,
     std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
     &GcsPlacementGroupManager::GetPendingPlacementGroups() const {

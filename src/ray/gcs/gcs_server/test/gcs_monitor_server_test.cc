@@ -91,7 +91,7 @@ class GcsMonitorServerTest : public ::testing::Test {
     return mock_node_manager_->alive_nodes_;
   }
 
-  std::unordered_multimap<
+  absl::btree_multimap<
       int64_t,
       std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
       &PendingPlacementGroups() {
