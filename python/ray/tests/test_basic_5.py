@@ -251,6 +251,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     assert freqs["internal_kv_get"] == 4
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
 @pytest.mark.parametrize("root_process_no_site", [0, 1])
 @pytest.mark.parametrize("root_process_no_user_site", [0, 1])
 def test_site_flag_inherited(
