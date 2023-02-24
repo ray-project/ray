@@ -11,10 +11,10 @@ from ray.rllib.models.utils import get_filter_config
 
 
 class Catalog:
-    """Defines how what models an RLModules builds.
+    """Describes the sub-modules architectures to be used in RLModules.
 
     RLlib's native RLModules get their Models from a Catalog object.
-    By default, that Catalog builds the configs it holds.
+    By default, that Catalog builds the configs it has as attributes.
     You can modify a Catalog so that it builds different Models by subclassing and
     overriding the build_* methods. Alternatively, you can customize the configs
     inside RLlib's Catalogs to customize what is being built by RLlib.
@@ -25,35 +25,38 @@ class Catalog:
 
     .. testcode::
 
-    class MyCatalog(Catalog):
-    def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        model_config_dict: dict,
-    ):
-        super().__init__(observation_space, action_space, model_config_dict)
-        self.my_model_config = MLPModelConfig(
-            hidden_layer_dims=[64, 32],
-            input_dim=self.observation_space.shape[0],
-            output_dim=1,
-        )
-
-        def build_my_head(self, framework: str):
-            return self.my_model_config.build(framework=framework)
+        import gymnasium as gym
+        from ray.rllib.core.models.configs import MLPHeadConfig
+        from ray.rllib.core.models.catalog import Catalog
 
 
-    # With that, RLlib can build and use models from this catalog like so:
-    catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-    my_head = catalog.build_my_head("torch")  # doctest: +SKIP
-    out = my_head(...)  # doctest: +SKIP
+        class MyCatalog(Catalog):
+            def __init__(
+                self,
+                observation_space: gym.Space,
+                action_space: gym.Space,
+                model_config_dict: dict,
+            ):
+                super().__init__(observation_space, action_space, model_config_dict)
+                self.my_model_config = MLPHeadConfig(
+                    hidden_layer_dims=[64, 32],
+                    input_dim=self.observation_space.shape[0],
+                    output_dim=1,
+                )
 
-    # We can also modify configs of RLlib's native Catalogs like so:
-    catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-    catalog.my_model_config.output_dim = 32
-    my_head = catalog.build_my_head("torch")  # doctest: +SKIP
-    out = my_head(...)  # doctest: +SKIP
+            def build_my_head(self, framework: str):
+                return self.my_model_config.build(framework=framework)
 
+        # With that, RLlib can build and use models from this catalog like so:
+        catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
+        my_head = catalog.build_my_head("torch")  # doctest: +SKIP
+        out = my_head(...)  # doctest: +SKIP
+
+        # We can also modify configs of RLlib's native Catalogs like so:
+        catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
+        catalog.my_model_config.hidden_layer_dims = [32, 16]
+        my_head = catalog.build_my_head("torch")  # doctest: +SKIP
+        out = my_head(...)  # doctest: +SKIP
     """
 
     def __init__(
