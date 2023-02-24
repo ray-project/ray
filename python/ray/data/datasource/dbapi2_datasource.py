@@ -72,14 +72,14 @@ class DBAPI2Connector(DatabaseConnector):
     def _close(self) -> None:
         self.connection.close()  # type: ignore  
         
-    def _execute(self, query: str, data: Optional[Any] = None, query_args: List[Any] = [], **query_kwargs) -> Any:        
+    def _execute(self, query: str, *args, block: Optional[Any] = None, **kwargs) -> Any:        
         cursor = self.connection.cursor()  # type: ignore
-        if data:
-            cursor.executemany(query, data, *query_args, **query_kwargs)
+        if block:
+            cursor.executemany(query, block, *args, **kwargs)
         else:
             queries = query.split(';')
             for q in queries:                
-                cursor.execute(q, *query_args, **query_kwargs)
+                cursor.execute(q, *args, **kwargs)
                 
         return cursor   
               
@@ -116,8 +116,7 @@ class DBAPI2Datasource(DatabaseDatasource):
         sample_direct=     'SELECT * FROM ({table_or_query}) LIMIT 100',
             
         # read_mode set to 'partition'
-        read_partition=     'SELECT * FROM ({table_or_query}) '+
-                                'LIMIT {num_rows} OFFSET {row_start}',                               
+        read_partition=     'SELECT * FROM ({table_or_query}) LIMIT {num_rows} OFFSET {row_start}',                               
         num_rows_partition= 'SELECT COUNT(*) FROM ({table_or_query})',          
         sample_partition=   'SELECT * FROM ({table_or_query}) LIMIT 100', 
     )
@@ -139,22 +138,20 @@ class DBAPI2Datasource(DatabaseDatasource):
     def __init__(
         self,
         connector:  DatabaseConnector,
+        read_modes = ['partition', 'direct'],
+        write_modes = ['direct', 'stage'],
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
         template_keys: List[str] = []
     ):                         
         super().__init__(
-            connector, 
+            connector,
+            read_modes = read_modes,
+            write_modes = write_modes,
             read_queries={**DBAPI2Datasource.READ_QUERIES, **read_queries},
             write_queries={**DBAPI2Datasource.WRITE_QUERIES, **write_queries},
             template_keys = ['table', 'query', 'table_or_query'] + template_keys
         )
-    
-    def create_reader(self, *args, mode: str = 'partition', **kwargs) -> _DatabaseReader:
-        return super().create_reader(*args, mode=mode, **kwargs)
-    
-    def write(self, *args, mode: str = 'direct', **kwargs) -> List[DatabaseBlockWriter]:
-        return super().write(*args, mode=mode, **kwargs) 
           
     def _get_template_kwargs(self, 
         table: Optional[str] = None, 

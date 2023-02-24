@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List,  TYPE_CHECKING
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -66,22 +66,16 @@ def _snowflake_load_private_key(props: Dict) -> None:
 @DeveloperAPI
 class SnowflakeConnector(DBAPI2Connector):    
     def __init__(self, **connect_properties):
-        from snowflake.connector import connect as snowflake_connect_fn
+        from snowflake import connector
+        connector.paramstyle='qmark'
         _snowflake_load_private_key(connect_properties)
         super().__init__(
-            snowflake_connect_fn,
+            connector.connect,
             to_block_fn= lambda d: d if isinstance(d, pandas.DataFrame) else d.fetch_pandas_all(),
             from_block_fn= lambda block: BlockAccessor.for_block(block).to_pandas(), 
-            **{'paramstyle':'qmark', **connect_properties}
+            paramstyle='qmark',
+            **connect_properties
         )
-    
-    def _execute(self, query: str, data: Optional[Any] = None, **query_kwargs) -> Any:        
-        from snowflake.connector.pandas_tools import write_pandas
-        if data is not None and isinstance(data, pandas.DataFrame):
-            write_pandas(self.connection, data, table_name=query, **{'parallel':1, **query_kwargs})  # type: ignore
-            return None
-        else:
-            return super()._execute(query, data=data, )
             
     def query_batches(self, query:str, **kwargs) -> List['ResultBatch']:
         cursor = self.execute(query, **kwargs)
@@ -89,11 +83,17 @@ class SnowflakeConnector(DBAPI2Connector):
         batches = [b for b in batches if b.rowcount > 0]
         return batches
     
+    def write_pandas(self, table: str, block: Block, *args, **kwargs) -> None:
+        from snowflake.connector.pandas_tools import write_pandas
+        _type = str(type(block))
+        data = BlockAccessor.for_block(block).to_pandas()
+        write_pandas(self.connection, data, *args, table_name=table, **{'parallel':1, **kwargs})    
+    
     def read_batch(self, batch: 'ResultBatch', **kwargs) -> Block:
         return batch.to_pandas()    
             
 @DeveloperAPI
-class SnowflakeReader(_DatabaseReader):                           
+class _SnowflakeReader(_DatabaseReader):                           
     def get_read_tasks(self, parallelism: int) -> List[DatabaseReadTask]:               
         if self.num_rows == 0:
             return []
@@ -143,31 +143,33 @@ class SnowflakeDatasource(DBAPI2Datasource):
         See [Snowflake connector API](https://docs.snowflake.com/en/user-guide/python-connector-api.html#module-snowflake-connector).
     """ 
     READ_QUERIES = dict(
-        query_all_batch = DBAPI2Datasource.READ_QUERIES['read_direct'],
-        read_batch = 'call_fn(read_batch)',
-        num_rows_batch = DBAPI2Datasource.READ_QUERIES['num_rows_direct'],
-        sample_batch = DBAPI2Datasource.READ_QUERIES['sample_direct'],
+        query_all_resultbatch = DBAPI2Datasource.READ_QUERIES['read_direct'],
+        read_resultbatch = 'call_fn(read_batch)',
+        num_rows_resultbatch = DBAPI2Datasource.READ_QUERIES['num_rows_direct'],
+        sample_resultbatch = DBAPI2Datasource.READ_QUERIES['sample_direct'],
+    )
+    
+    WRITE_QUERIES = dict(
+        write_writepandas= 'call_fn(write_pandas,{table})',       
     )
     
     def __init__(self, 
         connector: DatabaseConnector,
-        *,
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
         template_keys: List[str] = []
     ):
         super().__init__(
-            connector, 
+            connector,
+            read_modes = ['resultbatch', 'partitioned', 'direct'],
+            write_modes = ['writepandas', 'direct', 'stage'],
             read_queries={**SnowflakeDatasource.READ_QUERIES, **read_queries},
-            write_queries=write_queries,
+            write_queries={**SnowflakeDatasource.WRITE_QUERIES, **write_queries},
             template_keys=template_keys
         )
     
-    def create_reader(self, mode: str = 'batch', **kwargs) -> _DatabaseReader:
-        if mode == 'batch':
-            template_kwargs = self._get_template_kwargs(**kwargs)
-            query_kwargs = self._get_query_kwargs(**kwargs)       
-            queries = self.read_queries.templatize(mode=mode, **template_kwargs)            
-            return SnowflakeReader(self.connector, queries, query_kwargs)
+    def _create_reader(self, mode:str, *args, **kwargs) -> _DatabaseReader:
+        if mode == 'resultbatch':
+            return _SnowflakeReader(mode, *args, **kwargs)
         else:
-            return _DatabaseReader(self.connector, queries, query_kwargs)
+            return super()._create_reader(mode, *args, **kwargs)

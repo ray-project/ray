@@ -1,16 +1,13 @@
-import os
-from typing import Any, Dict, List, Literal, Optional, Union
-import uuid
-from ray import ObjectRef
+from typing import Any, Dict, Iterable, List, Optional, Union
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.data.datasource.database_datasource import (
     pylist_to_pylist_of_dicts, 
     DatabaseConnection, 
-    DatabaseBlockWriter
+    DatabaseBlockWriter,
+    _warn
 )
 from ray.data.datasource.dbapi2_datasource import DBAPI2Datasource, DBAPI2Connector
-from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.interfaces import TaskContext
 
 def cursor_to_pyarrow(cursor: Any) -> Block:
@@ -34,16 +31,22 @@ class DatabricksConnector(DBAPI2Connector):
             fs.delete_dir(path)
         finally:
             pass
+        
+    def _rollback(self) -> None:
+        _warn('databricks does not support rollback.')
+        pass # rollback not supported
               
 @PublicAPI
-class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
+class DatabricksDatasource(DBAPI2Datasource):
     # default write queries
     WRITE_QUERIES = dict(
+            prepare_copyinto = "CREATE TABLE IF NOT EXISTS {table}",
             all_complete_copyinto = """
                 COPY INTO {table} 
-                FROM '{stage_uri}'
-                {credential}
+                FROM '{stage_uri}/'
+                {credential}    
                 FILEFORMAT = PARQUET
+                PATTERN = '*.parquet'
                 FORMAT_OPTIONS (
                     'mergeSchema' = 'true'
                 )
@@ -55,48 +58,38 @@ class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
     def __init__(
         self,
         connector: DatabaseConnection,
-        *,
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
         template_keys: List[str] = []
     ):                                   
         super().__init__(
-            connector, 
+            connector,
+            read_modes = ['partition', 'direct'],
+            write_modes = ['copyinto', 'direct', 'stage'],
             read_queries=read_queries,
             write_queries={**DatabricksDatasource.WRITE_QUERIES, **write_queries},
             template_keys = ['stage_uri', 'credential'] + template_keys
         )
     
     def write(self,
-        blocks: List[Block],
+        blocks: Iterable[Block],
         ctx: TaskContext,
         table: str,
         mode: str = 'copyinto',
         stage_uri: Optional[str] = None,
         credential: Optional[Union[str, Dict[str,str]]] = None,
-        dataset_uuid: str = str(uuid.uuid4()),
-        parquet_kwargs: Dict[str,Any] = {},
-        **databricks_kwargs
+        **kwargs
     ) -> List[DatabaseBlockWriter]:
         if mode == 'copyinto':
             if not stage_uri:
                 raise ValueError('copyinto mode requires a stage_uri')
              
-            stage_uri = os.path.join(stage_uri, dataset_uuid)
             if credential is not None:
                 if isinstance(credential, str):
                     credential = f" WITH ( CREDENTIAL `{credential}` ) "
                 else:
                     credential = ' WITH ( CREDENTIAL (' + ','.join(f"'{k}' = '{v}'" for k,v in credential.items()) + ')) '
-                
-            super(ParquetDatasource, self).write(
-                blocks,
-                ctx,
-                stage_uri,
-                dataset_uuid=dataset_uuid,
-                **parquet_kwargs
-            )
-                
+              
         return super().write(
             blocks,
             ctx,
@@ -104,5 +97,5 @@ class DatabricksDatasource(DBAPI2Datasource, ParquetDatasource):
             mode=mode,
             stage_uri=stage_uri,
             credential=credential,
-            **databricks_kwargs        
+            **kwargs        
         )

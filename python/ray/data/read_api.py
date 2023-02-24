@@ -485,7 +485,7 @@ def read_snowflake(
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **snowflake_kwargs,
-) -> Dataset[ArrowRow]:
+) -> Dataset[PandasRow]:
     """Read a dataset from Snowflake with the Snowflake
     a Python DB API 2 library.
 

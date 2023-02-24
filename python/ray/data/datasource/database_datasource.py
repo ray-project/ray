@@ -69,8 +69,8 @@ def _desc_val(v: Any) -> str:
     else:
         desc = f"type({value_type})" 
     
-    if len(desc) > 100:
-        desc = desc[0:50] + ' ... ' + desc[-50:]
+    #if len(desc) > 100:
+    #    desc = desc[0:50] + ' ... ' + desc[-50:]
             
     return desc
             
@@ -86,7 +86,7 @@ def _desc_method(method:str, *args, **kwargs) -> str:
     return method + ':\n' + desc
 
 def _log(level: int, message: str, *args, **kwargs):
-    if logger.isEnabledFor(level):
+    if _PRINT_TO_CONSOLE or logger.isEnabledFor(level):
         if len(args) > 0:
             message = _desc_method(message, *args, **kwargs)
             
@@ -200,7 +200,7 @@ class DatabaseConnector(ABC):
         ...
     
     @abstractmethod
-    def _execute(self, query: str, **kwargs) -> Any:
+    def _execute(self, query: str, *args, block: Optional[Block] = None, **kwargs) -> Any:
         ...
                     
     def open(self) -> None:
@@ -208,7 +208,7 @@ class DatabaseConnector(ABC):
             _debug('opening database connection')
             try:  
                 self.connection = self._open()
-            except BaseException as e:
+            except Exception as e:
                 self.connection = None
                 _error('error opening database connection')    
                 raise e              
@@ -247,7 +247,7 @@ class DatabaseConnector(ABC):
             _debug('closing database connection')  
             try:  
                 self._close()  
-            except BaseException as e:
+            except Exception as e:
                 _error('error closing database connection')
                 raise e
             finally:
@@ -261,37 +261,43 @@ class DatabaseConnector(ABC):
                     
     def query_int(self, query: str, **kwargs) -> Optional[int]:
         value = self.query_value(query, **kwargs)
-        return int(value) if value else None
+        return int(value) if value is not None else None
 
     def query_str(self, query: str, **kwargs) -> Optional[str]:
         value = self.query_value(query, **kwargs)
-        return str(value) if value else None
+        return str(value) if value is not None else None
     
     def query_block(self, query: str, **kwargs) -> Block:
         return self.to_block_fn(self.execute(query, **kwargs))
     
     def insert_block(self, query: str, block: Block, **kwargs) -> None:
         data = self.from_block_fn(block)
-        self.execute(query, data=data, **kwargs)
+        self.execute(query, block=data, **kwargs)
 
-    def execute(self, query:str, warn_on_error: bool = False, **kwargs) -> Any:      
-        _debug('executing on database', query, **kwargs)  
+    def execute(self, 
+        query:str, 
+        block: Optional[Block] = None, 
+        warn_on_error: bool = False, 
+        query_args: List[Any]=[], 
+        **kwargs
+    ) -> Any:      
+        _debug('executing', query, *query_args, **kwargs)  
         try:    
             if 'call_fn(' == query[:8]:
-                return self.call_fn(query, **kwargs)
+                return self.call_fn(query, *query_args, block=block, **kwargs)
             else:
-                return self._execute(query, **kwargs)
+                return self._execute(query, *query_args, block=block, **kwargs)
         except Exception as e:
             if warn_on_error:
-                _warn('error executing ', query, **kwargs)
+                _warn('error executing ', query, *query_args, **kwargs)
             else:
-                _error('error executing ', query, **kwargs)
+                _error('error executing ', query, *query_args, **kwargs)
                 raise e
     
-    def call_fn(self, query: str, **kwargs) -> Any:
+    def call_fn(self, query: str, *args, **kwargs) -> Any:
         argv = query[8:-1].split(',')
         fn_name,fn_args = argv[0], argv[1:]
-        return self.__getattribute__(fn_name)(*{*fn_args}, **kwargs)
+        return self.__getattribute__(fn_name)(*fn_args, *args, **kwargs)
                            
     def __enter__(self):
         self.open()
@@ -342,14 +348,16 @@ class DatabaseReadTask(ReadTask):
 @DeveloperAPI
 class _DatabaseReader(Reader):
     def __init__(self,
+        mode: str,
         connector: DatabaseConnector,
         queries: QueryTemplates,
         query_kwargs: Dict[str,Any] = {}
     ):
+        self.mode = mode
         self.connector = connector
         self.queries = queries
         self.query_kwargs = query_kwargs
-    
+        
     @cached_property
     def num_rows(self) -> int:
         query = self.queries.get('num_rows')
@@ -489,6 +497,8 @@ class DatabaseDatasource(Datasource, ABC):
     
     def __init__(self, 
         connector: DatabaseConnector,
+        read_modes: List[str],
+        write_modes: List[str],
         read_queries: Dict[str, str] = {},
         write_queries: Dict[str, str] = {},
         template_keys: List[str] = []
@@ -497,27 +507,51 @@ class DatabaseDatasource(Datasource, ABC):
         self.read_queries = QueryTemplates(**read_queries)     
         self.write_queries = QueryTemplates(**write_queries)
         self.template_keys = ['column_template', 'partition_template', 'param_template'] + template_keys
-    
+        self.read_modes = read_modes
+        self.write_modes = write_modes
+        
     def _get_template_kwargs(self, **kwargs: Dict[str, Any]) -> Dict[str, Any]:     
         return {k:v for k,v in kwargs.items() if k in self.template_keys}
     
     def _get_query_kwargs(self, **kwargs: Dict[str, Any]) -> Dict[str, Any]:       
         return {k:v for k,v in kwargs.items() if k not in self.template_keys}   
-     
-    def create_reader(self, mode: str, **kwargs) -> _DatabaseReader:
+    
+    def _get_read_mode(self, mode: Optional[str]) -> str:
+        if mode is None:
+            return self.read_modes[0]
+        else:
+            if mode not in self.read_modes:
+                raise ValueError(f'{mode} is an unsupported read mode')
+            return mode
+        
+    def _get_write_mode(self, mode: Optional[str]) -> str:
+        if mode is None:
+            return self.write_modes[0]
+        else:
+            if mode not in self.write_modes:
+                raise ValueError(f'{mode} is an unsupported write mode')
+            return mode
+        
+    def _create_reader(self, mode: str, *args, **kwargs) -> _DatabaseReader:
+        return _DatabaseReader(mode, *args, **kwargs)
+                 
+    def create_reader(self, mode: Optional[str] = None, **kwargs) -> _DatabaseReader:
         template_kwargs =  self._get_template_kwargs(**kwargs)
-        query_kwargs = self._get_query_kwargs(**kwargs)       
+        query_kwargs = self._get_query_kwargs(**kwargs)
+        mode = self._get_read_mode(mode)
         queries = self.read_queries.templatize(mode = mode, **template_kwargs)         
-        return _DatabaseReader(self.connector, queries, query_kwargs)         
+        return self._create_reader(mode, self.connector, queries, query_kwargs)         
        
     def write(self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        mode: str,
+        mode: Optional[str] = None,
+        cleanup: bool = True,
         **write_args: Dict[str, Any]
     ) -> List[DatabaseBlockWriter]:
         template_kwargs =  self._get_template_kwargs(**write_args)
         query_kwargs = self._get_query_kwargs(**write_args)
+        mode = self._get_write_mode(mode)
                 
         # open connection and start the transaction
         writers: List[DatabaseBlockWriter] = []
@@ -535,6 +569,8 @@ class DatabaseDatasource(Datasource, ABC):
                         partition = ctx.task_idx,
                         **template_kwargs
                     )
+                    if not cleanup and 'cleanup' in queries:
+                        del queries['cleanup']
                     
                     # create the db block write operation
                     writer = DatabaseBlockWriter(queries, query_kwargs)
@@ -550,11 +586,11 @@ class DatabaseDatasource(Datasource, ABC):
             # on failure, run failed queries and cleanup queries                          
             except Exception as e:
                 for writer in writers:
-                    writer.failed(connection) 
+                    writer.failed(connection, e) 
                 for writer in writers:
                     writer.cleanup(connection) 
                 raise e
-                
+              
         return writers  
                                            
     def on_write_complete(self, writers_lists: List[List[List[DatabaseBlockWriter]]]) -> None:

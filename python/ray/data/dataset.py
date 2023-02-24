@@ -5,6 +5,7 @@ import sys
 import time
 import uuid
 import html
+import os
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2690,14 +2691,17 @@ class Dataset(Generic[T]):
         from ray.data.datasource import DatabricksConnector, DatabricksDatasource
         connector = DatabricksConnector(**connect_properties)
         datasource = DatabricksDatasource(connector)
+        stage_path = os.path.join(stage_uri, self._uuid)
+        if mode == 'copyinto':
+            self.write_parquet(stage_path, **parquet_kwargs)
+        
         self.write_datasource(
             datasource,
             table=table,
             mode=mode,
-            stage_uri=stage_uri,
+            stage_uri=stage_path+'/',
             credential=credential,
             ray_remote_args=ray_remote_args,
-            parquet_kwargs=parquet_kwargs,
             **databricks_kwargs
         )
  
@@ -2707,6 +2711,7 @@ class Dataset(Generic[T]):
         connect_properties: Dict[str, Any] = {},
         *,
         table: Optional[str] = None,
+        mode: str = 'writepandas',
         ray_remote_args: Dict[str, Any] = None,
         **snowflake_kwargs
     ) -> None:
@@ -2735,6 +2740,7 @@ class Dataset(Generic[T]):
         self.write_datasource(
             datasource,
             table=table,
+            mode=mode,
             ray_remote_args=ray_remote_args,
             **snowflake_kwargs
         )
