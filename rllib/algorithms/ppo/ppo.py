@@ -267,8 +267,10 @@ class PPOConfig(PGConfig):
 
         # Turn RLModule and Learner API on by default (only for torch and tf2)
         if self.framework_str in ["torch", "tf2"]:
-            self._enable_rl_module_api = True
-            self._enable_learner_api = True
+            # only for this class and not it subclasses
+            if self.__class__.__name__ == PPOConfig.__name__:
+                self._enable_rl_module_api = True
+                self._enable_learner_api = True
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
