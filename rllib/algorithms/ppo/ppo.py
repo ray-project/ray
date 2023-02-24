@@ -109,6 +109,7 @@ class PPOConfig(PGConfig):
         self.grad_clip = None
         self.kl_target = 0.01
 
+
         # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
         self.train_batch_size = 4000
@@ -264,6 +265,11 @@ class PPOConfig(PGConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        # Turn RLModule and Learner API on by default (only for torch and tf2)
+        if self.framework_str in ["torch", "tf2"]:
+            self._enable_rl_module_api = True
+            self._enable_learner_api = True
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
