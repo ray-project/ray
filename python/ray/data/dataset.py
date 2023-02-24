@@ -2038,18 +2038,17 @@ class Dataset(Generic[T]):
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
 
-        The datasets must have the same number of rows. For Arrow
-        blocks, the schema will be concatenated, and any duplicate column
-        names disambiguated with _1, _2, etc. suffixes.
+        The datasets must have the same number of rows. For tabular datasets, the
+        datasets will be concatenated horizontally; namely, their column sets will be
+        merged, and any duplicate column names disambiguated with _1, _2, etc. suffixes.
+
+        .. note::
+            The smaller of the two datasets will be repartitioned to align the number of
+            rows per block with the larger dataset.
 
         .. note::
             Zipped datasets are not lineage-serializable, i.e. they can not be used as a
             tunable hyperparameter in Ray Tune.
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            other: The dataset to zip with on the right hand side.
 
         Examples:
             >>> import ray
@@ -2058,9 +2057,19 @@ class Dataset(Generic[T]):
             >>> ds1.zip(ds2).take()
             [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
 
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            other: The dataset to zip with on the right hand side.
+
         Returns:
-            A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
-            comes from the first dataset and v comes from the second.
+            If the inputs are simple datasets, this returns a ``Dataset`` containing
+            (k, v) pairs, where k comes from the first dataset and v comes from the
+            second.
+            If the inputs are tabular datasets, this returns a ``Dataset`` containing
+            the columns of the second dataset concatenated horizontally with the columns
+            of the first dataset, with duplicate column names disambiguated with _1, _2,
+            etc. suffixes.
         """
 
         plan = self._plan.with_stage(ZipStage(other))
