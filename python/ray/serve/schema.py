@@ -481,7 +481,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     def application_names_unique(cls, v):
         # Ensure there are no duplicate applications listed
         names = [app.name for app in v]
-        duplicates = set([f'"{name}"' for name in names if names.count(name) > 1])
+        duplicates = {f'"{name}"' for name in names if names.count(name) > 1}
         if len(duplicates):
             apps_str = ("application " if len(duplicates) == 1 else "applications ") + (
                 ", ".join(duplicates)
@@ -495,7 +495,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     def application_routes_unique(cls, v):
         # Ensure there are no duplicate applications listed
         routes = [app.route_prefix for app in v]
-        duplicates = set([f'"{route}"' for route in routes if routes.count(route) > 1])
+        duplicates = {f'"{route}"' for route in routes if routes.count(route) > 1}
         if len(duplicates):
             apps_str = (
                 "route prefix " if len(duplicates) == 1 else "route prefixes "
