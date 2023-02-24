@@ -77,9 +77,9 @@ class LearnerHPs:
     When creating a new Learner, the new hyper-parameters have to be defined by
     subclassing this class and adding the new hyper-parameters as fields.
 
-    # TODO (Kourosh): The things that could be part of the base class:
-    - lr_schedule
-    - grad_clip
+    # TODO (Kourosh, Avnish): The things that could be part of the base class:
+    - a function, `validate` that runs some validation on the hyper-parameters.
+
     """
 
     pass
