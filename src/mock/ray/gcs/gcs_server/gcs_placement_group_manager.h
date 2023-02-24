@@ -28,12 +28,8 @@ namespace gcs {
 
 class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
  public:
-  explicit MockGcsPlacementGroupManager(GcsResourceManager &gcs_resource_manager) :
-    GcsPlacementGroupManager(
-                             context_,
-                             gcs_resource_manager
-                             )
-  {
+  explicit MockGcsPlacementGroupManager(GcsResourceManager &gcs_resource_manager)
+      : GcsPlacementGroupManager(context_, gcs_resource_manager) {
     RAY_LOG(ERROR) << "adfsadf";
   }
   MOCK_METHOD(void,

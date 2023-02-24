@@ -53,8 +53,8 @@ rpc::ResourceDemand constructResourceDemand(
 }
 
 std::shared_ptr<gcs::GcsPlacementGroup> constructPlacementGroupDemand(
-                                                                      std::vector<absl::flat_hash_map<std::string, double>> bundles,
-                                                                      rpc::PlacementStrategy strategy
+    std::vector<absl::flat_hash_map<std::string, double>> bundles,
+    rpc::PlacementStrategy strategy
 
 ) {
   rpc::PlacementGroupTableData data;
@@ -63,7 +63,8 @@ std::shared_ptr<gcs::GcsPlacementGroup> constructPlacementGroupDemand(
     rpc_bundle->mutable_unit_resources()->insert(bundle.begin(), bundle.end());
   }
   data.set_strategy(strategy);
-  auto counter = std::make_shared<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>();
+  auto counter =
+      std::make_shared<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>();
   auto ptr = std::make_shared<gcs::GcsPlacementGroup>(data, counter);
   return ptr;
 }
@@ -75,9 +76,12 @@ class GcsMonitorServerTest : public ::testing::Test {
         cluster_resource_manager_(),
         mock_resource_manager_(
             std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
-        mock_placement_group_manager_(std::make_shared<gcs::MockGcsPlacementGroupManager>(*mock_resource_manager_)),
-        monitor_server_(
-                        mock_node_manager_, cluster_resource_manager_, mock_resource_manager_, mock_placement_group_manager_) {}
+        mock_placement_group_manager_(
+            std::make_shared<gcs::MockGcsPlacementGroupManager>(*mock_resource_manager_)),
+        monitor_server_(mock_node_manager_,
+                        cluster_resource_manager_,
+                        mock_resource_manager_,
+                        mock_placement_group_manager_) {}
 
   absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceUsages() {
     return mock_resource_manager_->node_resource_usages_;
@@ -87,8 +91,10 @@ class GcsMonitorServerTest : public ::testing::Test {
     return mock_node_manager_->alive_nodes_;
   }
 
-  std::unordered_multimap<int64_t,
-                       std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>> &PendingPlacementGroups() {
+  std::unordered_multimap<
+      int64_t,
+      std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
+      &PendingPlacementGroups() {
     return mock_placement_group_manager_->pending_placement_groups_;
   }
 
@@ -183,19 +189,18 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   {
     // Setup some placement group demand mocks.
     auto &pending_pgs = PendingPlacementGroups();
-    auto pg = constructPlacementGroupDemand(
-                                            {{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
-                                            rpc::PlacementStrategy::STRICT_SPREAD
-                                                                 );
-    std::unordered_multimap<int64_t, std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>> test;
+    auto pg = constructPlacementGroupDemand({{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
+                                            rpc::PlacementStrategy::STRICT_SPREAD);
+    std::unordered_multimap<
+        int64_t,
+        std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
+        test;
     RAY_LOG(ERROR) << "1";
     auto size = test.size();
     RAY_LOG(ERROR) << "2";
     ASSERT_EQ(size, 0);
     RAY_LOG(ERROR) << "a";
-    pending_pgs.insert(
-                       {0, {{}, pg}}
-);
+    pending_pgs.insert({0, {{}, pg}});
     RAY_LOG(ERROR) << "3";
   }
   {

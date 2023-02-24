@@ -23,13 +23,11 @@ GcsMonitorServer::GcsMonitorServer(
     std::shared_ptr<GcsNodeManager> gcs_node_manager,
     ClusterResourceManager &cluster_resource_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
-    std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager
-                                   )
+    std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager)
     : gcs_node_manager_(gcs_node_manager),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_resource_manager_(gcs_resource_manager),
-      gcs_placement_group_manager_(gcs_placement_group_manager)
-{}
+      gcs_placement_group_manager_(gcs_placement_group_manager) {}
 
 void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
                                            rpc::GetRayVersionReply *reply,
