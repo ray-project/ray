@@ -761,7 +761,15 @@ class ExecutionPlan:
                 not self.is_read_stage_equivalent()
                 or trailing_randomize_block_order_stage
             )
-            and self._stages_after_snapshot
+            and (
+                self._stages_after_snapshot
+                # If snapshot is cleared, we'll need to recompute from the source.
+                or (
+                    self._snapshot_blocks is not None
+                    and self._snapshot_blocks.is_cleared()
+                    and self._stages_before_snapshot
+                )
+            )
         )
 
 
