@@ -38,12 +38,13 @@ python client.py
 ```
 
 ```
-Enter a prompt (ex: 'dog reading a newspaper in 4k hd ultra realistic'): twin peaks sf in basquiat painting style
+Enter a prompt: twin peaks sf in basquiat painting style
 
-Generated image in X seconds to: 90374611.png
+Generated image in 67.54 seconds to: 90374611.png
 ```
 
-TODO: Add example output image
+![Example output](https://user-images.githubusercontent.com/3887863/221063452-3c5e5f6b-fc8c-410f-ad5c-202441cceb51.png)
+
 
 Once the stable diffusion model finishes generating your image, it will be included in the HTTP response body.
 The script writes this to an image in your Workspace directory for you to view.
