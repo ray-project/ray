@@ -107,6 +107,11 @@ class Callback(metaclass=_CallbackMeta):
 
     """
 
+    # File templates for any artifacts written by this callback
+    # These files should live in the `trial.logdir` for each trial.
+    # TODO(ml-team): Make this more visible to users to override. Internal use for now.
+    _SAVED_FILE_TEMPLATES = []
+
     # arguments here match Experiment.public_spec
     def setup(
         self,
@@ -446,3 +451,9 @@ class CallbackList(Callback):
         return bool(
             glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
         )
+
+    def __len__(self) -> int:
+        return len(self._callbacks)
+
+    def __getitem__(self, i: int) -> "Callback":
+        return self._callbacks[i]
