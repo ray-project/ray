@@ -130,6 +130,8 @@ class PPOTorchLearner(TorchLearner):
         self, module_id: str, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:
 
+        assert sampled_kl_values, "Sampled KL values are empty."
+
         sampled_kl = sampled_kl_values[module_id]
         if sampled_kl > 2.0 * self.kl_target:
             # TODO (Kourosh) why not 2?

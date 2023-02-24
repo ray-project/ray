@@ -1,5 +1,5 @@
 import abc
-
+from collections import defaultdict
 from dataclasses import dataclass, field
 import logging
 import numpy as np
@@ -29,6 +29,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -389,15 +390,25 @@ class Learner:
             A dictionary of results.
         """
         loss_numpy = convert_to_numpy(postprocessed_loss)
+
+        # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
+        # This matches what the legacy RLlib policies used to return.
+        module_learner_stats = defaultdict(dict)
+        for module_id in self.module.keys():
+            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
+
+        # We put the stats for all modules under the ALL_MODULES key. e.g. average of
+        # the gradients across all modules will go here.
         mean_grads = [
             np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
         ]
-        ret = {
-            "loss": loss_numpy,
+
+        module_learner_stats[ALL_MODULES] = {
             "mean_gradient": np.mean(mean_grads),
+            self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
         }
 
-        return ret
+        return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
