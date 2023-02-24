@@ -47,7 +47,7 @@ class MockRaySyncerBidiReactor : public RaySyncerBidiReactor {
  public:
   using RaySyncerBidiReactor::RaySyncerBidiReactor;
 
-  MOCK_METHOD(void, Disconnect, (), (override));
+  MOCK_METHOD(void, DoDisconnect, (), (override));
 
   MOCK_METHOD(bool,
               PushToSendingQueue,
@@ -60,7 +60,7 @@ class MockRaySyncerBidiReactorBase : public RaySyncerBidiReactorBase<T> {
  public:
   using RaySyncerBidiReactorBase<T>::RaySyncerBidiReactorBase;
 
-  MOCK_METHOD(void, Disconnect, (), (override));
+  MOCK_METHOD(void, DoDisconnect, (), (override));
 };
 
 }  // namespace syncer
