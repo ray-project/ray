@@ -32,7 +32,7 @@ LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
-AIR_RUN_CONFIG_KEY = "_air_run_config"
+AIR_CHECKPOINT_CONFIG_KEY = "_air_checkpoint_config"
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
@@ -102,7 +102,7 @@ class LightningTrainer(DataParallelTrainer):
             trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
         
         if run_config:
-            trainer_loop_config[AIR_RUN_CONFIG_KEY] = run_config
+            trainer_loop_config[AIR_CHECKPOINT_CONFIG_KEY] = run_config.checkpoint_config
         return trainer_loop_config
 
 
@@ -133,8 +133,7 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["plugins"] = plugins
 
     # instantiate logger
-    air_checkpoint_config = config.pop(AIR_RUN_CONFIG_KEY).checkpoint_config
-    ray_logger = RayLogger(monitor=air_checkpoint_config.checkpoint_score_attribute)
+    ray_logger = RayLogger(checkpoint_config=config.pop(AIR_CHECKPOINT_CONFIG_KEY))
     trainer_config["logger"] = ray_logger
 
     # Setup ddp strategy
