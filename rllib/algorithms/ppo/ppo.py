@@ -109,7 +109,6 @@ class PPOConfig(PGConfig):
         self.grad_clip = None
         self.kl_target = 0.01
 
-
         # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
         self.train_batch_size = 4000
