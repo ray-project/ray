@@ -33,7 +33,9 @@ RUN apt-get install -y -qq \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     clang-format-12 jq \
-    clang-tidy-12 clang-12
+    clang-tidy-12 clang-12 \
+    gcc-12 g++-12
+
 # Make using GCC 12 explicit.
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 --slave /usr/bin/g++ g++ /usr/bin/g++-12 \
     --slave /usr/bin/gcov gcov /usr/bin/gcov-12
