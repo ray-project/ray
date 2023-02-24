@@ -166,7 +166,7 @@ class OpState:
                 bundle = self.outqueue[i]
                 object_store_memory += bundle.size_bytes()
             except IndexError:
-                break
+                break  # Concurrent pop from the outqueue by the consumer thread.
         return object_store_memory
 
 
