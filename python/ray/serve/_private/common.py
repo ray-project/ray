@@ -292,3 +292,26 @@ class RunningReplicaInfo:
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
+
+    def __post_init__(self):
+        # Set hash value when object is constructed.
+        # We use _actor_id to hash the ActorHandle object
+        # instead of actor_handle itself to make sure
+        # it is consistently same actor handle between different
+        # object ids.
+
+        hash_val = hash(
+            " ".join(
+                [
+                    self.deployment_name,
+                    self.replica_tag,
+                    str(self.actor_handle._actor_id),
+                    str(self.max_concurrent_queries),
+                    str(self.is_cross_language),
+                ]
+            )
+        )
+        object.__setattr__(self, "_hash", hash_val)
+
+    def __hash__(self):
+        return self._hash
