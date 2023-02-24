@@ -120,6 +120,42 @@ class TestCatalog(unittest.TestCase):
             assert type(model_config_dict) == model_config_dict_type
             model_config_dict.build(framework=framework)
 
+        # Secondly, check if composite input spaces can be created for composite spaces
+        print("Testing encoders for composite input spaces...")
+        # Produce all possible threefold combinations of the input spaces to test
+        # flattened composite spaces.
+
+        input_space_combination_permutations = list(
+            itertools.permutations([input_spaces_and_config_types])
+        )
+        for input_space_combination in input_space_combination_permutations:
+            # We always only combine two input spaces to reduce test runtime
+            input_space_combination = input_space_combination[0:2]
+
+        config_combinations = [frameworks,
+                               input_space_combination,
+                               model_config_dicts]
+            for config in itertools.product(*config_combinations):
+                framework, input_spaces, model_config_dict = config
+                print(
+                    f"Testing framework: \n{framework}\n, input spaces:"
+                    f"\n{input_spaces}\n and config: \n{model_config_dict}\n"
+                )
+                catalog = Catalog(
+                    observation_space=input_space,
+                    # Action space does not matter for primitive models
+                    action_space=gym.spaces.Box(1, 1, (1,)),
+                    model_config_dict=model_config_dict,
+                    # TODO(Artur): Add view requirements when we need them
+                    view_requirements=None,
+                )
+
+                model_config_dict = catalog.get_encoder_config(
+                    observation_space=input_spaces,
+                    model_config_dict=model_config_dict
+                )
+                model_config_dict.build(framework=framework)
+
 
 if __name__ == "__main__":
     import pytest
