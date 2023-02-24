@@ -298,6 +298,7 @@ class _MapWorker:
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
 
+
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
 # strategies.
 @dataclass

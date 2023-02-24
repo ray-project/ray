@@ -412,7 +412,7 @@ def test_optimize_fuse(ray_start_regular_shared):
         build_pipe(),
         1,
         [
-            "ReadRange->MapBatches(dummy_map)->MapBatches(dummy_map)->random_shuffle_map",
+            "ReadRange->MapBatches(dummy_map)->MapBatches(dummy_map)->random_shuffle_map",  # noqa: E501
             "random_shuffle_reduce",
         ],
     )

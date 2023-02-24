@@ -334,7 +334,7 @@ def read_datasource(
             "dataset blocks."
         )
 
-    read_stage_name = datasource._get_datasource_name()
+    read_stage_name = datasource.get_name()
     block_list = LazyBlockList(
         read_tasks,
         read_stage_name=read_stage_name,

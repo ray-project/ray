@@ -118,44 +118,15 @@ class Datasource(Generic[T]):
         """
         pass
 
-    @classmethod
-    def _get_datasource_name(cls) -> str:
-        from ray.data.datasource.csv_datasource import CSVDatasource
-        from ray.data.datasource.parquet_datasource import ParquetDatasource
-        from ray.data.datasource.mongo_datasource import MongoDatasource
-        from ray.data.datasource.image_datasource import ImageDatasource
-        from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-        from ray.data.datasource.json_datasource import JSONDatasource
-        from ray.data.datasource.text_datasource import TextDatasource
-        from ray.data.datasource.numpy_datasource import NumpyDatasource
-        from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
-        from ray.data.datasource.binary_datasource import BinaryDatasource
-
-        if cls == ParquetDatasource:
-            return "ReadParquet"
-        if cls == ParquetBaseDatasource:
-            return "ReadParquetBulk"
-        if cls == CSVDatasource:
-            return "ReadCSV"
-        if cls == MongoDatasource:
-            return "ReadMongo"
-        if cls == ImageDatasource:
-            return "ReadImage"
-        if cls == JSONDatasource:
-            return "ReadJSON"
-        if cls == TextDatasource:
-            return "ReadText"
-        if cls == NumpyDatasource:
-            return "ReadNumpy"
-        if cls == TFRecordDatasource:
-            return "ReadTFRecord"
-        if cls == BinaryDatasource:
-            return "ReadBinary"
-        if cls == RangeDatasource:
-            return "ReadRange"
-        if cls == RandomIntRowDatasource:
-            return "ReadRandomInt"
-        return f"Read{cls.__name__}"
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        """
+        name = type(self).__name__
+        datasource_suffix = "Datasource"
+        if name.endswith(datasource_suffix):
+            name = name[: -len(datasource_suffix)]
+        return f"Read{name}"
 
 
 @PublicAPI
@@ -426,6 +397,13 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `Datasource` method.
+        """
+        return "ReadRandomInt"
 
     def create_reader(
         self,
