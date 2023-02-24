@@ -110,9 +110,6 @@ class MLPHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        self.input_dim = int(self.input_dim)
-        self.output_dim = int(self.output_dim)
-
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -190,9 +187,6 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
-        self.output_dim = int(self.output_dim)
-        self.input_dims = [int(i) for i in self.input_dims]
-
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -221,9 +215,6 @@ class MLPEncoderConfig(MLPHeadConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
-        self.output_dim = int(self.output_dim)
-        self.input_dim = int(self.input_dim)
-
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -260,7 +251,7 @@ class LSTMEncoderConfig(ModelConfig):
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
-        get_tokenizer_encoder_config: A callable that takes a gym.Space and a dict and
+        get_tokenizer_config: A callable that takes a gym.Space and a dict and
             returns a ModelConfig to build tokenizers for observations, actions and
             other spaces that might be present in the view_requirements_dict.
     """
@@ -273,19 +264,22 @@ class LSTMEncoderConfig(ModelConfig):
     observation_space: gym.Space = None
     action_space: gym.Space = None
     view_requirements_dict: ViewRequirementsDict = None
-    get_tokenizer_encoder_config: Callable[[gym.Space, Dict], ModelConfig] = None
+    get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
     output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
         if (
-            self.get_tokenizer_encoder_config is not None
+            self.get_tokenizer_config is not None
             or self.view_requirements_dict is not None
         ):
             raise NotImplementedError(
-                "LSTMEncoderConfig does not support advanced use cases yet."
+                "LSTMEncoderConfig does not support configuring LSTMs that encode "
+                "depending on view_requirements or have a custom tokenizer. "
+                "Therefore, this config expects `view_requirements_dict=None` and "
+                "`get_tokenizer_config=None`."
             )
-        self.input_dim = int(self.input_dim)
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 

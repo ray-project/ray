@@ -38,16 +38,22 @@ class TestCatalog(unittest.TestCase):
 
         # TODO (Artur): Add support for the commented out configs
         model_config_dicts = [
+            # This should produce an MLPEncoder with three hidden layers
             {
                 "fcnet_activation": "relu",
                 "fcnet_hiddens": [256, 256, 256],
             },
+            # This should produce an MLPEncoder with one hidden layer
             {
                 "fcnet_hiddens": [512],
                 "fcnet_activation": "relu",
             },
-            # {"use_lstm": True, "lstm_cell_size": 256},
+            # This should produce an LSTMEncoder with one hidden layer
+            # {"use_lstm": True},
+            # This should produce an AttentionNetEncoder with default configuration
             # {"use_attention": True, "attention_num_transformer_units": 4},
+            # This should produce an AttentionNetEncoder with one hidden layer and
+            # other custom configuration
             # {
             #     "fcnet_hiddens": [32],
             #     "fcnet_activation": "linear",
@@ -62,6 +68,8 @@ class TestCatalog(unittest.TestCase):
             #     "attention_head_dim": 32,
             #     "attention_position_wise_mlp_dim": 32,
             # },
+            # This should produce an LSTMEncoder wrapping an CNNEncoder with
+            # additional other custom configuration
             # {
             #     "use_lstm": True,
             #     "conv_activation": "elu",
@@ -80,8 +88,8 @@ class TestCatalog(unittest.TestCase):
 
         frameworks = ["tf", "torch"]
 
-        # First check if encoders can be created for singular spaces
-        print("Testing encoders for singular input spaces...")
+        # First check if encoders can be created for non-composite spaces
+        print("Testing encoders for non-composite input spaces...")
         config_combinations = [
             frameworks,
             input_spaces_and_config_types,

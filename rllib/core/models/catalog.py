@@ -111,8 +111,9 @@ class Catalog:
         """
         return self.encoder_config.build(framework=framework)
 
+    @classmethod
     def get_encoder_config(
-        self,
+        cls,
         observation_space: gym.Space,
         model_config_dict: dict,
         action_space: gym.Space = None,
@@ -166,7 +167,7 @@ class Catalog:
                 observation_space=observation_space,
                 action_space=action_space,
                 view_requirements_dict=view_requirements,
-                get_tokenizer_encoder_config=self.get_tokenizer_encoder_config,
+                get_tokenizer_config=cls.get_tokenizer_config,
             )
         elif model_config_dict["use_attention"]:
             raise NotImplementedError
@@ -213,7 +214,7 @@ class Catalog:
         return encoder_config
 
     @classmethod
-    def get_tokenizer_encoder_config(
+    def get_tokenizer_config(
         cls, space: gym.Space, model_config_dict: dict
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
