@@ -1,6 +1,11 @@
 # flake8: noqa
 # isort: skip_file
 
+
+import os
+
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
+
 # __use_predictor_start__
 import numpy as np
 import tensorflow as tf
@@ -19,7 +24,7 @@ def build_model() -> tf.keras.Model:
             tf.keras.layers.InputLayer(input_shape=()),
             # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
             tf.keras.layers.Flatten(),
-            tf.keras.layers.ReLU(),
+            tf.keras.layers.Dense(1),
         ]
     )
     return model
