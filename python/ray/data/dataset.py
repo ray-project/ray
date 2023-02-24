@@ -2974,7 +2974,7 @@ class Dataset(Generic[T]):
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
-            batch = BlockAccessor.for_block(batch)
+            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
                 yield row
 
@@ -4139,7 +4139,9 @@ class Dataset(Generic[T]):
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
         manually triggered via ``.fully_executed()``.
         """
-        ds = Dataset(self._plan, self._epoch, lazy=True)
+        ds = Dataset(
+            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
+        )
         ds._set_uuid(self._get_uuid())
         return ds
 
