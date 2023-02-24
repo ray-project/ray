@@ -53,8 +53,8 @@ class OperatorFusionRule(Rule):
             * They have compatible remote arguments.
         """
         from ray.data._internal.execution.operators.map_operator import MapOperator
+        from ray.data._internal.logical.operators.map_operator import AbstractMap
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
-        from ray.data._internal.logical.operators.read_operator import Read
 
         # We only support fusing MapOperators.
         if not isinstance(down_op, MapOperator) or not isinstance(up_op, MapOperator):
@@ -63,9 +63,14 @@ class OperatorFusionRule(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
-        # We only support fusing upstream reads and maps with downstream maps.
-        if not isinstance(down_logical_op, AbstractUDFMap) or not isinstance(
-            up_logical_op, (Read, AbstractUDFMap)
+        # If the downstream operator takes no input, it cannot be fused with
+        # the upstream operator.
+        if not down_logical_op._input_dependencies:
+            return False
+
+        # We only support fusing AbstractMap -> AbstractMap operators.
+        if not isinstance(down_logical_op, AbstractMap) or not isinstance(
+            up_logical_op, AbstractMap
         ):
             return False
 
@@ -81,11 +86,13 @@ class OperatorFusionRule(Rule):
             return False
 
         # Fusing callable classes is only supported if they are the same function AND
-        # their construction arguments are the same.
+        # their construction arguments are the same. Note the Write can be compatbile
+        # with any UDF as Write itself doesn't have UDF.
         # TODO(Clark): Support multiple callable classes instantiating in the same actor
         # worker.
         if (
-            isinstance(down_logical_op._fn, CallableClass)
+            isinstance(down_logical_op, AbstractUDFMap)
+            and isinstance(down_logical_op._fn, CallableClass)
             and isinstance(up_logical_op, AbstractUDFMap)
             and isinstance(up_logical_op._fn, CallableClass)
             and (
@@ -172,18 +179,28 @@ class OperatorFusionRule(Rule):
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
-        logical_op = AbstractUDFMap(
-            name,
-            input_op,
-            down_logical_op._fn,
-            down_logical_op._fn_args,
-            down_logical_op._fn_kwargs,
-            down_logical_op._fn_constructor_args,
-            down_logical_op._fn_constructor_kwargs,
-            target_block_size,
-            compute,
-            ray_remote_args,
-        )
+        if isinstance(down_logical_op, AbstractUDFMap):
+            logical_op = AbstractUDFMap(
+                name,
+                input_op,
+                down_logical_op._fn,
+                down_logical_op._fn_args,
+                down_logical_op._fn_kwargs,
+                down_logical_op._fn_constructor_args,
+                down_logical_op._fn_constructor_kwargs,
+                target_block_size,
+                compute,
+                ray_remote_args,
+            )
+        else:
+            from ray.data._internal.logical.operators.map_operator import AbstractMap
+
+            # The downstream op is AbstractMap instead of AbstractUDFMap.
+            logical_op = AbstractMap(
+                name,
+                input_op,
+                ray_remote_args,
+            )
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
