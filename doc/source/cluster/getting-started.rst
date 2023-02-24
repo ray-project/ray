@@ -22,12 +22,6 @@ Ray provides native cluster deployment support on the following technology stack
 Advanced users may want to :ref:`deploy Ray manually <on-prem>`
 or onto :ref:`platforms not listed here <ref-cluster-setup>`.
 
-.. note::
-
-    Multi-node Ray clusters are only supported on Linux. At your own risk, you
-    may deploy Windows and OSX clusters by setting the environment variable
-    ``RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1`` during deployment.
-
 What's next?
 ------------
 

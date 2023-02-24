@@ -82,7 +82,6 @@ MAX_ROUNDS=1
 if [ $MAX_ROUNDS -gt 1 ]; then
   export RAY_BACKEND_LOG_LEVEL=debug
 fi
-export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
 
 round=1
 while true; do

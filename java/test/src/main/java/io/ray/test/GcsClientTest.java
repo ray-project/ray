@@ -6,9 +6,7 @@ import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.gcs.GcsClient;
 import java.util.List;
-import org.apache.commons.lang3.SystemUtils;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -17,9 +15,6 @@ public class GcsClientTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    if (SystemUtils.IS_OS_MAC) {
-      throw new SkipException("Skip NodeIpTest on Mac OS");
-    }
     System.setProperty("ray.head-args.0", "--resources={\"A\":8}");
   }
 
