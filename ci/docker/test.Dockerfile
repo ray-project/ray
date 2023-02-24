@@ -12,7 +12,7 @@ WORKDIR /ray
 # Copy new ray files.
 COPY . .
 
+RUN bash --login -i ./ci/env/install-dependencies.sh
+
 # Install Ray
 RUN SKIP_BAZEL_BUILD=1 RAY_INSTALL_JAVA=0 bash --login -i -c -- "python3 -m pip install -e /ray/python/"
-
-RUN bash --login -i ./ci/env/install-dependencies.sh
