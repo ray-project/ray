@@ -114,12 +114,15 @@ class TestReadImages:
             "image-datasets/simple/image3.jpg",
         ]
 
-    def test_e2e_prediction(self, ray_start_regular_shared):
+    def test_e2e_prediction(self, shutdown_only):
         from ray.train.torch import TorchCheckpoint, TorchPredictor
         from ray.train.batch_predictor import BatchPredictor
 
         from torchvision import transforms
         from torchvision.models import resnet18
+
+        ray.shutdown()
+        ray.init(num_cpus=2)
 
         dataset = ray.data.read_images("example://image-datasets/simple")
         transform = transforms.ToTensor()
@@ -132,10 +135,7 @@ class TestReadImages:
         model = resnet18(pretrained=True)
         checkpoint = TorchCheckpoint.from_model(model=model)
         predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictions = predictor.predict(dataset)
-
-        for _ in predictions.iter_batches():
-            pass
+        predictor.predict(dataset)
 
     @pytest.mark.parametrize(
         "image_size,image_mode,expected_size,expected_ratio",

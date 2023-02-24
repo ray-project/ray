@@ -170,6 +170,7 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
+
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -760,7 +761,15 @@ class ExecutionPlan:
                 not self.is_read_stage_equivalent()
                 or trailing_randomize_block_order_stage
             )
-            and self._stages_after_snapshot
+            and (
+                self._stages_after_snapshot
+                # If snapshot is cleared, we'll need to recompute from the source.
+                or (
+                    self._snapshot_blocks is not None
+                    and self._snapshot_blocks.is_cleared()
+                    and self._stages_before_snapshot
+                )
+            )
         )
 
 
