@@ -1,16 +1,62 @@
+import itertools
 import unittest
 
 import gym
 import numpy as np
-import itertools
-
+import tree
 from gymnasium.spaces import Box
 
+from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+
+_, tf, _ = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class TestCatalog(unittest.TestCase):
+    def _check_model_outputs(self, model, framework, model_config_dict, input_space):
+        """Checks the model's outputs for the given input space.
+
+        Args:
+            model: The model to check.
+            framework: The framework to use (tf|torch).
+            model_config_dict: The model config dict to use.
+            input_space: The input space to use.
+        """
+        convert_method = (
+            tf.convert_to_tensor if framework == "tf" else convert_to_torch_tensor
+        )
+        # In order to stay backward compatible, we default to fcnet_hiddens[-1].
+        # See MODEL_DEFAULTS for more details
+        latent_dim = model_config_dict.get(
+            "latent_dim", model_config_dict["fcnet_hiddens"][-1]
+        )
+        observations = convert_method(
+            get_dummy_batch_for_space(input_space, batch_size=32)
+        )
+        states = tree.map_structure(
+            lambda s: convert_method(32 * [s]), model.get_initial_state()
+        )
+        seq_lens = convert_method([32])
+        inputs = {
+            SampleBatch.OBS: observations,
+            STATE_IN: states,
+            SampleBatch.SEQ_LENS: seq_lens,
+        }
+        outputs = model(inputs)
+
+        assert outputs[ENCODER_OUT].shape == (32, latent_dim)
+        tree.map_structure_with_path(
+            lambda p, v: self.assertTrue(v.shape == states[p].shape),
+            outputs[STATE_OUT],
+        )
+
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""
 
@@ -46,6 +92,7 @@ class TestCatalog(unittest.TestCase):
             # This should produce an MLPEncoder with one hidden layer
             {
                 "fcnet_hiddens": [512],
+                "encoder_latent_dim": 512,
                 "fcnet_activation": "relu",
             },
             # This should produce an LSTMEncoder with one hidden layer
@@ -97,8 +144,8 @@ class TestCatalog(unittest.TestCase):
         ]
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
-            input_space, model_config_dict_type = input_space_and_config_type
-            if model_config_dict_type is not MLPEncoderConfig and framework == "tf":
+            input_space, model_config_type = input_space_and_config_type
+            if model_config_type is not MLPEncoderConfig and framework == "tf":
                 # TODO (Artur): Enable this once we have TF implementations
                 continue
             print(
@@ -114,11 +161,14 @@ class TestCatalog(unittest.TestCase):
                 view_requirements=None,
             )
 
-            model_config_dict = catalog.get_encoder_config(
+            model_config = catalog.get_encoder_config(
                 observation_space=input_space, model_config_dict=model_config_dict
             )
-            assert type(model_config_dict) == model_config_dict_type
-            model_config_dict.build(framework=framework)
+            assert type(model_config) == model_config_type
+            model = model_config.build(framework=framework)
+
+            # Do a forward pass and check if the output has the correct shape
+            self._check_model_outputs(model, framework, model_config_dict, input_space)
 
         # TODO(Artur): Add support for composite spaces and test here
         # Today, Catalog does not handle composite spaces, so we can't test them
