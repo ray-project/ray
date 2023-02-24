@@ -59,9 +59,9 @@ assert ray.get(controller.worker.checkpoint.remote())["num_tasks_executed"] == 2
 @ray.remote(max_restarts=-1, max_task_retries=-1)
 class ImmortalActor:
     def __init__(self):
-        if os.path.exists("/tmp/checkpoint.json"):
+        if os.path.exists("checkpoint.json"):
             # Restore from a checkpoint
-            with open("/tmp/checkpoint.json", "r") as f:
+            with open("checkpoint.json", "r") as f:
                 self.state = json.load(f)
         else:
             self.state = {}
@@ -75,7 +75,7 @@ class ImmortalActor:
         self.state[key] = value
 
         # Checkpoint the latest state
-        with open("/tmp/checkpoint.json", "w") as f:
+        with open("checkpoint.json", "w") as f:
             json.dump(self.state, f)
 
     def get(self, key):
@@ -83,7 +83,7 @@ class ImmortalActor:
 
 
 actor = ImmortalActor.remote()
-actor.update.remote("1", 1)
-actor.update.remote("2", 2)
+ray.get(actor.update.remote("1", 1))
+ray.get(actor.update.remote("2", 2))
 assert ray.get(actor.get.remote("1")) == 1
 # __actor_checkpointing_auto_restart_end__
