@@ -7,7 +7,6 @@ from unittest.mock import patch, Mock
 import pytest
 
 import ray
-from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentConfig,
     DeploymentInfo,
@@ -31,6 +30,11 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+
+class MockActorHandle:
+    def __init__(self):
+        self._actor_id = "fake_id"
 
 
 class MockReplicaActorWrapper:
@@ -67,6 +71,7 @@ class MockReplicaActorWrapper:
         self.healthy = True
         self._is_cross_language = False
         self._scheduling_strategy = scheduling_strategy
+        self._actor_handle = MockActorHandle()
 
     @property
     def is_cross_language(self) -> bool:
@@ -81,8 +86,8 @@ class MockReplicaActorWrapper:
         return self._deployment_name
 
     @property
-    def actor_handle(self) -> ActorHandle:
-        return None
+    def actor_handle(self) -> MockActorHandle:
+        return self._actor_handle
 
     @property
     def max_concurrent_queries(self) -> int:
