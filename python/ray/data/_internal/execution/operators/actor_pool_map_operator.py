@@ -88,7 +88,8 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        actor = self._cls.remote(src_fn_name=self.name)
+        ctx = DatasetContext.get_current()
+        actor = self._cls.remote(ctx, src_fn_name=self.name)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -279,7 +280,8 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def __init__(self, src_fn_name: str):
+    def __init__(self, ctx: DatasetContext, src_fn_name: str):
+        DatasetContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
 
     def get_location(self) -> NodeIdStr:
