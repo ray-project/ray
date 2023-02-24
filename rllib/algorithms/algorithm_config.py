@@ -778,6 +778,13 @@ class AlgorithmConfig(_Config):
                 "`config.rollouts(enable_connectors=True)`."
             )
 
+        if self._enable_learner_api and not self._enable_rl_module_api:
+            raise ValueError(
+                "Learner API requires RLModule API. "
+                "Please enable RLModule API via "
+                "`config.training(_enable_rl_module_api=True)`."
+            )
+
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
@@ -2754,7 +2761,9 @@ class AlgorithmConfig(_Config):
             .learner(
                 learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
-                optimizer_config={"lr": self.lr},
+                optimizer_config={
+                    "lr": self.lr,
+                },
                 learner_hps=self.learner_hps,
             )
             .resources(

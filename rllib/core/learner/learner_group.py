@@ -85,6 +85,7 @@ class LearnerGroup:
             self._learner = learner_class(**learner_spec.get_params_dict())
             self._learner.build()
             self._worker_manager = None
+            self._in_queue = []
         else:
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
@@ -94,7 +95,6 @@ class LearnerGroup:
                 num_gpus_per_worker=scaling_config.num_gpus_per_worker,
                 max_retries=0,
             )
-
             backend_executor.start(
                 train_cls=learner_class,
                 train_cls_kwargs=learner_spec.get_params_dict(),
@@ -112,6 +112,15 @@ class LearnerGroup:
                 max_remote_requests_in_flight_per_actor=1,
             )
             self._in_queue = deque(maxlen=max_queue_len)
+
+    @property
+    def in_queue_size(self) -> int:
+        """Returns the number of batches currently in the in queue to be processed.
+
+        If the queue is reaching its max size, then this learner group likely needs
+        more workers to process incoming batches.
+        """
+        return len(self._in_queue)
 
     @property
     def is_local(self) -> bool:
