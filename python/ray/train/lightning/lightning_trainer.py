@@ -1,7 +1,12 @@
 import pytorch_lightning as ptl
+from pytorch_lightning.strategies.ddp import DDPStrategy
+
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union, Type, Any
 from inspect import isclass
+from pytorch_lightning import strategies
 from pytorch_lightning.core import datamodule
+from pytorch_lightning.plugins.environments import ClusterEnvironment
+
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
@@ -16,15 +21,17 @@ from ray.train.constants import (
 )
 from python.ray.train import lightning
 
-from ray.train.lightning.lightning_utils import AIRLightningLogger
+from ray.train.lightning.lightning_utils import AIRLightningLogger, RayEnvironment
+
+
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 LIGHTNING_MODULE_KEY = "_lightning_module"
-LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_init_config"
-LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_init_config"
-DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_init_config"
+LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
+LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
+DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
 
 
 @PublicAPI(stability="alpha")
@@ -33,9 +40,9 @@ class LightningTrainer(DataParallelTrainer):
         self,
         lightning_module: ptl.LightningModule,
         *,
-        lightning_module_init_config: Optional[Dict] = None,
-        lightning_trainer_init_config: Optional[Dict] = None,
-        ddp_strategy_init_config: Optional[Dict] = None,
+        lightning_module_config: Optional[Dict] = None,
+        lightning_trainer_config: Optional[Dict] = None,
+        ddp_strategy_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
@@ -48,7 +55,7 @@ class LightningTrainer(DataParallelTrainer):
             torch_config = TorchConfig()
 
         train_loop_config = self._create_trainer_loop_config(
-            lightning_module, lightning_module_init_config, lightning_trainer_init_config, ddp_strategy_init_config
+            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config
         )
 
         super(LightningTrainer, self).__init__(
@@ -67,9 +74,9 @@ class LightningTrainer(DataParallelTrainer):
     def _create_trainer_loop_config(
         cls,
         lightning_module: ptl.LightningModule,
-        lightning_module_init_config: Optional[Dict] = None,
-        lightning_trainer_init_config: Optional[Dict] = None,
-        ddp_strategy_init_config: Optional[Dict] = None,
+        lightning_module_config: Optional[Dict] = None,
+        lightning_trainer_config: Optional[Dict] = None,
+        ddp_strategy_config: Optional[Dict] = None,
     ) -> Dict[str, Any]:
 
         trainer_loop_config = {}
@@ -84,25 +91,15 @@ class LightningTrainer(DataParallelTrainer):
             )
         trainer_loop_config[LIGHTNING_MODULE_KEY] = lightning_module
 
-        if lightning_module_init_config:
-            trainer_loop_config[LIGHTNING_MODULE_CONFIG_KEY] = lightning_module_init_config
+        if lightning_module_config:
+            trainer_loop_config[LIGHTNING_MODULE_CONFIG_KEY] = lightning_module_config
         
-        if lightning_trainer_init_config:
-            trainer_loop_config[LIGHTNING_TRAINER_CONFIG_KEY] = lightning_trainer_init_config
+        if lightning_trainer_config:
+            trainer_loop_config[LIGHTNING_TRAINER_CONFIG_KEY] = lightning_trainer_config
         
-        if ddp_strategy_init_config:
-            trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_init_config
+        if ddp_strategy_config:
+            trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
         return trainer_loop_config
-
-def _prepare_trainer_config(config):
-    config["enable_progress_bar"] = False
-    config["enable_checkpointing"] = False
-
-    config["logger"] = AIRLightningLogger()
-
-    current_device = ray.train.torch.get_device()
-    config["devices"] = [current_device.index]
-    return config
 
 
 def _lightning_train_loop_per_worker(config):
@@ -115,7 +112,28 @@ def _lightning_train_loop_per_worker(config):
     module_init_config = config.get(LIGHTNING_MODULE_CONFIG_KEY, {})
     lightning_module = LightningModuleCls(**module_init_config)
 
-    trainer_init_config = _prepare_trainer_config(config.get(LIGHTNING_TRAINER_CONFIG_KEY, {}))
+    trainer_config = config.get(LIGHTNING_TRAINER_CONFIG_KEY, {})
+    trainer_config["enable_progress_bar"] = False
+    trainer_config["enable_checkpointing"] = False
+    trainer_config["logger"] = AIRLightningLogger()
 
-    trainer = ptl.Trainer(**trainer_init_config)
-    trainer.fit(lightning_module_instance, datamodule=datamodule)
+    # set trainer's parallel devices
+    current_device = ray.train.torch.get_device()
+    trainer_config["devices"] = [current_device.index]
+
+    # set ray cluster env
+    plugins = [RayEnvironment()]
+    for plugin in trainer_config.get("plugins", []):
+        if not isinstance(plugin, ClusterEnvironment):
+            plugins.append(plugin)
+    trainer_config["plugins"] = plugins
+
+
+    # Insert ray air checkpoint callback
+    if "callbacks" not in trainer_config:
+        trainer_config["callbacks"] = []
+    trainer_config["callbacks"].append(AIRModuleCheckpoint())
+    
+
+    trainer = ptl.Trainer(**trainer_config)
+    trainer.fit(lightning_module, datamodule=datamodule)
