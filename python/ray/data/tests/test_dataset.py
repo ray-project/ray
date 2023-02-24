@@ -1369,17 +1369,26 @@ def test_count_lazy(ray_start_regular_shared):
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert ds._plan.execute()._num_computed() == 0
+
+    def check_num_computed(expected):
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            # In streaing executor, ds.take() will not invoke partial execution
+            # in LazyBlocklist.
+            assert ds._plan.execute()._num_computed() == 0
+        else:
+            assert ds._plan.execute()._num_computed() == expected
+
+    check_num_computed(0)
     assert ds.take(10) == list(range(10))
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(2)
     assert ds.take(20) == list(range(20))
-    assert ds._plan.execute()._num_computed() == 4
+    check_num_computed(4)
     assert ds.take(30) == list(range(30))
-    assert ds._plan.execute()._num_computed() == 8
+    check_num_computed(8)
     assert ds.take(50) == list(range(50))
-    assert ds._plan.execute()._num_computed() == 16
+    check_num_computed(16)
     assert ds.take(100) == list(range(100))
-    assert ds._plan.execute()._num_computed() == 20
+    check_num_computed(20)
 
 
 def test_dataset_repr(ray_start_regular_shared):
@@ -1696,7 +1705,14 @@ def test_iter_rows(ray_start_regular_shared):
     # Default ArrowRows.
     for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
         assert isinstance(row, TableRow)
-        assert isinstance(row, ArrowRow)
+        # In streaming, we set batch_format to "default" because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that. As a result, it's receiving PandasRow (the defaut
+        # batch format).
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            assert isinstance(row, PandasRow)
+        else:
+            assert isinstance(row, ArrowRow)
         assert row == t_row
 
     # PandasRows after conversion.
@@ -1710,7 +1726,14 @@ def test_iter_rows(ray_start_regular_shared):
     # Prefetch.
     for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
         assert isinstance(row, TableRow)
-        assert isinstance(row, ArrowRow)
+        # In streaming, we set batch_format to "default" because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that. As a result, it's receiving PandasRow (the defaut
+        # batch format).
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            assert isinstance(row, PandasRow)
+        else:
+            assert isinstance(row, ArrowRow)
         assert row == t_row
 
 
@@ -2181,7 +2204,12 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        assert ds._plan.execute()._num_computed() == expected
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            # In streaming execution of ds.iter_batches(), there is no partial
+            # execution so _num_computed() in LazyBlocklist is 0.
+            assert ds._plan.execute()._num_computed() == 0
+        else:
+            assert ds._plan.execute()._num_computed() == expected
 
 
 def test_add_column(ray_start_regular_shared):
