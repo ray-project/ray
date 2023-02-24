@@ -41,8 +41,8 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapRows,
     MapBatches,
-    Write,
 )
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
@@ -2707,10 +2707,15 @@ class Dataset(Generic[T]):
             )
 
         if type(datasource).write != Datasource.write:
+            write_fn = generate_write_fn(datasource, **write_args)
+
+            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+                return write_fn(blocks, ctx)
+
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    generate_write_fn(datasource, **write_args),
+                    write_fn_wrapper,
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
