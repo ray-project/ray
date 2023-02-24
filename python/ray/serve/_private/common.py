@@ -295,7 +295,7 @@ class RunningReplicaInfo:
 
     def __post_init__(self):
         # Set hash value when object is constructed.
-        # We use _acotor_id to hash the ActorHandle object
+        # We use _actor_id to hash the ActorHandle object
         # instead of actor_handle itself to make sure
         # it is consistently same actor handle between different
         # object ids.
