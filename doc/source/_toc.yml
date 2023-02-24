@@ -26,6 +26,7 @@ parts:
           - file: ray-core/examples/overview
             title: "Examples"
             sections:
+              - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
               - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
