@@ -493,15 +493,15 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
     @validator("applications")
     def application_routes_unique(cls, v):
-        # Ensure there are no duplicate applications listed
+        # Ensure each application has a different route prefix
         routes = [app.route_prefix for app in v]
         duplicates = {f'"{route}"' for route in routes if routes.count(route) > 1}
         if len(duplicates):
-            apps_str = (
+            routes_str = (
                 "route prefix " if len(duplicates) == 1 else "route prefixes "
             ) + (", ".join(duplicates))
             raise ValueError(
-                f"Found duplicate applications with {apps_str}. Please remove all "
+                f"Found duplicate applications for {routes_str}. Please remove all "
                 "duplicates."
             )
         return v
