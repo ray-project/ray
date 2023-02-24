@@ -138,14 +138,16 @@ class ImpalaTfLearner(TfLearner):
             discounts=discounts_time_major,
         )
 
+        batch_size = tf.cast(target_actions_logp_time_major.shape[-1], tf.float32)
+
         # The policy gradients loss.
         pi_loss = -tf.reduce_sum(target_actions_logp_time_major * pg_advantages)
-        mean_pi_loss = -tf.reduce_mean(target_actions_logp_time_major * pg_advantages)
+        mean_pi_loss = pi_loss / batch_size
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * tf.reduce_sum(delta**2)
-        mean_vf_loss = 0.5 * tf.reduce_mean(delta**2)
+        mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
         entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)

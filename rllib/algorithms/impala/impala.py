@@ -401,6 +401,8 @@ class ImpalaConfig(AlgorithmConfig):
     def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
         lg_config = super().get_learner_group_config(module_spec)
         optim_config = lg_config.optimizer_config
+        # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
+        # class
         optim_config.update({"grad_clip": self.grad_clip})
         lg_config = lg_config.learner(optimizer_config=optim_config)
         return lg_config
@@ -810,6 +812,12 @@ class Impala(Algorithm):
 
         """
         with self._timers[SAMPLE_TIMER]:
+            # Sample from healthy remote workers by default. If there is no healthy
+            # worker (either because they have all died, or because there was none to
+            # begin) check if the local_worker exists. If the local worker has an
+            # env_instance (either because there are no remote workers or
+            # self.config.create_env_on_local_worker == True), then sample from the
+            # local worker. Otherwise just return an empty list.
             if self.workers.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
                 self.workers.foreach_worker_async(
@@ -822,9 +830,6 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            # We should sample from the local worker if there is a local worker and
-            # and all the remote rollout workers are unhealthy, or if we have no
-            # remote rollout workers to begin with.
             elif self.workers.local_worker() and (
                 self.config.create_env_on_local_worker
                 or self.config.num_rollout_workers == 0
@@ -1034,19 +1039,22 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
-            if self.config.num_rollout_workers == 0 and workers_that_need_updates == {
-                0
-            }:
+
+            if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)
             else:
-                weights = ray.put(weights)
+                weights_ref = ray.put(weights)
                 self.workers.foreach_worker(
-                    func=lambda w: w.set_weights(ray.get(weights)),
+                    func=lambda w: w.set_weights(ray.get(weights_ref)),
                     local_worker=False,
                     remote_worker_ids=list(workers_that_need_updates),
                     timeout_seconds=0,  # Don't wait for the workers to finish.
                 )
+                # If we have a local worker that we sample from in addition to
+                # our remote workers, we need to update its weights as well.
+                if self.config.create_env_on_local_worker:
+                    self.workers.local_worker().set_weights(weights)
 
     def update_workers_if_necessary(
         self,
