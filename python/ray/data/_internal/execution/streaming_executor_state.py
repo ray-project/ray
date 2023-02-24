@@ -91,6 +91,10 @@ class OpState:
         self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
+        #
+        # Note: this queue is also accessed concurrently from the consumer thread.
+        # (in addition to the streaming executor thread). Hence, it must be a
+        # thread-safe type such as `deque`.
         self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
