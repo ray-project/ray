@@ -832,7 +832,7 @@ class TestDeployApp:
         )
 
     def test_deploy_multi_app_overwrite_apps(self, client: ServeControllerClient):
-        """Check that overwriting multiple applications works as expected."""
+        """Check that redeploying different apps with same names works as expected."""
 
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
@@ -875,6 +875,94 @@ class TestDeployApp:
         )
         wait_for_condition(
             lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
+        )
+
+    def test_deploy_multi_app_overwrite_apps2(self, client: ServeControllerClient):
+        """Check that deploying a new set of applications removes old ones."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = ServeDeploySchema.parse_obj(
+            {
+                "host": "127.0.0.1",
+                "port": 8000,
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": world_import_path,
+                    },
+                    {
+                        "name": "app2",
+                        "route_prefix": "/app2",
+                        "import_path": pizza_import_path,
+                    },
+                ],
+            }
+        )
+        # Deploy app1 and app2
+        client.deploy_apps(test_config)
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Deploy app3
+        new_config = ServeDeploySchema.parse_obj(
+            {
+                "host": "127.0.0.1",
+                "port": 8000,
+                "applications": [
+                    {
+                        "name": "app3",
+                        "route_prefix": "/app3",
+                        "import_path": pizza_import_path,
+                        "deployments": [
+                            {
+                                "name": "Adder",
+                                "user_config": {
+                                    "increment": 3,
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }
+        )
+        client.deploy_apps(new_config)
+
+        def check_dead():
+            actors = list_actors(
+                filters=[
+                    ("ray_namespace", "=", SERVE_NAMESPACE),
+                    ("state", "=", "ALIVE"),
+                ]
+            )
+            for actor in actors:
+                assert (
+                    "app1" not in actor["class_name"]
+                    and "app2" not in actor["class_name"]
+                )
+            return True
+
+        # Deployments from app1 and app2 should be deleted
+        wait_for_condition(check_dead)
+
+        # App1 and App2 should be gone
+        assert requests.get("http://localhost:8000/app1").status_code != 200
+        assert (
+            requests.post("http://localhost:8000/app2", json=["ADD", 2]).status_code
+            != 200
+        )
+
+        # App3 should be up and running
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).json()
+            == "5 pizzas please!"
         )
 
     def test_deploy_app_runtime_env(self, client: ServeControllerClient):
