@@ -26,10 +26,3 @@ class Write(AbstractMap):
         self._compute = "tasks"
         # Take the input blocks unchanged while writing.
         self._target_block_size = float("inf")
-        # No-op dummy UDF params so for the purpose of operator fusion, the Write
-        # will be treated as Map.
-        self._fn = None
-        self._fn_args = None
-        self._fn_kwargs = None
-        self._fn_constructor_args = None
-        self._fn_constructor_kwargs = None
