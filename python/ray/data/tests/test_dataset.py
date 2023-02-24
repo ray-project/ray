@@ -1599,6 +1599,29 @@ def test_from_items(ray_start_regular_shared):
     assert ds.take() == ["hello", "world"]
 
 
+@pytest.mark.parametrize("parallelism", list(range(1, 21)))
+def test_from_items_parallelism(ray_start_regular_shared, parallelism):
+    # Test that specifying parallelism yields the expected number of blocks.
+    n = 20
+    records = [{"a": i} for i in range(n)]
+    ds = ray.data.from_items(records, parallelism=parallelism)
+    out = ds.take_all()
+    assert out == records
+    assert ds.num_blocks() == parallelism
+
+
+def test_from_items_parallelism_truncated(ray_start_regular_shared):
+    # Test that specifying parallelism greater than the number of items is truncated to
+    # the number of items.
+    n = 10
+    parallelism = 20
+    records = [{"a": i} for i in range(n)]
+    ds = ray.data.from_items(records, parallelism=parallelism)
+    out = ds.take_all()
+    assert out == records
+    assert ds.num_blocks() == n
+
+
 def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
