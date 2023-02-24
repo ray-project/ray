@@ -37,7 +37,7 @@ class TestCatalog(unittest.TestCase):
         ]
 
         # TODO (Artur): Add support for the commented out configs
-        model_configs = [
+        model_config_dicts = [
             {
                 "fcnet_activation": "relu",
                 "fcnet_hiddens": [256, 256, 256],
@@ -82,11 +82,15 @@ class TestCatalog(unittest.TestCase):
 
         # First check if encoders can be created for singular spaces
         print("Testing encoders for singular input spaces...")
-        config_combinations = [frameworks, input_spaces_and_config_types, model_configs]
+        config_combinations = [
+            frameworks,
+            input_spaces_and_config_types,
+            model_config_dicts,
+        ]
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
-            input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf":
+            input_space, model_config_dict_type = input_space_and_config_type
+            if model_config_dict_type is not MLPEncoderConfig and framework == "tf":
                 # TODO (Artur): Enable this once we have TF implementations
                 continue
             print(
@@ -97,16 +101,16 @@ class TestCatalog(unittest.TestCase):
                 observation_space=input_space,
                 # Action space does not matter for encoders
                 action_space=gym.spaces.Box(1, 1, (1,)),
-                model_config=model_config_dict,
+                model_config_dict=model_config_dict,
                 # TODO(Artur): Add view requirements when we need them
                 view_requirements=None,
             )
 
-            model_config = catalog.get_encoder_config(
-                observation_space=input_space, model_config=model_config_dict
+            model_config_dict = catalog.get_encoder_config(
+                observation_space=input_space, model_config_dict=model_config_dict
             )
-            assert type(model_config) == model_config_type
-            model_config.build(framework=framework)
+            assert type(model_config_dict) == model_config_dict_type
+            model_config_dict.build(framework=framework)
 
         # TODO(Artur): Comment in to also test complex input spaces
         # Secondly, check if composite input spaces can be created for composite spaces
@@ -121,7 +125,9 @@ class TestCatalog(unittest.TestCase):
         #     # We always only combine two input spaces to reduce test runtime
         #     input_space_combination = input_space_combination[0:2]
         #
-        #     config_combinations = [frameworks, input_space_combination, model_configs]
+        # config_combinations = [frameworks,
+        #                        input_space_combination,
+        #                        model_config_dicts]
         #     for config in itertools.product(*config_combinations):
         #         framework, input_spaces, model_config_dict = config
         #         print(
@@ -132,15 +138,16 @@ class TestCatalog(unittest.TestCase):
         #             observation_space=input_space,
         #             # Action space does not matter for primitive models
         #             action_space=gym.spaces.Box(1, 1, (1,)),
-        #             model_config=model_config_dict,
+        #             model_config_dict=model_config_dict,
         #             # TODO(Artur): Add view requirements when we need them
         #             view_requirements=None,
         #         )
         #
-        #         model_config = catalog.get_encoder_config(
-        #             observation_space=input_spaces, model_config=model_config_dict
+        #         model_config_dict = catalog.get_encoder_config(
+        #             observation_space=input_spaces,
+        #             model_config_dict=model_config_dict
         #         )
-        #         model_config.build(framework=framework)
+        #         model_config_dict.build(framework=framework)
 
 
 if __name__ == "__main__":

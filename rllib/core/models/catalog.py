@@ -38,14 +38,14 @@ class Catalog:
                 model_config_dict: dict,
             ):
                 super().__init__(observation_space, action_space, model_config_dict)
-                self.my_model_config = MLPHeadConfig(
+                self.my_model_config_dict = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
                     input_dim=self.observation_space.shape[0],
                     output_dim=1,
                 )
 
             def build_my_head(self, framework: str):
-                return self.my_model_config.build(framework=framework)
+                return self.my_model_config_dict.build(framework=framework)
 
         # With that, RLlib can build and use models from this catalog like so:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
@@ -54,7 +54,7 @@ class Catalog:
 
         # We can also modify configs of RLlib's native Catalogs like so:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        catalog.my_model_config.hidden_layer_dims = [32, 16]
+        catalog.my_model_config_dict.hidden_layer_dims = [32, 16]
         my_head = catalog.build_my_head("torch")  # doctest: +SKIP
         out = my_head(...)  # doctest: +SKIP
     """
@@ -64,8 +64,8 @@ class Catalog:
         observation_space: gym.Space,
         action_space: gym.Space,
         # TODO (Artur): Turn model_config into model_config_dict to distinguish
-        #  between ModelConfig and a model_config dict.
-        model_config: dict,
+        #  between ModelConfig and a model_config_dict dict library-wide.
+        model_config_dict: dict,
         view_requirements: dict = None,
     ):
         """Initializes a Catalog with a default encoder config.
@@ -73,7 +73,7 @@ class Catalog:
         Args:
             observation_space: The observation space of the environment.
             action_space: The action space of the environment.
-            model_config: The model config that specifies things like hidden
+            model_config_dict: The model config that specifies things like hidden
                 dimensions and activations functions to use in this Catalog.
             view_requirements: The view requirements of Models to produce. This is
                 needed for a Model that encodes something else than observations or
@@ -84,14 +84,14 @@ class Catalog:
         self.action_space = action_space
 
         # TODO (Artur): Possibly get rid of this config merge
-        self.model_config = {**MODEL_DEFAULTS, **model_config}
+        self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self.view_requirements = view_requirements
 
         # Produce a basic encoder config.
         self.encoder_config = self.get_encoder_config(
             observation_space=observation_space,
             action_space=action_space,
-            model_config=model_config,
+            model_config_dict=model_config_dict,
             view_requirements=view_requirements,
         )
         # The dimensions of the latent vector that is output by the encoder and fed
@@ -114,11 +114,11 @@ class Catalog:
     def get_encoder_config(
         self,
         observation_space: gym.Space,
-        model_config: dict,
+        model_config_dict: dict,
         action_space: gym.Space = None,
         view_requirements=None,
     ) -> ModelConfig:
-        """Returns an EncoderConfig for the given input_space and model_config.
+        """Returns an EncoderConfig for the given input_space and model_config_dict.
 
         Encoders are usually used in RLModules to transform the input space into a
         latent space that is then fed to the heads.
@@ -135,7 +135,7 @@ class Catalog:
 
         Args:
             observation_space: The observation space to use.
-            model_config: The model config to use.
+            model_config_dict: The model config to use.
             action_space: The action space to use if actions are to be encoded. This
                 is commonly the case for LSTM models.
             view_requirements: The view requirements to use if anything else than
@@ -146,27 +146,29 @@ class Catalog:
             The encoder config.
         """
         # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
-        model_config = {**MODEL_DEFAULTS, **model_config}
+        model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
 
-        activation = model_config["fcnet_activation"]
-        output_activation = model_config["fcnet_activation"]
-        fcnet_hiddens = model_config["fcnet_hiddens"]
-        encoder_latent_dim = model_config["encoder_latent_dim"] or fcnet_hiddens[-1]
+        activation = model_config_dict["fcnet_activation"]
+        output_activation = model_config_dict["fcnet_activation"]
+        fcnet_hiddens = model_config_dict["fcnet_hiddens"]
+        encoder_latent_dim = (
+            model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
+        )
 
-        if model_config["use_lstm"]:
+        if model_config_dict["use_lstm"]:
             encoder_config = LSTMEncoderConfig(
                 input_dim=observation_space.shape[0],
-                hidden_dim=model_config["lstm_cell_size"],
-                batch_first=not model_config["_time_major"],
+                hidden_dim=model_config_dict["lstm_cell_size"],
+                batch_first=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dim=model_config["lstm_cell_size"],
+                output_dim=model_config_dict["lstm_cell_size"],
                 output_activation=output_activation,
                 observation_space=observation_space,
                 action_space=action_space,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_encoder_config=self.get_tokenizer_encoder_config,
             )
-        elif model_config["use_attention"]:
+        elif model_config_dict["use_attention"]:
             raise NotImplementedError
         else:
             # TODO (Artur): Maybe check for original spaces here
@@ -175,10 +177,10 @@ class Catalog:
                 # In order to guarantee backward compatability with old configs,
                 # we need to check if no latent dim was set and simply reuse the last
                 # fcnet hidden dim for that purpose.
-                if model_config["encoder_latent_dim"]:
-                    hidden_layer_dims = model_config["fcnet_hiddens"]
+                if model_config_dict["encoder_latent_dim"]:
+                    hidden_layer_dims = model_config_dict["fcnet_hiddens"]
                 else:
-                    hidden_layer_dims = model_config["fcnet_hiddens"][:-1]
+                    hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
                 encoder_config = MLPEncoderConfig(
                     input_dim=observation_space.shape[0],
                     hidden_layer_dims=hidden_layer_dims,
@@ -191,14 +193,14 @@ class Catalog:
             elif (
                 isinstance(observation_space, Box) and len(observation_space.shape) == 3
             ):
-                if not model_config.get("conv_filters"):
-                    model_config["conv_filters"] = get_filter_config(
+                if not model_config_dict.get("conv_filters"):
+                    model_config_dict["conv_filters"] = get_filter_config(
                         observation_space.shape
                     )
 
                 encoder_config = CNNEncoderConfig(
                     input_dims=observation_space.shape,
-                    filter_specifiers=model_config["conv_filters"],
+                    filter_specifiers=model_config_dict["conv_filters"],
                     filter_layer_activation=activation,
                     output_activation=output_activation,
                     output_dim=encoder_latent_dim,
@@ -212,7 +214,7 @@ class Catalog:
 
     @classmethod
     def get_tokenizer_encoder_config(
-        cls, space: gym.Space, model_config: dict
+        cls, space: gym.Space, model_config_dict: dict
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
@@ -222,9 +224,9 @@ class Catalog:
         """
         return cls.get_encoder_config(
             observation_space=space,
-            # Use the model_config without flags that would end up in complex models
-            model_config={
-                **model_config,
+            # Use model_config_dict without flags that would end up in complex models
+            model_config_dict={
+                **model_config_dict,
                 **{"use_lstm": False, "use_attention": False},
             },
         )
