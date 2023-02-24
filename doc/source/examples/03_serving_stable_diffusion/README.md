@@ -7,7 +7,7 @@ On an [Anyscale Workspace](https://docs.anyscale.com/user-guide/develop-and-debu
 this will install packages to a shared filesystem that will be available to all nodes in the cluster.
 
 ```
-pip install --user -r requirements.txt
+pip install --user -r requirements.txt --upgrade
 ```
 
 ## Deploy the Ray Serve application locally
