@@ -332,6 +332,19 @@ def test_zip(ray_start_regular_shared):
         ds.zip(ray.data.range(3)).fully_executed()
 
 
+@pytest.mark.parametrize(
+    "num_blocks1,num_blocks2",
+    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+)
+def test_zip_different_num_blocks(ray_start_regular_shared, num_blocks1, num_blocks2):
+    n = 12
+    ds1 = ray.data.range(n, parallelism=num_blocks1)
+    ds2 = ray.data.range(n, parallelism=num_blocks2).map(lambda x: x + 1)
+    ds = ds1.zip(ds2)
+    assert ds.schema() == tuple
+    assert ds.take() == list(zip(range(n), range(1, n + 1)))
+
+
 def test_zip_pandas(ray_start_regular_shared):
     ds1 = ray.data.from_pandas(pd.DataFrame({"col1": [1, 2], "col2": [4, 5]}))
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
