@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import BlockMetadata
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
@@ -63,15 +63,6 @@ class ImageDatasource(BinaryDatasource):
             self, size=size, mode=mode, include_paths=include_paths, **kwargs
         )
 
-    def _convert_block_to_tabular_block(
-        self, block: Block, column_name: Optional[str] = None
-    ) -> Block:
-        import pandas as pd
-        import pyarrow as pa
-
-        assert isinstance(block, (pa.Table, pd.DataFrame))
-        return block
-
     def _read_file(
         self,
         f: "pyarrow.NativeFile",
@@ -82,9 +73,7 @@ class ImageDatasource(BinaryDatasource):
     ) -> "pyarrow.Table":
         from PIL import Image
 
-        records = super()._read_file(f, path, include_paths=True)
-        assert len(records) == 1
-        path, data = records[0]
+        path, data = super()._read_file_as_binary(f, path)
 
         image = Image.open(io.BytesIO(data))
         if size is not None:
