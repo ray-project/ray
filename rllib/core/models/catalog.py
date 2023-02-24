@@ -76,8 +76,8 @@ class Catalog:
             model_config_dict: The model config that specifies things like hidden
                 dimensions and activations functions to use in this Catalog.
             view_requirements: The view requirements of Models to produce. This is
-                needed for a Model that encodes something else than observations or
-                actions but not otherwise.
+                needed for a Model that encodes a complex temporal mix of
+                observations, actions or rewards.
 
         """
         self.observation_space = observation_space
@@ -101,7 +101,7 @@ class Catalog:
     def build_encoder(self, framework: str):
         """Builds the encoder.
 
-        By default, this method builds the encoder config.
+        By default this method builds an encoder instance from Catalog.encoder_config.
 
         Args:
             framework: The framework to use. Either "torch" or "tf".
@@ -121,9 +121,9 @@ class Catalog:
         """Returns an EncoderConfig for the given input_space and model_config_dict.
 
         Encoders are usually used in RLModules to transform the input space into a
-        latent space that is then fed to the heads.
-        The returned EncoderConfigs relate 1:1 to the Encoder configs that RLlib
-        supports. For example, for a simple 1D-Box input_space, RLlib offers an
+        latent space that is then fed to the heads. The returned EncoderConfig
+        objects correspond to the built-in Encoder classes in RLlib.
+        For example, for a simple 1D-Box input_space, RLlib offers an
         MLPEncoder, hence this method returns the MLPEncoderConfig. You can overwrite
         this method to produce specific EncoderConfigs for your custom Models.
 

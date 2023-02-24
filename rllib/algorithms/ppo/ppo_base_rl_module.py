@@ -55,12 +55,12 @@ class PPORLModuleBase(RLModule, abc.ABC):
         observation_space: gym.Space,
         action_space: gym.Space,
         *,
-        model_config: Mapping[str, Any],
+        model_config_dict: Mapping[str, Any],
     ) -> "PPORLModuleBase":
-        free_log_std = model_config["free_log_std"]
+        free_log_std = model_config_dict["free_log_std"]
         assert not free_log_std, "free_log_std not supported yet."
 
-        if model_config["use_lstm"]:
+        if model_config_dict["use_lstm"]:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
 
         assert isinstance(
@@ -77,7 +77,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
         catalog = PPOCatalog(
             observation_space=observation_space,
             action_space=action_space,
-            model_config=model_config,
+            model_config_dict=model_config_dict,
         )
 
         config = PPOModuleConfig(

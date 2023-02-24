@@ -31,19 +31,19 @@ class PPOCatalog(Catalog):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_config: dict,
+        model_config_dict: dict,
     ):
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
-            model_config=model_config,
+            model_config_dict=model_config_dict,
         )
         """Initializes the PPOCatalog.
 
         Args:
             observation_space: The observation space of the Encoder.
             action_space: The action space for the Pi Head.
-            model_config: The model config to use.
+            model_config_dict: The model config to use.
         """
         assert isinstance(
             observation_space, gym.spaces.Box
@@ -60,7 +60,7 @@ class PPOCatalog(Catalog):
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self.encoder_config,
-            shared=self.model_config["vf_share_layers"],
+            shared=self.model_config_dict["vf_share_layers"],
         )
 
         if isinstance(action_space, gym.spaces.Discrete):
@@ -68,8 +68,8 @@ class PPOCatalog(Catalog):
         else:
             pi_output_dim = action_space.shape[0] * 2
 
-        post_fcnet_hiddens = self.model_config["post_fcnet_hiddens"]
-        post_fcnet_activation = self.model_config["post_fcnet_activation"]
+        post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
+        post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
         self.pi_head_config = MLPHeadConfig(
             input_dim=self.encoder_config.output_dim,

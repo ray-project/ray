@@ -23,14 +23,14 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 def get_expected_module_config(
     env: gym.Env,
-    model_config: dict,
+    model_config_dict: dict,
     observation_space: gym.Space,
 ) -> PPOModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
         env: Environment for which we build the model later
-        model_config: Model config to use for the catalog
+        model_config_dict: Model config to use for the catalog
         observation_space: Observation space to use for the catalog.
 
     Returns:
@@ -39,7 +39,7 @@ def get_expected_module_config(
     catalog = PPOCatalog(
         observation_space=observation_space,
         action_space=env.action_space,
-        model_config=model_config,
+        model_config_dict=model_config_dict,
     )
 
     return PPOModuleConfig(
@@ -93,9 +93,9 @@ def dummy_tf_ppo_loss(batch, fwd_out):
 
 
 def _get_ppo_module(framework, env, lstm, observation_space):
-    model_config = {"use_lstm": lstm}
+    model_config_dict = {"use_lstm": lstm}
     config = get_expected_module_config(
-        env, model_config=model_config, observation_space=observation_space
+        env, model_config_dict=model_config_dict, observation_space=observation_space
     )
     if framework == "torch":
         module = PPOTorchRLModule(config)
