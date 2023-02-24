@@ -1,5 +1,5 @@
 import itertools
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Tuple, List, Optional, TYPE_CHECKING
 
 import ray
 from ray.data._internal.fast_repartition import fast_repartition
@@ -8,7 +8,7 @@ from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
+from ray.data._internal.split import _split_at_indices
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
@@ -18,6 +18,7 @@ from ray.data.context import DatasetContext
 from ray.data.block import (
     _validate_key_fn,
     Block,
+    BlockPartition,
     KeyFn,
     BlockMetadata,
     BlockAccessor,
@@ -151,25 +152,50 @@ class ZipStage(AllToAllStage):
 
     def __init__(self, other: "Dataset"):
         def do_zip_all(block_list: BlockList, clear_input_blocks: bool, *_):
-            # Repartition other to align with this dataset, and then zip together the
-            # blocks in parallel.
+            # Repartition other to align with the base dataset, and then zip together
+            # the blocks in parallel.
             # TODO(Clark): Port this to a streaming zip, e.g. push block pairs through
             # an actor that buffers and zips.
-            blocks_with_metadata = block_list.get_blocks_with_metadata()
-            # Get the split indices that will align other with self.
-            block_rows = _calculate_blocks_rows(blocks_with_metadata)
-            indices = list(itertools.accumulate(block_rows))
-            indices.pop(-1)
-
+            base_block_list = block_list
+            base_blocks_with_metadata = block_list.get_blocks_with_metadata()
+            base_block_rows, base_block_bytes = _calculate_blocks_rows_and_bytes(
+                base_blocks_with_metadata
+            )
             # Execute other to a block list.
             other_block_list = other._plan.execute()
             other_blocks_with_metadata = other_block_list.get_blocks_with_metadata()
-            other_block_rows = _calculate_blocks_rows(other_blocks_with_metadata)
+            other_block_rows, other_block_bytes = _calculate_blocks_rows_and_bytes(
+                other_blocks_with_metadata
+            )
+            inverted = False
+            if sum(other_block_bytes) > sum(base_block_bytes):
+                # Make sure that other is the smaller dataset, so we minimize splitting
+                # work when aligning other with base.
+                # TODO(Clark): Improve this heuristic for minimizing splitting work,
+                # e.g. by generating the splitting plans for each route (via
+                # _generate_per_block_split_indices) and choosing the plan that splits
+                # the least cumulative bytes.
+                base_block_list, other_block_list = other_block_list, base_block_list
+                base_blocks_with_metadata, other_blocks_with_metadata = (
+                    other_blocks_with_metadata,
+                    base_blocks_with_metadata,
+                )
+                base_block_rows, other_block_rows = other_block_rows, base_block_rows
+                inverted = True
+            # Get the split indices that will align other with base.
+            indices = list(itertools.accumulate(base_block_rows))
+            indices.pop(-1)
+
             # Check that each dataset has the same number of rows.
             # TODO(Clark): Support different number of rows via user-directed
             # dropping/padding.
-            if sum(block_rows) != sum(other_block_rows):
-                raise ValueError("Cannot zip datasets of different number of rows.")
+            total_base_rows = sum(base_block_rows)
+            total_other_rows = sum(other_block_rows)
+            if total_base_rows != total_other_rows:
+                raise ValueError(
+                    "Cannot zip datasets of different number of rows: "
+                    f"{total_base_rows}, {total_other_rows}"
+                )
 
             # Split other at the alignment indices, such that for every block in
             # block_list, we have a list of blocks from other that has the same
@@ -184,41 +210,69 @@ class ZipStage(AllToAllStage):
             )
             del other_blocks_with_metadata
 
-            blocks = [b for b, _ in blocks_with_metadata]
+            base_blocks = [b for b, _ in base_blocks_with_metadata]
             other_blocks = aligned_other_blocks_with_metadata[0]
-            del blocks_with_metadata, aligned_other_blocks_with_metadata
+            del base_blocks_with_metadata, aligned_other_blocks_with_metadata
             if clear_input_blocks:
-                block_list.clear()
+                base_block_list.clear()
                 other_block_list.clear()
 
             do_zip = cached_remote_fn(_do_zip, num_returns=2)
 
             out_blocks = []
             out_metadata = []
-            for block, other_blocks in zip(blocks, other_blocks):
-                # For each block in block_list, zip it together with 1 or more blocks
-                # from other. We're guaranteed to have that block and other_blocks have
-                # the same number of rows.
-                res, meta = do_zip.remote(block, *other_blocks)
+            for base_block, other_blocks in zip(base_blocks, other_blocks):
+                # For each block in base, zip it together with 1 or more blocks from
+                # other. We're guaranteed to have that base_block has the same number of
+                # rows as other_blocks has cumulatively.
+                res, meta = do_zip.remote(base_block, *other_blocks, inverted=inverted)
                 out_blocks.append(res)
                 out_metadata.append(meta)
 
             # Early release memory.
-            del blocks, other_blocks
+            del base_blocks, other_blocks
 
             # TODO(ekl) it might be nice to have a progress bar here.
             out_metadata = ray.get(out_metadata)
             blocks = BlockList(
                 out_blocks,
                 out_metadata,
-                owned_by_consumer=block_list._owned_by_consumer,
+                owned_by_consumer=base_block_list._owned_by_consumer,
             )
             return blocks, {}
 
         super().__init__("zip", None, do_zip_all)
 
 
-def _do_zip(block: Block, *other_blocks: Block) -> (Block, BlockMetadata):
+def _calculate_blocks_rows_and_bytes(
+    blocks_with_metadata: BlockPartition,
+) -> Tuple[List[int], List[int]]:
+    """Calculate the number of rows and size in bytes for a list of blocks with
+    metadata.
+    """
+    get_num_rows_and_bytes = cached_remote_fn(_get_num_rows_and_bytes)
+    block_rows = []
+    block_bytes = []
+    for block, metadata in blocks_with_metadata:
+        if metadata.num_rows is None or metadata.size_bytes is None:
+            # Need to fetch number of rows or size in bytes, so just fetch both.
+            num_rows, size_bytes = ray.get(get_num_rows_and_bytes.remote(block))
+            # Cache on the block metadata.
+            metadata.num_rows = num_rows
+            metadata.size_bytes = size_bytes
+        block_rows.append(metadata.num_rows)
+        block_bytes.append(metadata.size_bytes)
+    return block_rows, block_bytes
+
+
+def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
+    block = BlockAccessor.for_block(block)
+    return block.num_rows(), block.size_bytes()
+
+
+def _do_zip(
+    block: Block, *other_blocks: Block, inverted: bool = False
+) -> Tuple[Block, BlockMetadata]:
     # Zips together block with other_blocks.
     stats = BlockExecStats.builder()
     # Concatenate other blocks.
@@ -228,6 +282,9 @@ def _do_zip(block: Block, *other_blocks: Block) -> (Block, BlockMetadata):
     for other_block in other_blocks:
         builder.add_block(other_block)
     other_block = builder.build()
+    if inverted:
+        # Swap blocks if ordering was inverted during block alignment splitting.
+        block, other_block = other_block, block
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
