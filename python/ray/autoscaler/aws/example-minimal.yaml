@@ -5,7 +5,6 @@ cluster_name: minimal
 provider:
     type: aws
     region: us-west-2
-    availability_zone: us-west-2a
 
 # How Ray will authenticate with newly launched nodes.
 auth:

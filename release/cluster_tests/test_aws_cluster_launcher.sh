@@ -5,7 +5,7 @@ set -e
 
 # Check if a command line argument was provided
 if [[ -z "$1" ]]; then
-    echo "Please provide a path to the cluster configuration file as a command line argument."
+    echo "Error: Please provide a path to the cluster configuration file as a command line argument."
     exit 1
 fi
 
@@ -18,17 +18,26 @@ fi
 # Log the name of the file that will be used
 echo "Using cluster configuration file: $1"
 
-echo "===== clean up previously running cluster ====="
-ray down -y "$1"
+# Download the ssh key
+echo "======================================"
+echo "Downloading ssh key..."
+python download_ssh_key.py
 
-sleep 5
-echo "===== start cluster ====="
-ray up -y "$1"
+echo "======================================"
+echo "Cleaning up any previously running cluster..."
+ray down -v -y "$1"
 
-sleep 5
-echo "===== verify ray is running ====="
-ray exec "$1" 'python -c "import ray; ray.init('localhost:6379')"'
+echo "======================================"
+echo "Starting new cluster..."
+ray up -v -y "$1"
 
-sleep 5
-echo "===== clean up ====="
-ray down -y "$1"
+echo "======================================"
+echo "Verifying Ray is running..."
+ray exec -v "$1" "python -c 'import ray; ray.init(\"localhost:6379\")'"
+
+echo "======================================"
+echo "Cleaning up cluster..."
+ray down -v -y "$1"
+
+echo "======================================"
+echo "Finished executing script."
