@@ -120,6 +120,9 @@ class TestCatalog(unittest.TestCase):
             assert type(model_config_dict) == model_config_dict_type
             model_config_dict.build(framework=framework)
 
+        # TODO(Artur): Add support for composite spaces and test here
+        # Today, Catalog does not handle composite spaces, so we can't test them
+
 
 if __name__ == "__main__":
     import pytest

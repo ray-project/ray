@@ -16,15 +16,11 @@ class PPOModuleConfig(RLModuleConfig):
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
         catalog: The PPOCatalog object to use for building the models.
-        free_log_std: For DiagGaussian action distributions, make the second half of
-            the model outputs floating bias variables instead of state-dependent. This
-            only has an effect is using the default fully connected net.
     """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
     catalog: Catalog = None
-    free_log_std: bool = False
 
     def build(self, framework: str):
         """Builds a PPORLModule.

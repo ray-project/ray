@@ -26,17 +26,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
         assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
 
-        # Set input- and output dimensions to fit PPO's needs.
-        catalog.encoder_config.input_dim = self.config.observation_space.shape[0]
-        catalog.pi_head_config.input_dim = catalog.encoder_config.output_dim
-        if isinstance(self.config.action_space, gym.spaces.Discrete):
-            catalog.pi_head_config.output_dim = int(self.config.action_space.n)
-        else:
-            catalog.pi_head_config.output_dim = int(
-                self.config.action_space.shape[0] * 2
-            )
-        catalog.vf_head_config.output_dim = 1
-
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
@@ -57,23 +46,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
         *,
         model_config_dict: Mapping[str, Any],
     ) -> "PPORLModuleBase":
-        free_log_std = model_config_dict["free_log_std"]
-        assert not free_log_std, "free_log_std not supported yet."
-
-        if model_config_dict["use_lstm"]:
-            raise ValueError("LSTM not supported by PPOTfRLModule yet.")
-
-        assert isinstance(
-            observation_space, gym.spaces.Box
-        ), "This simple PPOModule only supports Box observation space."
-
-        assert (
-            len(observation_space.shape) == 1
-        ), "This simple PPOModule only supports 1D observation space."
-
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPOModule only supports Discrete and Box action space.",
-        )
         catalog = PPOCatalog(
             observation_space=observation_space,
             action_space=action_space,
@@ -84,7 +56,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
             observation_space=observation_space,
             action_space=action_space,
             catalog=catalog,
-            free_log_std=free_log_std,
         )
 
         return config.build(framework=cls.framework)

@@ -241,7 +241,6 @@ class LSTMEncoderConfig(ModelConfig):
     See ModelConfig for usage details.
 
     Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
         hidden_dim: The size of the hidden layer.
         num_layers: The number of LSTM layers.
         batch_first: Wether the input is batch first or not.
@@ -256,7 +255,6 @@ class LSTMEncoderConfig(ModelConfig):
             other spaces that might be present in the view_requirements_dict.
     """
 
-    input_dim: int = None
     hidden_dim: int = None
     num_layers: int = None
     batch_first: bool = True

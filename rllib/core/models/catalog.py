@@ -47,12 +47,12 @@ class Catalog:
             def build_my_head(self, framework: str):
                 return self.my_model_config_dict.build(framework=framework)
 
-        # With that, RLlib can build and use models from this catalog like so:
+        # With that, RLlib can build and use models from this catalog like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
         my_head = catalog.build_my_head("torch")  # doctest: +SKIP
         out = my_head(...)  # doctest: +SKIP
 
-        # We can also modify configs of RLlib's native Catalogs like so:
+        # RLlib's native Catalogs configs can be modified like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
         catalog.my_model_config_dict.hidden_layer_dims = [32, 16]
         my_head = catalog.build_my_head("torch")  # doctest: +SKIP
@@ -158,7 +158,6 @@ class Catalog:
 
         if model_config_dict["use_lstm"]:
             encoder_config = LSTMEncoderConfig(
-                input_dim=observation_space.shape[0],
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_first=not model_config_dict["_time_major"],
                 num_layers=1,

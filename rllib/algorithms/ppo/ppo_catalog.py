@@ -33,11 +33,6 @@ class PPOCatalog(Catalog):
         action_space: gym.Space,
         model_config_dict: dict,
     ):
-        super().__init__(
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config_dict=model_config_dict,
-        )
         """Initializes the PPOCatalog.
 
         Args:
@@ -45,6 +40,14 @@ class PPOCatalog(Catalog):
             action_space: The action space for the Pi Head.
             model_config_dict: The model config to use.
         """
+        super().__init__(
+            observation_space=observation_space,
+            action_space=action_space,
+            model_config_dict=model_config_dict,
+        )
+        free_log_std = model_config_dict.get("free_log_std")
+        assert not free_log_std, "free_log_std not supported yet."
+
         assert isinstance(
             observation_space, gym.spaces.Box
         ), "This simple PPO Module only supports Box observation space."
@@ -87,6 +90,15 @@ class PPOCatalog(Catalog):
             output_dim=1,
         )
 
+        # Set input- and output dimensions to fit PPO's needs.
+        self.encoder_config.input_dim = observation_space.shape[0]
+        self.pi_head_config.input_dim = self.encoder_config.output_dim
+        if isinstance(action_space, gym.spaces.Discrete):
+            self.pi_head_config.output_dim = int(action_space.n)
+        else:
+            self.pi_head_config.output_dim = int(action_space.shape[0] * 2)
+        self.vf_head_config.output_dim = 1
+
     def build_actor_critic_encoder(self, framework: str):
         """Builds the ActorCriticEncoder.
 
@@ -109,7 +121,7 @@ class PPOCatalog(Catalog):
         Since PPO uses an ActorCriticEncoder, this method should not be implemented.
         """
         raise NotImplementedError(
-            "Use PPOCatalog.build_actor_critic_encoder() " "instead."
+            "Use PPOCatalog.build_actor_critic_encoder() instead."
         )
 
     def build_pi_head(self, framework: str):
