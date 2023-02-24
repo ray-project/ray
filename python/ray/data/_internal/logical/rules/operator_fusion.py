@@ -195,8 +195,7 @@ class OperatorFusionRule(Rule):
         else:
             from ray.data._internal.logical.operators.map_operator import AbstractMap
 
-            # The downstream op is Write, so we create an Write (instead AbstractMap or
-            # AbstractUDFMap) logical op.
+            # The downstream op is AbstractMap instead of AbstractUDFMap.
             logical_op = AbstractMap(
                 name,
                 input_op,
