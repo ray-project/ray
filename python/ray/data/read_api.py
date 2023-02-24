@@ -94,6 +94,9 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """
     import builtins
 
+    if parallelism == 0:
+        raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
+
     detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
@@ -102,7 +105,10 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     # Truncate parallelism to number of items to avoid empty blocks.
     detected_parallelism = min(len(items), detected_parallelism)
 
-    block_size, remainder = divmod(len(items), detected_parallelism)
+    if detected_parallelism > 0:
+        block_size, remainder = divmod(len(items), detected_parallelism)
+    else:
+        block_size, remainder = 0, 0
     # NOTE: We need to explicitly use the builtins range since we override range below,
     # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
