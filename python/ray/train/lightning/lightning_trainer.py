@@ -14,14 +14,14 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
-from ray.air import session
+from ray.air import CheckpointConfig, session
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
 from python.ray.train import lightning
 
-from ray.train.lightning.lightning_utils import AIRLightningLogger, RayEnvironment
+from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment, RayLogger
 
 
 
@@ -32,7 +32,7 @@ LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
-
+AIR_RUN_CONFIG_KEY = "_air_run_config"
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
@@ -55,7 +55,7 @@ class LightningTrainer(DataParallelTrainer):
             torch_config = TorchConfig()
 
         train_loop_config = self._create_trainer_loop_config(
-            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config
+            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config, run_config
         )
 
         super(LightningTrainer, self).__init__(
@@ -77,6 +77,7 @@ class LightningTrainer(DataParallelTrainer):
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Dict[str, Any]:
 
         trainer_loop_config = {}
@@ -99,6 +100,9 @@ class LightningTrainer(DataParallelTrainer):
         
         if ddp_strategy_config:
             trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
+        
+        if run_config:
+            trainer_loop_config[AIR_RUN_CONFIG_KEY] = run_config
         return trainer_loop_config
 
 
@@ -115,7 +119,7 @@ def _lightning_train_loop_per_worker(config):
     trainer_config = config.get(LIGHTNING_TRAINER_CONFIG_KEY, {})
     trainer_config["enable_progress_bar"] = False
     trainer_config["enable_checkpointing"] = False
-    trainer_config["logger"] = AIRLightningLogger()
+    # trainer_config["logger"] = AIRLightningLogger()
 
     # set trainer's parallel devices
     current_device = ray.train.torch.get_device()
@@ -128,12 +132,15 @@ def _lightning_train_loop_per_worker(config):
             plugins.append(plugin)
     trainer_config["plugins"] = plugins
 
+    # instantiate logger
+    air_checkpoint_config = config.pop(AIR_RUN_CONFIG_KEY).checkpoint_config
+    ray_logger = RayLogger(monitor=air_checkpoint_config.checkpoint_score_attribute)
+    trainer_config["logger"] = ray_logger
 
-    # Insert ray air checkpoint callback
-    if "callbacks" not in trainer_config:
-        trainer_config["callbacks"] = []
-    trainer_config["callbacks"].append(AIRModuleCheckpoint())
-    
+    # Setup ddp strategy
+    ddp_strategy_config = config.get(DDP_STRATEGY_CONFIG_KEY, {})
+    trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
     trainer = ptl.Trainer(**trainer_config)
+    ray_logger.set_trainer(trainer)
     trainer.fit(lightning_module, datamodule=datamodule)
