@@ -106,10 +106,6 @@ def gcs_storage_type():
 @pytest.fixture
 def reset_usage_stats():
     yield
-    # Remove the lib usage so that it will be reset for each test.
-    ray_usage_lib.LibUsageRecorder(
-        ray._private.utils.get_ray_temp_dir()
-    ).delete_lib_usages()
     ray.experimental.internal_kv._internal_kv_reset()
     ray_usage_lib._recorded_library_usages.clear()
     ray_usage_lib._recorded_extra_usage_tags.clear()
@@ -455,37 +451,6 @@ def test_set_usage_stats_enabled_via_config(monkeypatch, tmp_path, reset_usage_s
         ray_usage_lib.set_usage_stats_enabled_via_config(True)
 
 
-def test_lib_usage_recorder(tmp_path):
-    recorder = ray_usage_lib.LibUsageRecorder(tmp_path)
-    lib_tune = "tune"
-    lib_rllib = "rllib"
-
-    filename = recorder._lib_usage_filename(lib_tune)
-    assert recorder._get_lib_usage_from_filename(filename) == lib_tune
-
-    # Write tune.
-    assert recorder.read_lib_usages() == []
-    recorder.put_lib_usage(lib_tune)
-    assert recorder.read_lib_usages() == [lib_tune]
-    recorder.put_lib_usage(lib_tune)
-    assert recorder.read_lib_usages() == [lib_tune]
-
-    # Test write is idempotent
-    for _ in range(5):
-        recorder.put_lib_usage(lib_tune)
-    assert recorder.read_lib_usages() == [lib_tune]
-
-    # Write rllib.
-    recorder.put_lib_usage(lib_rllib)
-    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
-
-    # Test idempotency when there is more than 1 lib.
-    recorder.put_lib_usage(lib_rllib)
-    recorder.put_lib_usage(lib_rllib)
-    recorder.put_lib_usage(lib_tune)
-    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
-
-
 @pytest.fixture
 def clear_loggers():
     """Remove handlers from all loggers"""
@@ -795,10 +760,6 @@ with joblib.parallel_backend("ray"):
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
-    tmp_path = ray._private.utils.get_ray_temp_dir()
-    lib_usages_from_home_folder = ray_usage_lib.LibUsageRecorder(
-        tmp_path
-    ).read_lib_usages()
     expected = {
         "pre_init",
         "post_init",
@@ -816,8 +777,6 @@ with joblib.parallel_backend("ray"):
     if ray_client:
         expected.add("client")
     assert set(library_usages) == expected
-    if not ray_client:
-        assert set(lib_usages_from_home_folder) == expected
 
 
 def test_usage_lib_cluster_metadata_generation_usage_disabled(
@@ -1480,72 +1439,6 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
         def verify():
             lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
             return set(lib_usages) == {"tune", "rllib", "train"}
-
-        wait_for_condition(verify)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="Test depends on library that's not downloaded from a minimal install.",
-)
-def test_lib_usage_record_from_init_session(
-    monkeypatch, ray_start_cluster, reset_usage_stats
-):
-    """
-    Make sure we store a lib usage to the /tmp/ray folder and report them
-    when any instance that has usage stats enabled.
-    """
-
-    # Start a driver without usage stats enabled. This will record
-    # lib_usage.txt.
-    script = """
-import ray
-import os
-from ray import train  # noqa: F401
-from ray import tune  # noqa: F401
-from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
-# Start a instance that disables usage stats.
-ray.init()
-
-def objective(*args):
-    pass
-
-tune.run(objective)
-"""
-
-    run_string_as_driver(script)
-
-    # Run the cluster that reports the usage stats. Make sure the lib usage is reported.
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
-        ray.init(address=cluster.address)
-
-        """
-        Verify the library usage is recorded to the ray folder.
-        """
-        lib_usages = ray_usage_lib.LibUsageRecorder(
-            ray._private.utils.get_ray_temp_dir()
-        ).read_lib_usages()
-        assert set(lib_usages) == {"train", "rllib", "tune"}
-
-        """
-        Verify the library usage is reported from the current instance.
-        """
-        print("Verifying lib usage report.")
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
-
-        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-        def verify():
-            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            print(lib_usages)
-            return set(lib_usages) == {"rllib", "train", "tune"}
 
         wait_for_condition(verify)
 
