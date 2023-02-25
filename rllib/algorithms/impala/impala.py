@@ -1122,7 +1122,7 @@ class Impala(Algorithm):
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
         if self.config._enable_learner_api:
-            result[ALL_MODULES]["custom_metrics"] = {
+            result["custom_metrics"] = {
                 "learner_group_queue_size": self.learner_group.in_queue_size
             }
         else:

@@ -16,7 +16,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALAOffPolicyNess(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=0)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
