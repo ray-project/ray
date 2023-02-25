@@ -5,13 +5,14 @@ import unittest
 
 import ray
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.utils import (
     get_learner_group,
     get_learner,
     add_module_to_learner_or_learner_group,
 )
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.util.timer import _Timer
 
 
@@ -109,7 +110,7 @@ class TestLearnerGroup(unittest.TestCase):
                 batch = reader.next()
                 results = learner_group.update(batch.as_multi_agent(), reduce_fn=None)
 
-                loss = np.mean([res["loss"]["total_loss"] for res in results])
+                loss = np.mean([res[ALL_MODULES]["total_loss"] for res in results])
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
@@ -176,7 +177,7 @@ class TestLearnerGroup(unittest.TestCase):
             for result in results:
                 # remove the total_loss key since its not a module key
                 self.assertEqual(
-                    set(result["loss"]) - {"total_loss"}, module_ids_after_add
+                    set(result.keys()) - {ALL_MODULES}, module_ids_after_add
                 )
 
             # remove the test_module
@@ -198,7 +199,7 @@ class TestLearnerGroup(unittest.TestCase):
             for result in results:
                 # remove the total_loss key since its not a module key
                 self.assertEqual(
-                    set(result["loss"]) - {"total_loss"}, module_ids_before_add
+                    set(result.keys()) - {ALL_MODULES}, module_ids_before_add
                 )
 
             # make sure the learner_group resources are freed up so that we don't
@@ -243,7 +244,7 @@ class TestLearnerGroup(unittest.TestCase):
                 )
                 if not results:
                     continue
-                loss = np.mean([res["loss"]["total_loss"] for res in results])
+                loss = np.mean([res[ALL_MODULES]["total_loss"] for res in results])
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
