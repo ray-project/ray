@@ -4579,10 +4579,6 @@
 
   stable: false
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
-
   frequency: nightly
   team: data
   cluster:
@@ -4606,10 +4602,6 @@
     test_suite: chaos_test
 
   stable: false
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
 
   frequency: nightly
   team: data
