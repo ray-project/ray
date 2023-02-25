@@ -389,6 +389,9 @@ class PPO(Algorithm):
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+        print("agent_steps: ", train_batch.agent_steps())
+        print("train_batch.count: ", len(train_batch["default_policy"]))
+        print("train_batch_size", self.config.train_batch_size)
 
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])

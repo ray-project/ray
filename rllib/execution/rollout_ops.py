@@ -32,16 +32,16 @@ def synchronous_parallel_sample(
     If no remote workers exist (num_workers == 0), use the local worker
     for sampling.
 
-    Alternatively to calling `worker.sample.remote()`, the user can provide a
-    `remote_fn()`, which will be applied to the worker(s) instead.
+    if neither max_agent_steps or max_env_steps are specified, then this method will 
+    only call `sample()` once on each worker, and will not check if the number of agent 
+    or env steps are met. If one of these is not None, then this method will call 
+    `sample()` on each worker until the number of agent or env steps is met.
 
     Args:
         worker_set: The WorkerSet to use for sampling.
-        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
-            of `worker.sample.remote()` to generate the requests.
-        max_agent_steps: Optional number of agent steps to be included in the
+        max_agent_steps: The minimum number of agent steps to be included in the
             final batch.
-        max_env_steps: Optional number of environment steps to be included in the
+        max_env_steps: The minimum number of environment steps to be included in the
             final batch.
         concat: Whether to concat all resulting batches at the end and return the
             concat'd batch.
@@ -65,7 +65,10 @@ def synchronous_parallel_sample(
         1
     """
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
-    assert not (max_agent_steps is not None and max_env_steps is not None)
+    if max_agent_steps is not None and max_env_steps is not None:
+        raise ValueError(
+            "Only one of `max_agent_steps` or `max_env_steps` can be defined."
+        )
 
     agent_or_env_steps = 0
     max_agent_or_env_steps = max_agent_steps or max_env_steps or None
@@ -95,6 +98,7 @@ def synchronous_parallel_sample(
                 agent_or_env_steps += b.agent_steps()
             else:
                 agent_or_env_steps += b.env_steps()
+        print("agent_or_env_steps", agent_or_env_steps)
         all_sample_batches.extend(sample_batches)
 
     if concat is True:

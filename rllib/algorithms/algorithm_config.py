@@ -2288,6 +2288,20 @@ class AlgorithmConfig(_Config):
                 diff = self.train_batch_size - int(
                     rollout_fragment_length
                 ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
+
+                if diff % self.num_envs_per_worker != 0:
+                    raise ValueError(
+                        "Cannot automatically infer rollout_fragment_length "
+                        f"from your settings"
+                        f"(num_rollout_workers={self.num_rollout_workers}; "
+                        f"num_envs_per_worker={self.num_envs_per_worker}; "
+                        f"train_batch_size={self.train_batch_size}). "
+                        "Please make sure that train_batch_size - floor"
+                        "(train_batch_size / (num_rollout_workers * "
+                        "num_envs_per_worker)) * num_rollout_workers * "
+                        f"num_envs_per_worker ({diff}) is divisible by "
+                        f"num_envs_per_worker ({self.num_envs_per_worker}). "
+                    )
                 if (worker_index * self.num_envs_per_worker) <= diff:
                     return int(rollout_fragment_length) + 1
             return int(rollout_fragment_length)
@@ -2617,10 +2631,12 @@ class AlgorithmConfig(_Config):
         Also, only checks this if `train_batch_size` > 0 (DDPPO sets this
         to -1 to auto-calculate the actual batch size later).
 
+
         Raises:
             ValueError: If there is a mismatch between user provided
             `rollout_fragment_length` and `train_batch_size`.
         """
+
         if (
             self.rollout_fragment_length != "auto"
             and not self.in_evaluation
@@ -2634,14 +2650,31 @@ class AlgorithmConfig(_Config):
             batch_size = min_batch_size
             while batch_size < self.train_batch_size:
                 batch_size += min_batch_size
+
+            # suggested_rollout_fragement should
+            # train_batch_size // (num_envs_per_worker * num_rollout_workers) (+ 1)
+            # the plus 1 is for making sure that rollout_fragment_length *
+            # num_envs_per_worker * num_rollout_workers >= train_batch_size when
+            # train_batch_size is not divisible by num_envs_per_worker *
+            # num_rollout_workers
+            optimal_fragement_length = self.train_batch_size / (
+                self.num_envs_per_worker * (self.num_rollout_workers or 1)
+            )
+            warn_if_not_failed = False
+            if int(optimal_fragement_length) != optimal_fragement_length:
+                optimal_fragement_length = int(optimal_fragement_length) + 1
+
+                # throw a warning of possible mismatch only if episodes are allowed to
+                # be truncated
+                warn_if_not_failed = self.batch_mode == "truncate_episodes"
+
+            # TODO (Sven, Kourosh): What is this or condition for? the right hand side
+            # term is always negative, so it is always false.
             if (
                 batch_size - self.train_batch_size > 0.1 * self.train_batch_size
                 or batch_size - min_batch_size - self.train_batch_size
                 > (0.1 * self.train_batch_size)
             ):
-                suggested_rollout_fragment_length = self.train_batch_size // (
-                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
-                )
                 raise ValueError(
                     f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
                     "value 10% off of that cannot be achieved with your other "
@@ -2649,7 +2682,21 @@ class AlgorithmConfig(_Config):
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
                     f"rollout_fragment_length={self.rollout_fragment_length})! "
                     "Try setting `rollout_fragment_length` to 'auto' OR "
-                    f"{suggested_rollout_fragment_length}."
+                    f"{optimal_fragement_length}."
+                )
+
+            if warn_if_not_failed:
+                logger.warning(
+                    "With the settings that you provided"
+                    f"(num_rollout_workers={self.num_rollout_workers}; "
+                    f"num_envs_per_worker={self.num_envs_per_worker}; "
+                    f"rollout_fragment_length={self.rollout_fragment_length}), "
+                    "the actual `train_batch_size` will be slightly larger than "
+                    f"your desired `train_batch_size` ({self.train_batch_size}) "
+                    "Try setting `rollout_fragment_length` to 'auto'. "
+                    "`rollout_fragment_length` needs to be heterogeneous across "
+                    "rollout workers to possibly achieve the desired "
+                    "`train_batch_size`."
                 )
 
     def get_default_rl_module_spec(self) -> ModuleSpec:

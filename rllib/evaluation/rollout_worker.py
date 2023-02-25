@@ -558,6 +558,14 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.total_rollout_fragment_length: int = (
             configured_rollout_fragment_length * self.config.num_envs_per_worker
         )
+        print(
+            f"[{worker_index}] configured_rollout_fragment_length",
+            configured_rollout_fragment_length,
+        )
+        print(
+            f"[{worker_index}] total_rollout_fragment_length",
+            self.total_rollout_fragment_length,
+        )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: dict = {
@@ -913,12 +921,15 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 )
             )
 
+        # TODO (Kourosh): This can be removed in favor of the while loop.
         batches = [self.input_reader.next()]
         steps_so_far = (
             batches[0].count
             if self.config.count_steps_by == "env_steps"
             else batches[0].agent_steps()
         )
+
+        print(f"[{self.worker_index}] steps_so_far: {steps_so_far}")
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
         # This avoids over-running the target batch size.
@@ -938,8 +949,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 if self.config.count_steps_by == "env_steps"
                 else batch.agent_steps()
             )
+            print(f"[{self.worker_index}] steps_so_far: {steps_so_far}")
             batches.append(batch)
         batch = concat_samples(batches)
+        print(f"[{self.worker_index}] done. batch_size: {batch.count}")
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 

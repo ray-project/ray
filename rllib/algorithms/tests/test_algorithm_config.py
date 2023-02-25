@@ -72,18 +72,19 @@ class TestAlgorithmConfig(unittest.TestCase):
             AlgorithmConfig()
             .rollouts(
                 num_rollout_workers=4,
-                num_envs_per_worker=3,
+                num_envs_per_worker=2,
                 rollout_fragment_length="auto",
             )
-            .training(train_batch_size=2456)
+            .training(train_batch_size=2500)
         )
-        # 2456 / 3 * 4 -> 204.666 -> 204 or 205 (depending on worker index).
-        # Actual train batch size: 2454 (off by only 2)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=0) == 205)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=1) == 205)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=2) == 205)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 204)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=4) == 204)
+        # 2500 / 2 / 4 -> 312.5 -> 312 or 313 (depending on worker index).
+        # Actual train batch size: 2500
+        # diff = 2500 - 312 * 2 * 4 = 4, workers 0,1,2 get 313, others gets 312.
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=0) == 313)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=1) == 313)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=2) == 313)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 312)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=4) == 312)
 
         config = (
             AlgorithmConfig()
