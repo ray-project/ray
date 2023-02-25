@@ -84,14 +84,6 @@ def auto_http_archive(
     )
 
 def ray_deps_setup():
-    # Explicitly bring in protobuf dependency to work around
-    # https://github.com/ray-project/ray/issues/14117
-    http_archive(
-        name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.19.4",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
-    )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
     # all of http/git_repository should add prefix for patches defined in ray directory.
@@ -175,8 +167,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz",
-        sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
+        url = "https://github.com/google/googletest/archive/refs/tags/v1.13.0.tar.gz",
+        sha256 = "ad7fdba11ea011c1d925b3289cf4af2c66a352e18d4c7264392fead75e919363",
     )
 
     auto_http_archive(
@@ -233,13 +225,12 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.46.6.tar.gz",
-        sha256 = "6514b3e6eab9e9c7017304512d4420387a47b1a9c5caa986643692977ed44e8a",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.52.1.tar.gz",
+        sha256 = "ec125d7fdb77ecc25b01050a0d5d32616594834d3fe163b016768e2ae42a2df6",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-constinit.patch",
         ],
+        patch_args = ["-p1"],
     )
     
     http_archive(
@@ -270,20 +261,6 @@ def ray_deps_setup():
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
         strip_prefix = "rules_foreign_cc-0.9.0/examples/third_party",
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
-    )
-
-    http_archive(
-        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
-        # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
-        # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
-        name = "boringssl",
-        sha256 = "534fa658bd845fd974b50b10f444d392dfd0d93768c4a51b61263fd37d851c40",
-        strip_prefix = "boringssl-b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
-        urls = [
-            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
-            "https://github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
-        ],
     )
 
     auto_http_archive(
