@@ -73,6 +73,7 @@ parts:
               - file: ray-air/examples/automl_with_ray_air
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
+              - file: ray-air/examples/pytorch_resnet_batch_prediction
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
