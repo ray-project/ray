@@ -25,4 +25,4 @@ preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset, batch_size=80)
+predictor.predict(dataset, batch_size=80, num_gpus_per_worker=1)

@@ -183,7 +183,10 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
-    exclude = ["source/ray-air/doc_code/hf_trainer.py"],  # Too large
+    exclude = [
+        "source/ray-air/doc_code/hf_trainer.py",  # Too large
+        "source/ray-air/doc_code/predictors.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -210,4 +213,17 @@ py_test_run_all_subdirectory(
     exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
+)
+
+
+# --------------
+# Run GPU tests
+# --------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/predictors.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )
