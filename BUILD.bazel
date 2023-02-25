@@ -2769,7 +2769,10 @@ pyx_library(
     # shared lib, see python/ray/__init__.py.
     cc_kwargs = dict(
         srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS + ["-Wno-volatile"],
+        copts = COPTS + PYX_COPTS + select({
+            "@bazel_tools//src/conditions:windows": [],
+            "//conditions:default": ["-Wno-volatile"]
+        }),
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
