@@ -1,0 +1,44 @@
+diff --git a/src/core/lib/channel/connected_channel.cc b/src/core/lib/channel/connected_channel.cc
+index 9d45df4ac8..a65f962c3d 100644
+--- a/src/core/lib/channel/connected_channel.cc
++++ b/src/core/lib/channel/connected_channel.cc
+@@ -825,6 +825,16 @@ class ClientConnectedCallPromise {
+   OrphanablePtr<ClientStream> impl_;
+ };
+ 
++
++template <ArenaPromise<ServerMetadataHandle> (*make_call_promise)(
++    grpc_transport*, CallArgs)>
++grpc_core::ArenaPromise<grpc_core::ServerMetadataHandle> _fn(
++    grpc_channel_element* elem, CallArgs call_args, NextPromiseFactory) {
++  grpc_transport* transport =
++      static_cast<channel_data*>(elem->channel_data)->transport;
++  return make_call_promise(transport, std::move(call_args));
++}
++
+ template <ArenaPromise<ServerMetadataHandle> (*make_call_promise)(
+     grpc_transport*, CallArgs)>
+ grpc_channel_filter MakeConnectedFilter() {
+@@ -838,12 +848,7 @@ grpc_channel_filter MakeConnectedFilter() {
+     connected_channel_start_transport_stream_op_batch,
+         make_call_promise == nullptr
+             ? nullptr
+-            : +[](grpc_channel_element* elem, CallArgs call_args,
+-                 NextPromiseFactory) {
+-                grpc_transport* transport =
+-                    static_cast<channel_data*>(elem->channel_data)->transport;
+-                return make_call_promise(transport, std::move(call_args));
+-              },
++            : _fn<make_call_promise>,
+       connected_channel_start_transport_op,
+       sizeof(call_data),
+       connected_channel_init_call_elem,
+@@ -857,7 +862,7 @@ grpc_channel_filter MakeConnectedFilter() {
+         // and I'm not sure what that is yet.
+         // This is only "safe" because call stacks place no additional data
+         // after the last call element, and the last call element MUST be the
+-        // connected channel. 
++        // connected channel.
+         channel_stack->call_stack_size += grpc_transport_stream_size(
+             static_cast<channel_data*>(elem->channel_data)->transport);
+       },
