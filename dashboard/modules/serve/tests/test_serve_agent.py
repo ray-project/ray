@@ -198,10 +198,11 @@ def test_put_get_multi_app(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-def test_put_bad_schema(ray_start_stop):
+@pytest.mark.parametrize("put_url", (GET_OR_PUT_URL, MULTI_APP_PUT_URL))
+def test_put_bad_schema(ray_start_stop, put_url: str):
     config = {"not_a_real_field": "value"}
 
-    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=5)
+    put_response = requests.put(put_url, json=config, timeout=5)
     assert put_response.status_code == 400
 
 
