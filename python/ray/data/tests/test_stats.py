@@ -36,11 +36,15 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatasetLogger("ray.data._internal.execution.streaming_executor").get_logger(
+            logger = DatasetLogger(
+                "ray.data._internal.execution.streaming_executor"
+            ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatasetLogger("ray.data._internal.execution.bulk_executor").get_logger(
+            logger = DatasetLogger(
+                "ray.data._internal.execution.bulk_executor"
+            ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
@@ -117,7 +121,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            assert(
+            assert (
                 stats
                 == """Stage N read->MapBatches(dummy_map_batches)->map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -160,7 +164,7 @@ Dataset iterator time breakdown:
 * In user code: T
 * Total time: T
 """
-        )
+            )
     else:
         assert (
             stats
@@ -384,11 +388,15 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatasetLogger("ray.data._internal.execution.streaming_executor").get_logger(
+            logger = DatasetLogger(
+                "ray.data._internal.execution.streaming_executor"
+            ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatasetLogger("ray.data._internal.execution.bulk_executor").get_logger(
+            logger = DatasetLogger(
+                "ray.data._internal.execution.bulk_executor"
+            ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
