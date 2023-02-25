@@ -15,10 +15,19 @@ filegroup(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["*.py"],
-    exclude = [],
+    exclude = ["torch_image_batch_pretrained.py"],
     extra_srcs = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["torch_image_batch_pretrained.py"],
+    exclude = [],
+    extra_srcs = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )
 
 
