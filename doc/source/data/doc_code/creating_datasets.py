@@ -112,21 +112,6 @@ ds.show(3)
 # __from_numpy_begin__
 import numpy as np
 
-# Create a tensor Dataset from a 1D NumPy ndarray.
-arr = np.arange(100)
-ds = ray.data.from_numpy(arr)
-# -> Dataset(
-#        num_blocks=1,
-#        num_rows=100,
-#        schema={value: <ArrowTensorType: shape=(), dtype=int64>},
-#    )
-
-# Each element is a scalar ndarray.
-ds.show(3)
-# -> {'value': array(0)}
-# -> {'value': array(1)}
-# -> {'value': array(2)}
-
 # Create a tensor Dataset from a 3D NumPy ndarray.
 arr = np.ones((3, 4, 4))
 # The outer dimension is treated as the row dimension.
@@ -147,6 +132,23 @@ ds.show(2)
 #        [1., 1., 1., 1.],
 #        [1., 1., 1., 1.]])}
 # __from_numpy_end__
+# fmt: on
+
+# fmt: off
+# __read_images_begin__
+ds = ray.data.read_images("example://image-datasets/simple")
+# -> Dataset(num_blocks=3, num_rows=3, 
+#            schema={image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
+
+ds.take(1)
+# -> [array([[[ 88,  70,  68],
+#            [103,  88,  85],
+#            [112,  96,  97],
+#            ...,
+#            [168, 151,  81],
+#            [167, 149,  83],
+#            [166, 148,  82]]], dtype=uint8)]
+# __read_images_end__
 # fmt: on
 
 # fmt: off
@@ -590,3 +592,27 @@ ds = ray.data.read_parquet(
 )
 # __read_parquet_az_end__
 # fmt: on
+
+# __read_tfrecords_begin__
+# Create a tabular Dataset by reading a TFRecord file.
+ds = ray.data.read_tfrecords("example://iris.tfrecords")
+# Dataset(
+#     num_blocks=1,
+#     num_rows=150,
+#     schema={
+#         sepal.length: float64,
+#         sepal.width: float64,
+#         petal.length: float64,
+#         petal.width: float64,
+#         label: object,
+#     },
+# )
+ds.show(1)
+# {
+#     "sepal.length": 5.099999904632568,
+#     "sepal.width": 3.5,
+#     "petal.length": 1.399999976158142,
+#     "petal.width": 0.20000000298023224,
+#     "label": b"Setosa",
+# }
+# __read_tfrecords_end__

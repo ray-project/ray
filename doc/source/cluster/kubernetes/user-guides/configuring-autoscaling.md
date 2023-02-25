@@ -46,10 +46,10 @@ First, follow the [quickstart guide](kuberay-quickstart) to create an autoscalin
 # Optionally use kind to run the examples locally.
 # $ kind create cluster
 
-# Create the KubeRay operator.
-$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+# Create the KubeRay operator. Make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
+$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
 # Create an autoscaling Ray cluster.
-$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0.3/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 Now, we can run a Ray program on the head pod that uses [``request_resources``](ref-autoscaler-sdk) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.
@@ -158,7 +158,7 @@ image pull policy. The default is `Always`.
 
 **`env`** and **`envFrom`**: These fields specify autoscaler container
 environment variables. These fields should be formatted following the
-[Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
+[Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
 
 ## Understanding the Ray Autoscaler in the Context of Kubernetes
@@ -179,7 +179,7 @@ task and actor annotations. For instance, if each Ray container spec in your Ray
 a limit of 10 CPUs, and you submit twenty tasks annotated with `@ray.remote(num_cpus=5)`,
 10 Ray pods will be created to satisfy the 100-CPU resource demand.
 In this respect, the Ray autoscaler is similar to the
-[Kuberentes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
+[Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
 which makes scaling decisions based on the logical resources expressed in container
 resource requests.
 #### Fine-grained control of scale-down

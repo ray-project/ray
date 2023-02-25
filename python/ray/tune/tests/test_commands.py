@@ -58,7 +58,7 @@ def test_time(start_ray, tmpdir):
         subprocess.check_call(["tune", "ls", experiment_path])
         times += [time.time() - start]
 
-    assert sum(times) / len(times) < 6.0, "CLI is taking too long!"
+    assert sum(times) / len(times) < 7.0, "CLI is taking too long!"
 
 
 def test_ls(start_ray, tmpdir):

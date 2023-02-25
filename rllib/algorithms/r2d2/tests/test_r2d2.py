@@ -57,6 +57,7 @@ class TestR2D2(unittest.TestCase):
         """Test whether R2D2 can be built on all frameworks."""
         config = (
             r2d2.R2D2Config()
+            .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
             .training(
                 model={
@@ -79,7 +80,7 @@ class TestR2D2(unittest.TestCase):
 
         # Test building an R2D2 agent in all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)

@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, Box, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, Box, MultiDiscrete, Space
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Union, Optional
@@ -34,7 +34,7 @@ class Random(Exploration):
 
         Args:
             action_space: The gym action space used by the environment.
-            framework: One of None, "tf", "tfe", "torch".
+            framework: One of None, "tf", "torch".
         """
         super().__init__(
             action_space=action_space, model=model, framework=framework, **kwargs
@@ -51,7 +51,7 @@ class Random(Exploration):
         explore: bool = True
     ):
         # Instantiate the distribution object.
-        if self.framework in ["tf2", "tf", "tfe"]:
+        if self.framework in ["tf2", "tf"]:
             return self.get_tf_exploration_action_op(action_distribution, explore)
         else:
             return self.get_torch_exploration_action(action_distribution, explore)

@@ -1,6 +1,6 @@
 from functools import partial
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
 import tree  # pip install dm_tree
@@ -51,15 +51,6 @@ logger = logging.getLogger(__name__)
 # fmt: off
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
-    # Experimental flag.
-    # If True, try to use a native (tf.keras.Model or torch.Module) default
-    # model instead of our built-in ModelV2 defaults.
-    # If False (default), use "classic" ModelV2 default models.
-    # Note that this currently only works for:
-    # 1) framework != torch AND
-    # 2) fully connected and CNN default networks as well as
-    # auto-wrapped LSTM- and attention nets.
-    "_use_default_native_models": False,
     # Experimental flag.
     # If True, user specified no preprocessor to be created
     # (via config._disable_preprocessor_api=True). If True, observations
@@ -186,6 +177,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
+    # Deprecated in anticipation of RLModules API
+    "_use_default_native_models": DEPRECATED_VALUE,
+
 }
 # __sphinx_doc_end__
 # fmt: on
@@ -224,7 +218,7 @@ class ModelCatalog:
             dist_type (Optional[Union[str, Type[ActionDistribution]]]):
                 Identifier of the action distribution (str) interpreted as a
                 hint or the actual ActionDistribution class to use.
-            framework: One of "tf2", "tf", "tfe", "torch", or "jax".
+            framework: One of "tf2", "tf", "torch", or "jax".
             kwargs: Optional kwargs to pass on to the Distribution's
                 constructor.
 
@@ -305,14 +299,10 @@ class ModelCatalog:
             else:
                 dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
-        elif (
-            dist_type
-            in (
-                MultiActionDistribution,
-                TorchMultiActionDistribution,
-            )
-            or isinstance(action_space, (Tuple, Dict))
-        ):
+        elif dist_type in (
+            MultiActionDistribution,
+            TorchMultiActionDistribution,
+        ) or isinstance(action_space, (Tuple, Dict)):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution
@@ -432,7 +422,7 @@ class ModelCatalog:
             num_outputs: The size of the output vector of the model.
             model_config: The "model" sub-config dict
                 within the Trainer's config dict.
-            framework: One of "tf2", "tf", "tfe", "torch", or "jax".
+            framework: One of "tf2", "tf", "torch", or "jax".
             name: Name (scope) for the model.
             model_interface: Interface required for the model
             default_model: Override the default class for the model. This
@@ -476,7 +466,7 @@ class ModelCatalog:
 
             # Only allow ModelV2 or native keras Models.
             if not issubclass(model_cls, ModelV2):
-                if framework not in ["tf", "tf2", "tfe"] or not issubclass(
+                if framework not in ["tf", "tf2"] or not issubclass(
                     model_cls, tf.keras.Model
                 ):
                     raise ValueError(
@@ -487,39 +477,25 @@ class ModelCatalog:
             logger.info("Wrapping {} as {}".format(model_cls, model_interface))
             model_cls = ModelCatalog._wrap_if_needed(model_cls, model_interface)
 
-            if framework in ["tf2", "tf", "tfe"]:
+            if framework in ["tf2", "tf"]:
                 # Try wrapping custom model with LSTM/attention, if required.
                 if model_config.get("use_lstm") or model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import (
                         AttentionWrapper,
-                        Keras_AttentionWrapper,
                     )
                     from ray.rllib.models.tf.recurrent_net import (
                         LSTMWrapper,
-                        Keras_LSTMWrapper,
                     )
 
                     wrapped_cls = model_cls
-                    # Wrapped (custom) model is itself a keras Model ->
-                    # wrap with keras LSTM/GTrXL (attention) wrappers.
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        model_cls = (
-                            Keras_LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else Keras_AttentionWrapper
-                        )
-                        model_config["wrapped_cls"] = wrapped_cls
-                    # Wrapped (custom) model is ModelV2 ->
-                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
-                    else:
-                        forward = wrapped_cls.forward
-                        model_cls = ModelCatalog._wrap_if_needed(
-                            wrapped_cls,
-                            LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else AttentionWrapper,
-                        )
-                        model_cls._wrapped_forward = forward
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls,
+                        LSTMWrapper
+                        if model_config.get("use_lstm")
+                        else AttentionWrapper,
+                    )
+                    model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
                 # registered. Only still do this, if users do register their
@@ -648,14 +624,14 @@ class ModelCatalog:
                         raise e
             else:
                 raise NotImplementedError(
-                    "`framework` must be 'tf2|tf|tfe|torch', but is "
+                    "`framework` must be 'tf2|tf|torch', but is "
                     "{}!".format(framework)
                 )
 
             return instance
 
         # Find a default TFModelV2 and wrap with model_interface.
-        if framework in ["tf", "tfe", "tf2"]:
+        if framework in ["tf", "tf2"]:
             v2_class = None
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
@@ -670,32 +646,20 @@ class ModelCatalog:
 
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
-                    Keras_AttentionWrapper,
                 )
                 from ray.rllib.models.tf.recurrent_net import (
                     LSTMWrapper,
-                    Keras_LSTMWrapper,
                 )
 
                 wrapped_cls = v2_class
                 if model_config.get("use_lstm"):
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_LSTMWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, LSTMWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(wrapped_cls, LSTMWrapper)
+                    v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_AttentionWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, AttentionWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper
+                    )
+                    v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
@@ -759,8 +723,7 @@ class ModelCatalog:
             )
         else:
             raise NotImplementedError(
-                "`framework` must be 'tf2|tf|tfe|torch', but is "
-                "{}!".format(framework)
+                "`framework` must be 'tf2|tf|torch', but is " "{}!".format(framework)
             )
 
     @staticmethod
@@ -823,7 +786,7 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @Deprecated(error=False)
+    @Deprecated(error=True)
     def register_custom_preprocessor(
         preprocessor_name: str, preprocessor_class: type
     ) -> None:
@@ -898,17 +861,13 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
-        Keras_FCNet = None
-        Keras_VisionNet = None
 
-        if framework in ["tf2", "tf", "tfe"]:
+        if framework in ["tf2", "tf"]:
             from ray.rllib.models.tf.fcnet import (
                 FullyConnectedNetwork as FCNet,
-                Keras_FullyConnectedNetwork as Keras_FCNet,
             )
             from ray.rllib.models.tf.visionnet import (
                 VisionNetwork as VisionNet,
-                Keras_VisionNetwork as Keras_VisionNet,
             )
             from ray.rllib.models.tf.complex_input_net import (
                 ComplexInputNetwork as ComplexNet,
@@ -937,8 +896,6 @@ class ModelCatalog:
         if isinstance(input_space, Box) and len(input_space.shape) == 3:
             if framework == "jax":
                 raise NotImplementedError("No non-FC default net for JAX yet!")
-            elif model_config.get("_use_default_native_models") and Keras_VisionNet:
-                return Keras_VisionNet
             return VisionNet
         # `input_space` is 1D Box -> FCNet.
         elif (
@@ -952,12 +909,7 @@ class ModelCatalog:
                 )
             )
         ):
-            # Keras native requested AND no auto-rnn-wrapping.
-            if model_config.get("_use_default_native_models") and Keras_FCNet:
-                return Keras_FCNet
-            # Classic ModelV2 FCNet.
-            else:
-                return FCNet
+            return FCNet
         # Complex (Dict, Tuple, 2D Box (flatten), Discrete, MultiDiscrete).
         else:
             if framework == "jax":
@@ -1002,7 +954,7 @@ class ModelCatalog:
                 within the Trainer's config dict.
             action_space: The action space of the model, whose config are
                     validated.
-            framework: One of "jax", "tf2", "tf", "tfe", or "torch".
+            framework: One of "jax", "tf2", "tf", or "torch".
 
         Raises:
             ValueError: If something is wrong with the given config.
@@ -1013,7 +965,7 @@ class ModelCatalog:
                 old="model.custom_preprocessor",
                 new="gym.ObservationWrapper around your env or handle complex "
                 "inputs inside your Model",
-                error=False,
+                error=True,
             )
 
         if config.get("use_attention") and config.get("use_lstm"):

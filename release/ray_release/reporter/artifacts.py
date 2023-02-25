@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 
@@ -12,6 +13,7 @@ DEFAULT_ARTIFACTS_DIR = "/tmp/artifacts"
 
 ARTIFACT_TEST_CONFIG_FILE = "test_config.json"
 ARTIFACT_RESULT_FILE = "result.json"
+METRICS_RESULT_FILE = "metrics.json.gz"
 
 
 class ArtifactsReporter(Reporter):
@@ -27,9 +29,20 @@ class ArtifactsReporter(Reporter):
             json.dump(test, fp, sort_keys=True, indent=4)
 
         result_file = os.path.join(self.artifacts_dir, ARTIFACT_RESULT_FILE)
+        result_dict = result.__dict__
+        metrics_dict = result_dict.pop("prometheus_metrics")
         with open(result_file, "wt") as fp:
-            json.dump(result.__dict__, fp, sort_keys=True, indent=4)
+            json.dump(result_dict, fp, sort_keys=True, indent=4)
 
         logger.info(
             f"Wrote test config and result to artifacts directory: {self.artifacts_dir}"
         )
+
+        if metrics_dict:
+            metrics_file = os.path.join(self.artifacts_dir, METRICS_RESULT_FILE)
+            with gzip.open(metrics_file, "wt", encoding="UTF-8") as fp:
+                json.dump(metrics_dict, fp, sort_keys=True, indent=4)
+
+            logger.info(
+                f"Wrote prometheus metrics to artifacts directory: {self.artifacts_dir}"
+            )

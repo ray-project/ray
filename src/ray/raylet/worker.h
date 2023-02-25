@@ -17,6 +17,8 @@
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
@@ -71,6 +73,7 @@ class WorkerInterface {
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
+  virtual const std::string GetTaskOrActorIdAsDebugString() const = 0;
   virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
@@ -108,8 +111,9 @@ class WorkerInterface {
   virtual bool IsAvailableForScheduling() const = 0;
 
   /// Time when the last task was assigned to this worker.
-  virtual const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime()
-      const = 0;
+  virtual absl::Time GetAssignedTaskTime() const = 0;
+
+  virtual void SetJobId(const JobID &job_id) = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
@@ -117,6 +121,9 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, TestJobFinishedForceKillIdleWorker);
+  FRIEND_TEST(WorkerPoolTest,
+              WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
   FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
   FRIEND_TEST(WorkerPoolTest, HandleWorkerRegistration);
@@ -172,6 +179,9 @@ class Worker : public WorkerInterface {
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
+  // Creates the debug string for the ID of the task or actor depending on which is
+  // running.
+  const std::string GetTaskOrActorIdAsDebugString() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
@@ -210,12 +220,10 @@ class Worker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
-    task_assign_time_ = std::chrono::high_resolution_clock::now();
-  };
+    task_assign_time_ = absl::Now();
+  }
 
-  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime() const {
-    return task_assign_time_;
-  };
+  absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -230,6 +238,8 @@ class Worker : public WorkerInterface {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
+
+  void SetJobId(const JobID &job_id);
 
  protected:
   void SetStartupToken(StartupToken startup_token);
@@ -259,7 +269,7 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  const JobID assigned_job_id_;
+  JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
@@ -295,7 +305,7 @@ class Worker : public WorkerInterface {
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
-  std::chrono::high_resolution_clock::time_point task_assign_time_;
+  absl::Time task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };

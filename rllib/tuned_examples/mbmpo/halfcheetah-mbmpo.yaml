@@ -6,8 +6,6 @@ halfcheetah-mbmpo:
     config:
         # Only supported in torch right now.
         framework: torch
-        # 200 in paper, 1000 will take forever
-        horizon: 200
         num_envs_per_worker: 20
         inner_adaptation_steps: 1
         maml_optimizer_steps: 8

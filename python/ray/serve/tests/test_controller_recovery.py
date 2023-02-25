@@ -1,11 +1,13 @@
+import os
+import sys
+import time
+import pytest
 from collections import defaultdict
 
-import sys
-import os
-import pytest
-import time
-
 import ray
+from ray._private.test_utils import SignalActor
+from ray.experimental.state.api import list_actors
+
 from ray import serve
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -13,7 +15,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.tests.test_failure import request_with_retries
-from ray._private.test_utils import SignalActor
 from ray.serve._private.utils import get_random_letters
 
 
@@ -58,13 +59,12 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # 'SERVE_CONTROLLER_ACTOR',
     # 'TransientConstructorFailureDeployment#NosHNA',
     # 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-node:192.168.86.165-0']
-    actor_infos = ray.util.list_named_actors(all_namespaces=True)
+    actor_infos = list_actors(filters=[("state", "=", "ALIVE")])
     replica_names = [
         actor_info["name"]
         for actor_info in actor_infos
         if (
-            SERVE_NAMESPACE == actor_info["namespace"]
-            and SERVE_CONTROLLER_NAME not in actor_info["name"]
+            SERVE_CONTROLLER_NAME not in actor_info["name"]
             and SERVE_PROXY_NAME not in actor_info["name"]
         )
     ]
@@ -81,13 +81,12 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
-    recovered_actor_infos = ray.util.list_named_actors(all_namespaces=True)
+    recovered_actor_infos = list_actors(filters=[("state", "=", "ALIVE")])
     recovered_replica_names = [
         actor_info["name"]
         for actor_info in recovered_actor_infos
         if (
-            SERVE_NAMESPACE == actor_info["namespace"]
-            and SERVE_CONTROLLER_NAME not in actor_info["name"]
+            SERVE_CONTROLLER_NAME not in actor_info["name"]
             and SERVE_PROXY_NAME not in actor_info["name"]
         )
     ]

@@ -5,13 +5,13 @@ inference (computing actions) in an environment.
 import argparse
 from pathlib import Path
 
-import gym
+import gymnasium as gym
 import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dt import DTConfig
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.tune.utils.log import Verbosity
 
 if __name__ == "__main__":
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             input_files.append(input_file)
 
     # Get max_ep_len
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     max_ep_len = env.spec.max_episode_steps
     env.close()
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     config = (
         DTConfig()
         .environment(
-            env="CartPole-v0",
+            env="CartPole-v1",
             clip_actions=False,
             normalize_actions=False,
         )
@@ -74,6 +74,7 @@ if __name__ == "__main__":
             actions_in_input_normalized=True,
         )
         .training(
+            horizon=max_ep_len,  # This needs to be specified for DT to work.
             lr=0.01,
             optimizer={
                 "weight_decay": 0.1,
@@ -98,12 +99,10 @@ if __name__ == "__main__":
             evaluation_duration=10,
             evaluation_duration_unit="episodes",
             evaluation_parallel_to_training=False,
-            evaluation_config={"input": "sampler", "explore": False},
+            evaluation_config=DTConfig.overrides(input_="sampler", explore=False),
         )
         .rollouts(
             num_rollout_workers=0,
-            # This needs to be specified
-            horizon=max_ep_len,
         )
         .reporting(
             min_train_timesteps_per_iteration=5000,
@@ -142,13 +141,12 @@ if __name__ == "__main__":
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
     # Create new Algorithm and restore its state from the last checkpoint.
-    algo = get_algorithm_class("DT")(config=config)
-    algo.restore(checkpoint)
+    algo = Algorithm.from_checkpoint(checkpoint)
 
     # Create the env to do inference in.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
 
-    obs = env.reset()
+    obs, info = env.reset()
     input_dict = algo.get_initial_input_dict(obs)
 
     num_episodes = 0
@@ -158,13 +156,13 @@ if __name__ == "__main__":
         # Compute an action (`a`).
         a, _, extra = algo.compute_single_action(input_dict=input_dict)
         # Send the computed action `a` to the env.
-        obs, reward, done, _ = env.step(a)
+        obs, reward, terminated, truncated, _ = env.step(a)
         # Add to total rewards.
         total_rewards += reward
         # Is the episode `done`? -> Reset.
-        if done:
+        if terminated or truncated:
             print(f"Episode {num_episodes+1} - return: {total_rewards}")
-            obs = env.reset()
+            obs, info = env.reset()
             input_dict = algo.get_initial_input_dict(obs)
             num_episodes += 1
             total_rewards = 0.0

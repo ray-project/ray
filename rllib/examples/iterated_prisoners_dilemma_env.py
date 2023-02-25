@@ -15,7 +15,7 @@ from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -74,7 +74,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, framework="tf"):
                     {},
                 ),
             },
-            "policy_mapping_fn": lambda agent_id, **kwargs: agent_id,
+            "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: agent_id,
         },
         "seed": tune.grid_search(seeds),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

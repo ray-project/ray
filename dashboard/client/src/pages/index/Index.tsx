@@ -7,7 +7,7 @@ import {
   TableRow,
 } from "@material-ui/core";
 import React, { useEffect, useState } from "react";
-import { version } from "../../../package.json";
+import packageInfo from "../../../package.json";
 import TitleCard from "../../components/TitleCard";
 import { getRayConfig } from "../../service/cluster";
 import { getNodeList } from "../../service/node";
@@ -59,7 +59,7 @@ const Index = () => {
   return (
     <div className={classes.root}>
       <TitleCard title={rayConfig?.clusterName || "SUMMARY"}>
-        <p>Dashboard Frontend Version: {version}</p>
+        <p>Dashboard Frontend Version: {packageInfo.version}</p>
         {rayConfig?.imageUrl && (
           <p>
             Image Url:{" "}

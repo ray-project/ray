@@ -31,20 +31,24 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 std::string serialized_runtime_env = "") {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
+  rpc::JobConfig job_config;
   builder.SetCommonTaskSpec(TaskID::Nil(),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
                             JobID::Nil(),
+                            job_config,
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),
                             empty_address,
                             1,
+                            false,
                             resources,
                             resources,
                             serialized_runtime_env,
-                            depth);
+                            depth,
+                            TaskID::Nil());
   return builder.Build();
 }
 TaskSpecification BuildEmptyTaskSpec() {
@@ -60,11 +64,12 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void CompletePendingTask(const TaskID &,
                            const rpc::PushTaskReply &,
-                           const rpc::Address &actor_addr) override {
+                           const rpc::Address &actor_addr,
+                           bool is_application_error) override {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override {
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
     num_task_retries_attempted++;
     return false;
   }
@@ -72,8 +77,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       bool mark_task_object_failed = true) override {
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
   }
 
@@ -81,7 +85,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                               rpc::ErrorType error_type,
                               const Status *status,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                              bool mark_task_object_failed = true) override {
+                              bool mark_task_object_failed = true,
+                              bool fail_immediately = false) override {
     num_tasks_failed++;
     return true;
   }
@@ -92,11 +97,6 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
-
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
@@ -106,7 +106,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
-  void MarkTaskWaitingForExecution(const TaskID &task_id) override {}
+  void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;

@@ -45,7 +45,7 @@ class Adam(Optimizer):
 
     def _compute_step(self, globalg):
         a = self.stepsize * (
-            np.sqrt(1 - self.beta2 ** self.t) / (1 - self.beta1 ** self.t)
+            np.sqrt(1 - self.beta2**self.t) / (1 - self.beta1**self.t)
         )
         self.m = self.beta1 * self.m + (1 - self.beta1) * globalg
         self.v = self.beta2 * self.v + (1 - self.beta2) * (globalg * globalg)

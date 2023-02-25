@@ -1,6 +1,6 @@
 from collections import deque
-import gym
-import gym_minigrid
+import gymnasium as gym
+import minigrid
 import numpy as np
 import sys
 import unittest
@@ -33,7 +33,7 @@ class MyCallBack(DefaultCallbacks):
     ):
         pos = np.argmax(postprocessed_batch["obs"], -1)
         x, y = pos % 8, pos // 8
-        self.deltas.extend((x ** 2 + y ** 2) ** 0.5)
+        self.deltas.extend((x**2 + y**2) ** 0.5)
 
     def on_sample_end(self, *, worker, samples, **kwargs):
         print("mean. distance from origin={}".format(np.mean(self.deltas)))
@@ -114,8 +114,10 @@ def env_maker(config):
     name = config.get("name", "MiniGrid-Empty-5x5-v0")
     framestack = config.get("framestack", 4)
     env = gym.make(name)
+    # Make it impossible to reach goal by chance.
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=15)
     # Only use image portion of observation (discard goal and direction).
-    env = gym_minigrid.wrappers.ImgObsWrapper(env)
+    env = minigrid.wrappers.ImgObsWrapper(env)
     env = OneHotWrapper(
         env,
         config.vector_index if hasattr(config, "vector_index") else 0,
@@ -138,49 +140,55 @@ class TestCuriosity(unittest.TestCase):
         ray.shutdown()
 
     def test_curiosity_on_frozen_lake(self):
-        config = ppo.DEFAULT_CONFIG.copy()
-        # A very large frozen-lake that's hard for a random policy to solve
-        # due to 0.0 feedback.
-        config["env"] = "FrozenLake-v1"
-        config["env_config"] = {
-            "desc": [
-                "SFFFFFFF",
-                "FFFFFFFF",
-                "FFFFFFFF",
-                "FFFFFFFF",
-                "FFFFFFFF",
-                "FFFFFFFF",
-                "FFFFFFFF",
-                "FFFFFFFG",
-            ],
-            "is_slippery": False,
-        }
-        # Print out observations to see how far we already get inside the Env.
-        config["callbacks"] = MyCallBack
-        # Limit horizon to make it really hard for non-curious agent to reach
-        # the goal state.
-        config["horizon"] = 16
-        # Local only.
-        config["num_workers"] = 0
-        config["lr"] = 0.001
+
+        config = (
+            ppo.PPOConfig()
+            # A very large frozen-lake that's hard for a random policy to solve
+            # due to 0.0 feedback.
+            .environment(
+                "FrozenLake-v1",
+                env_config={
+                    "desc": [
+                        "SFFFFFFF",
+                        "FFFFFFFF",
+                        "FFFFFFFF",
+                        "FFFFFFFF",
+                        "FFFFFFFF",
+                        "FFFFFFFF",
+                        "FFFFFFFF",
+                        "FFFFFFFG",
+                    ],
+                    "is_slippery": False,
+                    "max_episode_steps": 16,
+                },
+            )
+            # Print out observations to see how far we already get inside the Env.
+            .callbacks(MyCallBack)
+            # Limit horizon to make it really hard for non-curious agent to reach
+            # the goal state.
+            .rollouts(num_rollout_workers=0)
+            .training(lr=0.001)
+            .exploration(
+                exploration_config={
+                    "type": "Curiosity",
+                    "eta": 0.2,
+                    "lr": 0.001,
+                    "feature_dim": 128,
+                    "feature_net_config": {
+                        "fcnet_hiddens": [],
+                        "fcnet_activation": "relu",
+                    },
+                    "sub_exploration": {
+                        "type": "StochasticSampling",
+                    },
+                }
+            )
+        )
 
         num_iterations = 10
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             # W/ Curiosity. Expect to learn something.
-            config["exploration_config"] = {
-                "type": "Curiosity",
-                "eta": 0.2,
-                "lr": 0.001,
-                "feature_dim": 128,
-                "feature_net_config": {
-                    "fcnet_hiddens": [],
-                    "fcnet_activation": "relu",
-                },
-                "sub_exploration": {
-                    "type": "StochasticSampling",
-                },
-            }
-            algo = ppo.PPO(config=config)
+            algo = config.build()
             learnt = False
             for i in range(num_iterations):
                 result = algo.train()
@@ -210,39 +218,46 @@ class TestCuriosity(unittest.TestCase):
             #    print("Did not reach goal w/o curiosity!")
 
     def test_curiosity_on_partially_observable_domain(self):
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["env"] = "mini-grid"
-        config["env_config"] = {
-            # Also works with:
-            # - MiniGrid-MultiRoom-N4-S5-v0
-            # - MiniGrid-MultiRoom-N2-S4-v0
-            "name": "MiniGrid-Empty-8x8-v0",
-            "framestack": 1,  # seems to work even w/o framestacking
-        }
-        config["horizon"] = 15  # Make it impossible to reach goal by chance.
-        config["num_envs_per_worker"] = 4
-        config["model"]["fcnet_hiddens"] = [256, 256]
-        config["model"]["fcnet_activation"] = "relu"
-        config["num_sgd_iter"] = 8
-        config["num_workers"] = 0
-
-        config["exploration_config"] = {
-            "type": "Curiosity",
-            # For the feature NN, use a non-LSTM fcnet (same as the one
-            # in the policy model).
-            "eta": 0.1,
-            "lr": 0.0003,  # 0.0003 or 0.0005 seem to work fine as well.
-            "feature_dim": 64,
-            # No actual feature net: map directly from observations to feature
-            # vector (linearly).
-            "feature_net_config": {
-                "fcnet_hiddens": [],
-                "fcnet_activation": "relu",
-            },
-            "sub_exploration": {
-                "type": "StochasticSampling",
-            },
-        }
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                "mini-grid",
+                env_config={
+                    # Also works with:
+                    # - MiniGrid-MultiRoom-N4-S5-v0
+                    # - MiniGrid-MultiRoom-N2-S4-v0
+                    "name": "MiniGrid-Empty-8x8-v0",
+                    "framestack": 1,  # seems to work even w/o framestacking
+                },
+            )
+            .rollouts(num_envs_per_worker=4, num_rollout_workers=0)
+            .training(
+                model={
+                    "fcnet_hiddens": [256, 256],
+                    "fcnet_activation": "relu",
+                },
+                num_sgd_iter=8,
+            )
+            .exploration(
+                exploration_config={
+                    "type": "Curiosity",
+                    # For the feature NN, use a non-LSTM fcnet (same as the one
+                    # in the policy model).
+                    "eta": 0.1,
+                    "lr": 0.0003,  # 0.0003 or 0.0005 seem to work fine as well.
+                    "feature_dim": 64,
+                    # No actual feature net: map directly from observations to feature
+                    # vector (linearly).
+                    "feature_net_config": {
+                        "fcnet_hiddens": [],
+                        "fcnet_activation": "relu",
+                    },
+                    "sub_exploration": {
+                        "type": "StochasticSampling",
+                    },
+                }
+            )
+        )
 
         min_reward = 0.001
         stop = {
@@ -254,11 +269,13 @@ class TestCuriosity(unittest.TestCase):
             # algo = ppo.PPO(config=config)
             # algo.restore("[checkpoint file]")
             # env = env_maker(config["env_config"])
-            # s = env.reset()
+            # obs, info = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(algo.compute_single_action(s))
-            #     if d:
-            #         s = env.reset()
+            #     obs, reward, done, truncated, info = env.step(
+            #         algo.compute_single_action(s)
+            #     )
+            #     if done:
+            #         obs, info = env.reset()
             #     env.render()
 
             results = tune.Tuner(
@@ -274,8 +291,8 @@ class TestCuriosity(unittest.TestCase):
             # config_wo["exploration_config"] = {"type": "StochasticSampling"}
             # stop_wo = stop.copy()
             # stop_wo["training_iteration"] = iters
-            # results = tune.run(
-            #     "PPO", config=config_wo, stop=stop_wo, verbose=1)
+            # results = tune.Tuner(
+            #     "PPO", param_space=config_wo, stop=stop_wo, verbose=1).fit()
             # try:
             #     check_learning_achieved(results, min_reward)
             # except ValueError:

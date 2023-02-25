@@ -13,8 +13,6 @@ hopper_bc:
         #input: d4rl.hopper-expert-v0
         #input: d4rl.hopper-medium-replay-v0
         framework: torch
-        soft_horizon: False
-        horizon: 1000
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256, 256]
@@ -23,7 +21,6 @@ hopper_bc:
           fcnet_hiddens: [256, 256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: false
         n_step: 1
         rollout_fragment_length: 1
         replay_buffer_config:
@@ -41,7 +38,7 @@ hopper_bc:
         clip_actions: false
         normalize_actions: true
         evaluation_interval: 1
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5
         # CQL Configs
         min_q_weight: 5.0
         bc_iters: 200000000

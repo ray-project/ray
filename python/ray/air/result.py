@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -5,7 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 @dataclass
@@ -40,9 +42,9 @@ class Result:
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
     log_dir: Optional[Path]
-    metrics_dataframe: Optional[pd.DataFrame]
+    metrics_dataframe: Optional["pd.DataFrame"]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
-    _items_to_repr = ["metrics", "error", "log_dir"]
+    _items_to_repr = ["error", "metrics", "log_dir", "checkpoint"]
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
@@ -51,14 +53,29 @@ class Result:
             return None
         return self.metrics.get("config", None)
 
-    def __repr__(self):
+    def _repr(self, indent: int = 0) -> str:
+        """Construct the representation with specified number of space indent."""
         from ray.tune.result import AUTO_RESULT_KEYS
 
         shown_attributes = {k: self.__dict__[k] for k in self._items_to_repr}
+        if self.error:
+            shown_attributes["error"] = type(self.error).__name__
+        else:
+            shown_attributes.pop("error")
 
         if self.metrics:
             shown_attributes["metrics"] = {
                 k: v for k, v in self.metrics.items() if k not in AUTO_RESULT_KEYS
             }
-        kws = [f"{key}={value!r}" for key, value in shown_attributes.items()]
-        return "{}({})".format(type(self).__name__, ", ".join(kws))
+
+        cls_indent = " " * indent
+        kws_indent = " " * (indent + 2)
+
+        kws = [
+            f"{kws_indent}{key}={value!r}" for key, value in shown_attributes.items()
+        ]
+        kws_repr = ",\n".join(kws)
+        return "{0}{1}(\n{2}\n{0})".format(cls_indent, type(self).__name__, kws_repr)
+
+    def __repr__(self) -> str:
+        return self._repr(indent=0)

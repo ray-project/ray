@@ -69,9 +69,9 @@ def get_node_type(node: dict) -> GCPNodeType:
 
     if "machineType" not in node and "acceleratorType" in node:
         # remove after TPU pod support is added!
-        if node["acceleratorType"] not in ("v2-8", "v3-8"):
+        if node["acceleratorType"] not in ("v2-8", "v3-8", "v4-8"):
             raise ValueError(
-                "For now, only v2-8' and 'v3-8' accelerator types are "
+                "For now, only 'v2-8', 'v3-8' and 'v4-8' accelerator types are "
                 "supported. Support for TPU pods will be added in the future."
             )
 

@@ -4,18 +4,14 @@ from typing import TYPE_CHECKING, Any, Optional, Tuple, Type
 import datasets.iterable_dataset
 import transformers.trainer
 from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.util import get_node_ip_address
 from ray.data.dataset import Dataset
+from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
-
-# Constants for the sync checkpoint dict. See huggingface_trainer.py
-CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
-NODE_IP_KEY = "node_ip"
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -122,10 +118,19 @@ class TrainReportCallback(TrainerCallback):
         # we delay the session.report call after the checkpoint is reported
         # to Ray Train.
         self.delayed_report = {"metrics": {}, "checkpoint": None}
+        self.last_metrics = {}
+        self.last_step = 0
         super().__init__()
 
-    def on_step_end(self, args, state, control, **kwargs):
+    def on_epoch_end(self, args, state, control, **kwargs):
         if control.should_training_stop:
+            # If the last step was the final step of the entire
+            # loop, do not log again (would cause a divide by zero error)
+            if state.global_step != self.last_step:
+                if args.evaluation_strategy not in ("no", IntervalStrategy.NO):
+                    control.should_evaluate = True
+                control.should_log = True
+
             # Always save at the end.
             control.should_save = True
         return control
@@ -134,6 +139,7 @@ class TrainReportCallback(TrainerCallback):
         # Log is called in multiple places (evaluation, train metrics).
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
         self.delayed_report["metrics"].update(report)
+        self.last_step = state.global_step
 
     def on_save(self, args, state, control, **kwargs):
         # Save is called after evaluation.
@@ -141,23 +147,33 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            self.delayed_report["checkpoint"] = Checkpoint.from_dict(
-                {
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                }
+            # Use HuggingFaceCheckpoint here to avoid a warning in _TrainSession
+            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_directory(
+                str(checkpoint_path)
             )
 
     def _report(self):
         if self.delayed_report["metrics"]:
             session.report(**self.delayed_report)
+            self.last_metrics = self.delayed_report["metrics"]
             self.delayed_report = {"metrics": {}, "checkpoint": None}
 
     def on_epoch_begin(self, args, state, control, **kwargs):
-        # Report previous epoch - this way we ensure everything
+        # Report previous step/epoch - this way we ensure everything
+        # is recorded.
+        self._report()
+
+    def on_step_begin(self, args, state, control, **kwargs):
+        # Report previous step/epoch - this way we ensure everything
         # is recorded.
         self._report()
 
     def on_train_end(self, args, state, control, **kwargs):
         # Final callback. Train metrics are logged right before this.
+
+        # Use last eval metrics
+        self.delayed_report["metrics"] = {
+            **self.last_metrics,
+            **self.delayed_report["metrics"],
+        }
         self._report()

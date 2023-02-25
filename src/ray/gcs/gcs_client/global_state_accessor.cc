@@ -93,17 +93,16 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   return node_table_data;
 }
 
-std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
-  std::vector<std::string> profile_table_data;
+std::vector<std::string> GlobalStateAccessor::GetAllTaskEvents() {
+  std::vector<std::string> task_events;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::ProfileTableData>(profile_table_data,
-                                                             promise)));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncGetTaskEvents(
+        TransformForMultiItemCallback<rpc::TaskEvents>(task_events, promise)));
   }
   promise.get_future().get();
-  return profile_table_data;
+  return task_events;
 }
 
 std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
@@ -355,9 +354,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
 
       if (relevant_client_index < 0 && head_node_client_index >= 0) {
         RAY_LOG(INFO) << "This node has an IP address of " << node_ip_address
-                      << ", while we can not found the matched Raylet address. "
-                      << "This maybe come from when you connect the Ray cluster "
-                      << "with a different IP address or connect a container.";
+                      << ", but we cannot find a local Raylet with the same address. "
+                      << "This can happen when you connect to the Ray cluster "
+                      << "with a different IP address or when connecting to a container.";
         relevant_client_index = head_node_client_index;
       }
       if (relevant_client_index < 0) {

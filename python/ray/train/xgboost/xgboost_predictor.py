@@ -1,13 +1,14 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
-from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 import xgboost
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
+from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -53,13 +54,13 @@ class XGBoostPredictor(Predictor):
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)
 
-    def _predict_pandas(
+    def predict(
         self,
-        data: "pd.DataFrame",
+        data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         dmatrix_kwargs: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> "pd.DataFrame":
+    ) -> DataBatchType:
         """Run inference on data batch.
 
         The data is converted into an XGBoost DMatrix before being inputted to
@@ -74,51 +75,65 @@ class XGBoostPredictor(Predictor):
             **predict_kwargs: Keyword arguments passed to ``xgboost.Booster.predict``.
 
         Examples:
+            >>> import numpy as np
+            >>> import xgboost as xgb
+            >>> from ray.train.xgboost import XGBoostPredictor
+            >>>
+            >>> train_X = np.array([[1, 2], [3, 4]])
+            >>> train_y = np.array([0, 1])
+            >>>
+            >>> model = xgb.XGBClassifier().fit(train_X, train_y)
+            >>> predictor = XGBoostPredictor(model=model.get_booster())
+            >>>
+            >>> data = np.array([[1, 2], [3, 4]])
+            >>> predictions = predictor.predict(data)
+            >>>
+            >>> # Only use first and second column as the feature
+            >>> data = np.array([[1, 2, 8], [3, 4, 9]])
+            >>> predictor.predict(data, feature_columns=[0, 1])
+            array([0.5, 0.5], dtype=float32)
 
-        .. code-block:: python
-
-            import numpy as np
-            import xgboost as xgb
-            from ray.train.predictors.xgboost import XGBoostPredictor
-
-            train_X = np.array([[1, 2], [3, 4]])
-            train_y = np.array([0, 1])
-
-            model = xgb.XGBClassifier().fit(train_X, train_y)
-            predictor = XGBoostPredictor(model=model.get_booster())
-
-            data = np.array([[1, 2], [3, 4]])
-            predictions = predictor.predict(data)
-
-            # Only use first and second column as the feature
-            data = np.array([[1, 2, 8], [3, 4, 9]])
-            predictions = predictor.predict(data, feature_columns=[0, 1])
-
-        .. code-block:: python
-
-            import pandas as pd
-            import xgboost as xgb
-            from ray.train.predictors.xgboost import XGBoostPredictor
-
-            train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-            train_y = pd.Series([0, 1])
-
-            model = xgb.XGBClassifier().fit(train_X, train_y)
-            predictor = XGBoostPredictor(model=model.get_booster())
-
-            # Pandas dataframe.
-            data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-            predictions = predictor.predict(data)
-
-            # Only use first and second column as the feature
-            data = pd.DataFrame([[1, 2, 8], [3, 4, 9]], columns=["A", "B", "C"])
-            predictions = predictor.predict(data, feature_columns=["A", "B"])
+            >>> import pandas as pd
+            >>> import xgboost as xgb
+            >>> from ray.train.xgboost import XGBoostPredictor
+            >>>
+            >>> train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+            >>> train_y = pd.Series([0, 1])
+            >>>
+            >>> model = xgb.XGBClassifier().fit(train_X, train_y)
+            >>> predictor = XGBoostPredictor(model=model.get_booster())
+            >>>
+            >>> # Pandas dataframe.
+            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+            >>> predictions = predictor.predict(data)
+            >>>
+            >>> # Only use first and second column as the feature
+            >>> data = pd.DataFrame([[1, 2, 8], [3, 4, 9]], columns=["A", "B", "C"])
+            >>> predictor.predict(data, feature_columns=["A", "B"])
+               predictions
+            0          0.5
+            1          0.5
 
 
         Returns:
             Prediction result.
 
         """
+        return Predictor.predict(
+            self,
+            data,
+            feature_columns=feature_columns,
+            dmatrix_kwargs=dmatrix_kwargs,
+            **predict_kwargs,
+        )
+
+    def _predict_pandas(
+        self,
+        data: "pd.DataFrame",
+        feature_columns: Optional[Union[List[str], List[int]]] = None,
+        dmatrix_kwargs: Optional[Dict[str, Any]] = None,
+        **predict_kwargs,
+    ) -> "pd.DataFrame":
         dmatrix_kwargs = dmatrix_kwargs or {}
 
         feature_names = None

@@ -22,7 +22,7 @@ from ray.tune.search.flaml import CFO, BlendSearch
 from ray.tune.search.skopt import SkOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.sigopt import SigOptSearch
+from ray.tune.search.sigopt import SigOptSearch, load_sigopt_key
 from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.search.hebo import HEBOSearch
 from ray.tune.search.ax import AxSearch
@@ -218,13 +218,16 @@ class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         }
 
         def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
 
         search_alg = BlendSearch(
             space=space,
             metric="loss",
             mode="min",
             seed=20,
+            # Mocked to be a constant to ensure reproductibility,
+            # as runtime (default) can fluctuate
+            cost_attr="cost",
         )
 
         return search_alg, cost
@@ -261,7 +264,7 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = NevergradSearch(
             optimizer,
-            parameter_names,
+            space=parameter_names,
             metric="loss",
             mode="min",
         )
@@ -316,6 +319,10 @@ class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def setUp(self):
+        AbstractWarmStartTest.setUp(self)
+        load_sigopt_key()
+
     def set_basic_conf(self):
         space = [
             {

@@ -1,5 +1,5 @@
 import argparse
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 from ray.rllib.examples.models.custom_model_api import (
@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )

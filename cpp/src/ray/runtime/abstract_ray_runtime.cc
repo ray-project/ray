@@ -141,7 +141,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       auto owner_address = ray::rpc::Address{};
       if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
         auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-        owner_address = core_worker.GetOwnerAddress(id);
+        owner_address = core_worker.GetOwnerAddressOrDie(id);
       }
       ray_arg = absl::make_unique<ray::TaskArgByReference>(id,
                                                            owner_address,
@@ -220,7 +220,7 @@ const TaskID &AbstractRayRuntime::GetCurrentTaskId() {
   return GetWorkerContext().GetCurrentTaskID();
 }
 
-const JobID &AbstractRayRuntime::GetCurrentJobID() {
+JobID AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
@@ -305,7 +305,7 @@ void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
 }
 
 bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
-                                                 int timeout_seconds) {
+                                                 int64_t timeout_seconds) {
   return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
 }
 

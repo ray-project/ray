@@ -1,25 +1,31 @@
 #!/usr/bin/env python
 
+import numpy as np
 import os
 import ray
 
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.framework import try_import_tf
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
 ray.init(num_cpus=10)
 
 
-def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
-    cls = get_algorithm_class(algo_name)
-    alg = cls(config={}, env="CartPole-v0")
+def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
+    cls = get_trainable_cls(algo_name)
+    config = cls.get_default_config()
+    # Set exporting native (DL-framework) model files to True.
+    config.export_native_model_files = True
+    config.env = "CartPole-v1"
+    alg = config.build()
     for _ in range(num_steps):
         alg.train()
 
-    # Export tensorflow checkpoint for fine-tuning
-    alg.export_policy_checkpoint(ckpt_dir, filename_prefix=prefix)
-    # Export tensorflow SavedModel for online serving
+    # Export Policy checkpoint.
+    alg.export_policy_checkpoint(ckpt_dir)
+    # Export tensorflow keras Model for online serving
     alg.export_policy_model(model_dir)
 
 
@@ -40,24 +46,24 @@ def restore_saved_model(export_dir):
             print("https://www.tensorflow.org/guide/saved_model")
 
 
-def restore_checkpoint(export_dir, prefix):
-    sess = tf1.Session()
-    meta_file = "%s.meta" % prefix
-    saver = tf1.train.import_meta_graph(os.path.join(export_dir, meta_file))
-    saver.restore(sess, os.path.join(export_dir, prefix))
-    print("Checkpoint restored!")
-    print("Variables Information:")
-    for v in tf1.trainable_variables():
-        value = sess.run(v)
-        print(v.name, value)
+def restore_policy_from_checkpoint(export_dir):
+    # Load the model from the checkpoint.
+    policy = Policy.from_checkpoint(export_dir)
+    # Perform a dummy (CartPole) forward pass.
+    test_obs = np.array([0.1, 0.2, 0.3, 0.4])
+    results = policy.compute_single_action(test_obs)
+    # Check results for correctness.
+    assert len(results) == 3
+    assert results[0].shape == ()  # pure single action (int)
+    assert results[1] == []  # RNN states
+    assert results[2]["action_dist_inputs"].shape == (2,)  # categorical inputs
 
 
 if __name__ == "__main__":
-    algo = "DQN"
+    algo = "PPO"
     model_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "model_export_dir")
     ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "ckpt_export_dir")
-    prefix = "model.ckpt"
-    num_steps = 3
-    train_and_export(algo, num_steps, model_dir, ckpt_dir, prefix)
+    num_steps = 1
+    train_and_export_policy_and_model(algo, num_steps, model_dir, ckpt_dir)
     restore_saved_model(model_dir)
-    restore_checkpoint(ckpt_dir, prefix)
+    restore_policy_from_checkpoint(ckpt_dir)

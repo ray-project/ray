@@ -12,24 +12,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
+
     if args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test
-    else:
-        if args.server_address:
-            ray.init(f"ray://{args.server_address}")
-        else:
-            ray.init()
 
+    perturbation_interval = 5
     pbt = PB2(
-        perturbation_interval=20,
+        time_attr="training_iteration",
+        perturbation_interval=perturbation_interval,
         hyperparam_bounds={
             # hyperparameter bounds.
             "lr": [0.0001, 0.02],
@@ -59,6 +50,10 @@ if __name__ == "__main__":
             # note: this parameter is perturbed but has no effect on
             # the model training in this example
             "some_other_factor": 1,
+            # This parameter is not perturbed and is used to determine
+            # checkpoint frequency. We set checkpoints and perturbations
+            # to happen at the same frequency.
+            "checkpoint_interval": perturbation_interval,
         },
     )
     results = tuner.fit()

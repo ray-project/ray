@@ -77,7 +77,7 @@ std::string EndpointToUrl(
     result = ss.str();
     break;
   }
-#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) and !defined(_WIN64)
   case AF_UNIX:
     scheme = "unix://";
     result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
@@ -112,7 +112,7 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
     scheme = "tcp://";
   }
   if (scheme == "unix://") {
-#ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) and !defined(_WIN64)
     size_t maxlen = sizeof(sockaddr_un().sun_path) / sizeof(*sockaddr_un().sun_path) - 1;
     RAY_CHECK(address.size() <= maxlen)
         << "AF_UNIX path length cannot exceed " << maxlen << " bytes: " << address;
@@ -395,6 +395,12 @@ bool IsRayletFailed(const std::string &raylet_pid) {
 void QuickExit() {
   ray::RayLog::ShutDownRayLog();
   _Exit(1);
+}
+
+std::string FormatFloat(float value, int32_t precision) {
+  std::stringstream ss;
+  ss << std::fixed << std::setprecision(precision) << value;
+  return ss.str();
 }
 
 }  // namespace ray

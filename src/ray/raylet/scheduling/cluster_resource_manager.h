@@ -30,10 +30,14 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+class GcsMonitorServerTest;
 namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
+namespace raylet_scheduling_policy {
+class HybridSchedulingPolicyTest;
+}
 namespace gcs {
 class GcsActorSchedulerTest;
 }  // namespace gcs
@@ -55,6 +59,13 @@ class ClusterResourceManager {
   /// \param node_id ID of the node which resoruces need to be udpated.
   /// \param resource_data The node resource data.
   bool UpdateNode(scheduling::NodeID node_id, const rpc::ResourcesData &resource_data);
+
+  /// Return the timestamp when the resource of the node got updated by scheduler.
+  ///
+  /// \param node_id ID of the node to query
+  /// \return The timestamp when the node resource got updated. If it's null, it means
+  ///    there is no such node or the resource of the node never got updated.
+  std::optional<absl::Time> GetNodeResourceModifiedTs(scheduling::NodeID node_id) const;
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
@@ -161,6 +172,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,
@@ -175,8 +187,10 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(GcsMonitorServerTest, TestGetSchedulingStatus);
 
   friend class raylet::SchedulingPolicyTest;
+  friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;
 };
 
 }  // end namespace ray

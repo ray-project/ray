@@ -1,11 +1,11 @@
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
-    register_connector,
 )
-from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.connectors.registry import register_connector
+from ray.rllib.models.preprocessors import get_preprocessor, NoPreprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
@@ -41,11 +41,16 @@ class ObsPreprocessorConnector(AgentConnector):
             obs_space, ctx.config.get("model", {})
         )
 
+    def is_identity(self):
+        """Returns whether this preprocessor connector is a no-op preprocessor."""
+        return isinstance(self._preprocessor, NoPreprocessor)
+
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
-        assert (
-            type(d) == dict
-        ), "Single agent data must be of type Dict[str, TensorStructType]"
+        assert type(d) == dict, (
+            "Single agent data must be of type Dict[str, TensorStructType] but is of "
+            "type {}".format(type(d))
+        )
 
         if SampleBatch.OBS in d:
             d[SampleBatch.OBS] = self._preprocessor.transform(d[SampleBatch.OBS])
@@ -57,11 +62,11 @@ class ObsPreprocessorConnector(AgentConnector):
         return ac_data
 
     def to_state(self):
-        return ObsPreprocessorConnector.__name__, {}
+        return ObsPreprocessorConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
-        return ObsPreprocessorConnector(ctx, **params)
+    def from_state(ctx: ConnectorContext, params: Any):
+        return ObsPreprocessorConnector(ctx)
 
 
 register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)

@@ -37,7 +37,6 @@ using ray::TaskID;
 using ray::WorkerID;
 
 using ray::Language;
-using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -53,6 +52,7 @@ class PinObjectsInterface {
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
+      const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   virtual ~PinObjectsInterface(){};
@@ -104,6 +104,10 @@ class WorkerLeaseInterface {
   virtual void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+
+  virtual void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -253,10 +257,10 @@ class RayletClient : public RayletClientInterface {
   /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param serialized_job_config If this is a driver connection, the job config
-  /// provided by driver will be passed to Raylet. If this is a worker connection,
-  /// this will be populated with the current job config.
+  /// provided by driver will be passed to Raylet.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
+  /// \param entrypoint The entrypoint of the job.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
@@ -269,8 +273,9 @@ class RayletClient : public RayletClientInterface {
                Status *status,
                NodeID *raylet_id,
                int *port,
-               std::string *serialized_job_config,
-               StartupToken startup_token);
+               const std::string &serialized_job_config,
+               StartupToken startup_token,
+               const std::string &entrypoint);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -408,6 +413,11 @@ class RayletClient : public RayletClientInterface {
                            bool disconnect_worker,
                            bool worker_exiting) override;
 
+  void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      override;
+
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
@@ -448,6 +458,7 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
+      const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(
@@ -478,8 +489,6 @@ class RayletClient : public RayletClientInterface {
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
-  JobID GetJobID() const { return job_id_; }
-
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
   int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
@@ -489,7 +498,6 @@ class RayletClient : public RayletClientInterface {
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
-  const JobID job_id_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

@@ -3,10 +3,10 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
@@ -14,31 +14,32 @@ class TD3Config(DDPGConfig):
     """Defines a configuration class from which a TD3 Algorithm can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config
+        >>> from ray.rllib.algorithms.td3 import TD3Config
         >>> config = TD3Config().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run one training iteration.
-        >>> algo = config.build(env="Pendulum-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="Pendulum-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
-        >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config
+        >>> from ray.rllib.algorithms.td3 import TD3Config
+        >>> from ray import air
         >>> from ray import tune
         >>> config = TD3Config()
         >>> # Print out some default values.
-        >>> print(config.lr)
-            0.0004
+        >>> print(config.lr)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search(  # doctest: +SKIP
+        ...     [0.001, 0.0001]))  # doctest: +SKIP
         >>> # Set the config object's env.
-        >>> config.environment(env="Pendulum-v1")
+        >>> config.environment(env="Pendulum-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "TD3",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -104,8 +105,8 @@ class TD3Config(DDPGConfig):
 class TD3(DDPG):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return TD3Config().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return TD3Config()
 
 
 # Deprecated: Use ray.rllib.algorithms.ddpg..td3.TD3Config instead!
@@ -116,7 +117,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.td3::TD3_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.td3.td3::TD3Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

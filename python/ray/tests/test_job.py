@@ -3,6 +3,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import re
+import json
+
+from subprocess import Popen, PIPE, STDOUT, list2cmdline
+from typing import List
+from pathlib import Path
 
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -11,8 +17,30 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     wait_for_num_actors,
+    format_web_url,
 )
 from ray.job_config import JobConfig
+from ray.job_submission import JobSubmissionClient
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+
+
+def execute_driver(commands: List[str], input: bytes = None):
+    p = None
+    outs = []
+    try:
+        p = Popen(commands, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+        if isinstance(input, str):
+            input = input.encode()
+
+        stdout, stderr = p.communicate(input=input)
+        outs = stdout.decode().split("\n")
+        return outs
+    finally:
+        if p:
+            try:
+                p.kill()
+            except Exception:
+                pass
 
 
 def test_job_isolation(call_ray_start):
@@ -271,6 +299,114 @@ def test_config_metadata(shutdown_only):
     from_worker = ray._private.worker.global_worker.core_worker.get_job_config()
 
     assert dict(from_worker.metadata) == job_config.metadata
+
+
+def test_get_entrypoint():
+    get_entrypoint = """
+from ray._private.utils import get_entrypoint_name
+print("result:", get_entrypoint_name())
+"""
+
+    def line_exists(lines: List[str], regex_target: str):
+        p = re.compile(regex_target)
+        for line in lines:
+            m = p.match(line.strip(" \n"))
+            if m:
+                return True
+        print(f"No target {regex_target} in lines {lines}")
+        return False
+
+    # Test a regular script.
+    with tempfile.NamedTemporaryFile() as fp:
+        fp.write(get_entrypoint.encode())
+        fp.seek(0)
+        path = Path(fp.name)
+        outputs = execute_driver(["python", str(path), "--flag"])
+        assert line_exists(outputs, f"result: python {path} --flag")
+
+    # Test python shell
+    outputs = execute_driver(["python", "-i"], input=get_entrypoint)
+    assert line_exists(outputs, ".*result: \(interactive_shell\) python -i.*")
+
+    # Test IPython shell
+    outputs = execute_driver(["ipython"], input=get_entrypoint)
+    assert line_exists(outputs, ".*result: \(interactive_shell\).*ipython")
+
+
+def test_entrypoint_field(shutdown_only):
+    """Make sure the entrypoint field is correctly set for jobs."""
+    driver = """
+import ray
+ray.init("auto")
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+"""
+    ray.init()
+    address = ray._private.worker._global_node.webui_url
+    address = format_web_url(address)
+    client = JobSubmissionClient(address)
+
+    # Test a regular script.
+    with tempfile.NamedTemporaryFile() as fp:
+        fp.write(driver.encode())
+        fp.seek(0)
+        path = Path(fp.name)
+
+        """
+        Test driver.
+        """
+        commands = ["python", str(path), "--flag"]
+        print(execute_driver(commands))
+
+        jobs = ray.state.jobs()
+        assert len(jobs) == 2
+        jobs = list(jobs)
+        jobs.sort(key=lambda j: j["JobID"])
+
+        # The first job is the test job.
+
+        driver_job = jobs[1]
+        assert driver_job["Entrypoint"] == list2cmdline(commands)
+
+        # Make sure the Dashboard endpoint works
+        r = client._do_request(
+            "GET",
+            "/api/jobs/",
+        )
+
+        assert r.status_code == 200
+        jobs_info_json = json.loads(r.text)
+        jobs_info_json.sort(key=lambda j: j["job_id"])
+        info_json = jobs_info_json[1]
+        info = JobDetails(**info_json)
+        assert info.entrypoint == list2cmdline(commands)
+
+        """
+        Test job submission
+        """
+        client.submit_job(entrypoint=list2cmdline(commands))
+
+        def verify():
+            jobs = ray.state.jobs()
+            # Test, first job, agent, submission job
+            assert len(jobs) == 4
+            jobs = list(jobs)
+            jobs.sort(key=lambda j: j["JobID"])
+
+            # The first job is the test job.
+
+            submission_job = jobs[3]
+            assert submission_job["Entrypoint"] == list2cmdline(commands)
+            return True
+
+        wait_for_condition(verify)
+
+        # Test client
+        # TODO(sang): Client entrypoint not supported yet.
 
 
 if __name__ == "__main__":

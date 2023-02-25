@@ -13,33 +13,23 @@ import ray
 
 # fmt: off
 
-# __runtime_env_conda_def_start__
+# __runtime_env_pip_def_start__
 runtime_env = {
-    "conda": {
-        "dependencies":
-        ["toolz", "dill", "pip", {
-            "pip": ["pendulum", "ray[serve]"]
-        }]
-    },
+    "pip": ["emoji"],
     "env_vars": {"TF_WARNINGS": "none"}
 }
-# __runtime_env_conda_def_end__
+# __runtime_env_pip_def_end__
 
-# __strong_typed_api_runtime_env_conda_def_start__
+# __strong_typed_api_runtime_env_pip_def_start__
 from ray.runtime_env import RuntimeEnv
 runtime_env = RuntimeEnv(
-    conda={
-        "dependencies":
-        ["toolz", "dill", "pip", {
-            "pip": ["pendulum", "ray[serve]"]
-        }]
-    },
+    pip=["emoji"],
     env_vars={"TF_WARNINGS": "none"}
 )
-# __strong_typed_api_runtime_env_conda_def_end__
+# __strong_typed_api_runtime_env_pip_def_end__
 
 # __ray_init_start__
-# Starting a single-node local Ray cluster
+# Option 1: Starting a single-node local Ray cluster or connecting to existing local cluster
 ray.init(runtime_env=runtime_env)
 # __ray_init_end__
 

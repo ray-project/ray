@@ -9,6 +9,7 @@ import time
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.bandit import BanditLinUCBConfig
 from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
     MultiDiscreteToDiscreteActionWrapper,
@@ -43,24 +44,29 @@ if __name__ == "__main__":
 
     ray.init()
 
-    config = {
-        "framework": args.framework,
-        "eager_tracing": (args.framework == "tf2"),
-        "env": "ParametricRecSysEnv",
-        "env_config": {
-            "embedding_size": 20,
-            "num_docs_to_select_from": 10,
-            "slate_size": 1,
-            "num_docs_in_db": 100,
-            "num_users_in_db": 1,
-            "user_time_budget": 1.0,
-        },
-        "num_envs_per_worker": 2,  # Test with batched inference.
-        "evaluation_interval": 20,
-        "evaluation_duration": 100,
-        "evaluation_duration_unit": "episodes",
-        "simple_optimizer": True,
-    }
+    config = (
+        BanditLinUCBConfig()
+        .environment(
+            "ParametricRecSysEnv",
+            env_config={
+                "embedding_size": 20,
+                "num_docs_to_select_from": 10,
+                "slate_size": 1,
+                "num_docs_in_db": 100,
+                "num_users_in_db": 1,
+                "user_time_budget": 1.0,
+            },
+        )
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        # Test with batched inference.
+        .rollouts(num_envs_per_worker=2)
+        .evaluation(
+            evaluation_interval=20,
+            evaluation_duration=100,
+            evaluation_duration_unit="episodes",
+        )
+    )
+    config.simple_optimizer = True
 
     # Actual env timesteps per `train()` call will be
     # 10 * min_sample_timesteps_per_iteration (100 by default) = 1,000.
@@ -71,7 +77,7 @@ if __name__ == "__main__":
     start_time = time.time()
     tuner = tune.Tuner(
         "BanditLinUCB",
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop={"training_iteration": training_iterations},
             checkpoint_config=air.CheckpointConfig(

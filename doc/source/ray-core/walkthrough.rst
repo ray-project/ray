@@ -28,7 +28,7 @@ Running a Task
 
 Ray lets you run functions as remote tasks in the cluster. To do this, you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
 Then, you call that function with ``.remote()`` instead of calling it normally.
-This remote call yields a future, a so-called Ray *object reference*, that you can then fetch with ``ray.get``:
+This remote call returns a future, a so-called Ray *object reference*, that you can then fetch with ``ray.get``:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -59,6 +59,8 @@ As seen above, Ray stores task and actor call results in its :ref:`distributed o
 
 Next Steps
 ----------
+
+.. tip:: To check how your application is doing, you can use the :ref:`Ray dashboard <ray-dashboard>`. 
 
 Ray's key primitives are simple, but can be composed together to express almost any kind of distributed computation.
 Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the following user guides:

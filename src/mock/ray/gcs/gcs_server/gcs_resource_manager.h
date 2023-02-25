@@ -12,36 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/asio/instrumented_io_context.h"
+
 namespace ray {
 namespace gcs {
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
+  MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager)
+      : GcsResourceManager(
+            io_context_, cluster_resource_manager, NodeID::FromRandom(), nullptr) {}
+
   MOCK_METHOD(void,
               HandleGetResources,
-              (const rpc::GetResourcesRequest &request,
+              (rpc::GetResourcesRequest request,
                rpc::GetResourcesReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleGetAllAvailableResources,
-              (const rpc::GetAllAvailableResourcesRequest &request,
+              (rpc::GetAllAvailableResourcesRequest request,
                rpc::GetAllAvailableResourcesReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleReportResourceUsage,
-              (const rpc::ReportResourceUsageRequest &request,
+              (rpc::ReportResourceUsageRequest request,
                rpc::ReportResourceUsageReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleGetAllResourceUsage,
-              (const rpc::GetAllResourceUsageRequest &request,
+              (rpc::GetAllResourceUsageRequest request,
                rpc::GetAllResourceUsageReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+
+ private:
+  instrumented_io_context io_context_;
 };
 
 }  // namespace gcs

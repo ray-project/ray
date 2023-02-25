@@ -9,9 +9,10 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import NODE_IP
+from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
@@ -70,13 +71,19 @@ def assert_file(exists: bool, root: str, path: str):
 
 
 class MockTrial:
-    def __init__(self, trial_id: str, logdir: str):
+    def __init__(self, trial_id: str, logdir: str, on_dead_node: bool = False):
         self.trial_id = trial_id
-        self.last_result = {NODE_IP: ray.util.get_node_ip_address()}
         self.uses_cloud_checkpointing = False
         self.sync_on_checkpoint = True
 
         self.logdir = logdir
+        self._local_ip = ray.util.get_node_ip_address()
+        self._on_dead_node = on_dead_node
+
+    def get_runner_ip(self):
+        if self._on_dead_node:
+            raise RayActorError()
+        return self._local_ip
 
 
 class TestSyncerCallback(SyncerCallback):
@@ -90,6 +97,9 @@ class TestSyncerCallback(SyncerCallback):
         super(TestSyncerCallback, self).__init__(
             enabled=enabled, sync_period=sync_period
         )
+        self._min_iter_threshold = 0
+        self._min_time_s_threshold = 0
+
         self.local_logdir_override = local_logdir_override
         self.remote_logdir_override = remote_logdir_override
 
@@ -183,10 +193,14 @@ def test_syncer_callback_op_on_no_cloud_checkpointing():
         if isinstance(cb, SyncerCallback):
             syncer_callback = cb
 
+    assert syncer_callback
+
+    syncer_callback._min_iter_threshold = 0
+    syncer_callback._min_time_s_threshold = 0
+
     trial1 = MockTrial(trial_id="a", logdir=None)
     trial1.uses_cloud_checkpointing = False
 
-    assert syncer_callback
     assert syncer_callback._enabled
     assert syncer_callback._sync_trial_dir(trial1)
 
@@ -198,6 +212,29 @@ def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
     syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
 
     trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+    syncer_callback.wait_for_all()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(True, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(True, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_callback_sync_with_invalid_ip(ray_start_2_cpus, temp_data_dirs):
+    """Check that the sync client updates the IP correctly"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback._trial_ips[trial1.trial_id] = "invalid"
+    syncer_callback.on_trial_start(iteration=0, trials=[], trial=trial1)
 
     syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
     syncer_callback.wait_for_all()
@@ -339,6 +376,53 @@ def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
         assert_file(True, tmp_target, "level0_new.txt")
 
 
+@pytest.mark.parametrize("threshold", [TRAINING_ITERATION, TIME_TOTAL_S])
+def test_syncer_callback_min_thresholds(ray_start_2_cpus, temp_data_dirs, threshold):
+    """Check that the min_iter/min_time_s thresholds are respected."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    # Keep the other metric at 0
+    other = TRAINING_ITERATION if threshold == TIME_TOTAL_S else TIME_TOTAL_S
+
+    syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
+
+    syncer_callback._min_iter_threshold = 8
+    syncer_callback._min_time_s_threshold = 8
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback._trial_ips[trial1.trial_id] = "invalid"
+    syncer_callback.on_trial_start(iteration=0, trials=[], trial=trial1)
+
+    for i in range(7):
+        syncer_callback.on_trial_result(
+            iteration=i, trials=[], trial=trial1, result={threshold: i, other: 0}
+        )
+        syncer_callback.wait_for_all()
+        assert_file(False, tmp_target, "level0.txt")
+
+    syncer_callback.on_trial_result(
+        iteration=8, trials=[], trial=trial1, result={threshold: 8, other: 0}
+    )
+    syncer_callback.wait_for_all()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(True, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(True, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+    # Also trigger delayed syncer process removal
+    syncer_callback._remove_trial_sync_process(trial=trial1)
+    assert trial1.trial_id in syncer_callback._trial_sync_processes_to_remove
+
+    # Syncing finished so syncer should be removed now
+    syncer_callback._cleanup_trial_sync_processes()
+    assert trial1.trial_id not in syncer_callback._trial_sync_processes_to_remove
+
+
 def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
     """Check that syncer errors are caught correctly in wait_for_all()"""
     tmp_source, tmp_target = temp_data_dirs
@@ -400,6 +484,27 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
     assert_file(True, tmp_target, "level0.txt")
 
 
+def test_syncer_callback_dead_node_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+    """Check that we catch + log errors when trying syncing with a dead remote node."""
+    caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
+
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(
+        sync_period=0,
+        local_logdir_override=tmp_target,
+    )
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source, on_dead_node=True)
+
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+
+    assert (
+        "An error occurred when trying to get the node ip where this trial is running"
+        in caplog.text
+    )
+
+
 def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
     tmp_source, tmp_target = temp_data_dirs
 
@@ -442,6 +547,7 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
         local_logdir_override=tmp_target,
     )
     syncer_callback.on_trial_complete(iteration=1, trials=[], trial=trial1)
+    syncer_callback.wait_for_all()
 
     # Regular files are synced
     assert_file(True, tmp_target, "level0.txt")

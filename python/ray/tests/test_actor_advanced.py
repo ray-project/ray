@@ -11,13 +11,13 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
     convert_actor_state,
-    get_non_head_nodes,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
     run_string_as_driver,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 try:
@@ -59,6 +59,13 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="This test relies on gcs server randomly choosing raylets "
+    + "for actors without required resources, which is only supported by "
+    + "raylet-based actor scheduler. The same test logic for gcs-based "
+    + "actor scheduler can be found at `test_actor_distribution_balance`.",
+)
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -167,7 +174,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_restarts=0)
+    @ray.remote(max_restarts=0, scheduling_strategy="SPREAD")
     class Counter:
         def __init__(self):
             self.x = 0
@@ -258,173 +265,6 @@ def test_reconstruction_suppression(ray_start_cluster_head):
         results += [inc.remote(actor) for actor in actors]
     # Make sure that we can get the results from the restarted actor.
     results = ray.get(results)
-
-
-def setup_counter_actor(
-    test_checkpoint=False, save_exception=False, resume_exception=False
-):
-    # Only set the checkpoint interval if we're testing with checkpointing.
-    checkpoint_interval = -1
-    if test_checkpoint:
-        checkpoint_interval = 5
-
-    @ray.remote(checkpoint_interval=checkpoint_interval)
-    class Counter:
-        _resume_exception = resume_exception
-
-        def __init__(self, save_exception):
-            self.x = 0
-            self.num_inc_calls = 0
-            self.save_exception = save_exception
-            self.restored = False
-
-        def node_id(self):
-            return ray._private.worker.global_worker.node.unique_id
-
-        def inc(self, *xs):
-            self.x += 1
-            self.num_inc_calls += 1
-            return self.x
-
-        def get_num_inc_calls(self):
-            return self.num_inc_calls
-
-        def test_restore(self):
-            # This method will only return True if __ray_restore__ has been
-            # called.
-            return self.restored
-
-        def __ray_save__(self):
-            if self.save_exception:
-                raise Exception("Exception raised in checkpoint save")
-            return self.x, self.save_exception
-
-        def __ray_restore__(self, checkpoint):
-            if self._resume_exception:
-                raise Exception("Exception raised in checkpoint resume")
-            self.x, self.save_exception = checkpoint
-            self.num_inc_calls = 0
-            self.restored = True
-
-    node_id = ray._private.worker.global_worker.node.unique_id
-
-    # Create an actor that is not on the raylet.
-    actor = Counter.remote(save_exception)
-    while ray.get(actor.node_id.remote()) == node_id:
-        actor = Counter.remote(save_exception)
-
-    args = [ray.put(0) for _ in range(100)]
-    ids = [actor.inc.remote(*args[i:]) for i in range(100)]
-
-    return actor, ids
-
-
-@pytest.mark.skip("Fork/join consistency not yet implemented.")
-def test_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
-    counter, ids = setup_counter_actor(test_checkpoint=False)
-
-    @ray.remote
-    def fork_many_incs(counter, num_incs):
-        x = None
-        for _ in range(num_incs):
-            x = counter.inc.remote()
-        # Only call ray.get() on the last task submitted.
-        return ray.get(x)
-
-    # Fork num_iters times.
-    count = ray.get(ids[-1])
-    num_incs = 100
-    num_iters = 10
-    forks = [fork_many_incs.remote(counter, num_incs) for _ in range(num_iters)]
-    ray.wait(forks, num_returns=len(forks))
-    count += num_incs * num_iters
-
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding raylet to exit.
-    # TODO: kill raylet instead once this test is not skipped.
-    get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
-
-    # Check that the actor did not restore from a checkpoint.
-    assert not ray.get(counter.test_restore.remote())
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(counter.inc.remote())
-    assert x == count + 1
-
-
-@pytest.mark.skip("This test does not work yet.")
-def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
-    counter, ids = setup_counter_actor(test_checkpoint=True)
-
-    @ray.remote
-    def fork_many_incs(counter, num_incs):
-        x = None
-        for _ in range(num_incs):
-            x = counter.inc.remote()
-        # Only call ray.get() on the last task submitted.
-        return ray.get(x)
-
-    # Fork num_iters times.
-    count = ray.get(ids[-1])
-    num_incs = 100
-    num_iters = 10
-    forks = [fork_many_incs.remote(counter, num_incs) for _ in range(num_iters)]
-    ray.wait(forks, num_returns=len(forks))
-    ray.wait([counter.__ray_checkpoint__.remote()])
-    count += num_incs * num_iters
-
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding raylet to exit.
-    # TODO: kill raylet instead once this test is not skipped.
-    get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
-
-    # Check that the actor restored from a checkpoint.
-    assert ray.get(counter.test_restore.remote())
-    # Check that the number of inc calls since actor initialization is
-    # exactly zero, since there could not have been another inc call since
-    # the remote checkpoint.
-    num_inc_calls = ray.get(counter.get_num_inc_calls.remote())
-    assert num_inc_calls == 0
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(counter.inc.remote())
-    assert x == count + 1
-
-
-@pytest.mark.skip("Fork/join consistency not yet implemented.")
-def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
-    counter, ids = setup_counter_actor(test_checkpoint=True)
-
-    @ray.remote
-    def fork_many_incs(counter, num_incs):
-        x = None
-        for _ in range(num_incs):
-            x = counter.inc.remote()
-        # Only call ray.get() on the last task submitted.
-        return ray.get(x)
-
-    # Fork num_iters times.
-    count = ray.get(ids[-1])
-    num_incs = 100
-    num_iters = 10
-    forks = [fork_many_incs.remote(counter, num_incs) for _ in range(num_iters)]
-    ray.wait(forks, num_returns=len(forks))
-    count += num_incs * num_iters
-
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding raylet to exit.
-    # TODO: kill raylet instead once this test is not skipped.
-    get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
-
-    # Check that the actor restored from a checkpoint.
-    assert ray.get(counter.test_restore.remote())
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(counter.inc.remote())
-    assert x == count + 1
 
 
 @pytest.fixture
@@ -1202,7 +1042,7 @@ def test_actor_timestamps(ray_start_regular):
     @ray.remote
     class Foo:
         def get_id(self):
-            return ray.get_runtime_context().actor_id.hex()
+            return ray.get_runtime_context().get_actor_id()
 
         def kill_self(self):
             sys.exit(1)

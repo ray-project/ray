@@ -19,6 +19,7 @@ from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
@@ -39,6 +40,7 @@ from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_base
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
     DEFAULT,
+    Default,
     ensure_serialization_context,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
@@ -253,20 +255,21 @@ def deployment(func_or_class: Callable) -> Deployment:
 
 @overload
 def deployment(
-    name: Optional[str] = None,
-    version: Optional[str] = None,
-    num_replicas: Optional[int] = None,
-    init_args: Optional[Tuple[Any]] = None,
-    init_kwargs: Optional[Dict[Any, Any]] = None,
-    route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-    ray_actor_options: Optional[Dict] = None,
-    user_config: Optional[Any] = None,
-    max_concurrent_queries: Optional[int] = None,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    graceful_shutdown_wait_loop_s: Optional[float] = None,
-    graceful_shutdown_timeout_s: Optional[float] = None,
-    health_check_period_s: Optional[float] = None,
-    health_check_timeout_s: Optional[float] = None,
+    name: Default[str] = DEFAULT.VALUE,
+    version: Default[str] = DEFAULT.VALUE,
+    num_replicas: Default[int] = DEFAULT.VALUE,
+    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    user_config: Default[Any] = DEFAULT.VALUE,
+    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_period_s: Default[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -274,59 +277,65 @@ def deployment(
 @PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
-    name: Optional[str] = None,
-    version: Optional[str] = None,
-    num_replicas: Optional[int] = None,
-    init_args: Optional[Tuple[Any]] = None,
-    init_kwargs: Optional[Dict[Any, Any]] = None,
-    route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-    ray_actor_options: Optional[Dict] = None,
-    user_config: Optional[Any] = None,
-    max_concurrent_queries: Optional[int] = None,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    graceful_shutdown_wait_loop_s: Optional[float] = None,
-    graceful_shutdown_timeout_s: Optional[float] = None,
-    health_check_period_s: Optional[float] = None,
-    health_check_timeout_s: Optional[float] = None,
+    name: Default[str] = DEFAULT.VALUE,
+    version: Default[str] = DEFAULT.VALUE,
+    num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    user_config: Default[Optional[Any]] = DEFAULT.VALUE,
+    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_period_s: Default[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
     Args:
-        name (Optional[str]): Globally-unique name identifying this deployment.
-            If not provided, the name of the class or function will be used.
-        version [DEPRECATED] (Optional[str]): Version of the deployment. This is used to
-            indicate a code change for the deployment; when it is re-deployed
-            with a version change, a rolling update of the replicas will be
-            performed. If not provided, every deployment will be treated as a
-            new version.
-        num_replicas (Optional[int]): The number of processes to start up that
+        name (Default[str]): Globally-unique name identifying this
+            deployment. If not provided, the name of the class or function will
+            be used.
+        version [DEPRECATED] (Default[str]): Version of the deployment.
+            This is used to indicate a code change for the deployment; when it
+            is re-deployed with a version change, a rolling update of the
+            replicas will be performed. If not provided, every deployment will
+            be treated as a new version.
+        num_replicas (Default[Optional[int]]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
-        init_args (Optional[Tuple]): Positional args to be passed to the class
-            constructor when starting up deployment replicas. These can also be
-            passed when you call `.deploy()` on the returned Deployment.
-        init_kwargs (Optional[Dict]): Keyword args to be passed to the class
-            constructor when starting up deployment replicas. These can also be
-            passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Optional[str]): Requests to paths under this HTTP path
-            prefix will be routed to this deployment. Defaults to '/{name}'.
-            When set to 'None', no HTTP endpoint will be created.
+        init_args (Default[Tuple[Any]]): Positional args to be passed to the
+            class constructor when starting up deployment replicas. These can
+            also be passed when you call `.deploy()` on the returned Deployment.
+        init_kwargs (Default[Dict[Any, Any]]): Keyword args to be passed to the
+            class constructor when starting up deployment replicas. These can
+            also be passed when you call `.deploy()` on the returned Deployment.
+        route_prefix (Default[Union[str, None]]): Requests to paths under this
+            HTTP path prefix will be routed to this deployment. Defaults to
+            '/{name}'. When set to 'None', no HTTP endpoint will be created.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
             of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options: Options to be passed to the Ray actor
-            constructor such as resource requirements.
-        user_config (Optional[Any]): Config to pass to the
+        ray_actor_options (Default[Dict]): Options to be passed to the Ray
+            actor constructor such as resource requirements. Valid options are
+            `accelerator_type`, `memory`, `num_cpus`, `num_gpus`,
+            `object_store_memory`, `resources`, and `runtime_env`.
+        user_config (Default[Optional[Any]]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
             restarting its replicas. The user_config must be json-serializable
             to keep track of updates, so it must only contain json-serializable
             types, or json-serializable types nested in lists and dictionaries.
-        max_concurrent_queries (Optional[int]): The maximum number of queries
+        max_concurrent_queries (Default[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
+        is_driver_deployment (Optional[bool]): [Experiment] when set it as True, serve
+            will deploy exact one deployment to every node.
 
     Example:
     >>> from ray import serve
@@ -342,26 +351,41 @@ def deployment(
         Deployment
     """
 
+    # NOTE: The user_configured_option_names should be the first thing that's
+    # defined in this function. It depends on the locals() dictionary storing
+    # only the function args/kwargs.
+    # Create list of all user-configured options from keyword args
+    user_configured_option_names = [
+        option
+        for option, value in locals().items()
+        if option != "_func_or_class" and value is not DEFAULT.VALUE
+    ]
+
     # Num of replicas should not be 0.
     # TODO(Sihan) seperate num_replicas attribute from internal and api
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas is not None and autoscaling_config is not None:
+    if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ]:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
         )
 
-    if version is not None:
+    if version is not DEFAULT.VALUE:
         logger.warning(
             "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    if is_driver_deployment is DEFAULT.VALUE:
+        is_driver_deployment = False
+
     config = DeploymentConfig.from_default(
-        ignore_none=True,
-        num_replicas=num_replicas,
+        num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
         autoscaling_config=autoscaling_config,
@@ -370,18 +394,22 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
     )
+    config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
         return Deployment(
             _func_or_class,
-            name if name is not None else _func_or_class.__name__,
+            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
             config,
-            version=version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
+            version=(version if version is not DEFAULT.VALUE else None),
+            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
+            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
             route_prefix=route_prefix,
-            ray_actor_options=ray_actor_options,
+            ray_actor_options=(
+                ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
+            ),
             _internal=True,
+            is_driver_deployment=is_driver_deployment,
         )
 
     # This handles both parametrized and non-parametrized usage of the
@@ -430,6 +458,8 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    name: str = SERVE_DEFAULT_APP_NAME,
+    route_prefix: str = "/",
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -446,6 +476,11 @@ def run(
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
         port: Port for HTTP server. Defaults to 8000.
+        name: Application name. If not provided, this will be the only
+            application running on the cluster (it will delete all others).
+        route_prefix: Route prefix for HTTP requests. If not provided, it will use
+            route_prefix of the ingress deployment. By default, the ingress route
+            prefix is '/'.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
@@ -464,11 +499,11 @@ def run(
         ingress = target.ingress
     # Each DAG should always provide a valid Driver ClassNode
     elif isinstance(target, ClassNode):
-        deployments = pipeline_build(target)
+        deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, FunctionNode):
-        deployments = pipeline_build(target)
+        deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
             raise ValueError(
@@ -490,9 +525,18 @@ def run(
             f"Got unexpected type {type(target)} instead."
         )
 
+    # when name provided, keep all existing applications
+    # otherwise, delete all of them.
+    remove_past_deployments = True
+    if name:
+        remove_past_deployments = False
+
     parameter_group = []
 
     for deployment in deployments:
+        # Overwrite route prefix
+        if route_prefix != "/" and deployment._route_prefix:
+            deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
             "func_or_class": deployment._func_or_class,
@@ -503,10 +547,14 @@ def run(
             "version": deployment._version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
+            "is_driver_deployment": deployment._is_driver_deployment,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(
-        parameter_group, _blocking=_blocking, remove_past_deployments=True
+        name,
+        parameter_group,
+        _blocking=_blocking,
+        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:
@@ -514,7 +562,9 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: Union[ClassNode, FunctionNode]) -> Application:
+def build(
+    target: Union[ClassNode, FunctionNode], name: str = SERVE_DEFAULT_APP_NAME
+) -> Application:
     """Builds a Serve application into a static application.
 
     Takes in a ClassNode or FunctionNode and converts it to a
@@ -532,6 +582,7 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     Args:
         target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
             that acts as the top level node of the DAG.
+        name: The name of the Serve application.
 
     Returns:
         The static built Serve application
@@ -545,4 +596,17 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return Application(pipeline_build(target))
+    return Application(pipeline_build(target, name))
+
+
+@PublicAPI(stability="alpha")
+def delete(name: str, _blocking: bool = True):
+    """Delete an app by its name
+
+    Deletes the app with all corresponding deployments.
+
+    Args:
+        name: the name of app to delete.
+    """
+    client = get_global_client()
+    client.delete_apps([name], blocking=_blocking)

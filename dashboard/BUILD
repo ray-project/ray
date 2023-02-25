@@ -20,10 +20,12 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = ["**/test*.py"],
     exclude = [
+        "client/node_modules/**",
         "modules/test/**", 
+        "modules/job/tests/test_cli_integration.py",
         "modules/node/tests/test_node.py", 
         "tests/test_dashboard.py", 
-        "tests/test_state_head.py"
+        "tests/test_state_head.py",
     ],
     extra_srcs = [],
     data = [
@@ -34,6 +36,14 @@ py_test_run_all_subdirectory(
     ] + glob([
         "modules/job/tests/subprocess_driver_scripts/*.py",
     ]),
+    deps = [":conftest"],
+    tags = ["exclusive", "team:serve"],
+)
+
+py_test(
+    name="test_cli_integration",
+    size="large",
+    srcs = ["modules/job/tests/test_cli_integration.py"],
     deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
 )

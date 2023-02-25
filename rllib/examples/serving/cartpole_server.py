@@ -23,15 +23,15 @@ You may connect more than one policy client to any open listen port.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with
@@ -83,7 +83,7 @@ def get_cli_args():
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -152,33 +152,35 @@ if __name__ == "__main__":
 
     # Algorithm config. Note that this config is sent to the client only in case
     # the client needs to create its own policy copy for local inference.
-    config = {
+    config = (
+        get_trainable_cls(args.run).get_default_config()
         # Indicate that the Algorithm we setup here doesn't need an actual env.
         # Allow spaces to be determined by user (see below).
-        "env": None,
-        # TODO: (sven) make these settings unnecessary and get the information
-        #  about the env spaces from the client.
-        "observation_space": gym.spaces.Box(float("-inf"), float("inf"), (4,)),
-        "action_space": gym.spaces.Discrete(2),
-        # Use the `PolicyServerInput` to generate experiences.
-        "input": _input,
-        # Use n worker processes to listen on different ports.
-        "num_workers": args.num_workers,
-        # Disable OPE, since the rollouts are coming from online clients.
-        "off_policy_estimation_methods": {},
-        # Create a "chatty" client/server or not.
-        "callbacks": MyCallbacks if args.callbacks_verbose else None,
+        .environment(
+            env=None,
+            # TODO: (sven) make these settings unnecessary and get the information
+            #  about the env spaces from the client.
+            observation_space=gym.spaces.Box(float("-inf"), float("inf"), (4,)),
+            action_space=gym.spaces.Discrete(2),
+        )
         # DL framework to use.
-        "framework": args.framework,
+        .framework(args.framework)
+        # Create a "chatty" client/server or not.
+        .callbacks(MyCallbacks if args.callbacks_verbose else None)
+        # Use the `PolicyServerInput` to generate experiences.
+        .offline_data(input_=_input)
+        # Use n worker processes to listen on different ports.
+        .rollouts(num_rollout_workers=args.num_workers)
+        # Disable OPE, since the rollouts are coming from online clients.
+        .evaluation(off_policy_estimation_methods={})
         # Set to INFO so we'll see the server's actual address:port.
-        "log_level": "INFO",
-        "model": {},
-    }
+        .debugging(log_level="INFO")
+    )
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
         # Example of using DQN (supports off-policy actions).
-        config.update(
+        config.update_from_dict(
             {
                 "num_steps_sampled_before_learning_starts": 100,
                 "min_sample_timesteps_per_iteration": 200,
@@ -187,15 +189,17 @@ if __name__ == "__main__":
                 "train_batch_size": 8,
             }
         )
-        config["model"] = {
-            "fcnet_hiddens": [64],
-            "fcnet_activation": "linear",
-        }
+        config.model.update(
+            {
+                "fcnet_hiddens": [64],
+                "fcnet_activation": "linear",
+            }
+        )
         if args.run == "R2D2":
-            config["model"]["use_lstm"] = args.use_lstm
+            config.model["use_lstm"] = args.use_lstm
 
     elif args.run == "IMPALA":
-        config.update(
+        config.update_from_dict(
             {
                 "num_gpus": 0,
                 "model": {"use_lstm": args.use_lstm},
@@ -205,7 +209,7 @@ if __name__ == "__main__":
     # PPO.
     else:
         # Example of using PPO (does NOT support off-policy actions).
-        config.update(
+        config.update_from_dict(
             {
                 "rollout_fragment_length": 1000,
                 "train_batch_size": 4000,
@@ -222,8 +226,7 @@ if __name__ == "__main__":
 
     # Manual training loop (no Ray tune).
     if args.no_tune:
-        algo_cls = get_algorithm_class(args.run)
-        algo = algo_cls(config=config)
+        algo = config.build()
 
         if checkpoint_path:
             print("Restoring from checkpoint path", checkpoint_path)
@@ -245,9 +248,12 @@ if __name__ == "__main__":
                 break
             ts += results["timesteps_total"]
 
+        algo.stop()
+
     # Run with Tune for auto env and algo creation and TensorBoard.
     else:
         print("Ignoring restore even if previous checkpoint is provided...")
+
         stop = {
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,

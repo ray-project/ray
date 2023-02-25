@@ -21,6 +21,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -83,6 +84,14 @@ ABSL_FLAG(int,
           -1,
           "The computed hash of the runtime env for this worker.");
 
+ABSL_FLAG(std::string,
+          ray_job_namespace,
+          "",
+          "The namespace of job. If not set,"
+          " a unique value will be randomly generated.");
+
+using json = nlohmann::json;
+
 namespace ray {
 namespace internal {
 
@@ -129,6 +138,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 
     if (!FLAGS_ray_code_search_path.CurrentValue().empty()) {
       // Code search path like this "/path1/xxx.so:/path2".
+      RAY_LOG(DEBUG) << "The code search path is "
+                     << FLAGS_ray_code_search_path.CurrentValue();
       code_search_path = absl::StrSplit(
           FLAGS_ray_code_search_path.CurrentValue(), ':', absl::SkipEmpty());
     }
@@ -202,8 +213,22 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     }
   }
   if (worker_type == WorkerType::DRIVER) {
-    ray_namespace =
-        config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
+    ray_namespace = config.ray_namespace;
+    if (!FLAGS_ray_job_namespace.CurrentValue().empty()) {
+      ray_namespace = FLAGS_ray_job_namespace.CurrentValue();
+    }
+    if (ray_namespace.empty()) {
+      ray_namespace = GenerateUUIDV4();
+    }
+  }
+
+  auto job_config_json_string = std::getenv("RAY_JOB_CONFIG_JSON_ENV_VAR");
+  if (job_config_json_string) {
+    json job_config_json = json::parse(job_config_json_string);
+    runtime_env = RuntimeEnv::Deserialize(job_config_json.at("runtime_env").dump());
+    job_config_metadata = job_config_json.at("metadata")
+                              .get<std::unordered_map<std::string, std::string>>();
+    RAY_CHECK(job_config_json.size() == 2);
   }
 };
 

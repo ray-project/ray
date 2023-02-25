@@ -5,7 +5,7 @@ Demonstrates transition from stable_baselines to Ray RLlib.
 
 Run example: python sb2rllib_rllib_example.py
 """
-import gym
+import gymnasium as gym
 from ray import tune, air
 import ray.rllib.algorithms.ppo as ppo
 
@@ -40,11 +40,11 @@ print(f"Agent loaded from saved model at {checkpoint_path}")
 
 # inference
 env = gym.make(env_name)
-obs = env.reset()
+obs, info = env.reset()
 for i in range(1000):
     action = agent.compute_single_action(obs)
-    obs, reward, done, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(action)
     env.render()
-    if done:
-        print(f"Cart pole dropped after {i} steps.")
+    if terminated or truncated:
+        print(f"Cart pole ended after {i} steps.")
         break

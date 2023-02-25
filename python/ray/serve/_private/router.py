@@ -19,11 +19,9 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
-    msgpack_serialize,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
-    RequestWrapper as RequestWrapperProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -45,6 +43,7 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    return_num: int = 2
 
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
@@ -163,11 +162,11 @@ class ReplicaSet:
                     RequestMetadataProto(
                         request_id=query.metadata.request_id,
                         endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method,
+                        call_method=query.metadata.call_method
+                        if query.metadata.call_method != "__call__"
+                        else "call",
                     ).SerializeToString(),
-                    RequestWrapperProto(
-                        body=msgpack_serialize(arg)
-                    ).SerializeToString(),
+                    [arg],
                 )
                 self.in_flight_queries[replica].add(user_ref)
             else:

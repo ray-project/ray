@@ -11,7 +11,7 @@ Actor Pool
 
     .. literalinclude:: ../doc_code/actor-pool.py
 
-    See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.
+    See the :class:`package reference <ray.util.ActorPool>` for more information.
 
 .. tabbed:: Java
 
@@ -25,8 +25,8 @@ Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
-actors, you can use :ref:`ray.util.queue.Queue <ray-queue-ref>`.
+actors, you can use :class:`ray.util.queue.Queue <ray.util.queue.Queue>`.
 
 .. literalinclude:: ../doc_code/actor-queue.py
 
-Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
+Ray's Queue API has a similar API to Python's ``asyncio.Queue`` and ``queue.Queue``.

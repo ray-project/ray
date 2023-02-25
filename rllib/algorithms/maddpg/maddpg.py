@@ -12,13 +12,12 @@ and the README for how to run with the multi-agent particle envs.
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import Deprecated, override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -31,34 +30,34 @@ class MADDPGConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
         >>> config = MADDPGConfig()
-        >>> print(config.replay_buffer_config)
-        >>> replay_config = config.replay_buffer_config.update(
-        >>>     {
-        >>>         "capacity": 100000,
-        >>>         "prioritized_replay_alpha": 0.8,
-        >>>         "prioritized_replay_beta": 0.45,
-        >>>         "prioritized_replay_eps": 2e-6,
-        >>>     }
-        >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        >>>       .resources(num_gpus=0)\
-        >>>       .rollouts(num_rollout_workers=4)\
-        >>>       .environment("CartPole-v1")
-        >>> algo = config.build()
-        >>> while True:
-        >>>     algo.train()
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
+        >>> replay_config = config.replay_buffer_config.update(  # doctest: +SKIP
+        ...     {
+        ...         "capacity": 100000,
+        ...         "prioritized_replay_alpha": 0.8,
+        ...         "prioritized_replay_beta": 0.45,
+        ...         "prioritized_replay_eps": 2e-6,
+        ...     }
+        ... )
+        >>> config.training(replay_buffer_config=replay_config)   # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")   # doctest: +SKIP
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
-        >>> config.training(n_step=tune.grid_search([3, 5]))
-        >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
-        >>>     "MADDPG",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>> config.training(n_step=tune.grid_search([3, 5]))  # doctest: +SKIP
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "MADDPG",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -88,9 +87,6 @@ class MADDPGConfig(AlgorithmConfig):
             "replay_mode": "lockstep",
         }
         self.training_intensity = None
-        # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1024 * 25
         self.critic_lr = 1e-2
         self.actor_lr = 1e-2
@@ -102,7 +98,7 @@ class MADDPGConfig(AlgorithmConfig):
         # Changes to Algorithm's default:
         self.rollout_fragment_length = 100
         self.train_batch_size = 1024
-        self.num_workers = 1
+        self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
         # fmt: on
         # __sphinx_doc_end__
@@ -111,24 +107,25 @@ class MADDPGConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        agent_id: Optional[str] = None,
-        use_local_critic: Optional[bool] = None,
-        use_state_preprocessor: Optional[bool] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        n_step: Optional[int] = None,
-        good_policy: Optional[str] = None,
-        adv_policy: Optional[str] = None,
-        replay_buffer_config: Optional[dict] = None,
-        training_intensity: Optional[float] = None,
-        critic_lr: Optional[float] = None,
-        actor_lr: Optional[float] = None,
-        target_network_update_freq: Optional[int] = None,
-        tau: Optional[float] = None,
-        actor_feature_reg: Optional[float] = None,
-        grad_norm_clipping: Optional[float] = None,
+        agent_id: Optional[str] = NotProvided,
+        use_local_critic: Optional[bool] = NotProvided,
+        use_state_preprocessor: Optional[bool] = NotProvided,
+        actor_hiddens: Optional[List[int]] = NotProvided,
+        actor_hidden_activation: Optional[str] = NotProvided,
+        critic_hiddens: Optional[List[int]] = NotProvided,
+        critic_hidden_activation: Optional[str] = NotProvided,
+        n_step: Optional[int] = NotProvided,
+        good_policy: Optional[str] = NotProvided,
+        adv_policy: Optional[str] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        training_intensity: Optional[float] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
+        critic_lr: Optional[float] = NotProvided,
+        actor_lr: Optional[float] = NotProvided,
+        target_network_update_freq: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        actor_feature_reg: Optional[float] = NotProvided,
+        grad_norm_clipping: Optional[float] = NotProvided,
         **kwargs,
     ) -> "MADDPGConfig":
         """Sets the training related configuration.
@@ -192,6 +189,10 @@ class MADDPGConfig(AlgorithmConfig):
                 stored in the replay buffer timesteps. Otherwise, the replay will
                 proceed at the native ratio determined by
                 `(train_batch_size / rollout_fragment_length)`.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
             critic_lr: Learning rate for the critic (Q-function) optimizer.
             actor_lr: Learning rate for the actor (policy) optimizer.
             target_network_update_freq: Update the target network every
@@ -208,44 +209,66 @@ class MADDPGConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if agent_id is not None:
+        if agent_id is not NotProvided:
             self.agent_id = agent_id
-        if use_local_critic is not None:
+        if use_local_critic is not NotProvided:
             self.use_local_critic = use_local_critic
-        if use_state_preprocessor is not None:
+        if use_state_preprocessor is not NotProvided:
             self.use_state_preprocessor = use_state_preprocessor
-        if actor_hiddens is not None:
+        if actor_hiddens is not NotProvided:
             self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
+        if actor_hidden_activation is not NotProvided:
             self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
+        if critic_hiddens is not NotProvided:
             self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
+        if critic_hidden_activation is not NotProvided:
             self.critic_hidden_activation = critic_hidden_activation
-        if n_step is not None:
+        if n_step is not NotProvided:
             self.n_step = n_step
-        if good_policy is not None:
+        if good_policy is not NotProvided:
             self.good_policy = good_policy
-        if adv_policy is not None:
+        if adv_policy is not NotProvided:
             self.adv_policy = adv_policy
-        if replay_buffer_config is not None:
+        if replay_buffer_config is not NotProvided:
             self.replay_buffer_config = replay_buffer_config
-        if training_intensity is not None:
+        if training_intensity is not NotProvided:
             self.training_intensity = training_intensity
-        if critic_lr is not None:
+        if num_steps_sampled_before_learning_starts is not NotProvided:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
+        if critic_lr is not NotProvided:
             self.critic_lr = critic_lr
-        if actor_lr is not None:
+        if actor_lr is not NotProvided:
             self.actor_lr = actor_lr
-        if target_network_update_freq is not None:
+        if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if tau is not None:
+        if tau is not NotProvided:
             self.tau = tau
-        if actor_feature_reg is not None:
+        if actor_feature_reg is not NotProvided:
             self.actor_feature_reg = actor_feature_reg
-        if grad_norm_clipping is not None:
+        if grad_norm_clipping is not NotProvided:
             self.grad_norm_clipping = grad_norm_clipping
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        """Adds the `before_learn_on_batch` hook to the config.
+
+        This hook is called explicitly prior to `train_one_step()` in the
+        `training_step()` methods of DQN and APEX.
+        """
+        # Call super's validation method.
+        super().validate()
+
+        def f(batch, workers, config):
+            policies = dict(
+                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
+            )
+            return before_learn_on_batch(batch, policies, config["train_batch_size"])
+
+        self.before_learn_on_batch = f
 
 
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
@@ -278,29 +301,14 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
 class MADDPG(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return MADDPGConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MADDPGConfig()
 
+    @classmethod
     @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Adds the `before_learn_on_batch` hook to the config.
-
-        This hook is called explicitly prior to TrainOneStep() in the execution
-        setups for DQN and APEX.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        def f(batch, workers, config):
-            policies = dict(
-                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
-            )
-            return before_learn_on_batch(batch, policies, config["train_batch_size"])
-
-        config["before_learn_on_batch"] = f
-
-    @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         return MADDPGTFPolicy
 
 
@@ -312,7 +320,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

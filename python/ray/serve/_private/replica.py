@@ -3,7 +3,6 @@ import asyncio
 from importlib import import_module
 import inspect
 import logging
-import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
@@ -36,6 +35,7 @@ from ray.serve._private.utils import (
     parse_import_path,
     parse_request_item,
     wrap_to_ray_error,
+    merge_dict,
 )
 from ray.serve._private.version import DeploymentVersion
 
@@ -183,6 +183,24 @@ def create_replica_wrapper(name: str):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
+        async def handle_request_from_java(
+            self,
+            proto_request_metadata: bytes,
+            *request_args,
+            **request_kwargs,
+        ):
+            from ray.serve.generated.serve_pb2 import (
+                RequestMetadata as RequestMetadataProto,
+            )
+
+            proto = RequestMetadataProto.FromString(proto_request_metadata)
+            request_metadata: RequestMetadata = RequestMetadata(
+                proto.request_id, proto.endpoint, call_method=proto.call_method
+            )
+            request_args = request_args[0]
+            query = Query(request_args, request_kwargs, request_metadata, return_num=1)
+            return await self.replica.handle_request(query)
+
         async def is_allocated(self) -> str:
             """poke the replica to check whether it's alive.
 
@@ -194,15 +212,26 @@ def create_replica_wrapper(name: str):
 
             Return the NodeID of this replica
             """
-            return ray.get_runtime_context().node_id
+            return ray.get_runtime_context().get_node_id()
 
-        async def reconfigure(
+        async def is_initialized(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            if self.replica is None:
-                await self._initialize_replica()
+            await self._initialize_replica()
+
+            metadata = await self.reconfigure(user_config)
+
+            # A new replica should not be considered healthy until it passes an
+            # initial health check. If an initial health check fails, consider
+            # it an initialization failure.
+            await self.check_health()
+            return metadata
+
+        async def reconfigure(
+            self, user_config: Optional[Any] = None
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             if user_config is not None:
                 await self.replica.reconfigure(user_config)
 
@@ -349,7 +378,11 @@ class RayServeReplica:
         method_stat = actor_stats.get(
             f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
         )
-        return method_stat
+        method_stat_java = actor_stats.get(
+            f"{_format_replica_actor_name(self.deployment_name)}"
+            f".handle_request_from_java"
+        )
+        return merge_dict(method_stat, method_stat_java)
 
     def _collect_autoscaling_metrics(self):
         method_stat = self._get_handle_request_stats()
@@ -437,8 +470,11 @@ class RayServeReplica:
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
             success = False
-            if "RAY_PDB" in os.environ:
-                ray.util.pdb.post_mortem()
+
+            # If the debugger is enabled, drop into the remote pdb here.
+            if ray.util.pdb._is_ray_debugger_enabled():
+                ray.util.pdb._post_mortem()
+
             function_name = "unknown"
             if method_to_call is not None:
                 function_name = method_to_call.__name__
@@ -487,9 +523,11 @@ class RayServeReplica:
                     latency_ms=latency_ms,
                 )
             )
-
-            # Returns a small object for router to track request status.
-            return b"", result
+            if request.return_num == 1:
+                return result
+            else:
+                # Returns a small object for router to track request status.
+                return b"", result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.

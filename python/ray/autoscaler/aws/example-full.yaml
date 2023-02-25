@@ -16,7 +16,7 @@ upscaling_speed: 1.0
 # Empty string means disabled.
 docker:
     image: "rayproject/ray-ml:latest-gpu" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
-    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
+    # image: rayproject/ray:latest-cpu   # use this one if you don't need ML dependencies, it's faster to pull
     container_name: "ray_container"
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -71,12 +71,15 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Default AMI for us-west-2.
+            # Check https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/config.py
+            # for default images for other zones.
+            ImageId: ami-0387d929287ab193e
             # You can provision additional disk space with a conf as follows
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      VolumeSize: 100
+                      VolumeSize: 140GB
             # Additional options in the boto docs.
     ray.worker.default:
         # The minimum number of worker nodes of this type to launch.
@@ -97,7 +100,10 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Default AMI for us-west-2.
+            # Check https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/config.py
+            # for default images for other zones.
+            ImageId: ami-0387d929287ab193e
             # Run workers on spot by default. Comment this out to use on-demand.
             # NOTE: If relying on spot instances, it is best to specify multiple different instance
             # types to avoid interruption when one instance type is experiencing heightened demand.

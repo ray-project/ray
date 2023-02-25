@@ -46,7 +46,11 @@ Many common preprocessing transformations, such as:
 - dropping nulls
 - one-hot encoding
 
-can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.map_batches()``; this will execute these transformations in parallel over the ``Dataset`` blocks, and allows you to apply vectorized Pandas operations to the block columns within the UDF.
+can be efficiently applied to a :class:`~ray.data.Dataset` using
+:ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) and
+:meth:`~ray.data.Dataset.map_batches`; this will execute these transformations in
+parallel over the :class:`~ray.data.Dataset` blocks, and allows you to apply vectorized
+Pandas operations to the block columns within the UDF.
 
 .. code-block:: python
 
@@ -71,10 +75,12 @@ can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.m
     # represented as Pandas DataFrames.
     ds = ds.map_batches(transform_batch, batch_format="pandas")
 
+.. _datasets-groupbys:
+
 Group-bys and aggregations
 ==========================
 
-Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations. Just like other transformations, grouped/global aggregations are executed *eagerly* and block until the aggregation has been computed.
+Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations. Grouped aggregations are executed lazily. Global aggregations are executed *eagerly* and block until the aggregation has been computed.
 
 .. code-block:: python
 
@@ -83,7 +89,7 @@ Other preprocessing operations require global operations, such as groupbys and g
         for x in range(10)])
 
     # Group by the A column and calculate the per-group mean for B and C columns.
-    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"])
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).fully_executed()
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
@@ -105,7 +111,7 @@ Other preprocessing operations require global operations, such as groupbys and g
     ds.mean(["B", "C"])
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1730.32it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 231.41it/s]
-    # -> {'mean(B)': 9.0, 'mean(C)': 13.5} 
+    # -> {'mean(B)': 9.0, 'mean(C)': 13.5}
 
     # Multiple global aggregations on multiple columns.
     from ray.data.aggregate import Mean, Std
@@ -129,11 +135,12 @@ These aggregations can be combined with batch mapping to transform a dataset usi
         return df
 
     ds = ds.map_batches(impute_b, batch_format="pandas")
-    # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 132.66it/s]
-    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
+    # -> MapBatches(impute_b)
+    #    +- Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
 
     # Standard scaling of all feature columns.
     stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
+    # -> MapBatches(impute_b): 100%|██████████████████████████████| 10/10 [00:01<00:00,  7.16it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1260.99it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 128.77it/s]
     # -> {'mean(B)': 9.0, 'std(B)': 6.0553007081949835, 'mean(C)': 13.5, 'std(C)': 9.082951062292475}
@@ -149,6 +156,7 @@ These aggregations can be combined with batch mapping to transform a dataset usi
         return df
 
     ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
+    ds.fully_executed()
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 
@@ -164,6 +172,7 @@ Randomly shuffling data is an important part of training machine learning models
 
     # Global random shuffle.
     ds = ds.random_shuffle()
+    ds.fully_executed()
     # -> Shuffle Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 12.35it/s]
     # -> Shuffle Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 45.54it/s]
     # -> [7, 1, ..., 3]
@@ -177,6 +186,7 @@ Randomly shuffling data is an important part of training machine learning models
     # Don't run this next one on your laptop; it will probably crash since it will
     # try to read and shuffle ~99 GB of data!
     ds = ds.random_shuffle()
+    ds.fully_executed()
     # -> Shuffle Map: 100%|███████████████████████████████████████| 125/125 [00:00<00:00, 5021.94it/s]
     # -> Shuffle Reduce: 100%|████████████████████████████████████| 125/125 [00:00<00:00, 4034.33it/s]
     # -> Dataset(num_blocks=125, num_rows=1547741381, schema={
@@ -205,7 +215,7 @@ Random block order
 ~~~~~~~~~~~~~~~~~~
 
 For a low-cost way to perform a pseudo global shuffle that does not require loading the full Dataset into memory,
-you can randomize the order of the *blocks* with ``Dataset.randomize_block_order``.
+you can randomize the order of the *blocks* with :meth:`Dataset.randomize_block_order <ray.data.Dataset.randomize_block_order>`.
 
 .. code-block:: python
 

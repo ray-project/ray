@@ -44,6 +44,8 @@ def invoke_state_api(
     state_api_fn: Callable,
     state_stats: StateAPIStats = GLOBAL_STATE_STATS,
     key_suffix: Optional[str] = None,
+    print_result: Optional[bool] = False,
+    err_msg: Optional[str] = None,
     **kwargs,
 ):
     """Invoke a State API
@@ -70,13 +72,18 @@ def invoke_state_api(
         res = state_api_fn(**kwargs)
         t_end = time.perf_counter()
 
+        if print_result:
+            pprint.pprint(res)
+
         metric = StateAPIMetric(t_end - t_start, len(res))
         if key_suffix:
             key = f"{state_api_fn.__name__}_{key_suffix}"
         else:
             key = state_api_fn.__name__
         state_stats.calls[key].append(metric)
-        assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)}): {res}"
+        assert verify_cb(
+            res
+        ), f"Calling State API failed. len(res)=({len(res)}): {err_msg}"
     except Exception as e:
         traceback.print_exc()
         assert (
@@ -148,7 +155,7 @@ def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
     return perf_result
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class StateAPIGeneratorActor:
     def __init__(
         self,
@@ -156,6 +163,7 @@ class StateAPIGeneratorActor:
         call_interval_s: float = 5.0,
         print_interval_s: float = 20.0,
         wait_after_stop: bool = True,
+        print_result: bool = False,
     ) -> None:
         """An actor that periodically issues state API
 
@@ -167,6 +175,7 @@ class StateAPIGeneratorActor:
             - wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
                 will wait for all pending state APIs to return.
                 Setting it to `False` might miss some long-running state apis calls.
+            - print_result: True if result of each API call is printed. Default False.
         """
         # Configs
         self._apis = apis
@@ -174,6 +183,7 @@ class StateAPIGeneratorActor:
         self._print_interval_s = print_interval_s
         self._wait_after_cancel = wait_after_stop
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._print_result = print_result
 
         # States
         self._tasks = None
@@ -204,7 +214,11 @@ class StateAPIGeneratorActor:
             try:
                 self._logger.debug(f"calling {fn.__name__}({kwargs})")
                 return invoke_state_api(
-                    verify_cb, fn, state_stats=self._stats, **kwargs
+                    verify_cb,
+                    fn,
+                    state_stats=self._stats,
+                    print_result=self._print_result,
+                    **kwargs,
                 )
             except Exception as e:
                 self._logger.warning(f"{fn.__name__}({kwargs}) failed with: {repr(e)}")

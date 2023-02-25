@@ -1,16 +1,19 @@
 import asyncio
 import logging
+import json
 
 from dataclasses import asdict, fields
 from itertools import islice
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+from datetime import datetime
 
 from ray._private.ray_constants import env_integer
+from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.utils import binary_to_hex
-from ray.core.generated.common_pb2 import TaskStatus
+import ray.core.generated.common_pb2 as common_pb2
+
 from ray.experimental.state.common import (
     ActorState,
     ListApiOptions,
@@ -30,6 +33,7 @@ from ray.experimental.state.common import (
     StateSummary,
     ActorSummaries,
     ObjectSummaries,
+    ClusterEventState,
     filter_fields,
     PredicateType,
 )
@@ -206,7 +210,14 @@ class StateAPIManager:
         result = []
         for message in reply.actor_table_data:
             data = self._message_to_dict(
-                message=message, fields_to_decode=["actor_id", "owner_id"]
+                message=message,
+                fields_to_decode=[
+                    "actor_id",
+                    "owner_id",
+                    "job_id",
+                    "node_id",
+                    "placement_group_id",
+                ],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -242,7 +253,7 @@ class StateAPIManager:
 
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["placement_group_id", "node_id"],
+                fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -276,6 +287,9 @@ class StateAPIManager:
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
             data["node_ip"] = data["node_manager_address"]
+            data["start_time_ms"] = int(data["start_time_ms"])
+            data["end_time_ms"] = int(data["end_time_ms"])
+
             result.append(data)
 
         total_nodes = len(result)
@@ -315,6 +329,8 @@ class StateAPIManager:
             data["worker_id"] = data["worker_address"]["worker_id"]
             data["node_id"] = data["worker_address"]["raylet_id"]
             data["ip"] = data["worker_address"]["ip_address"]
+            data["start_time_ms"] = int(data["start_time_ms"])
+            data["end_time_ms"] = int(data["end_time_ms"])
             result.append(data)
 
         num_after_truncation = len(result)
@@ -356,69 +372,124 @@ class StateAPIManager:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
-        raylet_ids = self._client.get_all_registered_raylet_ids()
-        replies = await asyncio.gather(
-            *[
-                self._client.get_task_info(node_id, timeout=option.timeout)
-                for node_id in raylet_ids
-            ],
-            return_exceptions=True,
-        )
-
-        unresponsive_nodes = 0
-        running_task_id = set()
-        successful_replies = []
-        total_tasks = 0
-        for reply in replies:
-            if isinstance(reply, DataSourceUnavailable):
-                unresponsive_nodes += 1
-                continue
-            elif isinstance(reply, Exception):
-                raise reply
-
-            successful_replies.append(reply)
-            total_tasks += reply.total
-            for task_id in reply.running_task_ids:
-                running_task_id.add(binary_to_hex(task_id))
-
-        partial_failure_warning = None
-        if len(raylet_ids) > 0 and unresponsive_nodes > 0:
-            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-                type="raylet",
-                total=len(raylet_ids),
-                network_failures=unresponsive_nodes,
-                log_command="raylet.out",
+        job_id = None
+        for filter in option.filters:
+            if filter[0] == "job_id" and filter[1] == "=":
+                # Filtering by job_id == xxxx, pass it to source side filtering.
+                # tuple consists of (job_id, predicate, value)
+                job_id = filter[2]
+        try:
+            reply = await self._client.get_all_task_info(
+                timeout=option.timeout,
+                job_id=job_id,
+                exclude_driver=option.exclude_driver,
             )
-            if unresponsive_nodes == len(raylet_ids):
-                raise DataSourceUnavailable(warning_msg)
-            partial_failure_warning = (
-                f"The returned data may contain incomplete result. {warning_msg}"
-            )
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        result = []
-        for reply in successful_replies:
-            assert not isinstance(reply, Exception)
-            tasks = reply.owned_task_info_entries
-            for task in tasks:
-                data = self._message_to_dict(
-                    message=task,
-                    fields_to_decode=["task_id"],
+        def _to_task_state(task_attempt: dict) -> dict:
+            """
+            Convert a dict repr of `TaskEvents` to a dic repr of `TaskState`
+            """
+            task_state = {}
+            task_info = task_attempt.get("task_info", {})
+            state_updates = task_attempt.get("state_updates", [])
+            profiling_data = task_attempt.get("profile_events", {})
+            if profiling_data:
+                for event in profiling_data["events"]:
+                    # End/start times are recorded in ns. We convert them to ms.
+                    event["end_time"] = int(event["end_time"]) / 1e6
+                    event["start_time"] = int(event["start_time"]) / 1e6
+                    event["extra_data"] = json.loads(event["extra_data"])
+            task_state["profiling_data"] = profiling_data
+
+            # Convert those settable fields
+            mappings = [
+                (
+                    task_info,
+                    [
+                        "task_id",
+                        "name",
+                        "actor_id",
+                        "type",
+                        "func_or_class_name",
+                        "language",
+                        "required_resources",
+                        "runtime_env_info",
+                        "parent_task_id",
+                        "placement_group_id",
+                    ],
+                ),
+                (task_attempt, ["task_id", "attempt_number", "job_id"]),
+                (state_updates, ["node_id", "worker_id"]),
+            ]
+            for src, keys in mappings:
+                for key in keys:
+                    task_state[key] = src.get(key)
+
+            task_state["creation_time_ms"] = None
+            task_state["start_time_ms"] = None
+            task_state["end_time_ms"] = None
+            events = []
+
+            for state in common_pb2.TaskStatus.keys():
+                key = f"{state.lower()}_ts"
+                if key in state_updates:
+                    # timestamp is recorded as nanosecond from the backend.
+                    # We need to convert it to the second.
+                    ts_ms = int(state_updates[key]) // 1e6
+                    events.append(
+                        {
+                            "state": state,
+                            "created_ms": ts_ms,
+                        }
+                    )
+                    if state == "PENDING_ARGS_AVAIL":
+                        task_state["creation_time_ms"] = ts_ms
+                    if state == "RUNNING":
+                        task_state["start_time_ms"] = ts_ms
+                    if state == "FINISHED" or state == "FAILED":
+                        task_state["end_time_ms"] = ts_ms
+
+            task_state["events"] = events
+            if len(events) > 0:
+                latest_state = events[-1]["state"]
+            else:
+                latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
+            task_state["state"] = latest_state
+
+            return task_state
+
+        result = [
+            _to_task_state(
+                self._message_to_dict(
+                    message=message,
+                    fields_to_decode=[
+                        "task_id",
+                        "job_id",
+                        "node_id",
+                        "actor_id",
+                        "parent_task_id",
+                        "worker_id",
+                        "placement_group_id",
+                        "component_id",
+                    ],
                 )
-                if data["task_id"] in running_task_id:
-                    data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
-                        TaskStatus.RUNNING
-                    ].name
-                result.append(data)
+            )
+            for message in reply.events_by_task
+        ]
+
         num_after_truncation = len(result)
+        num_total = num_after_truncation + reply.num_status_task_events_dropped
+
         result = self._filter(result, option.filters, TaskState, option.detail)
         num_filtered = len(result)
-        # Sort to make the output deterministic.
+
         result.sort(key=lambda entry: entry["task_id"])
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            partial_failure_warning=partial_failure_warning,
-            total=total_tasks,
+            total=num_total,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
@@ -595,34 +666,82 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
+    async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all cluster events from the cluster.
+
+        Returns:
+            A list of cluster events in the cluster.
+            The schema of returned "dict" is equivalent to the
+            `ClusterEventState` protobuf message.
+        """
+        result = []
+        all_events = await self._client.get_all_cluster_events()
+        for _, events in all_events.items():
+            for _, event in events.items():
+                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                result.append(event)
+
+        num_after_truncation = len(result)
+        result.sort(key=lambda entry: entry["timestamp"])
+        total = len(result)
+        result = self._filter(result, option.filters, ClusterEventState, option.detail)
+        num_filtered = len(result)
+        # Sort to make the output deterministic.
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+        )
+
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        summary_by = option.summary_by or "func_name"
+        if summary_by not in ["func_name", "lineage"]:
+            raise ValueError('summary_by must be one of "func_name" or "lineage".')
+
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
+                detail=summary_by == "lineage",
             )
         )
-        summary = StateSummary(
-            node_id_to_summary={
-                "cluster": TaskSummaries.to_summary(tasks=result.result)
-            }
-        )
+        if summary_by == "func_name":
+            summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
+        else:
+            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
+        summary = StateSummary(node_id_to_summary={"cluster": summary_results})
+        warnings = result.warnings
+        if (
+            summary_results.total_actor_scheduled
+            + summary_results.total_actor_tasks
+            + summary_results.total_tasks
+            < result.num_filtered
+        ):
+            warnings = warnings or []
+            warnings.append(
+                "There is missing data in this aggregation. "
+                "Possibly due to task data being evicted to preserve memory."
+            )
         return SummaryApiResponse(
             total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            warnings=result.warnings,
+            warnings=warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_actors(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -636,16 +755,16 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimize data loss.
         result = await self.list_objects(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -659,10 +778,15 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
+
+    async def generate_task_timeline(self, job_id: Optional[str]) -> List[dict]:
+        filters = [("job_id", "=", job_id)] if job_id else None
+        result = await self.list_tasks(
+            option=ListApiOptions(detail=True, filters=filters, limit=10000)
+        )
+        return chrome_tracing_dump(result.result)
 
     def _message_to_dict(
         self,

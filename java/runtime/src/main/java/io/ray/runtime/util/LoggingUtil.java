@@ -116,7 +116,9 @@ public class LoggingUtil {
     LoggerComponentBuilder userLoggerBuilder =
         globalConfigBuilder.newAsyncLogger(userLoggerConf.loggerName);
     setupLogger(globalConfigBuilder, logDir, userLoggerConf, maxFileSize, maxBackupFiles);
-    userLoggerBuilder.add(globalConfigBuilder.newAppenderRef(userLoggerConf.loggerName));
+    userLoggerBuilder
+        .add(globalConfigBuilder.newAppenderRef(userLoggerConf.loggerName))
+        .addAttribute("additivity", false);
     globalConfigBuilder.add(userLoggerBuilder);
   }
 

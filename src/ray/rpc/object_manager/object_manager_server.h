@@ -39,15 +39,15 @@ class ObjectManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePush(const PushRequest &request,
+  virtual void HandlePush(PushRequest request,
                           PushReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePull(const PullRequest &request,
+  virtual void HandlePull(PullRequest request,
                           PullReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjects(const FreeObjectsRequest &request,
+  virtual void HandleFreeObjects(FreeObjectsRequest request,
                                  FreeObjectsReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
 };

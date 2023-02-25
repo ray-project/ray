@@ -77,7 +77,7 @@ void DependencyManager::StartOrUpdateWaitRequest(
       it->second.dependent_wait_requests.insert(worker_id);
       if (it->second.wait_request_id == 0) {
         it->second.wait_request_id =
-            object_manager_.Pull({ref}, BundlePriority::WAIT_REQUEST);
+            object_manager_.Pull({ref}, BundlePriority::WAIT_REQUEST, {"", false});
         RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
                        << " request: " << it->second.wait_request_id;
       }
@@ -132,7 +132,8 @@ void DependencyManager::StartOrUpdateGetRequest(
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.
-    uint64_t new_request_id = object_manager_.Pull(refs, BundlePriority::GET_REQUEST);
+    uint64_t new_request_id =
+        object_manager_.Pull(refs, BundlePriority::GET_REQUEST, {"", false});
     if (get_request.second != 0) {
       RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
                      << " request: " << get_request.second;
@@ -167,13 +168,18 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 
 /// Request dependencies for a queued task.
 bool DependencyManager::RequestTaskDependencies(
-    const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+    const TaskID &task_id,
+    const std::vector<rpc::ObjectReference> &required_objects,
+    const TaskMetricsKey &task_key) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
 
   const auto required_ids = ObjectRefsToIds(required_objects);
   absl::flat_hash_set<ObjectID> deduped_ids(required_ids.begin(), required_ids.end());
-  auto inserted = queued_task_requests_.emplace(task_id, std::move(deduped_ids));
+  auto inserted = queued_task_requests_.emplace(
+      task_id,
+      std::make_unique<TaskDependencies>(
+          std::move(deduped_ids), waiting_tasks_counter_, task_key));
   RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
                              << task_id;
   auto &task_entry = inserted.first->second;
@@ -186,20 +192,20 @@ bool DependencyManager::RequestTaskDependencies(
     it->second.dependent_tasks.insert(task_id);
   }
 
-  for (const auto &obj_id : task_entry.dependencies) {
+  for (const auto &obj_id : task_entry->dependencies) {
     if (local_objects_.count(obj_id)) {
-      task_entry.num_missing_dependencies--;
+      task_entry->DecrementMissingDependencies();
     }
   }
 
   if (!required_objects.empty()) {
-    task_entry.pull_request_id =
-        object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS);
+    task_entry->pull_request_id =
+        object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS, task_key);
     RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
-                   << " request: " << task_entry.pull_request_id;
+                   << " request: " << task_entry->pull_request_id;
   }
 
-  return task_entry.num_missing_dependencies == 0;
+  return task_entry->num_missing_dependencies == 0;
 }
 
 void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
@@ -208,13 +214,13 @@ void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
   RAY_CHECK(task_entry != queued_task_requests_.end())
       << "Can't remove dependencies of tasks that are not queued.";
 
-  if (task_entry->second.pull_request_id > 0) {
+  if (task_entry->second->pull_request_id > 0) {
     RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
-                   << " request: " << task_entry->second.pull_request_id;
-    object_manager_.CancelPull(task_entry->second.pull_request_id);
+                   << " request: " << task_entry->second->pull_request_id;
+    object_manager_.CancelPull(task_entry->second->pull_request_id);
   }
 
-  for (const auto &obj_id : task_entry->second.dependencies) {
+  for (const auto &obj_id : task_entry->second->dependencies) {
     auto it = required_objects_.find(obj_id);
     RAY_CHECK(it != required_objects_.end());
     it->second.dependent_tasks.erase(task_id);
@@ -240,13 +246,13 @@ std::vector<TaskID> DependencyManager::HandleObjectMissing(
       // If the dependent task had all of its arguments ready, it was ready to
       // run but must be switched to waiting since one of its arguments is now
       // missing.
-      if (task_entry.num_missing_dependencies == 0) {
+      if (task_entry->num_missing_dependencies == 0) {
         waiting_task_ids.push_back(dependent_task_id);
         // During normal execution we should be able to include the check
         // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
         // However, this invariant will not hold during unit test execution.
       }
-      task_entry.num_missing_dependencies++;
+      task_entry->IncrementMissingDependencies();
     }
   }
 
@@ -269,10 +275,10 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
       auto it = queued_task_requests_.find(dependent_task_id);
       RAY_CHECK(it != queued_task_requests_.end());
       auto &task_entry = it->second;
-      task_entry.num_missing_dependencies--;
+      task_entry->DecrementMissingDependencies();
       // If the dependent task now has all of its arguments ready, it's ready
       // to run.
-      if (task_entry.num_missing_dependencies == 0) {
+      if (task_entry->num_missing_dependencies == 0) {
         ready_task_ids.push_back(dependent_task_id);
       }
     }
@@ -305,9 +311,9 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
 bool DependencyManager::TaskDependenciesBlocked(const TaskID &task_id) const {
   auto it = queued_task_requests_.find(task_id);
   RAY_CHECK(it != queued_task_requests_.end());
-  RAY_CHECK(it->second.pull_request_id != 0);
+  RAY_CHECK(it->second->pull_request_id != 0);
   return !object_manager_.PullRequestActiveOrWaitingForMetadata(
-      it->second.pull_request_id);
+      it->second->pull_request_id);
 }
 
 std::string DependencyManager::DebugString() const {
@@ -318,6 +324,10 @@ std::string DependencyManager::DebugString() const {
   result << "\n- wait req map size: " << wait_requests_.size();
   result << "\n- local objects map size: " << local_objects_.size();
   return result.str();
+}
+
+void DependencyManager::RecordMetrics() {
+  waiting_tasks_counter_.FlushOnChangeCallbacks();
 }
 
 }  // namespace raylet

@@ -17,6 +17,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final String name;
   public ActorLifetime lifetime;
   public final int maxRestarts;
+  public final int maxTaskRetries;
   public final List<String> jvmOptions;
   public final int maxConcurrency;
   public final PlacementGroup group;
@@ -25,12 +26,14 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final String serializedRuntimeEnv;
   public final String namespace;
   public final int maxPendingCalls;
+  public final boolean isAsync;
 
   private ActorCreationOptions(
       String name,
       ActorLifetime lifetime,
       Map<String, Double> resources,
       int maxRestarts,
+      int maxTaskRetries,
       List<String> jvmOptions,
       int maxConcurrency,
       PlacementGroup group,
@@ -38,11 +41,13 @@ public class ActorCreationOptions extends BaseTaskOptions {
       List<ConcurrencyGroup> concurrencyGroups,
       String serializedRuntimeEnv,
       String namespace,
-      int maxPendingCalls) {
+      int maxPendingCalls,
+      boolean isAsync) {
     super(resources);
     this.name = name;
     this.lifetime = lifetime;
     this.maxRestarts = maxRestarts;
+    this.maxTaskRetries = maxTaskRetries;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
     this.group = group;
@@ -51,6 +56,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.serializedRuntimeEnv = serializedRuntimeEnv;
     this.namespace = namespace;
     this.maxPendingCalls = maxPendingCalls;
+    this.isAsync = isAsync;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -59,6 +65,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private ActorLifetime lifetime = null;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
+    private int maxTaskRetries = 0;
     private List<String> jvmOptions = new ArrayList<>();
     private int maxConcurrency = 1;
     private PlacementGroup group;
@@ -67,6 +74,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private RuntimeEnv runtimeEnv = null;
     private String namespace = null;
     private int maxPendingCalls = -1;
+    private boolean isAsync = false;
 
     /**
      * Set the actor name of a named actor. This named actor is accessible in this namespace by this
@@ -128,6 +136,19 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * This specifies the maximum number of times that the actor task can be resubmitted. The
+     * minimum valid value is 0 (default), which indicates that the actor task can't be resubmited.
+     * A value of -1 indicates that an actor task can be resubmited indefinitely.
+     *
+     * @param maxTaskRetries max number of actor task retries
+     * @return self
+     */
+    public Builder setMaxTaskRetries(int maxTaskRetries) {
+      this.maxTaskRetries = maxTaskRetries;
+      return this;
+    }
+
+    /**
      * Set the JVM options for the Java worker that this actor is running in.
      *
      * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
@@ -177,6 +198,17 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * Mark the creating actor as async. If the Python actor is/is not async but it's marked
+     * async/not async in Java, it will result in RayActorError errors
+     *
+     * @return self
+     */
+    public Builder setAsync(boolean isAsync) {
+      this.isAsync = isAsync;
+      return this;
+    }
+
+    /**
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
@@ -195,6 +227,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
           lifetime,
           resources,
           maxRestarts,
+          maxTaskRetries,
           jvmOptions,
           maxConcurrency,
           group,
@@ -202,7 +235,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
           concurrencyGroups,
           runtimeEnv != null ? runtimeEnv.serializeToRuntimeEnvInfo() : "",
           namespace,
-          maxPendingCalls);
+          maxPendingCalls,
+          isAsync);
     }
 
     /** Set the concurrency groups for this actor. */

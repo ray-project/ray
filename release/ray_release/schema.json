@@ -39,6 +39,7 @@
 						"disabled",
 						"multi",
 						"nightly",
+						"nightly-3x",
 						"weekly"
 					]
 				},
@@ -125,13 +126,13 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
+						"client",
+						"anyscale_job"
 					]
 				},
 				"file_manager": {
 					"type": "string",
 					"enum": [
-
 						"sdk",
 						"client",
 						"job"
@@ -207,6 +208,7 @@
 						"disabled",
 						"multi",
 						"nightly",
+						"nightly-3x",
 						"weekly"
 					]
 				}

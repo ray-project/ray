@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import pandas as pd
@@ -9,11 +10,37 @@ from transformers.pipelines.table_question_answering import (
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+try:
+    import torch
+
+    torch_get_gpus = torch.cuda.device_count
+except ImportError:
+
+    def torch_get_gpus():
+        return 0
+
+
+try:
+    import tensorflow
+
+    def tf_get_gpus():
+        return len(tensorflow.config.list_physical_devices("GPU"))
+
+except ImportError:
+
+    def tf_get_gpus():
+        return 0
+
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -26,14 +53,30 @@ class HuggingFacePredictor(Predictor):
         pipeline: The Transformers pipeline to use for inference.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
         self,
         pipeline: Optional[Pipeline] = None,
         preprocessor: Optional["Preprocessor"] = None,
+        use_gpu: bool = False,
     ):
         self.pipeline = pipeline
+        self.use_gpu = use_gpu
+
+        num_gpus = max(torch_get_gpus(), tf_get_gpus())
+        if not use_gpu and num_gpus > 0 and log_once("hf_predictor_not_using_gpu"):
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{num_gpus} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `HuggingFacePredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
+
         super().__init__(preprocessor)
 
     def __repr__(self):
@@ -48,6 +91,7 @@ class HuggingFacePredictor(Predictor):
         checkpoint: Checkpoint,
         *,
         pipeline_cls: Optional[Type[Pipeline]] = None,
+        use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
@@ -61,15 +105,21 @@ class HuggingFacePredictor(Predictor):
             pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
                 initialization. If ``pipeline`` is None, this must contain
                 the 'task' argument. Cannot contain 'model'. Can be used
-                to override the tokenizer with 'tokenizer'.
+                to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
+                True, 'device' will be set to 0 by default.
         """
         if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
+        if use_gpu:
+            # default to using the GPU with the first index
+            pipeline_kwargs.setdefault("device", 0)
         pipeline_cls = pipeline_cls or pipeline_factory
         preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
@@ -79,6 +129,7 @@ class HuggingFacePredictor(Predictor):
         return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,
+            use_gpu=use_gpu,
         )
 
     def _predict(
@@ -114,12 +165,12 @@ class HuggingFacePredictor(Predictor):
             columns = columns[0]
         return columns
 
-    def _predict_pandas(
+    def predict(
         self,
-        data: "pd.DataFrame",
-        feature_columns: Optional[List[str]] = None,
-        **pipeline_call_kwargs,
-    ) -> "pd.DataFrame":
+        data: DataBatchType,
+        feature_columns: Optional[Union[List[str], List[int]]] = None,
+        **predict_kwargs,
+    ) -> DataBatchType:
         """Run inference on data batch.
 
         The data is converted into a list (unless ``pipeline`` is a
@@ -136,35 +187,42 @@ class HuggingFacePredictor(Predictor):
                 ``pipeline`` object.
 
         Examples:
-
-        .. code-block:: python
-
-            import pandas as pd
-            from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-            from transformers.pipelines import pipeline
-            from ray.train.huggingface import HuggingFacePredictor
-
-            model_checkpoint = "gpt2"
-            tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
-            tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-
-            model_config = AutoConfig.from_pretrained(model_checkpoint)
-            model = AutoModelForCausalLM.from_config(model_config)
-            predictor = HuggingFacePredictor(
-                pipeline=pipeline(
-                    task="text-generation", model=model, tokenizer=tokenizer
-                )
-            )
-
-            prompts = pd.DataFrame(
-                ["Complete me", "And me", "Please complete"], columns=["sentences"]
-            )
-            predictions = predictor.predict(prompts)
+            >>> import pandas as pd
+            >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+            >>> from transformers.pipelines import pipeline
+            >>> from ray.train.huggingface import HuggingFacePredictor
+            >>>
+            >>> model_checkpoint = "gpt2"
+            >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+            >>> tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+            >>>
+            >>> model_config = AutoConfig.from_pretrained(model_checkpoint)
+            >>> model = AutoModelForCausalLM.from_config(model_config)
+            >>> predictor = HuggingFacePredictor(
+            ...     pipeline=pipeline(
+            ...         task="text-generation", model=model, tokenizer=tokenizer
+            ...     )
+            ... )
+            >>>
+            >>> prompts = pd.DataFrame(
+            ...     ["Complete me", "And me", "Please complete"], columns=["sentences"]
+            ... )
+            >>> predictions = predictor.predict(prompts)
 
 
         Returns:
             Prediction result.
         """
+        return Predictor.predict(
+            self, data, feature_columns=feature_columns, **predict_kwargs
+        )
+
+    def _predict_pandas(
+        self,
+        data: "pd.DataFrame",
+        feature_columns: Optional[List[str]] = None,
+        **pipeline_call_kwargs,
+    ) -> "pd.DataFrame":
         if TENSOR_COLUMN_NAME in data:
             arr = data[TENSOR_COLUMN_NAME].to_numpy()
             if feature_columns:

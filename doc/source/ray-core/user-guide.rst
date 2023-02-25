@@ -1,3 +1,5 @@
+.. _core-use-guide:
+
 User Guides
 ===========
 
@@ -11,7 +13,8 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     tasks
     actors
     objects
-    placement-group
     handling-dependencies
+    scheduling/index.rst
+    fault-tolerance
     patterns/index.rst
     advanced-topics
