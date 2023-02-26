@@ -378,8 +378,11 @@ class AgentCollector:
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
-            if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
+            # We unflatten even if data is empty here, because the structure might be
+            # nested with empty leafs and so we still need to reconstruct it.
+            # This is useful because we spec-check states in RLModules and these
+            # states can sometimes be nested dicts with empty leafs.
+            batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
         return batch
@@ -499,8 +502,11 @@ class AgentCollector:
                     shifted_data_np = np.array(shifted_data)
                 data.append(shifted_data_np)
 
-            if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
+            # We unflatten even if data is empty here, because the structure might be
+            # nested with empty leafs and so we still need to reconstruct it.
+            # This is useful because we spec-check states in RLModules and these
+            # states can sometimes be nested dicts with empty leafs.
+            batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
 
@@ -647,13 +653,6 @@ class AgentCollector:
         # add them to the buffer in case they don't exist yet
         is_state = True
         if data_col.startswith("state_out"):
-            if not self.is_policy_recurrent:
-                raise ValueError(
-                    f"{data_col} is not available, because the given policy is"
-                    f"not recurrent according to the input model_inital_states."
-                    f"Have you forgotten to return non-empty lists in"
-                    f"policy.get_initial_states()?"
-                )
             if self._enable_rl_module_api:
                 self._build_buffers({data_col: self.intial_states})
             else:

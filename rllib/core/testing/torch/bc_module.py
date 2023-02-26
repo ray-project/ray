@@ -86,7 +86,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         config = DiscreteBCTorchModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
-            model_config=model_config,
+            model_config=model_config_dict,
         )
 
         return cls(config)

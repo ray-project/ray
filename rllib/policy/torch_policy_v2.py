@@ -171,7 +171,7 @@ class TorchPolicyV2(Policy):
         self._lock = threading.RLock()
 
         self._state_inputs = self.model.get_initial_state()
-        self._is_recurrent = len(self._state_inputs) > 0
+        self._is_recurrent = len(tree.flatten(self._state_inputs)) > 0
         if self.config.get("_enable_rl_module_api", False):
             self.view_requirements = self.model.view_requirements
         else:
@@ -498,7 +498,7 @@ class TorchPolicyV2(Policy):
                 # this here.
                 state_batches = input_dict.get("state_in", None)
 
-                if state_batches:
+                if state_batches is not None:
                     if SampleBatch.SEQ_LENS in input_dict:
                         seq_lens = input_dict[SampleBatch.SEQ_LENS]
                     else:

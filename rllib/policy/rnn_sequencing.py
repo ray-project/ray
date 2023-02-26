@@ -108,6 +108,8 @@ def pad_batch_to_sequences_of_same_size(
 
             # TODO (Kourosh): What is the use-case of DynamicMax functionality?
             dynamic_max = True
+        else:
+            dynamic_max = False
 
     elif not _enable_rl_module_api and (
         "state_in_0" in batch or "state_out_0" in batch

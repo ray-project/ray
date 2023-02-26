@@ -2,7 +2,7 @@ from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
 
-from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
+from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict

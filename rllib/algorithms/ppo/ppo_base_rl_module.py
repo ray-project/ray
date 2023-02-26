@@ -13,6 +13,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.core.models.base import ActorCriticEncoder
+from ray.rllib.utils.nested_dict import NestedDict
 
 
 @ExperimentalAPI
@@ -36,6 +37,13 @@ class PPORLModuleBase(RLModule, abc.ABC):
             gym.spaces.Discrete,
         )
         assert isinstance(self.encoder, ActorCriticEncoder)
+
+    @override(RLModule)
+    def get_initial_state(self) -> NestedDict:
+        if hasattr(self.encoder, "get_initial_state"):
+            return self.encoder.get_initial_state()
+        else:
+            return NestedDict({})
 
     @classmethod
     @override(RLModule)

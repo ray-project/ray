@@ -1,7 +1,7 @@
 from typing import Mapping, Any, List
 
 from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
-from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
+from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_OUT
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
@@ -27,14 +27,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
-
-    # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
-    # @override(RLModule)
-    # def get_initial_state(self) -> NestedDict:
-    #     if hasattr(self.encoder, "get_initial_state"):
-    #         return self.encoder.get_initial_state()
-    #     else:
-    #         return NestedDict({})
 
     @override(RLModule)
     def input_specs_train(self) -> List[str]:
@@ -71,19 +63,10 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
         batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
@@ -106,20 +89,9 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         """
         output = {}
 
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
-
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -144,20 +116,11 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def _forward_train(self, batch: NestedDict):
         output = {}
 
-        # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
         batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
