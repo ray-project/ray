@@ -27,7 +27,8 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
             assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
 
 def test_webdataset_read(ray_start_2_cpus, tmp_path):
-    with open(os.path.join(tmp_path, "bar_000000.tar"), "wb") as stream:
+    path = os.path.join(tmp_path, "bar_000000.tar")
+    with open(path, "wb") as stream:
         tf = tarfile.open(fileobj=stream, mode="w")
         def write_file(name, data):
             f = tf.tarinfo()
@@ -38,7 +39,6 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
             write_file(f"{i}.a", str(i).encode("utf-8"))
             write_file(f"{i}.b", str(i**2).encode("utf-8"))
         tf.close()
-    path = os.path.join(tmp_path, "bar_000000.tar")
     assert os.path.exists(path)
     ds = ray.data.read_datasource(WebDatasetDatasource(), paths=[path], parallelism=1)
     samples = ds.take(100)
