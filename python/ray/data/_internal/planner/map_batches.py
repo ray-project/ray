@@ -1,5 +1,5 @@
-import collections
 import sys
+from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
@@ -83,11 +83,11 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
-            if not isinstance(batch, collections.Iterable):
+            if not isinstance(batch, GeneratorType):
                 batch = [batch]
 
-
             for b in batch:
+                validate_batch(b)
                 # Add output batch to output buffer.
                 output_buffer.add_batch(b)
                 if output_buffer.has_next():

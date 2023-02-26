@@ -109,7 +109,7 @@ CallableClass = type
 
 
 class _CallableClassProtocol(Protocol[T, U]):
-    def __call__(self, __arg: T) -> U:
+    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
         ...
 
 
@@ -119,6 +119,7 @@ BatchUDF = Union[
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
+    Callable[[DataBatch], Iterator[DataBatch]],
     "_CallableClassProtocol",
 ]
 
@@ -128,6 +129,7 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
+    Callable[[T], Iterator[U]],
     "_CallableClassProtocol[T, U]",
 ]
 

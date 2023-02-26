@@ -505,8 +505,21 @@ class Dataset(Generic[T]):
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
+            ``fn`` can also be a generator, yielding multiple batches in a single invocation. This is useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks.
+
+            >>> from typing import Iterator
+            >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
+            ...     for i in range(3):
+            ...         yield batch * 100
+            >>> ds = ray.data.from_items([1])
+            >>> ds = ds.map_batches(map_fn)
+            >>> ds
+            MapBatches(map_fn_with_large_output)
+            +- Dataset(num_blocks=1, num_rows=1, schema=<class 'int'>)
+
+
         Args:
-            fn: The function to apply to each record batch, or a class type
+            fn: The function or generator to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy. Note ``fn`` must be
                 pickle-able.

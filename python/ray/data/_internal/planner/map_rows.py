@@ -1,3 +1,4 @@
+from types import GeneratorType
 from typing import Callable, Iterator
 
 from ray.data._internal.execution.interfaces import TaskContext
@@ -21,9 +22,13 @@ def generate_map_rows_fn() -> Callable[
         for block in blocks:
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
-                output_buffer.add(row_fn(row))
-                if output_buffer.has_next():
-                    yield output_buffer.next()
+                row = row_fn(row)
+                if not isinstance(row, GeneratorType):
+                    row = [row]
+                for r in row:
+                    output_buffer.add(r)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
         output_buffer.finalize()
         if output_buffer.has_next():
             yield output_buffer.next()
