@@ -1614,9 +1614,8 @@ class Policy(metaclass=ABCMeta):
             [self.view_requirements] if hasattr(self, "view_requirements") else []
         )
 
-        for i, state in enumerate(init_state):
-            # Allow `state` to be either a Space (use zeros as initial values)
-            # or any value (e.g. a dict or a non-zero tensor).
+        if self.config["_enable_rl_module_api"]:
+            state = tree.flatten(init_state)
             fw = (
                 np
                 if isinstance(state, np.ndarray)
@@ -1630,12 +1629,13 @@ class Policy(metaclass=ABCMeta):
                 )
             else:
                 space = state
+
             for vr in view_reqs:
                 # Only override if user has not already provided
                 # custom view-requirements for state_in_n.
-                if "state_in_{}".format(i) not in vr:
-                    vr["state_in_{}".format(i)] = ViewRequirement(
-                        "state_out_{}".format(i),
+                if "state_in" not in vr:
+                    vr["state_in"] = ViewRequirement(
+                        "state_out",
                         shift=-1,
                         used_for_compute_actions=True,
                         batch_repeat_value=self.config.get("model", {}).get(
@@ -1645,10 +1645,48 @@ class Policy(metaclass=ABCMeta):
                     )
                 # Only override if user has not already provided
                 # custom view-requirements for state_out_n.
-                if "state_out_{}".format(i) not in vr:
-                    vr["state_out_{}".format(i)] = ViewRequirement(
+                if "state_out" not in vr:
+                    vr["state_out"] = ViewRequirement(
                         space=space, used_for_training=True
                     )
+        else:
+            for i, state in enumerate(init_state):
+                # Allow `state` to be either a Space (use zeros as initial values)
+                # or any value (e.g. a dict or a non-zero tensor).
+                fw = (
+                    np
+                    if isinstance(state, np.ndarray)
+                    else torch
+                    if torch and torch.is_tensor(state)
+                    else None
+                )
+                if fw:
+                    space = (
+                        Box(-1.0, 1.0, shape=state.shape)
+                        if fw.all(state == 0.0)
+                        else state
+                    )
+                else:
+                    space = state
+                for vr in view_reqs:
+                    # Only override if user has not already provided
+                    # custom view-requirements for state_in_n.
+                    if "state_in_{}".format(i) not in vr:
+                        vr["state_in_{}".format(i)] = ViewRequirement(
+                            "state_out_{}".format(i),
+                            shift=-1,
+                            used_for_compute_actions=True,
+                            batch_repeat_value=self.config.get("model", {}).get(
+                                "max_seq_len", 1
+                            ),
+                            space=space,
+                        )
+                    # Only override if user has not already provided
+                    # custom view-requirements for state_out_n.
+                    if "state_out_{}".format(i) not in vr:
+                        vr["state_out_{}".format(i)] = ViewRequirement(
+                            space=space, used_for_training=True
+                        )
 
     @DeveloperAPI
     def __repr__(self):

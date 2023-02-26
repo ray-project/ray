@@ -455,7 +455,7 @@ class EagerTFPolicyV2(Policy):
             input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
         ]
         self._state_in = state_batches
-        self._is_recurrent = state_batches != []
+        self._is_recurrent = len(tree.flatten(self._state_in)) > 0
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
@@ -783,6 +783,7 @@ class EagerTFPolicyV2(Policy):
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
         seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches else None
+        input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
         # Add default and custom fetches.
         extra_fetches = {}

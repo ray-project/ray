@@ -63,8 +63,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        batch[SampleBatch.SEQ_LENS] = None
-
         encoder_outs = self.encoder(batch)
         output[STATE_OUT] = encoder_outs[STATE_OUT]
 
@@ -115,8 +113,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
         output = {}
-
-        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
