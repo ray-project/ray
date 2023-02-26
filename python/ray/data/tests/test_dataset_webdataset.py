@@ -6,6 +6,7 @@ import numpy as np
 from pandas.api.types import is_int64_dtype, is_float_dtype, is_object_dtype
 import pytest
 import tarfile
+import glob
 
 import ray
 
@@ -19,9 +20,10 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]
     ds = ray.data.from_items(data).repartition(1)
     # ds.write_datasource(WebDatasetDatasource(), path=tmp_path, try_create_dir=True, dataset_uuid="foo", overwrite=True, parallelism=1)
-    ds.write_webdataset(path=tmp_path, try_create_dir=True, dataset_uuid="foo", overwrite=True, parallelism=1)
-    path = os.path.join(tmp_path, "foo_000000.tar")
-    with open(path, "rb") as stream:
+    ds.write_webdataset(path=tmp_path, try_create_dir=True)
+    paths = glob.glob(f"{tmp_path}/*.tar")
+    assert len(paths) == 1
+    with open(paths[0], "rb") as stream:
         tf = tarfile.open(fileobj=stream)
         for i in range(100):
             assert tf.extractfile(f"{i}.a").read().decode("utf-8") == str(i)
@@ -41,7 +43,9 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
             write_file(f"{i}.b", str(i**2).encode("utf-8"))
         tf.close()
     assert os.path.exists(path)
-    ds = ray.data.read_datasource(WebDatasetDatasource(), paths=[path], parallelism=1)
+    assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
+    # ds = ray.data.read_datasource(WebDatasetDatasource(), paths=[str(tmp_path)], parallelism=1)
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1)
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
