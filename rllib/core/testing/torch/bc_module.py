@@ -30,14 +30,12 @@ class DiscreteBCTorchModule(TorchRLModule):
         self,
         config: DiscreteBCTorchModuleConfig,
     ) -> None:
+        super().__init__(config=config)
         self.config = config
         input_dim = config.observation_space.shape[0]
         hidden_dim = config.model_config["fcnet_hiddens"][0]
         output_dim = config.action_space.n
 
-        super().__init__(
-            input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim
-        )
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),

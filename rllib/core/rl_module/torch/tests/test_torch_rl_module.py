@@ -120,9 +120,7 @@ class TestRLModule(unittest.TestCase):
 
         def bad_constructor():
             return DiscreteBCTorchModule(
-                input_dim=unpickleable_param,
-                hidden_dim=unpickleable_param,
-                output_dim=unpickleable_param,
+                config=unpickleable_param,
             )
 
         self.assertRaises(NotSerializable, bad_constructor)
