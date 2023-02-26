@@ -783,7 +783,8 @@ class EagerTFPolicyV2(Policy):
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
         seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches else None
-        input_dict[SampleBatch.SEQ_LENS] = seq_lens
+        if SampleBatch.SEQ_LENS not in input_dict:
+            input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
         # Add default and custom fetches.
         extra_fetches = {}
