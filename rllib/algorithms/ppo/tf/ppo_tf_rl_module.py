@@ -49,8 +49,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
-        return SpecDict()
+        return []
 
     @override(RLModule)
     def output_specs_exploration(self) -> List[str]:

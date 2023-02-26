@@ -78,8 +78,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
-        return NestedDict({})
+        return []
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -140,20 +139,11 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
-        if self._is_discrete:
-            action_spec = TorchTensorSpec("b")
-        else:
-            action_dim = self.config.action_space.shape[0]
-            action_spec = TorchTensorSpec("b, h", h=action_dim)
-
-        # TODO (Artur): Infer from encoder specs as soon as Policy supports RNN
-        spec_dict = self.input_specs_exploration()
-
-        spec_dict.update({SampleBatch.ACTIONS: action_spec})
-        if SampleBatch.OBS in spec_dict:
-            spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
-        spec = SpecDict(spec_dict)
-        return spec
+        specs = self.input_specs_exploration()
+        specs.append(SampleBatch.ACTIONS)
+        if SampleBatch.OBS in specs:
+            specs.append(SampleBatch.NEXT_OBS)
+        return specs
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:

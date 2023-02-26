@@ -51,12 +51,6 @@ class Catalog:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
         my_head = catalog.build_my_head("torch")  # doctest: +SKIP
         out = my_head(...)  # doctest: +SKIP
-
-        # RLlib's native Catalogs configs can be modified like this:
-        catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        catalog.my_model_config_dict.hidden_layer_dims = [32, 16]
-        my_head = catalog.build_my_head("torch")  # doctest: +SKIP
-        out = my_head(...)  # doctest: +SKIP
     """
 
     def __init__(
@@ -83,7 +77,7 @@ class Catalog:
         self.observation_space = observation_space
         self.action_space = action_space
 
-        # TODO (Artur): Possibly get rid of this config merge
+        # TODO (Artur): Make model defaults a dataclass
         self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self.view_requirements = view_requirements
 
