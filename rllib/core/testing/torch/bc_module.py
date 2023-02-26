@@ -80,7 +80,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         observation_space: "gym.Space",
         action_space: "gym.Space",
         *,
-        model_config: Mapping[str, Any],
+        model_config_dict: Mapping[str, Any],
     ) -> "DiscreteBCTorchModule":
 
         config = DiscreteBCTorchModuleConfig(

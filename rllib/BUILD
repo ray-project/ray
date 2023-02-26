@@ -1849,6 +1849,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_catalog",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_catalog.py"]
+)
+
+py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
