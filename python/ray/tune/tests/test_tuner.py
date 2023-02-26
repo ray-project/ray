@@ -343,8 +343,12 @@ def test_tuner_api_kwargs(shutdown_only, params_expected):
 
     caught_kwargs = {}
 
+    class MockExperimentAnalysis:
+        trials = []
+
     def catch_kwargs(**kwargs):
         caught_kwargs.update(kwargs)
+        return MockExperimentAnalysis()
 
     with patch("ray.tune.impl.tuner_internal.run", catch_kwargs):
         tuner.fit()
@@ -525,6 +529,33 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
     for result in results:
         artifact_data = open(result.log_dir / "write.txt", "r").read()
         assert artifact_data == f"{result.config['id']}"
+
+
+def test_invalid_param_space(shutdown_only):
+    """Check that Tune raises an error on invalid param_space types."""
+
+    def trainable(config):
+        return {"metric": 1}
+
+    with pytest.raises(ValueError):
+        Tuner(trainable, param_space="not allowed")
+
+    from ray.tune.tune import _Config
+
+    class CustomConfig(_Config):
+        def to_dict(self) -> dict:
+            return {"hparam": 1}
+
+    with pytest.raises(ValueError):
+        Tuner(trainable, param_space="not allowed").fit()
+
+    with pytest.raises(ValueError):
+        tune.run(trainable, config="not allowed")
+
+    # Dict and custom _Config subclasses are fine
+    Tuner(trainable, param_space={}).fit()
+    Tuner(trainable, param_space=CustomConfig()).fit()
+    tune.run(trainable, config=CustomConfig())
 
 
 if __name__ == "__main__":

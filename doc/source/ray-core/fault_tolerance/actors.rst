@@ -24,7 +24,7 @@ After the specified number of restarts, subsequent actor methods will
 raise a ``RayActorError``.
 
 By default, actor tasks execute with at-most-once semantics
-(``max_task_retries=0`` in the ``@ray.remote`` :ref:`decorator <ray-remote-ref>`). This means that if an
+(``max_task_retries=0`` in the ``@ray.remote`` :func:`decorator <ray.remote>`). This means that if an
 actor task is submitted to an actor that is unreachable, Ray will report the
 error with ``RayActorError``, a Python-level exception that is thrown when
 ``ray.get`` is called on the future returned by the task. Note that this
@@ -71,6 +71,35 @@ ephemeral state that does not need to be rebuilt after a failure. For actors
 that have critical state, the application is responsible for recovering the
 state, e.g., by taking periodic checkpoints and recovering from the checkpoint
 upon actor restart.
+
+
+Actor checkpointing
+~~~~~~~~~~~~~~~~~~~
+
+``max_restarts`` automatically restarts the crashed actor,
+but it doesn't automatically restore application level state in your actor.
+Instead, you should manually checkpoint your actor's state and recover upon actor restart.
+
+For actors that are restarted manually, the actor's creator should manage the checkpoint and manually restart and recover the actor upon failure. This is recommended if you want the creator to decide when the actor should be restarted and/or if the creator is coordinating actor checkpoints with other execution:
+
+.. literalinclude:: ../doc_code/actor_checkpointing.py
+  :language: python
+  :start-after: __actor_checkpointing_manual_restart_begin__
+  :end-before: __actor_checkpointing_manual_restart_end__
+
+Alternatively, if you are using Ray's automatic actor restart, the actor can checkpoint itself manually and restore from a checkpoint in the constructor:
+
+.. literalinclude:: ../doc_code/actor_checkpointing.py
+  :language: python
+  :start-after: __actor_checkpointing_auto_restart_begin__
+  :end-before: __actor_checkpointing_auto_restart_end__
+
+.. note::
+
+  If the checkpoint is saved to external storage, make sure
+  it's accessible to the entire cluster since the actor can be restarted
+  on a different node.
+  For example, save the checkpoint to cloud storage (e.g., S3) or a shared directory (e.g., via NFS).
 
 
 Actor creator failure

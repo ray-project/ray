@@ -96,11 +96,16 @@ Here, the focus is on training many models on subsets of a dataset. This is in c
 How do I do many model training on Ray?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are three ways of using Ray to express this workload.
+To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune>`) library. This is the recommended library for most cases.
 
-1. If you have a large amount of data, use Ray Data (:ref:`Tutorial <mmt-datasets>`).
-2. If you have a small amount of data (<10GB), want to integrate with tools, such as wandb and mlflow, and you have less than 20,000 models, use Ray Tune (:ref:`Tutorial <mmt-tune>`).
-3. If your use case does not fit in any of the above categories, for example if you need to scale up to 1 million models, use Ray Core (:ref:`Tutorial <mmt-core>`), which gives you finer-grained control over the application. However, note that this is for advanced users and will require understanding of Ray Core :ref:`design patterns and anti-patterns <core-patterns>`.
+You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node). 
+If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <datasets>` library.
+Your data must be a :ref:`supported format <data-compatibility>`, to use Ray Data. 
+
+Alternative solutions exist for less common cases: 
+
+#. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
+#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`). 
 
 .. TODO
   Add link to many model training blog.
@@ -117,6 +122,13 @@ There are three ways of using Ray to express this workload.
         :type: url
         :text: [Blog] Training One Million ML Models in Record Time with Ray
         :classes: btn-link btn-block stretched-link millionModels
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
+        :type: url
+        :text: [Blog] Many Models Batch Training at Scale with Ray Core
+        :classes: btn-link btn-block stretched-link manyModels
     ---
     :img-top: /images/ray_logo.png
 

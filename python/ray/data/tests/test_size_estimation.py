@@ -158,9 +158,16 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
 
     def gen(name):
         path = os.path.join(tmp_path, name)
-        ray.data.range(200000, parallelism=1).map(
-            lambda _: uuid.uuid4().hex
-        ).write_parquet(path)
+        ds = (
+            ray.data.range(200000, parallelism=1)
+            .map(lambda _: uuid.uuid4().hex)
+            .fully_executed()
+        )
+        # Fully execute the operations prior to write, because with
+        # parallelism=1, there is only one task; so the write operator
+        # will only write to one file, even though there are multiple
+        # blocks created by block splitting.
+        ds.write_parquet(path)
         return ray.data.read_parquet(path, parallelism=200)
 
     # 20MiB
@@ -186,7 +193,9 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_split_map(ray_start_regular_shared, use_actors):
+def test_split_map(shutdown_only, use_actors):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     kwargs = {}
     if use_actors:
         kwargs = {"compute": "actors"}

@@ -151,12 +151,10 @@ class RandomTest:
 
             new_time = time.time()
             print(
-                "Iteration {}:\n"
-                "  - Iteration time: {}.\n"
-                "  - Absolute time: {}.\n"
-                "  - Total elapsed time: {}.".format(
-                    iteration, new_time - previous_time, new_time, new_time - start_time
-                )
+                f"Iteration {iteration}:\n"
+                f"  - Iteration time: {new_time - previous_time}.\n"
+                f"  - Absolute time: {new_time}.\n"
+                f"  - Total elapsed time: {new_time - start_time}."
             )
             update_progress(
                 {

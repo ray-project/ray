@@ -317,7 +317,12 @@ def test_optimize_reorder(ray_start_regular_shared):
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
-    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map)
+    ds = (
+        ray.data.range(10)
+        .randomize_block_order()
+        .map_batches(dummy_map)
+        .fully_executed()
+    )
     expect_stages(
         ds,
         2,
@@ -329,6 +334,7 @@ def test_optimize_reorder(ray_start_regular_shared):
         .randomize_block_order()
         .repartition(10)
         .map_batches(dummy_map)
+        .fully_executed()
     )
     expect_stages(
         ds2,
@@ -347,6 +353,44 @@ def test_window_randomize_fusion(ray_start_regular_shared):
     pipe.take()
     stats = pipe.stats()
     assert "read->randomize_block_order->MapBatches(dummy_map)" in stats, stats
+
+
+def test_write_fusion(ray_start_regular_shared, tmp_path):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_fuse_shuffle_stages = True
+
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+    assert "read->MapBatches(<lambda>)->write" in stats, stats
+
+    ds = (
+        ray.data.range(100)
+        .map_batches(lambda x: x)
+        .random_shuffle()
+        .map_batches(lambda x: x)
+    )
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+    assert "read->MapBatches(<lambda>)" in stats, stats
+    assert "random_shuffle" in stats, stats
+    assert "MapBatches(<lambda>)->write" in stats, stats
+
+
+def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).randomize_block_order().map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+
+    # The randomize_block_order will switch order with the following map_batches,
+    # but not the tailing write operator.
+    assert "read->MapBatches(<lambda>)" in stats, stats
+    assert "randomize_block_order" in stats, stats
+    assert "write" in stats, stats
 
 
 def test_optimize_fuse(ray_start_regular_shared):
@@ -464,7 +508,9 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
             )
 
 
-def test_optimize_incompatible_stages(ray_start_regular_shared):
+def test_optimize_incompatible_stages(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
@@ -504,7 +550,9 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
     )
 
 
-def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
+def test_optimize_callable_classes(shutdown_only, tmp_path):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True

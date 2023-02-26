@@ -22,6 +22,8 @@ DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
 RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
 
+DOCKER_PLUGIN_KEY = "docker#v5.2.0"
+
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
@@ -35,7 +37,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "agents": {"queue": str(RELEASE_QUEUE_DEFAULT)},
     "plugins": [
         {
-            "docker#v5.2.0": {
+            DOCKER_PLUGIN_KEY: {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
@@ -64,18 +66,18 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = f"./release/run_release_test.sh \"{test['name']}\" "
+    cmd = ["./release/run_release_test.sh", test["name"]]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
-        cmd += " --report"
+        cmd += ["--report"]
 
     if smoke_test:
-        cmd += " --smoke-test"
+        cmd += ["--smoke-test"]
 
     if ray_wheels:
-        cmd += f" --ray-wheels {ray_wheels}"
+        cmd += ["--ray-wheels", ray_wheels]
 
-    step["command"] = cmd
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
@@ -88,7 +90,7 @@ def get_step(
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    step["plugins"][0]["docker#v5.2.0"][
+    step["plugins"][0][DOCKER_PLUGIN_KEY][
         "image"
     ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
 

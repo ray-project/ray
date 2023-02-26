@@ -6,9 +6,10 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
+from ray.air import session
 from ray.air.config import ScalingConfig
 import ray.train as train
-from ray.air import session
+from ray.tune.result import TRAINING_ITERATION
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -89,7 +90,7 @@ def test_mosaic_cifar10(ray_start_4_cpus):
     assert result["epoch"][result.index[-1]] == 4
 
     # check train_iterations
-    assert result["_training_iteration"][result.index[-1]] == 5
+    assert result[TRAINING_ITERATION][result.index[-1]] == 5
 
     # check metrics/train/Accuracy has increased
     acc = list(result["metrics/train/Accuracy"])

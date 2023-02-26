@@ -127,6 +127,6 @@
 # Buildkite pipeline management
 .buildkite/hooks @simon-mo @krfricke
 
-/release/ray_release @krfricke @rkooo567 @simon-mo
+/release/ray_release @krfricke @rkooo567 @simon-mo @Yard1
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

@@ -341,9 +341,27 @@ def _get_preset_variants(
 
 @DeveloperAPI
 def assign_value(spec: Dict, path: Tuple, value: Any):
+    """Assigns a value to a nested dictionary.
+
+    Handles the special case of tuples, in which case the tuples
+    will be re-constructed to accomodate the updated value.
+    """
+    parent_spec = None
+    parent_key = None
     for k in path[:-1]:
+        parent_spec = spec
+        parent_key = k
         spec = spec[k]
-    spec[path[-1]] = value
+    key = path[-1]
+    if not isinstance(spec, tuple):
+        # spec is mutable. Just assign the value.
+        spec[key] = value
+    else:
+        if parent_spec is None:
+            raise ValueError("Cannot assign value to a tuple.")
+        assert isinstance(key, int), "Tuple key must be an int."
+        # Special handling since tuples are immutable.
+        parent_spec[parent_key] = spec[:key] + (value,) + spec[key + 1 :]
 
 
 def _get_value(spec: Dict, path: Tuple) -> Any:
