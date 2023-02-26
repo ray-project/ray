@@ -18,7 +18,8 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]
     ds = ray.data.from_items(data).repartition(1)
-    ds.write_datasource(WebDatasetDatasource(), path=tmp_path, try_create_dir=True, dataset_uuid="foo", overwrite=True, parallelism=1)
+    # ds.write_datasource(WebDatasetDatasource(), path=tmp_path, try_create_dir=True, dataset_uuid="foo", overwrite=True, parallelism=1)
+    ds.write_webdataset(path=tmp_path, try_create_dir=True, dataset_uuid="foo", overwrite=True, parallelism=1)
     path = os.path.join(tmp_path, "foo_000000.tar")
     with open(path, "rb") as stream:
         tf = tarfile.open(fileobj=stream)
