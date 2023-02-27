@@ -2190,7 +2190,9 @@ class Algorithm(Trainable):
                     for _ in range(cf.num_learner_workers)
                 ]
 
-            bundles += trainer_bundle
+            # NOTE: don't use `+=` here, since for some weird reason, the GPU resources
+            # have to come before the CPU resources for proper placement group creation.
+            bundles = trainer_bundle + bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
