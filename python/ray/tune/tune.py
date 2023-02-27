@@ -1,3 +1,5 @@
+import abc
+import copy
 import datetime
 import logging
 import os
@@ -15,6 +17,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -58,6 +61,7 @@ from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
+
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +173,12 @@ def _setup_signal_catching() -> threading.Event:
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
     return experiment_interrupted_event
+
+
+class _Config(abc.ABC):
+    def to_dict(self) -> dict:
+        """Converts this configuration to a dict format."""
+        raise NotImplementedError
 
 
 @PublicAPI
@@ -475,6 +485,14 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
+    if isinstance(config, _Config):
+        config = config.to_dict()
+    if not isinstance(config, dict):
+        raise ValueError(
+            "The `config` passed to `tune.run()` must be a dict. "
+            f"Got '{type(config)}' instead."
+        )
+
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
 
@@ -563,6 +581,20 @@ def run(
             "Consider boosting PBT performance by enabling `reuse_actors` as "
             "well as implementing `reset_config` for Trainable."
         )
+
+    # Before experiments are created, we first clean up the passed in
+    # Config dictionary by replacing all the non-primitive config values
+    # with placeholders. This serves two purposes:
+    # 1. we can replace and "fix" these objects if a Trial is restored.
+    # 2. the config dictionary will then be compatible with all supported
+    #   search algorithms, since a lot of them do not support non-primitive
+    #   config values.
+    placeholder_resolvers = create_resolvers_map()
+    config = inject_placeholders(
+        # Make a deep copy here to avoid modifying the original config dict.
+        copy.deepcopy(config),
+        placeholder_resolvers,
+    )
 
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -711,6 +743,7 @@ def run(
     )
     runner = TrialRunner(
         search_alg=search_alg,
+        placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         experiment_dir_name=experiments[0].dir_name,
@@ -723,9 +756,6 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
-        # Driver should only sync trial checkpoints if
-        # checkpoints are not synced to cloud
-        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
     )
 
     if not runner.resumed:
@@ -759,10 +789,7 @@ def run(
     tune_taken = time.time() - tune_start
 
     try:
-        runner.checkpoint(force=True)
-        # Wait for the final remote directory sync to finish before exiting
-        if runner._syncer:
-            runner._syncer.wait()
+        runner.checkpoint(force=True, wait=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 

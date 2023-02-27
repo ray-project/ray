@@ -1,7 +1,6 @@
 import warnings
 from typing import Dict, Optional
 from ray.air.execution.resources.request import ResourceRequest
-from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import placement_group
 
@@ -103,12 +102,9 @@ class PlacementGroupFactory(ResourceRequest):
 
 
 @DeveloperAPI
-def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
+def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]] = None):
     """Translates resource dict into PlacementGroupFactory."""
     spec = spec or {"cpu": 1}
-
-    if isinstance(spec, Resources):
-        spec = spec._asdict()
 
     spec = spec.copy()
 
@@ -116,7 +112,12 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     gpus = spec.pop("gpu", spec.pop("GPU", 0.0))
     memory = spec.pop("memory", 0.0)
 
+    # If there is a custom_resources key, use as base for bundle
     bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
+
+    # Otherwise, consider all other keys as custom resources
+    if not bundle:
+        bundle = spec
 
     bundle.update(
         {

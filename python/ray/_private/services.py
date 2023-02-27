@@ -100,6 +100,30 @@ ProcessInfo = collections.namedtuple(
 )
 
 
+def _site_flags() -> List[str]:
+    """Detect whether flags related to site packages are enabled for the current
+    interpreter. To run Ray in hermetic build environments, it helps to pass these flags
+    down to Python workers.
+    """
+    flags = []
+    # sys.flags hidden behind helper methods for unit testing.
+    if _no_site():
+        flags.append("-S")
+    if _no_user_site():
+        flags.append("-s")
+    return flags
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_site():
+    return sys.flags.no_site
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_user_site():
+    return sys.flags.no_user_site
+
+
 def _build_python_executable_command_memory_profileable(
     component: str, session_dir: str, unbuffered: bool = True
 ):
@@ -433,7 +457,11 @@ def wait_for_node(
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for node to startup.")
+    raise TimeoutError(
+        f"Timed out after {timeout} seconds while waiting for node to startup. "
+        f"Did not find socket name {node_plasma_store_socket_name} in the list "
+        "of object store socket names."
+    )
 
 
 def get_node_to_connect_for_driver(gcs_address, node_ip_address):
@@ -579,8 +607,11 @@ def resolve_ip_for_localhost(address: str):
     if not address:
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
-    # Make sure localhost isn't resolved to the loopback ip
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
+        # Clusters are disabled by default for OSX and Windows.
+        if not ray_constants.ENABLE_RAY_CLUSTER:
+            return address
+        # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
     else:
@@ -623,10 +654,10 @@ def node_ip_address_from_perspective(address: str):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
-    if sys.platform == "darwin" or sys.platform == "win32":
-        # Due to the mac osx/windows firewall,
-        # we use loopback ip as the ip address
-        # to prevent security popups.
+    if not ray_constants.ENABLE_RAY_CLUSTER:
+        # Use loopback IP as the local IP address to prevent bothersome
+        # firewall popups on OSX and Windows.
+        # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
 
@@ -1471,24 +1502,29 @@ def start_raylet(
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = [
-        sys.executable,
-        setup_worker_path,
-        worker_path,
-        f"--node-ip-address={node_ip_address}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
-        f"--session-name={session_name}",
-        f"--temp-dir={temp_dir}",
-        f"--webui={webui}",
-    ]
+    start_worker_command = (
+        [
+            sys.executable,
+            setup_worker_path,
+        ]
+        + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
+        + [
+            worker_path,
+            f"--node-ip-address={node_ip_address}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--metrics-agent-port={metrics_agent_port}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
+            f"--session-name={session_name}",
+            f"--temp-dir={temp_dir}",
+            f"--webui={webui}",
+        ]
+    )
 
     start_worker_command.append(f"--storage={storage}")
 

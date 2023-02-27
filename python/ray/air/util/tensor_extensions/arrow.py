@@ -8,7 +8,7 @@ import pyarrow as pa
 
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
-    _create_strict_ragged_ndarray,
+    create_ragged_ndarray,
 )
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
@@ -783,7 +783,7 @@ class ArrowVariableShapedTensorArray(
             arrs = [self._to_numpy(i, zero_copy_only) for i in range(len(self))]
             # Return ragged NumPy ndarray in the ndarray of ndarray pointers
             # representation.
-            return _create_strict_ragged_ndarray(arrs)
+            return create_ragged_ndarray(arrs)
         data = self.storage.field("data")
         shapes = self.storage.field("shape")
 

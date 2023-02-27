@@ -21,6 +21,11 @@ namespace ray {
 namespace core {
 
 namespace worker {
+
+/// A wrapper that wraps a TaskProfileEvent, will be wrapped by a Cython class.
+///
+/// This class's lifetime measures the duration of a target event. Upon destruction,
+/// this class will be added to TaskEventBuffer to be sent.
 class ProfileEvent {
  public:
   ProfileEvent(TaskEventBuffer &task_event_buffer,
@@ -35,9 +40,11 @@ class ProfileEvent {
   void SetExtraData(const std::string &extra_data);
 
  private:
+  // Reference to the TaskEventBuffer.
   TaskEventBuffer &task_event_buffer_;
 
-  rpc::TaskEvents rpc_profile_event_;
+  // The underlying event.
+  std::unique_ptr<TaskProfileEvent> event_ = nullptr;
 };
 
 }  // namespace worker

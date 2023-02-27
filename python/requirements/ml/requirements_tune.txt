@@ -19,7 +19,7 @@ hyperopt==0.2.5
 jupyter==1.0.0
 lightgbm==3.2.1
 matplotlib!=3.4.3
-mlflow==1.21.0
+mlflow==1.30.0
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
 optuna==2.10.0
@@ -27,7 +27,7 @@ optuna==2.10.0
 pymoo==0.5.0
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
-protobuf==3.20.1
+protobuf==3.19.6
 pytorch-lightning==1.6.5
 shortuuid==1.0.1
 scikit-optimize==0.9.0
