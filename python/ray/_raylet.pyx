@@ -473,6 +473,7 @@ cdef prepare_args_internal(
             # the DUMMY_TYPE.
             # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the
             # DUMMY_TYPE None.
+            # https://github.com/ray-project/ray/pull/32478/
             if type(arg) is dummy_type_type and arg == dummy_type_value:
                 global dummy_type_serialized_arg
                 if dummy_type_serialized_arg is None:
