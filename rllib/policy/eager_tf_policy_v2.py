@@ -797,6 +797,13 @@ class EagerTFPolicyV2(Policy):
         if not self.config.get("_enable_rl_module_api", False):
             self._re_trace_counter += 1
 
+        # Calculate RNN sequence lengths.
+        if SampleBatch.SEQ_LENS in input_dict:
+            seq_lens = input_dict[SampleBatch.SEQ_LENS]
+        else:
+            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
+            seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches else None
+
         # Add default and custom fetches.
         extra_fetches = {}
 
@@ -846,7 +853,7 @@ class EagerTFPolicyV2(Policy):
                         self.model,
                         obs_batch=input_dict[SampleBatch.OBS],
                         state_batches=state_batches,
-                        seq_lens=input_dict[SampleBatch.SEQ_LENS],
+                        seq_lens=seq_lens,
                         explore=explore,
                         timestep=timestep,
                         is_training=False,
@@ -859,7 +866,7 @@ class EagerTFPolicyV2(Policy):
                     dist_inputs, state_out, extra_fetches = self.model(input_dict)
                 else:
                     dist_inputs, state_out = self.model(
-                        input_dict, state_batches, input_dict[SampleBatch.SEQ_LENS]
+                        input_dict, state_batches, seq_lens
                     )
 
                 action_dist = self.dist_class(dist_inputs, self.model)
