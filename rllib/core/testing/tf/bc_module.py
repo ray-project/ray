@@ -79,12 +79,12 @@ class DiscreteBCTFModule(TfRLModule):
         observation_space: "gym.Space",
         action_space: "gym.Space",
         *,
-        model_config: Mapping[str, Any],
+        model_config_dict: Mapping[str, Any],
     ) -> "DiscreteBCTFModule":
 
         config = {
             "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config["fcnet_hiddens"][0],
+            "hidden_dim": model_config_dict["fcnet_hiddens"][0],
             "output_dim": action_space.n,
         }
 

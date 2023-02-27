@@ -19,12 +19,12 @@ class TestMARLModule(unittest.TestCase):
         module1 = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
         module2 = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         multi_agent_dict = {"module1": module1, "module2": module2}
@@ -68,7 +68,7 @@ class TestMARLModule(unittest.TestCase):
         marl_module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         ).as_multi_agent()
 
         self.assertNotIsInstance(marl_module, DiscreteBCTorchModule)
@@ -87,7 +87,7 @@ class TestMARLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         ).as_multi_agent()
 
         state = module.get_state()
@@ -101,7 +101,7 @@ class TestMARLModule(unittest.TestCase):
         module2 = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         ).as_multi_agent()
         state2 = module2.get_state()
         check(state, state2, false=True)
@@ -119,7 +119,7 @@ class TestMARLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         ).as_multi_agent()
 
         module.add_module(
@@ -127,7 +127,7 @@ class TestMARLModule(unittest.TestCase):
             DiscreteBCTorchModule.from_model_config(
                 env.observation_space,
                 env.action_space,
-                model_config={"fcnet_hiddens": [32]},
+                model_config_dict={"fcnet_hiddens": [32]},
             ),
         )
         self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID, "test"})
@@ -142,7 +142,7 @@ class TestMARLModule(unittest.TestCase):
                 DiscreteBCTorchModule.from_model_config(
                     env.observation_space,
                     env.action_space,
-                    model_config={"fcnet_hiddens": [32]},
+                    model_config_dict={"fcnet_hiddens": [32]},
                 ),
             ),
         )
@@ -152,7 +152,7 @@ class TestMARLModule(unittest.TestCase):
             DiscreteBCTorchModule.from_model_config(
                 env.observation_space,
                 env.action_space,
-                model_config={"fcnet_hiddens": [32]},
+                model_config_dict={"fcnet_hiddens": [32]},
             ),
             override=True,
         )
@@ -239,12 +239,12 @@ class TestMARLModule(unittest.TestCase):
         module1 = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
         module2 = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         multi_agent_dict = {"module1": module1, "module2": module2}

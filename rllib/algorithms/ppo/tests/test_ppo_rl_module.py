@@ -6,21 +6,16 @@ import numpy as np
 import tensorflow as tf
 import torch
 import tree
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 
 import ray
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
-)
-from ray.rllib.core.models.configs import (
-    ActorCriticEncoderConfig,
-    MLPHeadConfig,
-    MLPEncoderConfig,
-    LSTMEncoderConfig,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -28,62 +23,29 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 def get_expected_module_config(
     env: gym.Env,
-    lstm: bool,
+    model_config_dict: dict,
+    observation_space: gym.Space,
 ) -> PPOModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
         env: Environment for which we build the model later
-        lstm: If True, build recurrent pi encoder
+        model_config_dict: Model config to use for the catalog
+        observation_space: Observation space to use for the catalog.
 
     Returns:
          A PPOModuleConfig containing the relevant configs to build PPORLModule
     """
-    assert len(env.observation_space.shape) == 1, (
-        "No multidimensional obs space " "supported."
+    catalog = PPOCatalog(
+        observation_space=observation_space,
+        action_space=env.action_space,
+        model_config_dict=model_config_dict,
     )
-    obs_dim = env.observation_space.shape[0]
-
-    if lstm:
-        base_encoder_config = LSTMEncoderConfig(
-            input_dim=obs_dim,
-            hidden_dim=32,
-            batch_first=True,
-            num_layers=1,
-            output_dim=32,
-        )
-    else:
-        base_encoder_config = MLPEncoderConfig(
-            input_dim=obs_dim,
-            hidden_layer_dims=[32],
-            hidden_layer_activation="relu",
-            output_dim=32,
-        )
-
-    encoder_config = ActorCriticEncoderConfig(base_encoder_config=base_encoder_config)
-
-    pi_config = MLPHeadConfig(
-        input_dim=32,
-        hidden_layer_dims=[32],
-        hidden_layer_activation="relu",
-    )
-    vf_config = MLPHeadConfig(
-        input_dim=32,
-        hidden_layer_dims=[32],
-        hidden_layer_activation="relu",
-    )
-
-    if isinstance(env.action_space, gym.spaces.Discrete):
-        pi_config.output_dim = env.action_space.n
-    else:
-        pi_config.output_dim = env.action_space.shape[0] * 2
 
     return PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        encoder_config=encoder_config,
-        pi_config=pi_config,
-        vf_config=vf_config,
+        catalog=catalog,
     )
 
 
@@ -130,9 +92,11 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm):
-    model_config = {"use_lstm": lstm}
-    config = get_expected_module_config(env, model_config=model_config)
+def _get_ppo_module(framework, env, lstm, observation_space):
+    model_config_dict = {"use_lstm": lstm}
+    config = get_expected_module_config(
+        env, model_config_dict=model_config_dict, observation_space=observation_space
+    )
     if framework == "torch":
         module = PPOTorchRLModule(config)
     else:
@@ -159,25 +123,8 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def get_ppo_module(self, framework, env, lstm):
-        config = get_expected_module_config(env, lstm)
-        if framework == "torch":
-            module = PPOTorchRLModule(config)
-        else:
-            module = PPOTfRLModule(config)
-        return module
-
-    def get_input_batch_from_obs(self, framework, obs):
-        if framework == "torch":
-            batch = {
-                SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-            }
-        else:
-            batch = {SampleBatch.OBS: tf.convert_to_tensor([obs])}
-        return batch
-
     def test_rollouts(self):
-        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
+        # TODO: Add ALE/Breakout-v5 to cover a 3D obs space
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
         fwd_fns = ["forward_exploration", "forward_inference"]
@@ -191,11 +138,15 @@ class TestPPO(unittest.TestCase):
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
             env = gym.make(env_name)
-            module = self.get_ppo_module(framework=fw, env=env, lstm=lstm)
-
+            module = _get_ppo_module(
+                framework=fw,
+                env=env,
+                lstm=lstm,
+                observation_space=env.observation_space,
+            )
             obs, _ = env.reset()
 
-            batch = self.get_input_batch_from_obs(fw, obs)
+            batch = _get_input_batch_from_obs(fw, obs)
 
             # TODO (Artur): Un-uncomment once Policy supports RNN
             # state_in = module.get_initial_state()
@@ -211,7 +162,7 @@ class TestPPO(unittest.TestCase):
                 module.forward_inference(batch)
 
     def test_forward_train(self):
-        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
+        # TODO: Add ALE/Breakout-v5 to cover a 3D obs space
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
         # TODO(Artur): Re-enable LSTM
@@ -222,16 +173,23 @@ class TestPPO(unittest.TestCase):
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
+            if env_name == "ALE/Breakout-v5" and fw == "tf2":
+                # CNN not implement in TF2 yet
+                continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
             env = gym.make(env_name)
 
-            module = self.get_ppo_module(fw, env, lstm)
+            module = _get_ppo_module(
+                framework=fw,
+                env=env,
+                lstm=lstm,
+                observation_space=env.observation_space,
+            )
 
             # collect a batch of data
             batches = []
             obs, _ = env.reset()
             tstep = 0
-
             # TODO (Artur): Un-uncomment once Policy supports RNN
             # state_in = module.get_initial_state()
             # state_in = tree.map_structure(
@@ -288,15 +246,15 @@ class TestPPO(unittest.TestCase):
                 for param in module.parameters():
                     self.assertIsNotNone(param.grad)
             else:
-                batch = tree.map_structure(
+                fwd_in = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
                 )
                 # TODO (Artur): Un-uncomment once Policy supports RNN
                 # fwd_in[STATE_IN] = initial_state
                 # fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
                 with tf.GradientTape() as tape:
-                    fwd_out = module.forward_train(batch)
-                    loss = dummy_tf_ppo_loss(batch, fwd_out)
+                    fwd_out = module.forward_train(fwd_in)
+                    loss = dummy_tf_ppo_loss(fwd_in, fwd_out)
                 grads = tape.gradient(loss, module.trainable_variables)
                 for grad in grads:
                     self.assertIsNotNone(grad)

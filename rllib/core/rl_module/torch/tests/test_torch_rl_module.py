@@ -17,7 +17,7 @@ class TestRLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         self.assertIsInstance(module, TorchRLModule)
@@ -29,7 +29,7 @@ class TestRLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         obs_shape = env.observation_space.shape
@@ -57,7 +57,7 @@ class TestRLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         obs_shape = env.observation_space.shape
@@ -73,7 +73,7 @@ class TestRLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         state = module.get_state()
@@ -82,7 +82,7 @@ class TestRLModule(unittest.TestCase):
         module2 = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
         state2 = module2.get_state()
         check(state, state2, false=True)
@@ -96,7 +96,7 @@ class TestRLModule(unittest.TestCase):
         module = DiscreteBCTorchModule.from_model_config(
             env.observation_space,
             env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         )
 
         # create a new module from the old module

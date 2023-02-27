@@ -137,7 +137,8 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         # Create the neural networks
         self.lstm = nn.LSTM(
-            config.input_dim,
+            # We only support 1D spaces right now.
+            config.observation_space.shape[0],
             config.hidden_dim,
             config.num_layers,
             batch_first=config.batch_first,
