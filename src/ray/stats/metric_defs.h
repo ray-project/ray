@@ -213,6 +213,26 @@ static Sum NumWorkersStarted(
     "The total number of worker processes the worker pool has created.",
     "processes");
 
+static Sum NumCachedWorkersSkippedJobMismatch(
+    "internal_num_processes_skipped_job_mismatch",
+    "The total number of cached workers skipped due to job mismatch.",
+    "workers");
+
+static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
+    "internal_num_processes_skipped_runtime_enviornment_mismatch",
+    "The total number of cached workers skipped due to runtime environment mismatch.",
+    "workers");
+
+static Sum NumCachedWorkersSkippedDynamicOptionsMismatch(
+    "internal_num_processes_skipped_job_mismatch",
+    "The total number of cached workers skipped due to dynamic options mismatch.",
+    "workers");
+
+static Sum NumWorkersStartedFromCache(
+    "internal_num_processes_started_from_cache",
+    "The total number of workers started from a cached worker process.",
+    "workers");
+
 static Gauge NumSpilledTasks("internal_num_spilled_tasks",
                              "The cumulative number of lease requeusts that this raylet "
                              "has spilled to other raylets.",
