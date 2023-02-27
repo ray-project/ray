@@ -35,9 +35,18 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
-        logger = DatasetLogger("ray.data._internal.execution.bulk_executor").get_logger(
-            log_to_stdout=enable_auto_log_stats,
-        )
+        if context.use_streaming_executor:
+            logger = DatasetLogger(
+                "ray.data._internal.execution.streaming_executor"
+            ).get_logger(
+                log_to_stdout=enable_auto_log_stats,
+            )
+        else:
+            logger = DatasetLogger(
+                "ray.data._internal.execution.bulk_executor"
+            ).get_logger(
+                log_to_stdout=enable_auto_log_stats,
+            )
     else:
         logger = DatasetLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
@@ -111,9 +120,24 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     stats = canonicalize(ds.fully_executed().stats())
 
     if context.new_execution_backend:
-        assert (
-            stats
-            == """Stage N read->MapBatches(dummy_map_batches): N/N blocks executed in T
+        if context.use_streaming_executor:
+            assert (
+                stats
+                == """Stage N read->MapBatches(dummy_map_batches)->map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
+"""
+            )
+        else:
+            assert (
+                stats
+                == """Stage N read->MapBatches(dummy_map_batches): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -141,7 +165,7 @@ Dataset iterator time breakdown:
 * In user code: T
 * Total time: T
 """
-        )
+            )
     else:
         assert (
             stats
@@ -364,9 +388,18 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
-        logger = DatasetLogger("ray.data._internal.execution.bulk_executor").get_logger(
-            log_to_stdout=enable_auto_log_stats,
-        )
+        if context.use_streaming_executor:
+            logger = DatasetLogger(
+                "ray.data._internal.execution.streaming_executor"
+            ).get_logger(
+                log_to_stdout=enable_auto_log_stats,
+            )
+        else:
+            logger = DatasetLogger(
+                "ray.data._internal.execution.bulk_executor"
+            ).get_logger(
+                log_to_stdout=enable_auto_log_stats,
+            )
     else:
         logger = DatasetLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
