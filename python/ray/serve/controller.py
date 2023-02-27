@@ -366,11 +366,14 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
+        fastapi_docs_path: Optional[str],
         deployer_job_id: Union[str, bytes],
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
+        if fastapi_docs_path is not None:
+            assert fastapi_docs_path.startswith("/")
 
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -447,8 +450,6 @@ class ServeController:
             name, deployment_args_list
         )
         self.delete_deployments(deployments_to_delete)
-        for args in deployment_args_list:
-            del args["fastapi_docs_path"]
         return [self.deploy(**args) for args in deployment_args_list]
 
     def deploy_apps(
