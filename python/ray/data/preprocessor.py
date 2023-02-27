@@ -69,9 +69,15 @@ class Preprocessor(abc.ABC):
 
     def transform_stats(self) -> Optional[str]:
         """Return Dataset stats for the most recent transform call, if any."""
-        if not hasattr(self, "_transform_stats"):
-            return None
-        return self._transform_stats
+
+        raise DeprecationWarning(
+            "`preprocessor.transform_stats()` is no longer supported in Ray 2.4 "
+            "with Datasets now lazy by default. The stats for the Dataset "
+            "can instead be accessed directly from the transformed dataset "
+            "(`ds.stats()`), or can be viewed in the ray-data.log "
+            "file saved in the Ray logs directory "
+            "(defaults to /tmp/ray/session_{SESSION_ID}/logs/)."
+        )
 
     def fit(self, dataset: "Dataset") -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
@@ -141,8 +147,7 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        transformed_ds = self._transform(dataset).fully_executed()
-        self._transform_stats = transformed_ds.stats()
+        transformed_ds = self._transform(dataset)
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
