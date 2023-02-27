@@ -1,7 +1,8 @@
 import math
 from typing import List
 
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, BlockAccessor
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
@@ -191,4 +192,15 @@ def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetada
 def _split_block(
     b: ObjectRef[Block], left_size: int
 ) -> (ObjectRef[Block], ObjectRef[Block]):
-    raise NotImplementedError
+    split_single_block = cached_remote_fn(_split_single_block)
+    left, right = split_single_block.options(num_returns=2).remote(b, left_size)
+    return left, right
+
+
+def _split_single_block(b: Block, left_size: int) -> (Block, Block):
+    acc = BlockAccessor.for_block(b)
+    left = acc.slice(0, left_size)
+    right = acc.slice(left_size, acc.num_rows())
+    assert BlockAccessor.for_block(left).num_rows() == left_size
+    assert BlockAccessor.for_block(right).num_rows() == (acc.num_rows() - left_size)
+    return left, right
