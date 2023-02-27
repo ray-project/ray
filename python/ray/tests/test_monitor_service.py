@@ -131,6 +131,7 @@ def test_scheduling_status_pgs(monitor_stub):
         return True
 
     wait_for_condition(condition)
+    del pg
 
 
 def count_live_nodes():
