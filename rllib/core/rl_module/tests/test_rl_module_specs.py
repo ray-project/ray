@@ -17,6 +17,7 @@ from ray.rllib.core.testing.tf.bc_module import (
     BCTfRLModuleWithSharedGlobalEncoder,
     BCTfMultiAgentSpec,
 )
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModuleConfig
 
 MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 CUSTOM_MODULES = {
@@ -31,12 +32,12 @@ class BCRLModuleSpecCustom(SingleAgentRLModuleSpec):
 
     def build(self):
         # this handles all implementation details
-        config = {
-            "input_dim": self.observation_space.shape[0],
-            "hidden_dim": self.model_config["fcnet_hiddens"][0],
-            "output_dim": self.action_space.n,
-        }
-        return self.module_class(**config)
+        config = DiscreteBCTorchModuleConfig(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config=self.model_config,
+        )
+        return config.build(framework=self.framework)
 
 
 class TestRLModuleSpecs(unittest.TestCase):
@@ -64,6 +65,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                 observation_space=env.observation_space,
                 action_space=env.action_space,
                 model_config={"fcnet_hiddens": [64]},
+                framework="torch" if module_class == DiscreteBCTorchModule else "tf",
             )
             module = spec.build()
             self.assertIsInstance(module, module_class)
@@ -82,6 +84,9 @@ class TestRLModuleSpecs(unittest.TestCase):
                     observation_space=env.observation_space,
                     action_space=env.action_space,
                     model_config={"fcnet_hiddens": [32 * (i + 1)]},
+                    framework="torch"
+                    if module_class == DiscreteBCTorchModule
+                    else "tf",
                 )
 
             spec = MultiAgentRLModuleSpec(module_specs=module_specs)

@@ -48,6 +48,7 @@ class SingleAgentRLModuleSpec:
     observation_space: Optional["gym.Space"] = None
     action_space: Optional["gym.Space"] = None
     model_config: Optional[Dict[str, Any]] = None
+    framework: str = "torch"
 
     def build(self) -> "RLModule":
 

@@ -20,9 +20,12 @@ class DiscreteBCTorchModuleConfig(RLModuleConfig):
     model_config: Mapping[str, Any] = None
 
     def build(self, framework):
-        if framework != "torch":
-            raise ValueError("Only torch framework is supported")
-        DiscreteBCTorchModule(self)
+        if framework == "torch":
+            return DiscreteBCTorchModule(self)
+        else:
+            from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+
+            return DiscreteBCTFModule(self)
 
 
 class DiscreteBCTorchModule(TorchRLModule):

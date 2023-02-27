@@ -10,18 +10,20 @@ from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModuleConfig
 
 
 class DiscreteBCTFModule(TfRLModule):
     def __init__(
         self,
-        input_dim: int,
-        hidden_dim: int,
-        output_dim: int,
+        config: DiscreteBCTorchModuleConfig,
     ) -> None:
-        super().__init__(
-            input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim
-        )
+        super().__init__(config=config)
+        self.config = config
+        input_dim = config.observation_space.shape[0]
+        hidden_dim = config.model_config["fcnet_hiddens"][0]
+        output_dim = config.action_space.n
+
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))
@@ -81,14 +83,13 @@ class DiscreteBCTFModule(TfRLModule):
         *,
         model_config_dict: Mapping[str, Any],
     ) -> "DiscreteBCTFModule":
+        config = DiscreteBCTorchModuleConfig(
+            observation_space=observation_space,
+            action_space=action_space,
+            model_config=model_config_dict,
+        )
 
-        config = {
-            "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config_dict["fcnet_hiddens"][0],
-            "output_dim": action_space.n,
-        }
-
-        return cls(**config)
+        return cls(config)
 
 
 class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
