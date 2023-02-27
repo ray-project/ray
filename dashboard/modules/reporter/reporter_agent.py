@@ -907,10 +907,8 @@ class ReporterAgent(
             value=disk_io_speed_stats[3],
             tags={"ip": ip},
         )
-        used, free = 0, 0
-        for entry in stats["disk"].values():
-            used += entry.used
-            free += entry.free
+        used = stats["disk"]["/"].used
+        free = stats["disk"]["/"].free
         disk_utilization = float(used / (used + free)) * 100
         disk_usage_record = Record(
             gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags={"ip": ip}
