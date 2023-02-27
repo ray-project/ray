@@ -110,9 +110,6 @@ class MLPHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        self.input_dim = int(self.input_dim)
-        self.output_dim = int(self.output_dim)
-
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -244,7 +241,6 @@ class LSTMEncoderConfig(ModelConfig):
     See ModelConfig for usage details.
 
     Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
         hidden_dim: The size of the hidden layer.
         num_layers: The number of LSTM layers.
         batch_first: Wether the input is batch first or not.
@@ -257,10 +253,8 @@ class LSTMEncoderConfig(ModelConfig):
         get_tokenizer_config: A callable that takes a gym.Space and a dict and
             returns a ModelConfig to build tokenizers for observations, actions and
             other spaces that might be present in the view_requirements_dict.
-
     """
 
-    input_dim: int = None
     hidden_dim: int = None
     num_layers: int = None
     batch_first: bool = True
@@ -273,7 +267,17 @@ class LSTMEncoderConfig(ModelConfig):
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
-        self.input_dim = int(self.input_dim)
+        if (
+            self.get_tokenizer_config is not None
+            or self.view_requirements_dict is not None
+        ):
+            raise NotImplementedError(
+                "LSTMEncoderConfig does not support configuring LSTMs that encode "
+                "depending on view_requirements or have a custom tokenizer. "
+                "Therefore, this config expects `view_requirements_dict=None` and "
+                "`get_tokenizer_config=None`."
+            )
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 
