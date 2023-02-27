@@ -58,8 +58,14 @@ Supported Data Formats
 Batch Predictor
 ---------------
 
-Constructor
-~~~~~~~~~~~
+Constructor Options
+~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
+
+    batch_predictor.BatchPredictor
 
 .. autosummary::
     :toctree: doc/
