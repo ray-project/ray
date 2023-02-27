@@ -146,6 +146,7 @@ class WorkerSet:
             "num_cpus": self._remote_config.num_cpus_per_worker,
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
+            "max_num_worker_restarts": config.max_num_worker_restarts,
         }
 
         # See if we should use a custom RolloutWorker class for testing purpose.
