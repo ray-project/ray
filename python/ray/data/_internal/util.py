@@ -31,6 +31,8 @@ _EXAMPLE_SCHEME = "example"
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
+BYTES_COLUMN_NAME = "__bytes_value__"
+
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
     global _pyarrow_dataset
@@ -244,6 +246,11 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
 
 def _is_tensor_schema(column_names: List[str]):
     return column_names == [TENSOR_COLUMN_NAME]
+
+
+def _is_single_value_schema(column_names: List[str]):
+    """Returns True if the schema has only single value."""
+    return column_names == [TENSOR_COLUMN_NAME] or column_names == [BYTES_COLUMN_NAME]
 
 
 def _insert_doc_at_pattern(

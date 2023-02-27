@@ -8,7 +8,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import _is_tensor_schema
+from ray.data._internal.util import _is_single_value_schema, _is_tensor_schema
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
@@ -147,16 +147,17 @@ class TableBlockAccessor(BlockAccessor):
     def __init__(self, table: Any):
         self._table = table
 
-    def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
+    def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, Any]:
         row = self.slice(index, index + 1, copy=copy)
-        if self.is_tensor_wrapper():
-            row = self._build_tensor_row(row)
+        cols = self.column_names()
+        if _is_single_value_schema(cols):
+            row = self._build_single_value_row(row, cols[0])
         else:
             row = self.ROW_TYPE(row)
         return row
 
     @staticmethod
-    def _build_tensor_row(row: TableRow) -> np.ndarray:
+    def _build_single_value_row(row: TableRow) -> Any:
         raise NotImplementedError
 
     def to_default(self) -> Block:

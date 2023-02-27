@@ -139,15 +139,15 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.columns.tolist()
 
     @staticmethod
-    def _build_tensor_row(row: PandasRow) -> np.ndarray:
+    def _build_single_value_row(row: PandasRow, col_name: str) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        tensor = row[TENSOR_COLUMN_NAME].iloc[0]
-        if isinstance(tensor, TensorArrayElement):
+        element = row[col_name].iloc[0]
+        if col_name == TENSOR_COLUMN_NAME and isinstance(element, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
+            element = element.to_numpy()
+        return element
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]

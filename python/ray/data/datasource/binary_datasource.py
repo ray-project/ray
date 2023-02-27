@@ -1,12 +1,13 @@
 from io import BytesIO
 from typing import TYPE_CHECKING
+
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.util import BYTES_COLUMN_NAME
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
-
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
 
 
 @PublicAPI
@@ -22,16 +23,14 @@ class BinaryDatasource(FileBasedDatasource):
         [b"file_data", ...]
     """
 
-    _COLUMN_NAME = "bytes"
-
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         path, data = self._read_file_as_binary(f, path, **reader_args)
         include_paths = reader_args.pop("include_paths", False)
         builder = DelegatingBlockBuilder()
         if include_paths:
-            item = {self._COLUMN_NAME: data, "path": path}
+            item = {BYTES_COLUMN_NAME: data, "path": path}
         else:
-            item = {self._COLUMN_NAME: data}
+            item = {BYTES_COLUMN_NAME: data}
         builder.add(item)
         block = builder.build()
         return block
