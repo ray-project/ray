@@ -159,8 +159,9 @@ class Catalog:
                 output_activation=output_activation,
                 observation_space=observation_space,
                 action_space=action_space,
-                view_requirements_dict=view_requirements,
-                get_tokenizer_config=cls.get_tokenizer_config,
+                # TODO(Artur): Pass in actual view_requirements here
+                # view_requirements_dict=view_requirements,
+                # get_tokenizer_config=cls.get_tokenizer_config,
             )
         elif model_config_dict["use_attention"]:
             raise NotImplementedError

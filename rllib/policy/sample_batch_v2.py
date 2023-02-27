@@ -1048,7 +1048,7 @@ class SampleBatchV2(SampleBatch):
             stop_seq_len, stop_unpadded = self._slice_map[stop]
             start_padded = start_unpadded
             stop_padded = stop_unpadded
-            if self.zero_padded:
+            if self.zero_padded and self.max_seq_len is not None:
                 start_padded = start_seq_len * self.max_seq_len
                 stop_padded = stop_seq_len * self.max_seq_len
 

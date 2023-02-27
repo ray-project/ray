@@ -59,7 +59,7 @@ class ImpalaTfPolicyWithRLModule(
 
         seqs_len = train_batch.get(SampleBatch.SEQ_LENS)
         rollout_frag_or_episode_len = (
-            self.config["rollout_fragment_length"] if not seqs_len else None
+            self.config["rollout_fragment_length"] if seqs_len is None else None
         )
         drop_last = self.config["vtrace_drop_last_ts"]
 
