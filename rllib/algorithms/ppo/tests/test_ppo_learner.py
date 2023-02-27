@@ -1,19 +1,19 @@
-import ray
 import unittest
+
 import numpy as np
-import torch
 import tensorflow as tf
+import torch
 import tree  # pip install dm-tree
 
+import ray
 import ray.rllib.algorithms.ppo as ppo
-
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.test_utils import check, framework_iterator
-
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
+from ray.rllib.policy.rnn_sequencing import add_states_and_seq_lens_if_missing
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
@@ -89,6 +89,7 @@ class TestPPO(unittest.TestCase):
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
 
+            add_states_and_seq_lens_if_missing(policy.model, train_batch)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             algo_config = config.copy(copy_frozen=False)

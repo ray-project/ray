@@ -136,8 +136,8 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch):
-        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
-        batch = NestedDict(batch)
+        batch = NestedDict(batch.policy_batches)
+        batch = convert_to_torch_tensor(batch, device=self._device)
         return batch
 
     @override(Learner)
