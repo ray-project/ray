@@ -1,4 +1,13 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Union, Iterable, Iterator
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Union,
+    Iterable,
+    Iterator,
+)
 import struct
 
 import numpy as np
@@ -11,6 +20,7 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
 
 @PublicAPI(stability="alpha")
@@ -25,6 +35,8 @@ class TFRecordDatasource(FileBasedDatasource):
         import pyarrow as pa
         import tensorflow as tf
 
+        tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
+
         for record in _read_records(f, path):
             example = tf.train.Example()
             try:
@@ -36,13 +48,14 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pa.Table.from_pydict(_convert_example_to_dict(example))
+            yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
 
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        tf_schema: Optional["schema_pb2.Schema"] = None,
         **writer_args,
     ) -> None:
 
@@ -55,7 +68,7 @@ class TFRecordDatasource(FileBasedDatasource):
         # so we must iterate through the rows of the block,
         # serialize to tf.train.Example proto, and write to file.
 
-        examples = _convert_arrow_table_to_examples(arrow_table)
+        examples = _convert_arrow_table_to_examples(arrow_table, tf_schema)
 
         # Write each example to the arrow file in the TFRecord format.
         for example in examples:
@@ -64,15 +77,23 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
+    tf_schema: Optional["schema_pb2.Schema"],
 ) -> Dict[str, "pyarrow.Array"]:
     record = {}
     for feature_name, feature in example.features.feature.items():
-        record[feature_name] = _get_feature_value(feature)
+        schema_feature_type = None
+        if tf_schema is not None:
+            for schema_feature in tf_schema.feature:
+                if schema_feature.name == feature_name:
+                    schema_feature_type = schema_feature.type
+                    break
+        record[feature_name] = _get_feature_value(feature, schema_feature_type)
     return record
 
 
 def _convert_arrow_table_to_examples(
     arrow_table: "pyarrow.Table",
+    tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
 
@@ -82,7 +103,16 @@ def _convert_arrow_table_to_examples(
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
-            features[name] = _value_to_feature(arrow_table[name][i])
+            schema_feature_type = None
+            if tf_schema is not None:
+                for schema_feature in tf_schema.feature:
+                    if schema_feature.name == name:
+                        schema_feature_type = schema_feature.type
+                        break
+            features[name] = _value_to_feature(
+                arrow_table[name][i],
+                schema_feature_type,
+            )
 
         # Convert the dictionary to an Example proto.
         proto = tf.train.Example(features=tf.train.Features(feature=features))
@@ -92,25 +122,39 @@ def _convert_arrow_table_to_examples(
 
 def _get_feature_value(
     feature: "tf.train.Feature",
+    schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
 ) -> "pyarrow.Array":
     import pyarrow as pa
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
     values = (
-        feature.HasField("int64_list"),
-        feature.HasField("float_list"),
-        feature.HasField("bytes_list"),
+        feature.HasField("int64_list")
+        or schema_feature_type == schema_pb2.FeatureType.INT,
+        feature.HasField("float_list")
+        or schema_feature_type == schema_pb2.FeatureType.FLOAT,
+        feature.HasField("bytes_list")
+        or schema_feature_type == schema_pb2.FeatureType.BYTES,
     )
     # At most one of `bytes_list`, `float_list`, and `int64_list` contains data.
     # If none contain data, this indicates an empty feature value.
     assert sum(bool(value) for value in values) <= 1
 
-    if feature.HasField("bytes_list"):
+    if (
+        feature.HasField("bytes_list")
+        or schema_feature_type == schema_pb2.FeatureType.BYTES
+    ):
         value = feature.bytes_list.value
         type_ = pa.binary()
-    elif feature.HasField("float_list"):
+    elif (
+        feature.HasField("float_list")
+        or schema_feature_type == schema_pb2.FeatureType.FLOAT
+    ):
         value = feature.float_list.value
         type_ = pa.float32()
-    elif feature.HasField("int64_list"):
+    elif (
+        feature.HasField("int64_list")
+        or schema_feature_type == schema_pb2.FeatureType.INT
+    ):
         value = feature.int64_list.value
         type_ = pa.int64()
     else:
@@ -123,9 +167,10 @@ def _get_feature_value(
         # these single-value lists.
         value = value[0]
     else:
-        # If the feature value is empty, set the type to null for now
-        # to allow pyarrow to construct a valid Array; later, infer the
-        # type from other records which have non-empty values for the feature.
+        # If the feature value is empty and no type is specified in the user-provided
+        # schema, set the type to null for now to allow pyarrow to construct a valid
+        # Array; later, infer the type from other records which have non-empty values
+        # for the feature.
         if len(value) == 0:
             type_ = pa.null()
         type_ = pa.list_(type_)
@@ -133,10 +178,12 @@ def _get_feature_value(
 
 
 def _value_to_feature(
-    value: Union["pyarrow.Scalar", "pyarrow.Array"]
+    value: Union["pyarrow.Scalar", "pyarrow.Array"],
+    schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
 ) -> "tf.train.Feature":
     import tensorflow as tf
     import pyarrow as pa
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in
@@ -151,11 +198,20 @@ def _value_to_feature(
         else:
             value = [value]
 
-    if pa.types.is_integer(value_type):
+    if (
+        pa.types.is_integer(value_type)
+        or schema_feature_type == schema_pb2.FeatureType.INT
+    ):
         return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-    if pa.types.is_floating(value_type):
+    if (
+        pa.types.is_floating(value_type)
+        or schema_feature_type == schema_pb2.FeatureType.FLOAT
+    ):
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-    if pa.types.is_binary(value_type):
+    if (
+        pa.types.is_binary(value_type)
+        or schema_feature_type == schema_pb2.FeatureType.BYTES
+    ):
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(
