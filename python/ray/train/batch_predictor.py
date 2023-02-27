@@ -116,7 +116,10 @@ class BatchPredictor:
             min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
+                Set to 1 by default.
             num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+                Set to 0 by default. If you want to use GPUs for inference, please
+                specify this parameter.
             separate_gpu_stage: If using GPUs, specifies whether to execute GPU
                 processing in a separate stage (enabled by default). This avoids
                 running expensive preprocessing steps on GPU workers.

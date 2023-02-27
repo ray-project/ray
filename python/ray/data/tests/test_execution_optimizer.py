@@ -13,6 +13,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     MapBatches,
@@ -497,10 +498,27 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     assert name in ds.stats()
 
 
-def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
+def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
     assert "DoRead->Write" in ds._write_ds.stats()
+
+
+def test_write_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    datasource = ParquetDatasource()
+    read_op = Read(datasource)
+    op = Write(
+        read_op,
+        datasource,
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Write"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
