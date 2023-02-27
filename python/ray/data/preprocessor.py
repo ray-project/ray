@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict, Any
 
 from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
@@ -67,6 +67,7 @@ class Preprocessor(abc.ABC):
         else:
             return Preprocessor.FitStatus.NOT_FITTED
 
+    @Deprecated
     def transform_stats(self) -> Optional[str]:
         """Return Dataset stats for the most recent transform call, if any."""
 
