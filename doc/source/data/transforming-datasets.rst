@@ -128,7 +128,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 
 .. tabbed:: "Generator UDFs"
 
-  UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful UDFs return large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+  UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
 
   .. warning::
     When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Dataset.flat_map>` API and not the :meth:`.map() <ray.data.Dataset.map>` API.
