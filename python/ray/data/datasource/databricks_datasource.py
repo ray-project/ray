@@ -43,8 +43,8 @@ class DatabricksDatasource(DBAPI2Datasource):
             prepare_copyinto = "CREATE TABLE IF NOT EXISTS {table}",
             all_complete_copyinto = """
                 COPY INTO {table} 
-                FROM '{stage_uri}/'
-                {credential}    
+                FROM '{stage_uri}'
+                WITH ( {with_clause} )    
                 FILEFORMAT = PARQUET
                 PATTERN = '*.parquet'
                 FORMAT_OPTIONS (
@@ -68,7 +68,7 @@ class DatabricksDatasource(DBAPI2Datasource):
             write_modes = ['copyinto', 'direct', 'stage'],
             read_queries=read_queries,
             write_queries={**DatabricksDatasource.WRITE_QUERIES, **write_queries},
-            template_keys = ['stage_uri', 'credential'] + template_keys
+            template_keys = ['stage_uri', 'with_clause'] + template_keys
         )
     
     def write(self,
@@ -77,25 +77,18 @@ class DatabricksDatasource(DBAPI2Datasource):
         table: str,
         mode: str = 'copyinto',
         stage_uri: Optional[str] = None,
-        credential: Optional[Union[str, Dict[str,str]]] = None,
+        with_clause: str = '',
         **kwargs
     ) -> List[DatabaseBlockWriter]:
         if mode == 'copyinto':
             if not stage_uri:
                 raise ValueError('copyinto mode requires a stage_uri')
-             
-            if credential is not None:
-                if isinstance(credential, str):
-                    credential = f" WITH ( CREDENTIAL `{credential}` ) "
-                else:
-                    credential = ' WITH ( CREDENTIAL (' + ','.join(f"'{k}' = '{v}'" for k,v in credential.items()) + ')) '
-              
         return super().write(
             blocks,
             ctx,
             table=table,
             mode=mode,
             stage_uri=stage_uri,
-            credential=credential,
+            with_clause=with_clause,
             **kwargs        
         )

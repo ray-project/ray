@@ -188,6 +188,98 @@ the :py:class:`~ray.data.datasource.database.DBAPI2Datasource` and the
 and specify custom queries. See the :py:class:`~ray.data.datasource.database.DBAPI2Datasource` 
 API documentation for more details.
 
+---------------
+From Databricks
+---------------
+To take advantage of optimisations to read from and write to Databricks, use the 
+:py:class:`~ray.data.read_databricks` and :py:class:`~ray.data.Dataset.write_databricks` methods.
+
+Connection properties
+=====================
+The minimal required connection properties for Databricks are `user`, `password`, `account` and 
+`warehouse`. To use API keys instead of `password`, functionality to load Snowflake API keys is 
+also provided. API keys can be loaded from a file specified by the `private_key_file` 
+property, or can be passed directly via the `private_key` property. 
+If the key is password protected, the password can be given via the `pk_password` property.  
+Optional properties like database and schema can also be provided at construction or be included 
+in the fully specified table name of format `db.schema.table` when calling read or write methods.
+
+.. code-block:: python
+    import os
+    # read login properties from environment
+    prefix = 'DATABRICKS_'
+    login_props = {
+        key.replace(prefix,'').lower(): value 
+        for key,value in os.environ.items() if prefix in key
+    }
+
+Reading
+===================================
+Ray data uses the `Databricks Connect API`_ `execute`_ method to parallelize 
+loading the results of queries across the cluster using `LIMIT` and `OFFSET`.
+
+.. image:: images/snowflake_read_table.png
+  :width: 200
+
+.. warning::
+  The `get_result_batches`_ has no way to specify the number of batches returned. Setting parallism 
+  during :py:class:`~ray.data.read_snowflake` will have no affect on the number of read tasks.
+
+The code below will read in a sample customer table from the Snowflake sample database.
+
+.. code-block:: python
+  from ray.data import read_snowflake
+
+  # read entire customer table
+  ds = read_snowflake(connect_props, table='customer`)
+
+  # query specific columns with a weher clause
+  ds = read_snowflake(
+    connect_props, 
+    query='SELECT c_acctbal, c_mktsegment FROM customer WHERE c_acctbal < 0`
+  )
+
+Additional read parameters
+==========================
+The native `Snowflake Python API`_  arguments are also available when reading. 
+The `timeout` and `params` arguments may be used in the 
+ method.
+
+.. code-block:: python
+    ds = read_snowflake(
+      connect_props, 
+      query='SELECT c_acctbal, c_mktsegment FROM customer WHERE c_acctbal < ?`,
+      params = [0],
+      timeout = 100
+    )
+
+Writing
+=======
+Ray data uses the `Snowflake Python API`_  `write_pandas`_ method to write Ray datasets to 
+Snowflake tables. Each partition in the Ray dataset will call this method in parallel. 
+`write_pandas`_ method will write data to a Snowflake stage, and then upon successful 
+write to the stage, copy the data into the destination table.
+
+.. image:: images/snowflake_write_table.png)
+  :width: 200
+
+.. code-block:: python
+    ds.write_snowflake(connect_props, table='my_db.my_schema.my_table')
+
+Additional write parameters
+===========================
+The native `Snowflake Python API`_  arguments are also available from the `write_pandas`_ method.
+- ``auto_create_table``: When true, will automatically create a table with corresponding columns for each column in the passed in DataFrame. The table will not be created if it already exists
+- ``overwrite``: When true, and if auto_create_table is true, then it drops the table. Otherwise, it truncates the table. In both cases it will replace the existing contents of the table with that of the passed in Pandas DataFrame.
+- ``table_type``: The table type of to-be-created table. 
+The supported table types include ``temp``/``temporary`` and ``transient``. 
+Empty means permanent table as per SQL convention.
+
+In the example below, we use the `auto_create_table` parameter to create the output table before writing.
+
+.. code-block:: python
+    ds.write_datasource(table='my_db.my_schema.my_table', auto_create_table=True)
+
 --------------
 From Snowflake
 --------------

@@ -393,6 +393,8 @@ def read_dbapi2(
         connect_properties: The connection propertiesto pass to the DB API 2 connect function.
         table: The name of the table to read from. Either table or query must be specified.
         query: The SQL query to read results from. Either table or query must be specified.
+        mode: The read mode. 'partition' will use limit/offfset to read in parallel. This is the default mode.
+        'direct' will use a single partition and query.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the available partitioning of the datasource. If set to -1,
             parallelism will be automatically chosen based on the available cluster
@@ -451,9 +453,11 @@ def read_databricks(
             
     Args:
         connect_properties: The connection propertiesto pass to the DB API 2 connect function.
-        databricks_args: Additional args to pass to the Databricks query function.
         table: The name of the table to read from. Either table or query must be specified.
         query: The SQL query to read results from. Either table or query must be specified.
+        mode: The read mode. 'partition' will use limit/offfset to read in parallel. 
+            This is the default mode.
+            'direct' will use a single partition and query.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the available partitioning of the datasource. If set to -1,
             parallelism will be automatically chosen based on the available cluster
@@ -482,6 +486,7 @@ def read_snowflake(
     *,
     table: Optional[str] = None,
     query: Optional[str] = None,
+    mode: str = 'partition',
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **snowflake_kwargs,
@@ -513,6 +518,10 @@ def read_snowflake(
         snowflake_args: Additional args to pass to the Snowflake query function.
         table: The name of the table to read from. Either table or query must be specified.
         query: The SQL query to read results from. Either table or query must be specified.
+        mode: The read mode. 'resultbatch' will use Snowflake result batches to read in parallel. 
+            This is the default mode.
+            'partition' will use limit/offfset to read in parallel.
+            'direct' will use a single partition and query.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the available partitioning of the datasource. If set to -1,
             parallelism will be automatically chosen based on the available cluster

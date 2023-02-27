@@ -604,7 +604,7 @@ class DatabaseDatasource(Datasource, ABC):
                     writers[0].all_complete(connection)
                 except Exception as e:
                     for writer in writers:
-                        writer.failed(connection)
+                        writer.failed(connection, e)
                     raise e
                 finally:
                     for writer in writers:
@@ -615,7 +615,7 @@ class DatabaseDatasource(Datasource, ABC):
         if len(writers) > 0:
             with self.connector as connection:
                 for writer in writers:
-                    writer.failed(connection)
+                    writer.failed(connection, error)
 
                 for writer in writers:
                     writer.cleanup(connection)
