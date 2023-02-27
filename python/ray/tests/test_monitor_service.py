@@ -113,7 +113,9 @@ def test_scheduling_status_actors(monitor_stub):
 
 
 def test_scheduling_status_pgs(monitor_stub):
-    pg = ray.util.placement_group([{"CPU": 0.1, "GPU": 1}, {"custom": 10}], strategy="STRICT_PACK")
+    pg = ray.util.placement_group(
+        [{"CPU": 0.1, "GPU": 1}, {"custom": 10}], strategy="STRICT_PACK"
+    )
 
     def condition():
         request = monitor_pb2.GetSchedulingStatusRequest()
