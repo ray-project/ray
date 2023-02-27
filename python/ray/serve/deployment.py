@@ -44,7 +44,6 @@ class Deployment:
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
         is_driver_deployment: Optional[bool] = False,
-        fastapi_docs_path: Optional[str] = None,
         _internal=False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -87,6 +86,15 @@ class Deployment:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
+
+        fastapi_docs_path = None
+        if (
+            inspect.isclass(func_or_class)
+            and hasattr(func_or_class, "__module__")
+            and func_or_class.__module__ == "ray.serve.api"
+            and hasattr(func_or_class, "__fastapi_docs_path__")
+        ):
+            fastapi_docs_path = func_or_class.__fastapi_docs_path__
 
         self._func_or_class = func_or_class
         self._name = name

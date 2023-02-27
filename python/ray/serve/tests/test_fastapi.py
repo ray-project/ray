@@ -27,6 +27,7 @@ from starlette.routing import Route
 import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
 from ray._private.test_utils import SignalActor
@@ -662,6 +663,28 @@ def test_fastapi_custom_serializers(serve_instance):
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == [0, 0]
+
+
+@pytest.mark.parametrize(
+    "docs_path,expected_path", [(None, "/docs"), ("/documentation", "/documentation")]
+)
+def test_fastapi_docs_path(
+    serve_instance: ServeControllerClient, docs_path, expected_path
+):
+    if docs_path:
+        app = FastAPI(docs_url=docs_path)
+    else:
+        app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Model:
+        @app.get("/{a}")
+        def func(a: int):
+            return {"result": a}
+
+    serve.run(Model.bind(), name="app1")
+    assert serve_instance.get_fastapi_docs_path("app1") == expected_path
 
 
 if __name__ == "__main__":

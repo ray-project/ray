@@ -416,7 +416,7 @@ class ServeControllerClient:
             )
             for status_bytes in statuses_bytes
         ]
-    
+
     @_ensure_connected
     def get_fastapi_docs_path(self, name: str):
         return ray.get(self._controller.get_fastapi_docs_path.remote(name))

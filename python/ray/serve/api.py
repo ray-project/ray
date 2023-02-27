@@ -385,15 +385,6 @@ def deployment(
     if is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
 
-    fastapi_docs_path = None
-    if (
-        inspect.isclass(_func_or_class)
-        and hasattr(_func_or_class, "__module__")
-        and _func_or_class.__module__ == "ray.serve.api"
-        and hasattr(_func_or_class, "__fastapi_docs_path__")
-    ):
-        fastapi_docs_path = _func_or_class.__fastapi_docs_path__
-
     config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -419,7 +410,6 @@ def deployment(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
             is_driver_deployment=is_driver_deployment,
-            fastapi_docs_path=fastapi_docs_path,
             _internal=True,
         )
 
