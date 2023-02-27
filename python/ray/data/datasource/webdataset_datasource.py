@@ -124,6 +124,8 @@ def default_decoder(sample: Dict[str, Any]):
     """A default decoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl.
+    These are the most common extensions used in webdataset.
+    For other extensions, users can provide their own decoder.
 
     Args:
         sample (Dict[str, Any]): sample, modified in place
@@ -168,6 +170,8 @@ def default_encoder(sample: Dict[str, Any]):
     """A default encoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl
+    These are the most common extensions used in webdataset.
+    For other extensions, users can provide their own encoder.
 
     Args:
         sample (Dict[str, Any]): sample
