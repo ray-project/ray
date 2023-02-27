@@ -14,9 +14,9 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air._internal.uri_utils import URI
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
-from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -194,7 +194,8 @@ class TrainableUtil:
 
         ``logdir`` is assumed to be a prefix of ``local_path``."""
         rel_local_path = os.path.relpath(local_path, logdir)
-        return os.path.join(remote_checkpoint_dir, rel_local_path)
+        uri = URI(remote_checkpoint_dir)
+        return str(uri / rel_local_path)
 
 
 @DeveloperAPI
@@ -523,7 +524,7 @@ def with_resources(
             @classmethod
             def default_resource_request(
                 cls, config: Dict[str, Any]
-            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            ) -> Optional[PlacementGroupFactory]:
                 if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
                     return pgf(config)
                 return pgf

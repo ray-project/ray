@@ -24,6 +24,8 @@ class BulkExecutor(Executor):
     """
 
     def __init__(self, options: ExecutionOptions):
+        # Bulk executor always preserves order.
+        options.preserve_order = True
         super().__init__(options)
         self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
         self._executed = False

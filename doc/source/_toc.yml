@@ -2,8 +2,12 @@ format: jb-book
 root: index
 parts:
   - caption: Ray
-    chapters:
+    chapters: 
       - file: ray-overview/index
+        title: "Overview"
+      - file: ray-overview/workloads
+        title: "ML Workloads with Ray"
+      - file: ray-overview/getting-started
         title: "Getting Started"
       - file: ray-overview/installation
         title: "Installation"
@@ -33,56 +37,7 @@ parts:
               - file: ray-core/examples/batch_training
               - file: ray-core/examples/automl_for_time_series
               - file: ray-core/examples/web-crawler
-          - file: ray-core/api
-
-      - file: cluster/getting-started
-        title: "Ray Clusters"
-        sections:
-          - file: cluster/key-concepts
-            title: Key Concepts
-          - file: cluster/kubernetes/index
-            title: Deploying on Kubernetes
-            sections:
-            - file: cluster/kubernetes/getting-started
-            - file: cluster/kubernetes/user-guides
-              sections:
-                - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
-                - file: cluster/kubernetes/user-guides/config.md
-                - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
-                - file: cluster/kubernetes/user-guides/logging.md
-                - file: cluster/kubernetes/user-guides/gpu.md
-                - file: cluster/kubernetes/user-guides/experimental.md
-                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
-            - file: cluster/kubernetes/examples
-              sections:
-                - file: cluster/kubernetes/examples/ml-example.md
-                - file: cluster/kubernetes/examples/gpu-training-example.md
-            - file: cluster/kubernetes/references
-          - file: cluster/vms/index
-            title: Deploying on VMs
-            sections:
-            - file: cluster/vms/getting-started
-            - file: cluster/vms/user-guides/index
-              title: User Guides
-              sections:
-              - file: cluster/vms/user-guides/launching-clusters/index
-              - file: cluster/vms/user-guides/large-cluster-best-practices
-              - file: cluster/vms/user-guides/configuring-autoscaling
-              - file: cluster/vms/user-guides/community/index
-                title: Community-supported Cluster Managers
-                sections:
-                - file: cluster/vms/user-guides/community/yarn
-                - file: cluster/vms/user-guides/community/slurm
-                - file: cluster/vms/user-guides/community/lsf
-            - file: cluster/vms/examples/index
-              title: Examples
-              sections:
-              - file: cluster/vms/examples/ml-example
-            - file: cluster/vms/references/index
-          - file: cluster/running-applications/index
-            title: Applications Guide
-          - file: cluster/faq
-          - file: cluster/package-overview
+          - file: ray-core/api/index
 
       - file: ray-air/getting-started
         title: "Ray AI Runtime (AIR)"
@@ -118,7 +73,8 @@ parts:
               - file: ray-air/examples/automl_with_ray_air
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
-          - file: ray-air/package-ref
+              - file: ray-air/examples/pytorch_resnet_batch_prediction
+          - file: ray-air/api/api
           - file: ray-air/benchmarks
 
       - file: data/dataset
@@ -141,6 +97,7 @@ parts:
               - file: data/random-access
           - file: data/faq
           - file: data/api/api
+          - file: data/glossary
           - file: data/integrations
 
       - file: train/train
@@ -181,7 +138,7 @@ parts:
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
                 title: "Torch Data Prefetching Benchmark"
           - file: train/faq
-          - file: train/api
+          - file: train/api/api
 
       - file: tune/index
         title: Ray Tune
@@ -195,7 +152,6 @@ parts:
               - file: tune/tutorials/tune-run
                 title: "Running Basic Experiments"
               - file: tune/tutorials/tune-output
-                title: "Logging Tune Runs"
               - file: tune/tutorials/tune-resources
                 title: "Setting Trial Resources"
               - file: tune/tutorials/tune-search-spaces
@@ -359,11 +315,57 @@ parts:
               - file: workflows/advanced
               - file: workflows/api/api
 
+      - file: cluster/getting-started
+        title: "Ray Clusters"
+        sections:
+          - file: cluster/key-concepts
+            title: Key Concepts
+          - file: cluster/kubernetes/index
+            title: Deploying on Kubernetes
+            sections:
+            - file: cluster/kubernetes/getting-started
+            - file: cluster/kubernetes/user-guides
+              sections:
+                - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+                - file: cluster/kubernetes/user-guides/config.md
+                - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                - file: cluster/kubernetes/user-guides/logging.md
+                - file: cluster/kubernetes/user-guides/gpu.md
+                - file: cluster/kubernetes/user-guides/experimental.md
+                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
+            - file: cluster/kubernetes/examples
+              sections:
+                - file: cluster/kubernetes/examples/ml-example.md
+                - file: cluster/kubernetes/examples/gpu-training-example.md
+            - file: cluster/kubernetes/references
+          - file: cluster/vms/index
+            title: Deploying on VMs
+            sections:
+            - file: cluster/vms/getting-started
+            - file: cluster/vms/user-guides/index
+              title: User Guides
+              sections:
+              - file: cluster/vms/user-guides/launching-clusters/index
+              - file: cluster/vms/user-guides/large-cluster-best-practices
+              - file: cluster/vms/user-guides/configuring-autoscaling
+              - file: cluster/vms/user-guides/community/index
+                title: Community-supported Cluster Managers
+                sections:
+                - file: cluster/vms/user-guides/community/yarn
+                - file: cluster/vms/user-guides/community/slurm
+                - file: cluster/vms/user-guides/community/lsf
+            - file: cluster/vms/examples/index
+              title: Examples
+              sections:
+              - file: cluster/vms/examples/ml-example
+            - file: cluster/vms/references/index
+          - file: cluster/running-applications/index
+            title: Applications Guide
+          - file: cluster/faq
+          - file: cluster/package-overview
+
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
-        sections:
-          - file: ray-observability/index
-            title: Tools
 
       - file: ray-references/api
         title: References

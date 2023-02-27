@@ -19,8 +19,13 @@ Callback Initialization and Setup
 .. currentmodule:: ray.tune
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Callback
+
+.. autosummary::
+    :toctree: doc/
+
     Callback.setup
 
 

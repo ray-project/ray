@@ -7,11 +7,13 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.operators.all_to_all_operator import (
+    Aggregate,
     RandomShuffle,
     Repartition,
     Sort,
 )
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     MapBatches,
@@ -19,6 +21,7 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
 )
 from ray.data._internal.planner.planner import Planner
+from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.data.tests.conftest import *  # noqa
@@ -495,6 +498,29 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     assert name in ds.stats()
 
 
+def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
+    ds = ray.data.range(10, parallelism=2)
+    ds.write_csv(tmp_path)
+    assert "DoRead->Write" in ds._write_ds.stats()
+
+
+def test_write_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    datasource = ParquetDatasource()
+    read_op = Read(datasource)
+    op = Write(
+        read_op,
+        datasource,
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Write"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     read_op = Read(ParquetDatasource())
@@ -537,6 +563,53 @@ def test_sort_e2e(
     # r2 = ds2.select_columns(["one"]).take_all()
     # assert [d["one"] for d in r1] == list(range(100))
     # assert [d["one"] for d in r2] == list(reversed(range(100)))
+
+
+def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = Aggregate(
+        read_op,
+        key="col1",
+        aggs=[Count()],
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Aggregate"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_aggregate_e2e(
+    ray_start_regular_shared,
+    enable_optimizer,
+    use_push_based_shuffle,
+):
+    ds = ray.data.range_table(100, parallelism=4)
+    ds = ds.groupby("value").count()
+    assert ds.count() == 100
+    for idx, row in enumerate(ds.sort("value").iter_rows()):
+        assert row.as_pydict() == {"value": idx, "count()": 1}
+
+
+def test_streaming_executor(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(100, parallelism=4)
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.filter(lambda x: x > 0)
+    ds = ds.random_shuffle()
+    ds = ds.map_batches(lambda x: x)
+
+    result = []
+    for batch in ds.iter_batches(batch_size=3):
+        assert len(batch) == 3, batch
+        result.extend(batch)
+    assert sorted(result) == list(range(1, 100)), result
 
 
 if __name__ == "__main__":

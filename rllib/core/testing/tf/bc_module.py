@@ -1,10 +1,10 @@
 import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, ModuleID
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -134,7 +134,9 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
 
 class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
-    def build(self):
+    def build(self, module_id: Optional[ModuleID] = None):
+
+        self._check_before_build()
         # constructing the global encoder based on the observation_space of the first
         # module
         module_spec = next(iter(self.module_specs.values()))
@@ -148,6 +150,14 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
             ]
         )
 
+        if module_id:
+            return module_spec.module_class(
+                encoder=shared_encoder,
+                local_dim=module_spec.observation_space["local"].shape[0],
+                hidden_dim=hidden_dim,
+                action_dim=module_spec.action_space.n,
+            )
+
         rl_modules = {}
         for module_id, module_spec in self.module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
@@ -157,4 +167,4 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
                 action_dim=module_spec.action_space.n,
             )
 
-        return self.module_class(rl_modules)
+        return self.marl_module_class(rl_modules)

@@ -84,9 +84,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                     model_config={"fcnet_hiddens": [32 * (i + 1)]},
                 )
 
-            spec = MultiAgentRLModuleSpec(
-                module_class=MultiAgentRLModule, module_specs=module_specs
-            )
+            spec = MultiAgentRLModuleSpec(module_specs=module_specs)
             module = spec.build()
             self.assertIsInstance(module, MultiAgentRLModule)
 
@@ -103,7 +101,7 @@ class TestRLModuleSpecs(unittest.TestCase):
             module_cls = CUSTOM_MODULES[fw]
 
             spec = spec_cls(
-                module_class=MultiAgentRLModule,
+                marl_module_class=MultiAgentRLModule,
                 module_specs={
                     "agent_1": SingleAgentRLModuleSpec(
                         module_class=module_cls,

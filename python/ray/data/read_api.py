@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
@@ -93,25 +92,35 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
+    import builtins
+
+    if parallelism == 0:
+        raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
     detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DatasetContext.get_current(),
     )
-    block_size = max(
-        1,
-        len(items) // detected_parallelism,
-    )
+    # Truncate parallelism to number of items to avoid empty blocks.
+    detected_parallelism = min(len(items), detected_parallelism)
 
+    if detected_parallelism > 0:
+        block_size, remainder = divmod(len(items), detected_parallelism)
+    else:
+        block_size, remainder = 0, 0
+    # NOTE: We need to explicitly use the builtins range since we override range below,
+    # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
-    i = 0
-    while i < len(items):
+    for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        for item in items[i : i + block_size]:
-            builder.add(item)
+        # Evenly distribute remainder across block slices while preserving record order.
+        block_start = i * block_size + min(i, remainder)
+        block_end = (i + 1) * block_size + min(i + 1, remainder)
+        for j in builtins.range(block_start, block_end):
+            builder.add(items[j])
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
@@ -119,7 +128,6 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
                 input_files=None, exec_stats=stats.build()
             )
         )
-        i += block_size
 
     return Dataset(
         ExecutionPlan(
@@ -279,8 +287,7 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    # TODO(ekl) remove this feature flag.
-    force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    force_local = False
     cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
@@ -1049,6 +1056,22 @@ def read_tfrecords(
            length  width    species
         0     5.1    3.5  b'setosa'
 
+        We can also read compressed TFRecord files which uses one of the
+        `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
+
+        >>> compressed_path = os.path.join(tempfile.gettempdir(), "data_compressed.tfrecords")
+        >>> options = tf.io.TFRecordOptions(compression_type="GZIP") # "ZLIB" also supported by TensorFlow
+        >>> with tf.io.TFRecordWriter(path=compressed_path, options=options) as writer:
+        ...     writer.write(example.SerializeToString())
+
+        >>> ds = ray.data.read_tfrecords(
+        ...     [compressed_path],
+        ...     arrow_open_stream_args={"compression": "gzip"},
+        ... )
+        >>> ds.to_pandas()  # doctest: +SKIP
+           length  width    species
+        0     5.1    3.5  b'setosa'
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -1056,7 +1079,9 @@ def read_tfrecords(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files in the dataset.
         arrow_open_stream_args: Key-word arguments passed to
-            ``pyarrow.fs.FileSystem.open_input_stream``.
+            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
+            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used

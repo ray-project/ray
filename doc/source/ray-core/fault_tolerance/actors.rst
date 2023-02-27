@@ -24,7 +24,7 @@ After the specified number of restarts, subsequent actor methods will
 raise a ``RayActorError``.
 
 By default, actor tasks execute with at-most-once semantics
-(``max_task_retries=0`` in the ``@ray.remote`` :ref:`decorator <ray-remote-ref>`). This means that if an
+(``max_task_retries=0`` in the ``@ray.remote`` :func:`decorator <ray.remote>`). This means that if an
 actor task is submitted to an actor that is unreachable, Ray will report the
 error with ``RayActorError``, a Python-level exception that is thrown when
 ``ray.get`` is called on the future returned by the task. Note that this
