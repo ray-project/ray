@@ -3,7 +3,6 @@ import itertools
 import logging
 import sys
 import time
-import uuid
 import html
 import os
 from typing import (
@@ -2609,20 +2608,20 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
         )
-    
-    @ConsumptionAPI 
+
+    @ConsumptionAPI
     def write_dbapi2(
         self,
         connect_fn: Callable,
-        connect_properties: Dict[str, Any] = {},
+        connect_properties: Dict[str, Any] = None,
         *,
         table: Optional[str] = None,
-        mode: str = 'direct',
+        mode: str = "direct",
         ray_remote_args: Dict[str, Any] = None,
-        **dbapi2_kwargs: Dict[str,Any]
+        **dbapi2_kwargs: Dict[str, Any],
     ) -> None:
         """Write the dataset to a Python DB API 2 datasource.
-        
+
         Examples:
             >>> import ray
             >>> from sqlite3 import connect
@@ -2634,20 +2633,22 @@ class Dataset(Generic[T]):
             >>>     dict(user='MY_USER', password='MY_PASSWORD'), # doctest: +SKIP
             >>>     table="mydatabase.myschema.mytable", # doctest: +SKIP
             >>> ) # doctest: +SKIP
-            
+
         Args:
             connect_fn: The DB API 2 compliant connect function.
-            connect_properties: The DB API 2 connection properties. For more details see the connection
-            properties documentation for yoru database.
+            connect_properties: The DB API 2 connection properties. For more details see
+                the connection properties documentation for yoru database.
             table: The name of table to write to.
-            mode: The write mode. The 'direct' mode will use 'INSERT INTO' statements with string values 
-                to insert data directly into the table. The 'stage' mode will insert each partition 
-                into a staging table using 'INSERT INTO' and then copy the staging table data
-                into the destination table.
+            mode: The write mode. The 'direct' mode will use 'INSERT INTO' statements
+                with string values to insert data directly into the table. The 'stage'
+                mode will insert each partition into a staging table using 'INSERT INTO'
+                and then copy the staging table data into the destination table.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             dbapi2_kwargs: Kwargs to pass to the underlying DBA API 2 execute method.
         """
         from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource
+
+        connect_properties = connect_properties or {}
         connector = DBAPI2Connector(connect_fn, **connect_properties)
         datasource = DBAPI2Datasource(connector)
         self.write_datasource(
@@ -2655,110 +2656,134 @@ class Dataset(Generic[T]):
             table=table,
             mode=mode,
             ray_remote_args=ray_remote_args,
-            **dbapi2_kwargs
+            **dbapi2_kwargs,
         )
-    
+
     @ConsumptionAPI
     def write_databricks(
         self,
-        connect_properties: Dict[str, Any] = {},
+        connect_properties: Dict[str, Any] = None,
         *,
         table: Optional[str] = None,
-        mode: str = 'copyinto',
+        mode: str = "copyinto",
         stage_uri: Optional[str] = None,
-        with_clause: str = '',
+        with_clause: str = None,
         ray_remote_args: Dict[str, Any] = None,
-        parquet_kwargs: Dict[str,Any] = {},
-        **databricks_kwargs: Dict[str,Any]
-    ) -> None: 
+        parquet_kwargs: Dict[str, Any] = None,
+        **databricks_kwargs: Dict[str, Any],
+    ) -> None:
         """Write the dataset to a Databricks SQL datasource.
-        
+
         Examples:
             >>> import ray
             >>> import pandas as pd
-            >>> rows = [{"name": f"Databricks test {key}", "key": key} for key in range(4)]
+            >>> rows = [
+            >>>     {"name": f"test {key}", "key": key} for key in range(4)]
             >>> ds = ray.data.from_pandas(pd.DataFrame(rows))
             >>> ds.write_databricks( # doctest: +SKIP
-            >>>     dict(user='MY_USER', password='MY_PASSWORD'), # # doctest: +SKIP
+            >>>     dict(user='MY_USER', password='MY_PASS'), # doctest: +SKIP
             >>>     table="mydatabase.myschema.mytable", # doctest: +SKIP
             >>>     stage_uri='s3://mybucket/stage_data', # doctest: +SKIP
-            >>>     with_clause='CREDENTIAL ( `SHBDJHSJDHJS...SJGDHJG` )' # doctest: +SKIP
+            >>>     with_clause='CREDENTIAL ( `SGH...DHJG` )' # doctest: +SKIP
             >>> ) # doctest: +SKIP
-            
+
         Args:
-            connect_properties: The Databricks connection properties. For more details see the
-            [Databricks documentation](https://docs.databricks.com/dev-tools/python-sql-connector.html#get-started).
+            connect_properties: The Databricks connection properties.
+            For more details see the
+            [Databricks documentation]
+            (https://docs.databricks.com/dev-tools/python-sql-connector.html#get-started).
             database: The name of the database. This database must exist otherwise
                 ValueError will be raised.
             table: The name of table to write to.
-            mode: The write mode. 'copyinto' stages data as parquet files into cloud storage before executing a copy into 
-                query. 'copyinto' requires an intermediate stage_uri pointing to a 
-                cloud storage location such as gcs or s3 that is accessible both to databricks and the ray cluster. 
-                This mode is recommended for any significantly large dataset size, as it efficiently writes parquet files to cloud strorage.  
-                The 'direct' mode will use 'INSERT INTO' statements with string values to insert data directly into the table. Mode
-                'stage' will insert each partition into a staging table using 'INSERT INTO' and then copy the staging tables
+            mode: The write mode. 'copyinto' stages data as parquet files into cloud
+                storage before executing a copy into query. 'copyinto' requires an
+                intermediate stage_uri pointing to a cloud storage location such as
+                gcs or s3 that is accessible both to databricks and the ray cluster.
+                This mode is recommended for any significantly large dataset size, as
+                it efficiently writes parquet files to cloud storage. The 'direct' mode
+                will use 'INSERT INTO' statements with string values to insert data
+                directly into the table. Mode 'stage' will insert each partition into
+                a staging table using 'INSERT INTO' and then copy the staging tables
                 into the destination table.
-            stage_uri: The URI of the cloud staging location. This is the same parameter that is used by write_parquet. 
-            with_clause: The  'with_clause' is added to the 'COPY_INTO' statement and can be used to add credential info.
-            parquet_kwargs: Additional kwargs that will be passed to the write_parquet method.
-            credential: The credential used to access the cloud storage using unity catalog. For more information
-            on how to configure cloud storage, see [How do you configure cloud object storage for Databricks?
-](https://docs.databricks.com/storage/index.html#how-do-you-configure-cloud-object-storage-for-databricks)
+            stage_uri: The URI of the cloud staging location. This is the same parameter
+                that is used by write_parquet.
+            with_clause: The  'with_clause' is added to the 'COPY_INTO' statement and
+                can be used to add credential info.
+            parquet_kwargs: Additional kwargs that will be passed to the write_parquet
+                method.
+            credential: The credential used to access the cloud storage using unity
+                catalog. For more information
+                on how to configure cloud storage, see
+                [Configure cloud object storage for Databricks]
+                (https://docs.databricks.com/storage/index.html#how-do-you-configure-cloud-object-storage-for-databricks)
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            databricks_kwargs: Kwargs to pass to the underlying Databricks SQL execute method.
+            databricks_kwargs: Kwargs to pass to the underlying Databricks SQL
+                execute method.
         """
         from ray.data.datasource import DatabricksConnector, DatabricksDatasource
+
+        connect_properties = connect_properties or {}
         connector = DatabricksConnector(**connect_properties)
         datasource = DatabricksDatasource(connector)
         stage_path = os.path.join(stage_uri, self._uuid)
-        if mode == 'copyinto':
-            self.write_parquet(stage_path, ray_remote_args=ray_remote_args, **parquet_kwargs)
-        
+        parquet_kwargs = parquet_kwargs or {}
+        if mode == "copyinto":
+            self.write_parquet(
+                stage_path, ray_remote_args=ray_remote_args, **parquet_kwargs
+            )
+
+        with_clause = with_clause or ""
         self.write_datasource(
             datasource,
             table=table,
             mode=mode,
-            with_clause = with_clause,
-            stage_uri=stage_path+'/',
+            with_clause=with_clause,
+            stage_uri=stage_path + "/",
             ray_remote_args=ray_remote_args,
-            **databricks_kwargs
+            **databricks_kwargs,
         )
- 
+
     @ConsumptionAPI
     def write_snowflake(
         self,
-        connect_properties: Dict[str, Any] = {},
+        connect_properties: Dict[str, Any] = None,
         *,
         table: Optional[str] = None,
-        mode: str = 'writepandas',
+        mode: str = "writepandas",
         ray_remote_args: Dict[str, Any] = None,
-        **snowflake_kwargs
+        **snowflake_kwargs,
     ) -> None:
         """Write the dataset to a Snowflake datasource.
-        
+
         Examples:
             >>> import ray
             >>> import pandas as pd
-            >>> rows = [{"name": f"Snowflake test {key}", "key": key} for key in range(4)]
+            >>> rows = [{"name": f"test {key}", "key": key} for key in range(4)]
             >>> ds = ray.data.from_pandas(pd.DataFrame(rows))
             >>> ds.write_snowflake( # doctest: +SKIP
             >>>     dict(user='MY_USER', password='MY_PASSWORD'), # doctest: +SKIP
             >>>     table="mydatabase.myschema.mytable", # doctest: +SKIP
             >>> ) # doctest: +SKIP
-            
+
         Args:
-            connect_properties: The Snowflake connection properties. For more details see the
-            [Snowflake documentation](https://docs.snowflake.com/en/user-guide/python-connector-example#connecting-to-snowflake).
+            connect_properties: The Snowflake connection properties. For more details
+            see the
+            [Snowflake documentation]
+            (https://docs.snowflake.com/en/user-guide/python-connector-example#connecting-to-snowflake).
             table: The name of table to write to.
-            mode: The write mode. 'write_pandas' uses the Snowflake `write_pandas` mehthod to write each partition into
-                SNowflake. This is the dafult mode. 
-                The 'direct' mode will use 'INSERT INTO' statements with string values to insert data directly into the table. Mode
-                'stage' will insert each partition into a staging table using 'INSERT INTO' and then copy the staging tables
-                into the destination table.
+            mode: The write mode. 'write_pandas' uses the Snowflake `write_pandas`
+                mehthod to write each partition into Snowflake. This is the dafult
+                mode. The 'direct' mode will use 'INSERT INTO' statements with string
+                values to insert data directly into the table. Mode 'stage' will insert
+                each partition into a staging table using 'INSERT INTO' and then copy
+                the staging tables into the destination table.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            snowflake_kwargs: Kwargs to pass to the underlying Snowflake write_pandas method.
+            snowflake_kwargs: Kwargs to pass to the underlying Snowflake write_pandas
+                method.
         """
-        from ray.data.datasource import SnowflakeConnector, SnowflakeDatasource 
+        from ray.data.datasource import SnowflakeConnector, SnowflakeDatasource
+
+        connect_properties = connect_properties or {}
         connector = SnowflakeConnector(**connect_properties)
         datasource = SnowflakeDatasource(connector)
         self.write_datasource(
@@ -2766,10 +2791,10 @@ class Dataset(Generic[T]):
             table=table,
             mode=mode,
             ray_remote_args=ray_remote_args,
-            **snowflake_kwargs
+            **snowflake_kwargs,
         )
-    
-    @ConsumptionAPI   
+
+    @ConsumptionAPI
     def write_mongo(
         self,
         uri: str,
