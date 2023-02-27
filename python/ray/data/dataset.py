@@ -41,8 +41,8 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapRows,
     MapBatches,
-    Write,
 )
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
@@ -1368,7 +1368,11 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks, metadata = _split_at_indices(block_list, indices)
+        blocks, metadata = _split_at_indices(
+            block_list.get_blocks_with_metadata(),
+            indices,
+            block_list._owned_by_consumer,
+        )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
@@ -2034,29 +2038,38 @@ class Dataset(Generic[T]):
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
 
-        The datasets must have identical num rows, block types, and block sizes,
-        e.g. one was produced from a :meth:`~.map` of another. For Arrow
-        blocks, the schema will be concatenated, and any duplicate column
-        names disambiguated with _1, _2, etc. suffixes.
+        The datasets must have the same number of rows. For tabular datasets, the
+        datasets will be concatenated horizontally; namely, their column sets will be
+        merged, and any duplicate column names disambiguated with _1, _2, etc. suffixes.
+
+        .. note::
+            The smaller of the two datasets will be repartitioned to align the number of
+            rows per block with the larger dataset.
 
         .. note::
             Zipped datasets are not lineage-serializable, i.e. they can not be used as a
             tunable hyperparameter in Ray Tune.
+
+        Examples:
+            >>> import ray
+            >>> ds1 = ray.data.range(5)
+            >>> ds2 = ray.data.range(5, parallelism=2).map(lambda x: x + 1)
+            >>> ds1.zip(ds2).take()
+            [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             other: The dataset to zip with on the right hand side.
 
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(5)
-            >>> ds.zip(ds).take()
-            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
-
         Returns:
-            A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
-            comes from the first dataset and v comes from the second.
+            If the inputs are simple datasets, this returns a ``Dataset`` containing
+            (k, v) pairs, where k comes from the first dataset and v comes from the
+            second.
+            If the inputs are tabular datasets, this returns a ``Dataset`` containing
+            the columns of the second dataset concatenated horizontally with the columns
+            of the first dataset, with duplicate column names disambiguated with _1, _2,
+            etc. suffixes.
         """
 
         plan = self._plan.with_stage(ZipStage(other))
@@ -2693,11 +2706,16 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if hasattr(datasource, "write"):
+        if type(datasource).write != Datasource.write:
+            write_fn = generate_write_fn(datasource, **write_args)
+
+            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+                return write_fn(blocks, ctx)
+
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    generate_write_fn(datasource, **write_args),
+                    write_fn_wrapper,
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
@@ -2825,7 +2843,7 @@ class Dataset(Generic[T]):
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
-            batch = BlockAccessor.for_block(batch)
+            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
                 yield row
 
@@ -2839,6 +2857,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -2890,6 +2909,7 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            collate_fn=_collate_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -2904,6 +2924,9 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2939,6 +2962,13 @@ class Dataset(Generic[T]):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
+            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
+                Potential use cases include collating along a dimension other than the
+                first, padding sequences of various lengths, or generally handling
+                batches of different length tensors. If not provided, the default
+                collate function is used which simply converts the batch of numpy
+                arrays to a batch of PyTorch tensors. This API is still experimental
+                and is subject to change.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2957,19 +2987,29 @@ class Dataset(Generic[T]):
             convert_ndarray_batch_to_torch_tensor_batch,
         )
 
-        for batch in self.iter_batches(
+        if collate_fn is not None and (dtypes is not None or device is not None):
+            raise ValueError(
+                "collate_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `collate_fn` will move the output Torch tensors to the"
+                "appropriate dtype and device."
+            )
+
+        if collate_fn is None:
+
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+                return convert_ndarray_batch_to_torch_tensor_batch(
+                    batch, dtypes=dtypes, device=device
+                )
+
+        yield from self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format="numpy",
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_torch_tensor_batch(
-                batch,
-                dtypes=dtypes,
-                device=device,
-            )
+            _collate_fn=collate_fn,
+        )
 
     @ConsumptionAPI
     def iter_tf_batches(
@@ -3968,7 +4008,9 @@ class Dataset(Generic[T]):
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
         manually triggered via ``.fully_executed()``.
         """
-        ds = Dataset(self._plan, self._epoch, lazy=True)
+        ds = Dataset(
+            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
+        )
         ds._set_uuid(self._get_uuid())
         return ds
 
