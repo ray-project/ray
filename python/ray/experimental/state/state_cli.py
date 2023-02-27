@@ -32,6 +32,7 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import RayStateApiException
 from ray.util.annotations import PublicAPI
+# from readable import Readable
 
 logger = logging.getLogger(__name__)
 
@@ -287,13 +288,6 @@ def format_get_api_output(
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    if schema == TaskState and format == AvailableFormat.YAML:
-        augmented_task_state_data = [
-            {("task_id: " + state["task_id"]): state} for state in state_data
-        ]
-        return output_with_format(
-            augmented_task_state_data, schema=schema, format=format
-        )
     return output_with_format(state_data, schema=schema, format=format)
 
 
@@ -305,6 +299,10 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
+    
+    # readable_factory = Readable({})
+    # state_data = readable_factory.format(state_data)
+
     if schema == TaskState and format == AvailableFormat.YAML:
         augmented_task_state_data = [
             {("task_id: " + state["task_id"]): state} for state in state_data
