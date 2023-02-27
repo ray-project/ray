@@ -50,6 +50,7 @@ parts:
               - file: ray-air/check-ingest
               - file: ray-air/tuner
               - file: ray-air/predictors
+              - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
           - file: ray-air/examples/index
