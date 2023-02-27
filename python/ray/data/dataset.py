@@ -92,6 +92,7 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
     DataBatch,
+    FlatMapUDF,
     KeyFn,
     RowUDF,
     T,
@@ -824,7 +825,7 @@ class Dataset(Generic[T]):
 
     def flat_map(
         self,
-        fn: RowUDF[T, U],
+        fn: FlatMapUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -844,7 +845,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record, or a class type
+            fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray

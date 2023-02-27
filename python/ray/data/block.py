@@ -129,8 +129,13 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    Callable[[T], Iterator[U]],
     "_CallableClassProtocol[T, U]",
+]
+
+
+FlatMapUDF = Union[
+    RowUDF,
+    Callable[[T], Iterator[U]],
 ]
 
 # A list of block references pending computation by a single task. For example,

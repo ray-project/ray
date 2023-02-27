@@ -323,14 +323,14 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
-def test_map_generator(ray_start_regular_shared):
+def test_flat_map_generator(ray_start_regular_shared):
     ds = ray.data.range(3)
 
     def map_generator(item: int) -> Iterator[int]:
         for _ in range(2):
             yield item + 1
 
-    assert sorted(ds.map(map_generator).take()) == [1, 1, 2, 2, 3, 3]
+    assert sorted(ds.flat_map(map_generator).take()) == [1, 1, 2, 2, 3, 3]
 
 
 def test_zip(ray_start_regular_shared):
