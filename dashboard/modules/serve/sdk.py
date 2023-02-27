@@ -11,10 +11,10 @@ except ImportError:
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 
-DEPLOY_PATH = "/api/serve/deployments"
-INFO_PATH = "/api/serve/deployments"
+DEPLOY_PATH = "/api/serve/deployments/"
+INFO_PATH = "/api/serve/deployments/"
 STATUS_PATH = "/api/serve/deployments/status"
-DELETE_PATH = "/api/serve/deployments"
+DELETE_PATH = "/api/serve/deployments/"
 
 
 class ServeSubmissionClient(SubmissionClient):

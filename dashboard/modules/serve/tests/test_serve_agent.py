@@ -13,7 +13,7 @@ from ray.experimental.state.api import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 
-GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments"
+GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 
 MULTI_APP_PUT_URL = "http://localhost:52365/api/serve/applications"

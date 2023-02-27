@@ -45,7 +45,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.get("/api/serve/deployments")
+    @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
@@ -100,7 +100,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/json",
         )
 
-    @routes.delete("/api/serve/deployments")
+    @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
@@ -120,7 +120,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
-    @routes.put("/api/serve/deployments")
+    @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
@@ -176,7 +176,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     "host, shut down Serve on this Ray cluster using the "
                     "`serve shutdown` CLI command or by sending a DELETE "
                     "request to this Ray cluster's "
-                    '"/api/serve/deployments" endpoint. CAUTION: shutting '
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
                 ),
             )
@@ -193,7 +193,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     "port, shut down Serve on this Ray cluster using the "
                     "`serve shutdown` CLI command or by sending a DELETE "
                     "request to this Ray cluster's "
-                    '"/api/serve/deployments" endpoint. CAUTION: shutting '
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
                 ),
             )
