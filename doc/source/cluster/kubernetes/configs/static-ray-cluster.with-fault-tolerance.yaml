@@ -86,98 +86,6 @@ spec:
     protocol: TCP
     port: 6380
     targetPort: 6380
-  - name: object-manager-port
-    protocol: TCP
-    port: 8076
-    targetPort: 8076
-  - name: node-manager-port
-    protocol: TCP
-    port: 8077
-    targetPort: 8077
-  - name: dashboard-agent-grpc-port
-    protocol: TCP
-    port: 8078
-    targetPort: 8078
-  - name: dashboard-agent-listen-port
-    protocol: TCP
-    port: 52365
-    targetPort: 52365
-  - name: worker-port-1
-    protocol: TCP
-    port: 10002
-    targetPort: 10002
-  - name: worker-port-2
-    protocol: TCP
-    port: 10003
-    targetPort: 10003
-  - name: worker-port-3
-    protocol: TCP
-    port: 10004
-    targetPort: 10004
-  - name: worker-port-4
-    protocol: TCP
-    port: 10005
-    targetPort: 10005
-  - name: worker-port-5
-    protocol: TCP
-    port: 10006
-    targetPort: 10006
-  - name: worker-port-6
-    protocol: TCP
-    port: 10007
-    targetPort: 10007
-  - name: worker-port-7
-    protocol: TCP
-    port: 10008
-    targetPort: 10008
-  - name: worker-port-8
-    protocol: TCP
-    port: 10009
-    targetPort: 10009
-  - name: worker-port-9
-    protocol: TCP
-    port: 10010
-    targetPort: 10010
-  - name: worker-port-10
-    protocol: TCP
-    port: 10011
-    targetPort: 10011
-  - name: worker-port-11
-    protocol: TCP
-    port: 10012
-    targetPort: 10012
-  - name: worker-port-12
-    protocol: TCP
-    port: 10013
-    targetPort: 10013
-  - name: worker-port-13
-    protocol: TCP
-    port: 10014
-    targetPort: 10014
-  - name: worker-port-14
-    protocol: TCP
-    port: 10015
-    targetPort: 10015
-  - name: worker-port-15
-    protocol: TCP
-    port: 10016
-    targetPort: 10016
-  - name: worker-port-16
-    protocol: TCP
-    port: 10017
-    targetPort: 10017
-  - name: worker-port-17
-    protocol: TCP
-    port: 10018
-    targetPort: 10018
-  - name: worker-port-18
-    protocol: TCP
-    port: 10019
-    targetPort: 10019
-  - name: worker-port-19
-    protocol: TCP
-    port: 10020
-    targetPort: 10020
   selector:
     app: ray-cluster-head
 ---
@@ -216,39 +124,16 @@ spec:
           medium: Memory
       containers:
         - name: ray-head
-          image: rayproject/ray:2.2.0
+          image: rayproject/ray:2.3.0
           imagePullPolicy: Always
           command: [ "/bin/bash", "-c", "--" ]
           # if there is no password for Redis, set --redis-password=''
           args:
-            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --min-worker-port=10002 --max-worker-port=10020 --redis-password='' --block"
+            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --redis-password='' --block"
           ports:
             - containerPort: 6380 # GCS server
             - containerPort: 10001 # Used by Ray Client
             - containerPort: 8265 # Used by Ray Dashboard
-            - containerPort: 8076 # Ray object manager port
-            - containerPort: 8077 # Ray node manager port
-            - containerPort: 8078 # Ray dashboard agent grpc port
-            - containerPort: 52365 # Ray dashboard agent listen port
-            - containerPort: 10002 # min worker port
-            - containerPort: 10003 # available worker port
-            - containerPort: 10004 # available worker port
-            - containerPort: 10005 # available worker port
-            - containerPort: 10006 # available worker port
-            - containerPort: 10007 # available worker port
-            - containerPort: 10008 # available worker port
-            - containerPort: 10009 # available worker port
-            - containerPort: 10010 # available worker port
-            - containerPort: 10011 # available worker port
-            - containerPort: 10012 # available worker port
-            - containerPort: 10013 # available worker port
-            - containerPort: 10014 # available worker port
-            - containerPort: 10015 # available worker port
-            - containerPort: 10016 # available worker port
-            - containerPort: 10017 # available worker port
-            - containerPort: 10018 # available worker port
-            - containerPort: 10019 # available worker port
-            - containerPort: 10020 # max worker port
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
           # /tmp which cause slowdowns if it's not a shared memory volume.
@@ -309,35 +194,12 @@ spec:
           medium: Memory
       containers:
       - name: ray-worker
-        image: rayproject/ray:2.2.0
+        image: rayproject/ray:2.3.0
         imagePullPolicy: Always
         command: ["/bin/bash", "-c", "--"]
         args:
-          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --min-worker-port=10002 --max-worker-port=10020 --block"
-        ports:
-          - containerPort: 8076
-          - containerPort: 8077
-          - containerPort: 8078
-          - containerPort: 52365
-          - containerPort: 10002
-          - containerPort: 10003
-          - containerPort: 10004
-          - containerPort: 10005
-          - containerPort: 10006
-          - containerPort: 10007
-          - containerPort: 10008
-          - containerPort: 10009
-          - containerPort: 10010
-          - containerPort: 10011
-          - containerPort: 10012
-          - containerPort: 10013
-          - containerPort: 10014
-          - containerPort: 10015
-          - containerPort: 10016
-          - containerPort: 10017
-          - containerPort: 10018
-          - containerPort: 10019
-          - containerPort: 10020 
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
+
         # This volume allocates shared memory for Ray to use for its plasma
         # object store. If you do not provide this, Ray will fall back to
         # /tmp which cause slowdowns if it's not a shared memory volume.
