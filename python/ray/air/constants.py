@@ -17,7 +17,7 @@ TRAIN_DATASET_KEY = "train"
 WILDCARD_KEY = "*"
 
 # Name to use for the column when representing tensors in table format.
-TENSOR_COLUMN_NAME = "__tensor_value__"
+TENSOR_COLUMN_NAME = "__value__"
 
 # The maximum length of strings returned by `__repr__` for AIR objects constructed with
 # default values.
