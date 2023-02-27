@@ -115,7 +115,9 @@ def test_gbdt_trainer(ray_start_8_cpus):
     trainer = AssertingXGBoostTrainer(
         datasets={TRAIN_DATASET_KEY: train_ds},
         label_column="target",
-        scaling_config=ScalingConfig(num_workers=2, placement_strategy="SPREAD"),
+        scaling_config=ScalingConfig(
+            num_workers=2, placement_strategy="SPREAD", _max_cpu_fraction_per_node=0.9
+        ),
         params={
             "objective": "binary:logistic",
             "eval_metric": ["logloss"],
