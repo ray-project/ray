@@ -131,35 +131,38 @@ def default_decoder(sample: Dict[str, Any]):
         sample (Dict[str, Any]): sample, modified in place
     """
     sample = dict(sample)
+    print("***", sample.keys())
     for key, value in sample.items():
-        extension = os.path.splitext(key)[1]
+        print("---", key, repr(value)[:20])
+        extension = key.split(".")[-1]
         if key.startswith("__"):
             continue
-        elif extension in [".txt"]:
+        elif extension in ["txt"]:
             sample[key] = value.decode("utf-8")
-        elif extension in [".cls", ".cls2"]:
+        elif extension in ["cls", "cls2"]:
             sample[key] = int(value.decode("utf-8"))
-        elif extension in [".jpg", ".png", ".ppm", ".pgm", ".pbm", ".pnm"]:
+        elif extension in ["jpg", "png", "ppm", "pgm", "pbm", "pnm"]:
             import PIL.Image
+            import numpy as np
 
-            sample[key] = PIL.Image.open(io.BytesIO(value))
-        elif extension == ".json":
+            sample[key] = np.asarray(PIL.Image.open(io.BytesIO(value)))
+        elif extension == "json":
             import json
 
             sample[key] = json.loads(value)
-        elif extension == ".npy":
+        elif extension == "npy":
             import numpy as np
 
             sample[key] = np.load(io.BytesIO(value))
-        elif extension == ".mp":
+        elif extension == "mp":
             import msgpack
 
             sample[key] = msgpack.unpackb(value, raw=False)
-        elif extension in [".pt", ".pth"]:
+        elif extension in ["pt", "pth"]:
             import torch
 
             sample[key] = torch.load(io.BytesIO(value))
-        elif extension in [".pickle", ".pkl"]:
+        elif extension in ["pickle", "pkl"]:
             import pickle
 
             sample[key] = pickle.loads(value)
@@ -178,14 +181,14 @@ def default_encoder(sample: Dict[str, Any]):
     """
     sample = dict(sample)
     for key, value in sample.items():
-        extension = os.path.splitext(key)[1]
+        extension = key.split(".")[-1]
         if key.startswith("__"):
             continue
-        elif extension in [".txt"]:
+        elif extension in ["txt"]:
             sample[key] = value.encode("utf-8")
-        elif extension in [".cls", ".cls2"]:
+        elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
-        elif extension in [".jpg", ".png", ".ppm", ".pgm", ".pbm", ".pnm"]:
+        elif extension in ["jpg", "png", "ppm", "pgm", "pbm", "pnm"]:
             import PIL.Image
             import numpy as np
 
@@ -195,33 +198,33 @@ def default_encoder(sample: Dict[str, Any]):
             stream = io.BytesIO()
             value.save(stream, format=extension[1:])
             sample[key] = stream.getvalue()
-        elif extension == ".json":
+        elif extension == "json":
             import json
 
             sample[key] = json.dumps(value).encode("utf-8")
-        elif extension == ".npy":
+        elif extension == "npy":
             import numpy as np
 
             stream = io.BytesIO()
             np.save(stream, value)
             sample[key] = stream.getvalue()
-        elif extension == ".mp":
+        elif extension == "mp":
             import msgpack
 
             sample[key] = msgpack.dumps(value)
-        elif extension in [".pt", ".pth"]:
+        elif extension in ["pt", "pth"]:
             import torch
 
             stream = io.BytesIO()
             torch.save(value, stream)
             sample[key] = stream.getvalue()
-        elif extension in [".pickle", ".pkl"]:
+        elif extension in ["pickle", "pkl"]:
             import pickle
 
             stream = io.BytesIO()
             pickle.dump(value, stream)
             sample[key] = stream.getvalue()
-        return sample
+    return sample
 
 
 @PublicAPI(stability="alpha")
@@ -240,14 +243,17 @@ class WebDatasetDatasource(FileBasedDatasource):
         **kw,
     ):
         import pyarrow as pa
+        
+        print(decoder)
 
         files = tar_file_iterator(stream, skipfn=skipfn)
         samples = group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
         for sample in samples:
             if decoder is not None:
                 sample = decoder(sample)
-            sample = {k: [v] for k, v in sample.items()}
-            yield pa.Table.from_pydict(sample)
+            # sample = {k: [v] for k, v in sample.items()}
+            # yield pa.Table.from_pydict(sample)
+            yield [sample]
 
     def _write_block(
         self,
