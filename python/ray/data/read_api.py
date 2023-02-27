@@ -344,7 +344,11 @@ def read_datasource(
         )
 
     available_cpu_slots = ray.available_resources().get("CPU", 1)
-    if requested_parallelism and len(read_tasks) > available_cpu_slots * 4:
+    if (
+        requested_parallelism
+        and len(read_tasks) > available_cpu_slots * 4
+        and len(read_tasks) >= 5000
+    ):
         logger.warn(
             f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
             "is more than 4x the number of available CPU slots in the cluster of "
