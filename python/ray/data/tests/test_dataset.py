@@ -2583,9 +2583,6 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_generator(ray_start_regular_shared, tmp_path):
-    ctx = DatasetContext.get_current()
-    ctx.execution_options.preserve_order = True
-
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
@@ -2599,9 +2596,9 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
     ds2 = ds.map_batches(pandas_generator, batch_size=1, batch_format="pandas")
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     def fail_generator(batch):
