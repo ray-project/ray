@@ -23,6 +23,7 @@ from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
 )
+from ray.data._internal.util import BYTES_COLUMN_NAME
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     Block,
@@ -189,7 +190,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from pkg_resources._vendor.packaging.version import parse as parse_version
 
         element = row[col_name][0]
-        if col_name == TENSOR_COLUMN_NAME:
+        if col_name == BYTES_COLUMN_NAME:
+            return element.as_py()
+        else:
             # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
             # 9.0.0+.
             pyarrow_version = _get_pyarrow_version()
@@ -210,8 +213,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # For Arrow < 8.0.0, accessing an element in a chunked tensor array
             # produces an ndarray, which we return directly.
             return element
-        else:
-            return element.as_py()
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
