@@ -297,7 +297,7 @@
     - sudo service mongodb stop
     - sudo apt-get purge -y mongodb*
 
-- label: "[unstable] Dataset tests (streaming executor)"
+- label: "Dataset tests (streaming executor)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
   instance_size: medium
   commands:
