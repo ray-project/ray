@@ -1,4 +1,5 @@
 import pytorch_lightning as ptl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.strategies.ddp import DDPStrategy
 
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union, Type, Any
@@ -19,10 +20,10 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
+from load_checkpoint import RayModelCheckpoint
 from python.ray.train import lightning
 
-from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment, RayLogger
-
+from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment
 
 
 if TYPE_CHECKING:
@@ -31,8 +32,9 @@ if TYPE_CHECKING:
 LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
+MODEL_CHECKPOINT_CONFIG = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
-AIR_CHECKPOINT_CONFIG_KEY = "_air_checkpoint_config"
+
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
@@ -43,6 +45,7 @@ class LightningTrainer(DataParallelTrainer):
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
+        model_checkpoint_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
@@ -55,7 +58,7 @@ class LightningTrainer(DataParallelTrainer):
             torch_config = TorchConfig()
 
         train_loop_config = self._create_trainer_loop_config(
-            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config, run_config
+            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config, model_checkpoint_config
         )
 
         super(LightningTrainer, self).__init__(
@@ -77,7 +80,7 @@ class LightningTrainer(DataParallelTrainer):
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
-        run_config: Optional[RunConfig] = None,
+        model_checkpoint_config: Optional[Dict] = None,
     ) -> Dict[str, Any]:
 
         trainer_loop_config = {}
@@ -94,15 +97,15 @@ class LightningTrainer(DataParallelTrainer):
 
         if lightning_module_config:
             trainer_loop_config[LIGHTNING_MODULE_CONFIG_KEY] = lightning_module_config
-        
+
         if lightning_trainer_config:
             trainer_loop_config[LIGHTNING_TRAINER_CONFIG_KEY] = lightning_trainer_config
-        
+
         if ddp_strategy_config:
             trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
-        
-        if run_config:
-            trainer_loop_config[AIR_CHECKPOINT_CONFIG_KEY] = run_config.checkpoint_config
+
+        if model_checkpoint_config:
+            trainer_loop_config[MODEL_CHECKPOINT_CONFIG] = model_checkpoint_config
         return trainer_loop_config
 
 
@@ -132,14 +135,17 @@ def _lightning_train_loop_per_worker(config):
             plugins.append(plugin)
     trainer_config["plugins"] = plugins
 
-    # instantiate logger
-    ray_logger = RayLogger(checkpoint_config=config.pop(AIR_CHECKPOINT_CONFIG_KEY))
-    trainer_config["logger"] = ray_logger
-
     # Setup ddp strategy
     ddp_strategy_config = config.get(DDP_STRATEGY_CONFIG_KEY, {})
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
+    # Insert RayModelCheckpoint Callback
+    model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG, {})
+    callbacks = [RayModelCheckpoint(**model_checkpoint_config)]
+    for callback in trainer_config.get("callback", []):
+        if not isinstance(callback, ModelCheckpoint):
+            callbacks.append(callback)
+    trainer_config["callback"] = callbacks
+
     trainer = ptl.Trainer(**trainer_config)
-    ray_logger.set_trainer(trainer)
     trainer.fit(lightning_module, datamodule=datamodule)

@@ -139,13 +139,7 @@ class RayLogger(Logger):
         self, metrics: Dict[str, float], step: Optional[int] = None
     ) -> None:
         # session.report(metrics=metrics)
-        if self._monitor_steps % 100 == 0:
-            print("Save Checkpoint... ")
-            checkpoint = TorchCheckpoint.from_dict(self.dump_checkpoint())
-            session.report(metrics=metrics, checkpoint=checkpoint)
-        else:
-            session.report(metrics=metrics)
-
+        print("Logger: ", step, metrics)
 
 # Save the latest checkpoint
 checkpoint_config = CheckpointConfig(num_to_keep=5, checkpoint_score_attribute="loss")#, checkpoint_frequency=20)

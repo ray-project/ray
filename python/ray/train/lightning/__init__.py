@@ -7,4 +7,8 @@ except ModuleNotFoundError:
     )
 # isort: on
 
-__all__ = []
+from ray.train.lightning.lightning_utils import RayModelCheckpoint
+
+__all__ = [
+    "RayModelCheckpoint"
+]
