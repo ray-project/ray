@@ -3925,18 +3925,6 @@
       num_nodes: 65
 
 
-  smoke_test:
-    frequency: nightly
-    cluster:
-      cluster_env: app_config.yaml
-      cluster_compute: distributed_smoke_test.yaml
-    run:
-      timeout: 3600
-      script: python distributed/test_many_tasks.py --num-tasks=100
-      wait_for_nodes:
-        num_nodes: 2
-
-
 - name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
@@ -4624,7 +4612,7 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    
+
     type: sdk_command
 
 #####################
