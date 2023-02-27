@@ -7,7 +7,7 @@
 Explore the ways that Ray helps to build AI applications.
 
 ## Batch inference on CPUs and GPUs
-Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray scales predictions on batches across workers.
+Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's [Batch Predictor](air-predictors) scales predictions on batches across workers.
 
 |<img src="../images/batch_inference.png" width="70%" loading="lazy">|
 |:--:|
