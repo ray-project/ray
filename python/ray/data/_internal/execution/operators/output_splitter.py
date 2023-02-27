@@ -12,13 +12,14 @@ from ray.types import ObjectRef
 
 
 class OutputSplitter(PhysicalOperator):
-    """An operator that splits the given data into `n` shards.
+    """An operator that splits the given data into `n` output splits.
 
-    The output bundles of this operator will have a `bundle.shard` attribute set to an
-    integer from [0..n-1]. This operator tries to divide the rows evenly across shards.
+    The output bundles of this operator will have a `bundle.output_split` attribute
+    set to an integer from [0..n-1]. This operator tries to divide the rows evenly
+    across output splits.
 
     If the `equal` option is set, the operator will furthermore guarantee an exact
-    split of rows across shards, truncating the Dataset as needed.
+    split of rows across outputs, truncating the Dataset as needed.
     """
 
     def __init__(
@@ -30,11 +31,11 @@ class OutputSplitter(PhysicalOperator):
         super().__init__(f"split({n}, equal={equal})", [input_op])
         self._n = n
         self._equal = equal
-        # Buffer of bundles not yet assigned to shards.
+        # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
-        # The outputted bundles with shard attribute set.
+        # The outputted bundles with output_split attribute set.
         self._output_queue: List[RefBundle] = []
-        # The number of rows output to each shard so far.
+        # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
 
     def has_next(self) -> bool:
@@ -57,13 +58,19 @@ class OutputSplitter(PhysicalOperator):
 
     def inputs_done(self) -> None:
         if not self._equal:
+            # There shouldn't be any buffered data if we're not in equal split mode.
+            assert not self._buffer
             return
+
+        # Otherwise:
+        # Need to finalize distribution of buffered data to output splits.
         buffer_size = sum(b.num_rows() for b in self._buffer)
         max_n = max(self._num_output)
 
         # First calculate the min rows to add per output to equalize them.
         allocation = [max_n - n for n in self._num_output]
         remainder = sum(allocation) - buffer_size
+        # Invariant: buffer should always be large enough to equalize.
         assert remainder >= 0, (buffer_size, allocation)
 
         # Equally distribute remaining rows in buffer to outputs.
@@ -74,8 +81,9 @@ class OutputSplitter(PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b.shard = i
+                b.output_split = i
                 self._output_queue.append(b)
+        self._buffer = []
 
     def progress_str(self) -> str:
         if self._equal:
@@ -90,7 +98,7 @@ class OutputSplitter(PhysicalOperator):
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
-                target_bundle.shard = target_index
+                target_bundle.output_split = target_index
                 self._num_sent[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
             else:
@@ -108,8 +116,8 @@ class OutputSplitter(PhysicalOperator):
         return self._buffer.pop(0)
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
-        # Whether we can meet equality requirements with the given dispatch.
         if not self._equal:
+            # If not in equals mode, dispatch away with no buffer requirements.
             return True
         output_distribution = self._num_output.copy()
         output_distribution[target_index] += nrow
