@@ -174,6 +174,16 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
 
+    # === Options for ModelConfigs in RLModules ===
+    # The latent dimension to encode into.
+    # Since most RLModules have an encoder and heads, this establishes an agreement
+    # on the dimensionality of the latent space they share.
+    # This has no effect for models outside RLModule.
+    # If None, model_config['fcnet_hiddens'][-1] value will be used to guarantee
+    # backward compatibility to old configs. This yields different models than past
+    # versions of RLlib.
+    "encoder_latent_dim": None,
+
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
