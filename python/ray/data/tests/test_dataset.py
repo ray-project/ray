@@ -4890,8 +4890,8 @@ def test_read_warning_large_parallelism(
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(20, parallelism=5).fully_executed()
     assert (
-        "The requested parallelism of 5 is more than the number of "
-        "available CPU slots in the cluster." in caplog.text
+        "The requested parallelism of {requested_parallelism} is more than 4x the number of available CPU slots in the cluster"
+        in caplog.text
     ), caplog.text
 
 
