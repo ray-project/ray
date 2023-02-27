@@ -260,8 +260,8 @@ class TunerInternal:
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
                 "    ..., trainable=trainable_with_params\n"
-                ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
-                "#tune-with-parameters for more details."
+                ")\n\nSee https://docs.ray.io/en/latest/tune/api/doc/"
+                "ray.tune.with_parameters.html for more details."
             )
         if not overwrite_trainable:
             return
