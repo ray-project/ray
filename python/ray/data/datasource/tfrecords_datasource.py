@@ -127,34 +127,25 @@ def _get_feature_value(
     import pyarrow as pa
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    values = (
-        feature.HasField("int64_list")
-        or schema_feature_type == schema_pb2.FeatureType.INT,
-        feature.HasField("float_list")
-        or schema_feature_type == schema_pb2.FeatureType.FLOAT,
-        feature.HasField("bytes_list")
+    detected_feature_type = {
+        "bytes": feature.HasField("bytes_list")
         or schema_feature_type == schema_pb2.FeatureType.BYTES,
-    )
+        "float": feature.HasField("float_list")
+        or schema_feature_type == schema_pb2.FeatureType.FLOAT,
+        "int": feature.HasField("int64_list")
+        or schema_feature_type == schema_pb2.FeatureType.INT,
+    }
     # At most one of `bytes_list`, `float_list`, and `int64_list` contains data.
     # If none contain data, this indicates an empty feature value.
-    assert sum(bool(value) for value in values) <= 1
+    assert sum(bool(value) for value in detected_feature_type.values()) <= 1
 
-    if (
-        feature.HasField("bytes_list")
-        or schema_feature_type == schema_pb2.FeatureType.BYTES
-    ):
+    if detected_feature_type["bytes"]:
         value = feature.bytes_list.value
         type_ = pa.binary()
-    elif (
-        feature.HasField("float_list")
-        or schema_feature_type == schema_pb2.FeatureType.FLOAT
-    ):
+    elif detected_feature_type["float"]:
         value = feature.float_list.value
         type_ = pa.float32()
-    elif (
-        feature.HasField("int64_list")
-        or schema_feature_type == schema_pb2.FeatureType.INT
-    ):
+    elif detected_feature_type["int"]:
         value = feature.int64_list.value
         type_ = pa.int64()
     else:

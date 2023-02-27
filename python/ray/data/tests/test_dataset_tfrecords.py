@@ -15,6 +15,248 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
+@pytest.fixture
+def tf_records_partial(request):
+    """Underlying data corresponds to `data_partial` fixture."""
+    import tensorflow as tf
+
+    return [
+        # Record one (corresponding to row one).
+        tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "int_item": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[1])
+                    ),
+                    "int_list": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[2, 2, 3])
+                    ),
+                    "int_partial": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
+                    "float_item": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[1.0])
+                    ),
+                    "float_list": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
+                    ),
+                    "float_partial": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[1.0])
+                    ),
+                    "bytes_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"abc"])
+                    ),
+                    "bytes_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
+                    ),
+                    "bytes_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
+                }
+            )
+        ),
+        # Record two (corresponding to row two).
+        tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "int_item": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[2])
+                    ),
+                    "int_list": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[3, 3, 4])
+                    ),
+                    "int_partial": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[9, 2])
+                    ),
+                    "float_item": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[2.0])
+                    ),
+                    "float_list": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
+                    ),
+                    "float_partial": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
+                    ),
+                    "bytes_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"ghi"])
+                    ),
+                    "bytes_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
+                    ),
+                    "bytes_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"hello"])
+                    ),
+                }
+            )
+        ),
+    ]
+
+
+@pytest.fixture
+def data_partial(request):
+    """TFRecords generated from this corresponds to
+    the `tf_records_partial` fixture."""
+    return [
+        # Row one.
+        {
+            "int_item": 1,
+            "int_list": [2, 2, 3],
+            "int_partial": [],
+            "float_item": 1.0,
+            "float_list": [2.0, 3.0, 4.0],
+            "float_partial": 1.0,
+            "bytes_item": b"abc",
+            "bytes_list": [b"def", b"1234"],
+            "bytes_partial": None,
+        },
+        # Row two.
+        {
+            "int_item": 2,
+            "int_list": [3, 3, 4],
+            "int_partial": [9, 2],
+            "float_item": 2.0,
+            "float_list": [5.0, 6.0, 7.0],
+            "float_partial": None,
+            "bytes_item": b"ghi",
+            "bytes_list": [b"jkl", b"5678"],
+            "bytes_partial": b"hello",
+        },
+    ]
+
+
+@pytest.fixture
+def tf_records_empty(request):
+    """Underlying data corresponds to `data_empty` fixture."""
+    import tensorflow as tf
+
+    return [
+        # Record one (corresponding to row one).
+        tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "int_item": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[1])
+                    ),
+                    "int_list": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[2, 2, 3])
+                    ),
+                    "int_partial": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
+                    "int_empty": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
+                    "float_item": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[1.0])
+                    ),
+                    "float_list": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
+                    ),
+                    "float_partial": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[1.0])
+                    ),
+                    "float_empty": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
+                    ),
+                    "bytes_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"abc"])
+                    ),
+                    "bytes_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
+                    ),
+                    "bytes_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
+                    "bytes_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
+                }
+            )
+        ),
+        # Record two (corresponding to row two).
+        tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "int_item": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[2])
+                    ),
+                    "int_list": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[3, 3, 4])
+                    ),
+                    "int_partial": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[9, 2])
+                    ),
+                    "int_empty": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
+                    "float_item": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[2.0])
+                    ),
+                    "float_list": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
+                    ),
+                    "float_partial": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
+                    ),
+                    "float_empty": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
+                    ),
+                    "bytes_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"ghi"])
+                    ),
+                    "bytes_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
+                    ),
+                    "bytes_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"hello"])
+                    ),
+                    "bytes_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
+                }
+            )
+        ),
+    ]
+
+
+@pytest.fixture
+def data_empty(request):
+    """TFRecords generated from this corresponds to
+    the `tf_records_empty` fixture."""
+    return [
+        # Row one.
+        {
+            "int_item": 1,
+            "int_list": [2, 2, 3],
+            "int_partial": [],
+            "int_empty": [],
+            "float_item": 1.0,
+            "float_list": [2.0, 3.0, 4.0],
+            "float_partial": 1.0,
+            "float_empty": [],
+            "bytes_item": b"abc",
+            "bytes_list": [b"def", b"1234"],
+            "bytes_partial": [],
+            "bytes_empty": [],
+        },
+        # Row two.
+        {
+            "int_item": 2,
+            "int_list": [3, 3, 4],
+            "int_partial": [9, 2],
+            "int_empty": [],
+            "float_item": 2.0,
+            "float_list": [5.0, 6.0, 7.0],
+            "float_partial": [],
+            "float_empty": [],
+            "bytes_item": b"ghi",
+            "bytes_list": [b"jkl", b"5678"],
+            "bytes_partial": b"hello",
+            "bytes_empty": [],
+        },
+    ]
+
+
 def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
     from tensorflow_metadata.proto.v0 import schema_pb2
 
@@ -54,33 +296,16 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
-def test_read_tfrecords(with_tf_schema, ray_start_regular_shared, tmp_path):
+def test_read_tfrecords(
+    with_tf_schema, ray_start_regular_shared, tmp_path, tf_records_empty
+):
     import tensorflow as tf
 
-    features = tf.train.Features(
-        feature={
-            "int64": tf.train.Feature(int64_list=tf.train.Int64List(value=[1])),
-            "int64_list": tf.train.Feature(
-                int64_list=tf.train.Int64List(value=[1, 2, 3, 4])
-            ),
-            "int64_empty": tf.train.Feature(int64_list=tf.train.Int64List(value=[])),
-            "float": tf.train.Feature(float_list=tf.train.FloatList(value=[1.0])),
-            "float_list": tf.train.Feature(
-                float_list=tf.train.FloatList(value=[1.0, 2.0, 3.0, 4.0])
-            ),
-            "float_empty": tf.train.Feature(float_list=tf.train.FloatList(value=[])),
-            "bytes": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"abc"])),
-            "bytes_list": tf.train.Feature(
-                bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
-            ),
-            "bytes_empty": tf.train.Feature(bytes_list=tf.train.BytesList(value=[])),
-        }
-    )
-    example = tf.train.Example(features=features)
+    example = tf_records_empty[0]
 
     tf_schema = None
     if with_tf_schema:
-        tf_schema = _features_to_schema(features)
+        tf_schema = _features_to_schema(tf_records_empty[0].features)
 
     path = os.path.join(tmp_path, "data.tfrecords")
     with tf.io.TFRecordWriter(path=path) as writer:
@@ -88,35 +313,42 @@ def test_read_tfrecords(with_tf_schema, ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_tfrecords(path, tf_schema=tf_schema)
     df = ds.to_pandas()
-
     # Protobuf serializes features in a non-deterministic order.
-    assert is_int64_dtype(dict(df.dtypes)["int64"])
-    assert is_object_dtype(dict(df.dtypes)["int64_list"])
-    assert is_object_dtype(dict(df.dtypes)["int64_empty"])
+    assert is_int64_dtype(dict(df.dtypes)["int_item"])
+    assert is_object_dtype(dict(df.dtypes)["int_list"])
+    assert is_object_dtype(dict(df.dtypes)["int_partial"])
+    assert is_object_dtype(dict(df.dtypes)["int_empty"])
 
-    assert is_float_dtype(dict(df.dtypes)["float"])
+    assert is_float_dtype(dict(df.dtypes)["float_item"])
     assert is_object_dtype(dict(df.dtypes)["float_list"])
+    assert is_float_dtype(dict(df.dtypes)["float_partial"])
     assert is_object_dtype(dict(df.dtypes)["float_empty"])
 
-    assert is_object_dtype(dict(df.dtypes)["bytes"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_item"])
     assert is_object_dtype(dict(df.dtypes)["bytes_list"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_partial"])
     assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
 
-    assert list(df["int64"]) == [1]
-    assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
-    assert np.array_equal(df["int64_empty"][0], np.array([], dtype=np.int64))
+    assert list(df["int_item"]) == [1]
+    assert np.array_equal(df["int_list"][0], np.array([2, 2, 3]))
+    assert np.array_equal(df["int_partial"][0], np.array([], dtype=np.int64))
+    assert np.array_equal(df["int_empty"][0], np.array([], dtype=np.int64))
 
-    assert list(df["float"]) == [1.0]
-    assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
+    assert list(df["float_item"]) == [1.0]
+    assert np.array_equal(df["float_list"][0], np.array([2.0, 3.0, 4.0]))
+    assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
 
-    assert list(df["bytes"]) == [b"abc"]
-    assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
+    assert list(df["bytes_item"]) == [b"abc"]
+    assert np.array_equal(df["bytes_list"][0], np.array([b"def", b"1234"]))
+    assert np.array_equal(df["bytes_partial"][0], np.array([], dtype=np.bytes_))
     assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
-def test_write_tfrecords(with_tf_schema, ray_start_regular_shared, tmp_path):
+def test_write_tfrecords(
+    with_tf_schema, ray_start_regular_shared, tmp_path, tf_records_partial, data_partial
+):
     """Test that write_tfrecords writes TFRecords correctly.
 
     Test this by writing a Dataset to a TFRecord (function under test),
@@ -128,32 +360,7 @@ def test_write_tfrecords(with_tf_schema, ray_start_regular_shared, tmp_path):
 
     # The dataset we will write to a .tfrecords file.
     ds = ray.data.from_items(
-        [
-            # Row one.
-            {
-                "int_item": 1,
-                "int_list": [2, 2, 3],
-                "int_empty": [],
-                "float_item": 1.0,
-                "float_list": [2.0, 3.0, 4.0],
-                "float_empty": 1.0,
-                "bytes_item": b"abc",
-                "bytes_list": [b"def", b"1234"],
-                "bytes_empty": None,
-            },
-            # Row two.
-            {
-                "int_item": 2,
-                "int_list": [3, 3, 4],
-                "int_empty": [9, 2],
-                "float_item": 2.0,
-                "float_list": [5.0, 6.0, 7.0],
-                "float_empty": None,
-                "bytes_item": b"ghi",
-                "bytes_list": [b"jkl", b"5678"],
-                "bytes_empty": b"hello",
-            },
-        ],
+        data_partial,
         # Here, we specify `parallelism=1` to ensure that all rows end up in the same
         # block, which is required for type inference involving
         # partially missing columns.
@@ -162,77 +369,7 @@ def test_write_tfrecords(with_tf_schema, ray_start_regular_shared, tmp_path):
 
     # The corresponding tf.train.Example that we would expect to read
     # from this dataset.
-
-    expected_records = [
-        # Record one (corresponding to row one).
-        tf.train.Example(
-            features=tf.train.Features(
-                feature={
-                    "int_item": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[1])
-                    ),
-                    "int_list": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[2, 2, 3])
-                    ),
-                    "int_empty": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[])
-                    ),
-                    "float_item": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[1.0])
-                    ),
-                    "float_list": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
-                    ),
-                    "float_empty": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[1.0])
-                    ),
-                    "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"abc"])
-                    ),
-                    "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
-                    ),
-                    "bytes_empty": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[])
-                    ),
-                }
-            )
-        ),
-        # Record two (corresponding to row two).
-        tf.train.Example(
-            features=tf.train.Features(
-                feature={
-                    "int_item": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[2])
-                    ),
-                    "int_list": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[3, 3, 4])
-                    ),
-                    "int_empty": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[9, 2])
-                    ),
-                    "float_item": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[2.0])
-                    ),
-                    "float_list": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
-                    ),
-                    "float_empty": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[])
-                    ),
-                    "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"ghi"])
-                    ),
-                    "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
-                    ),
-                    "bytes_empty": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"hello"])
-                    ),
-                }
-            )
-        ),
-    ]
+    expected_records = tf_records_partial
 
     tf_schema = None
     if with_tf_schema:
@@ -265,6 +402,8 @@ def test_write_tfrecords_empty_features(
     with_tf_schema,
     ray_start_regular_shared,
     tmp_path,
+    tf_records_empty,
+    data_empty,
 ):
     """Test that write_tfrecords writes TFRecords with completely empty features
     correctly (i.e. the case where type inference from partially filled features
@@ -279,108 +418,11 @@ def test_write_tfrecords_empty_features(
     import tensorflow as tf
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(
-        [
-            # Row one.
-            {
-                "int_item": 1,
-                "int_list": [2, 2, 3],
-                "int_empty": [],
-                "float_item": 1.0,
-                "float_list": [2.0, 3.0, 4.0],
-                "float_empty": [],
-                "bytes_item": b"abc",
-                "bytes_list": [b"def", b"1234"],
-                "bytes_empty": [],
-            },
-            # Row two.
-            {
-                "int_item": 2,
-                "int_list": [3, 3, 4],
-                "int_empty": [],
-                "float_item": 2.0,
-                "float_list": [5.0, 6.0, 7.0],
-                "float_empty": [],
-                "bytes_item": b"ghi",
-                "bytes_list": [b"jkl", b"5678"],
-                "bytes_empty": [],
-            },
-        ],
-    )
+    ds = ray.data.from_items(data_empty)
 
     # The corresponding tf.train.Example that we would expect to read
     # from this dataset.
-
-    expected_records = [
-        # Record one (corresponding to row one).
-        tf.train.Example(
-            features=tf.train.Features(
-                feature={
-                    "int_item": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[1])
-                    ),
-                    "int_list": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[2, 2, 3])
-                    ),
-                    "int_empty": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[])
-                    ),
-                    "float_item": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[1.0])
-                    ),
-                    "float_list": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
-                    ),
-                    "float_empty": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[])
-                    ),
-                    "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"abc"])
-                    ),
-                    "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
-                    ),
-                    "bytes_empty": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[])
-                    ),
-                }
-            )
-        ),
-        # Record two (corresponding to row two).
-        tf.train.Example(
-            features=tf.train.Features(
-                feature={
-                    "int_item": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[2])
-                    ),
-                    "int_list": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[3, 3, 4])
-                    ),
-                    "int_empty": tf.train.Feature(
-                        int64_list=tf.train.Int64List(value=[])
-                    ),
-                    "float_item": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[2.0])
-                    ),
-                    "float_list": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
-                    ),
-                    "float_empty": tf.train.Feature(
-                        float_list=tf.train.FloatList(value=[])
-                    ),
-                    "bytes_item": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"ghi"])
-                    ),
-                    "bytes_list": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
-                    ),
-                    "bytes_empty": tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[])
-                    ),
-                }
-            )
-        ),
-    ]
+    expected_records = tf_records_empty
 
     if not with_tf_schema:
         with pytest.raises(ValueError):
@@ -412,189 +454,57 @@ def test_write_tfrecords_empty_features(
         assert tfrecords == expected_records
 
 
-def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
-    """
-    Test reading back TFRecords written using datasets.
-    The dataset we read back should be the same that we wrote.
-    """
-
-    # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(
-        [
-            # Row one.
-            {
-                "int_item": 1,
-                "int_list": [2, 2, 3],
-                "int_empty": [],
-                "float_item": 1.0,
-                "float_list": [2.0, 3.0, 4.0],
-                "float_empty": 1.0,
-                "bytes_item": b"abc",
-                "bytes_list": [b"def", b"1234"],
-                "bytes_empty": None,
-            },
-            # Row two.
-            {
-                "int_item": 2,
-                "int_list": [3, 3, 4],
-                "int_empty": [9, 2],
-                "float_item": 2.0,
-                "float_list": [5.0, 6.0, 7.0],
-                "float_empty": None,
-                "bytes_item": b"ghi",
-                "bytes_list": [b"jkl", b"5678"],
-                "bytes_empty": b"hello",
-            },
-        ],
-        # Here and in the read_tfrecords call below, we specify `parallelism=1`
-        # to ensure that all rows end up in the same block, which is required
-        # for type inference involving partially missing columns.
-        parallelism=1,
-    )
-    # Write the TFRecords.
-    ds.write_tfrecords(tmp_path)
-    # Read the TFRecords.
-    readback_ds = ray.data.read_tfrecords(tmp_path)
-    assert _ds_eq_streaming(ds, readback_ds)
-
-
 @pytest.mark.parametrize("with_tf_schema", (True, False))
-def test_readback_tfrecords_empty_features(
-    ray_start_regular_shared, tmp_path, with_tf_schema
+def test_readback_tfrecords(
+    ray_start_regular_shared,
+    tmp_path,
+    with_tf_schema,
+    tf_records_partial,
+    data_partial,
 ):
     """
     Test reading back TFRecords written using datasets.
     The dataset we read back should be the same that we wrote.
     """
-    import tensorflow as tf
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(
-        [
-            # Row one.
-            {
-                "int_item": 1,
-                "int_list": [2, 2, 3],
-                "int_partial": [],
-                "int_empty": [],
-                "float_item": 1.0,
-                "float_list": [2.0, 3.0, 4.0],
-                "float_partial": 1.0,
-                "float_empty": [],
-                "bytes_item": b"abc",
-                "bytes_list": [b"def", b"1234"],
-                "bytes_partial": [],
-                "bytes_empty": [],
-            },
-            # Row two.
-            {
-                "int_item": 2,
-                "int_list": [3, 3, 4],
-                "int_partial": [9, 2],
-                "int_empty": [],
-                "float_item": 2.0,
-                "float_list": [5.0, 6.0, 7.0],
-                "float_partial": [],
-                "float_empty": [],
-                "bytes_item": b"ghi",
-                "bytes_list": [b"jkl", b"5678"],
-                "bytes_partial": b"hello",
-                "bytes_empty": [],
-            },
-        ],
-    )
+    ds = ray.data.from_items(data_partial, parallelism=1)
+    expected_records = tf_records_partial
+
+    tf_schema = None
+    if with_tf_schema:
+        features = expected_records[0].features
+        tf_schema = _features_to_schema(features)
+
+    # Write the TFRecords.
+    ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
+    # Read the TFRecords.
+    readback_ds = ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema)
+    assert _ds_eq_streaming(ds, readback_ds)
+
+
+@pytest.mark.parametrize("with_tf_schema", (True, False))
+def test_readback_tfrecords_empty_features(
+    ray_start_regular_shared,
+    tmp_path,
+    with_tf_schema,
+    tf_records_empty,
+    data_empty,
+):
+    """
+    Test reading back TFRecords written using datasets.
+    The dataset we read back should be the same that we wrote.
+    """
+
+    # The dataset we will write to a .tfrecords file.
+    ds = ray.data.from_items(data_empty)
     if not with_tf_schema:
         with pytest.raises(ValueError):
+            # With no schema specified, this should fail because
+            # type inference on completely empty columns is ambiguous.
             ds.write_tfrecords(tmp_path)
     else:
-        expected_records = [
-            # Record one (corresponding to row one).
-            tf.train.Example(
-                features=tf.train.Features(
-                    feature={
-                        "int_item": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[1])
-                        ),
-                        "int_list": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[2, 2, 3])
-                        ),
-                        "int_partial": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[])
-                        ),
-                        "int_empty": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[])
-                        ),
-                        "float_item": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[1.0])
-                        ),
-                        "float_list": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
-                        ),
-                        "float_partial": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[1.0])
-                        ),
-                        "float_empty": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[])
-                        ),
-                        "bytes_item": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[b"abc"])
-                        ),
-                        "bytes_list": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
-                        ),
-                        "bytes_partial": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[])
-                        ),
-                        "bytes_empty": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[])
-                        ),
-                    }
-                )
-            ),
-            # Record two (corresponding to row two).
-            tf.train.Example(
-                features=tf.train.Features(
-                    feature={
-                        "int_item": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[2])
-                        ),
-                        "int_list": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[3, 3, 4])
-                        ),
-                        "int_partial": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[9, 2])
-                        ),
-                        "int_empty": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=[])
-                        ),
-                        "float_item": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[2.0])
-                        ),
-                        "float_list": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[5.0, 6.0, 7.0])
-                        ),
-                        "float_partial": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[])
-                        ),
-                        "float_empty": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=[])
-                        ),
-                        "bytes_item": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[b"ghi"])
-                        ),
-                        "bytes_list": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[b"jkl", b"5678"])
-                        ),
-                        "bytes_partial": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[b"hello"])
-                        ),
-                        "bytes_empty": tf.train.Feature(
-                            bytes_list=tf.train.BytesList(value=[])
-                        ),
-                    }
-                )
-            ),
-        ]
+        expected_records = tf_records_empty
 
         features = expected_records[0].features
         tf_schema = _features_to_schema(features)
