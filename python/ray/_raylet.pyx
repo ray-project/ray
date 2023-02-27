@@ -136,7 +136,7 @@ import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import (
-    sync_to_async, get_new_event_loop, async_gen_to_gen
+    sync_to_async, get_new_event_loop, async_gen_to_gen, run_loop_forever
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
@@ -979,6 +979,12 @@ cdef void execute_task(
 
                     task_exception = True
 
+                    if inspect.isgenerator(outputs):
+                        print("materializing outputs 1")
+                        outputs = list(outputs)
+                        print("done materializing outputs 1:", outputs)
+                    else:
+                        print("not generator:", type(outputs))
                     execute_dynamic_generator_and_store_task_outputs(
                             outputs,
                             returns[0][0].first,
@@ -1006,9 +1012,20 @@ cdef void execute_task(
                 # actually run the task. We should run the usual handlers for
                 # task cancellation, retrying on application exception, etc. for
                 # all generator tasks, both static and dynamic.
+                if inspect.isgenerator(outputs):
+                    print("materializing outputs 2")
+                    materialized_outputs = list(outputs)
+                    outputs.close()
+                    outputs = materialized_outputs
+                    print("done materializing outputs 2:", outputs)
+                    import gc; gc.collect()
+                    print("finished garbage collection")
+                else:
+                    print("not generator:", type(outputs))
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
+                print("finishing storing outputs:", outputs)
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
@@ -2562,7 +2579,9 @@ cdef class CoreWorker:
 
             context = worker.get_serialization_context()
 
+            print("serializing output:", output)
             serialized_object = context.serialize(output)
+            print("serialized output:", output)
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:
@@ -2623,7 +2642,7 @@ cdef class CoreWorker:
 
         self.eventloop_for_default_cg = get_new_event_loop()
         self.thread_for_default_cg = threading.Thread(
-            target=lambda: self.eventloop_for_default_cg.run_forever(),
+            target=lambda: run_loop_forever(self.eventloop_for_default_cg),
             name="AsyncIO Thread: default"
             )
         self.thread_for_default_cg.start()
@@ -2636,7 +2655,7 @@ cdef class CoreWorker:
 
             async_eventloop = get_new_event_loop()
             async_thread = threading.Thread(
-                target=lambda: async_eventloop.run_forever(),
+                target=lambda: run_loop_forever(async_eventloop),
                 name="AsyncIO Thread: {}".format(cg_name)
             )
             async_thread.start()
@@ -2680,6 +2699,7 @@ cdef class CoreWorker:
             CFiberEvent event
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
+        print("running coroutine on thread:", async_thread.ident)
         coroutine = func(*args, **kwargs)
         if threading.get_ident() == async_thread.ident:
             future = asyncio.ensure_future(coroutine, eventloop)

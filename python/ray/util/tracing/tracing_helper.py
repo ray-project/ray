@@ -25,6 +25,7 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
+from ray._private.async_compat import aclosing
 from ray.runtime_context import get_runtime_context
 
 logger = logging.getLogger(__name__)
@@ -527,8 +528,9 @@ def _inject_tracing_into_class(_cls):
             """
             # If tracing feature flag is not on, perform a no-op
             if not _is_tracing_enabled() or _ray_trace_ctx is None:
-                async for out in method(self, *_args, **_kwargs):
-                    yield out
+                async with aclosing(method(self, *_args, **_kwargs)) as gen:
+                    async for out in gen:
+                        yield out
             else:
                 tracer = _opentelemetry.trace.get_tracer(__name__)
 
@@ -543,8 +545,13 @@ def _inject_tracing_into_class(_cls):
                         self.__class__.__name__, method.__name__
                     ),
                 ):
-                    async for out in method(self, *_args, **_kwargs):
-                        yield out
+                    async with aclosing(method(self, *_args, **_kwargs)) as gen:
+                        try:
+                            async for out in gen:
+                                yield out
+                        except Exception as e:
+                            print("exception in span:", e)
+                            raise e from None
 
         return _resume_span
 

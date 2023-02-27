@@ -56,12 +56,15 @@ cdef class ObjectRef(BaseID):
             if not skip_adding_local_ref:
                 worker.core_worker.add_object_ref_reference(self)
             self.in_core_worker = True
+        print("creating object ref:", str(self))
 
     def __dealloc__(self):
+        print("deallocating object ref:", str(self), threading.get_ident())
         if self.in_core_worker:
             try:
                 worker = ray._private.worker.global_worker
                 worker.core_worker.remove_object_ref_reference(self)
+                print("finished removing reference")
             except Exception as e:
                 # There is a strange error in rllib that causes the above to
                 # fail. Somehow the global 'ray' variable corresponding to the
@@ -70,6 +73,7 @@ cdef class ObjectRef(BaseID):
                 # garbage collection so we can't get a good stack trace. In any
                 # case, there's not much we can do besides ignore it
                 # (re-importing ray won't help).
+                print("dealloc exception:", e, threading.get_ident(), str(self))
                 pass
 
     cdef CObjectID native(self):

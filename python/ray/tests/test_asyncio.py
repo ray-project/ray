@@ -65,8 +65,10 @@ def test_asyncio_actor_concurrency_ref_tracking(
         @ray.remote
         class RecordOrder:
             async def do_work(self, call):
+                print("running and sleeping for:", call, threading.get_ident())
                 # Force a context switch
                 await asyncio.sleep(0)
+                print("done sleeping and yielding for:", call, threading.get_ident())
                 yield call
 
     else:
@@ -81,6 +83,7 @@ def test_asyncio_actor_concurrency_ref_tracking(
     num_calls = 100
 
     a = RecordOrder.options(max_concurrency=100).remote()
+    print("driver thread:", threading.get_ident())
     calls = ray.get([a.do_work.remote(i) for i in range(num_calls)])
     # Check that the output refs correspond to the sent task.
     assert calls == list(range(num_calls))
@@ -404,7 +407,18 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 if __name__ == "__main__":
     import pytest
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(
+        pytest.main(
+            [
+                "-vv",
+                "-k",
+                "test_asyncio_actor_concurrency_ref_tracking[True]",
+                "-x",
+                __file__,
+            ]
+        )
+    )
+    # if os.environ.get("PARALLEL_CI"):
+    #     sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    # else:
+    #     sys.exit(pytest.main(["-sv", __file__]))

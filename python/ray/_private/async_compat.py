@@ -4,6 +4,7 @@ It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
 import inspect
+import threading
 
 try:
     import uvloop
@@ -45,6 +46,31 @@ def sync_to_async(func):
     return wrapper
 
 
+class aclosing:
+    """
+    Returns an async context manager that calls aclose() on thing upon completion of the
+    block. This is used to explicitly close async generators on termination of the
+    generator.
+
+    This is a backport for contextlib.aclosing for Python 3.6 - 3.9.
+
+    The motivation has been proposed by:
+    * https://github.com/njsmith/async_generator
+    * https://vorpus.org/blog/some-thoughts-on-asynchronous-api-design-in-a-post-
+    asyncawait-world/#cleanup-in-generators-and-async-generators
+    * https://www.python.org/dev/peps/pep-0533/
+    """
+
+    def __init__(self, thing):
+        self.thing = thing
+
+    async def __aenter__(self):
+        return self.thing
+
+    async def __aexit__(self, *args):
+        await self.thing.aclose()
+
+
 def async_gen_to_gen(async_gen, async_runner):
     """Convert async generator to a regular Python generator.
 
@@ -58,34 +84,68 @@ def async_gen_to_gen(async_gen, async_runner):
         A generator that yields the data from the provided async generator, in the
         calling thread.
     """
-    # Convert generator to async iterator.
-    ait = async_gen.__aiter__()
 
-    async def get_next():
-        # Awaits for and returns the next object from the async iterator.
+    async def accum():
+        print("accumulating out:", threading.get_ident())
         try:
-            obj = await ait.__anext__()
-            done = False
+            out = [item async for item in async_gen]
+        except Exception as e:
+            print("exception raised in accum:", e, threading.get_ident())
+            raise e from None
+        finally:
+            async_gen.aclose()
+        print("returning out:", out, threading.get_ident())
+        return out
 
-        except StopAsyncIteration:
-            obj = None
-            # Signal that the async generator has been exhausted.
-            done = True
+    out = async_runner(accum)
+    print("yielding from out:", out, threading.get_ident())
+    yield from out
+    # # Convert generator to async iterator.
+    # ait = async_gen.__aiter__()
 
-        return done, obj
+    # async def get_next():
+    #     # Awaits for and returns the next object from the async iterator.
+    #     try:
+    #         print("awaiting for next object from generator:", threading.get_ident())
+    #         obj = await ait.__anext__()
+    #         print("got next object from generator:", obj, threading.get_ident())
+    #         done = False
+    #     except StopAsyncIteration:
+    #         obj = None
+    #         # Signal that the async generator has been exhausted.
+    #         done = True
+    #         # Close the generator upon exhaustion.
+    #         ait.aclose()
+    #     except Exception as e:
+    #         # Close the generator upon terminating with a raised exception.
+    #         ait.close()
+    #         print("exception from generator:", e, threading.get_ident())
+    #         # Propagate exception.
+    #         raise e from None
 
-    # Consume the async generator, yielding each object from this outer regular Python
-    # generator.
-    while True:
-        # Run the coroutine on an event loop and get the result, which is the next
-        # object yielded from the underlying async generator.
-        done, obj = async_runner(get_next)
+    #     return done, obj
 
-        if done:
-            # Async generator is exhausted, so we're done.
-            break
+    # # Consume the async generator, yielding each object from this outer regular Python
+    # # generator.
+    # while True:
+    #     # Run the coroutine on an event loop and get the result, which is the next
+    #     # object yielded from the underlying async generator.
+    #     done, obj = async_runner(get_next)
 
-        yield obj
+    #     if done:
+    #         # Async generator is exhausted, so we're done.
+    #         break
+
+    #     print(f"yielding object {obj} from thread {threading.get_ident()}")
+    #     yield obj
+
+
+def run_loop_forever(loop):
+    try:
+        loop.run_forever()
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
 
 try:
