@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 
 def convert_string_to_type(
@@ -45,3 +45,45 @@ def convert_string_to_type(
     else:
         assert False, f"Unsupported convert type {convert_type}"
     return val
+
+
+class HumanReadable:
+    """A class that consumes a configuration object C,
+    and a generic object X, and creates human-readable keys to
+    augment X with respect to configuration C.
+
+    Configuration object:
+
+    {
+        "key" : function (value) -> string
+    }
+
+    The configuration object would contain the keys we want
+    to make "human-readable." For each key, we would specify
+    a conversion function that will output a string representing
+    a human readable version of that key.
+
+    We require that "key" maps to values of primitive types (int, str, float... etc)."""
+
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+    def format_list(self, objects: List[dict]):
+        for obj in objects:
+            if type(obj) is dict:
+                self.format(obj)
+
+    def format(self, obj: dict):
+        """Runs a DFS on task_state, expanding on iterable keys, and
+        augmenting the task_state with additional, human readable keys."""
+        for key in obj:
+            if key in self.config:
+                human_readable_str = self.config[key](obj[key])
+                obj[key] = human_readable_str
+                continue
+            if type(obj[key]) is list:
+                self.format_list(obj[key])
+                continue
+            if type(obj[key]) is dict:
+                self.format(obj[key])
+                continue
