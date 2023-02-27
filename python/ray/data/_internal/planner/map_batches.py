@@ -65,6 +65,16 @@ def generate_map_batches_fn(
             # Apply UDF.
             try:
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
+
+                if not isinstance(batch, GeneratorType):
+                    batch = [batch]
+
+                for b in batch:
+                    validate_batch(b)
+                    # Add output batch to output buffer.
+                    output_buffer.add_batch(b)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
             except ValueError as e:
                 read_only_msgs = [
                     "assignment destination is read-only",
@@ -82,16 +92,6 @@ def generate_map_batches_fn(
                     ) from e
                 else:
                     raise e from None
-
-            if not isinstance(batch, GeneratorType):
-                batch = [batch]
-
-            for b in batch:
-                validate_batch(b)
-                # Add output batch to output buffer.
-                output_buffer.add_batch(b)
-                if output_buffer.has_next():
-                    yield output_buffer.next()
 
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
