@@ -122,18 +122,15 @@ def _lightning_train_loop_per_worker(config):
     trainer_config = config.get(LIGHTNING_TRAINER_CONFIG_KEY, {})
     trainer_config["enable_progress_bar"] = False
     trainer_config["enable_checkpointing"] = False
-    # trainer_config["logger"] = AIRLightningLogger()
 
     # set trainer's parallel devices
     current_device = ray.train.torch.get_device()
     trainer_config["devices"] = [current_device.index]
 
     # set ray cluster env
-    plugins = [RayEnvironment()]
-    for plugin in trainer_config.get("plugins", []):
-        if not isinstance(plugin, ClusterEnvironment):
-            plugins.append(plugin)
-    trainer_config["plugins"] = plugins
+    trainer_config["plugins"] = [plugin for plugin in trainer_config.get(
+        "plugins", []) if not isinstance(plugin, ClusterEnvironment)]
+    trainer_config["plugins"].append(RayEnvironment())
 
     # Setup ddp strategy
     ddp_strategy_config = config.get(DDP_STRATEGY_CONFIG_KEY, {})
@@ -141,11 +138,9 @@ def _lightning_train_loop_per_worker(config):
 
     # Insert RayModelCheckpoint Callback
     model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG, {})
-    callbacks = [RayModelCheckpoint(**model_checkpoint_config)]
-    for callback in trainer_config.get("callback", []):
-        if not isinstance(callback, ModelCheckpoint):
-            callbacks.append(callback)
-    trainer_config["callback"] = callbacks
+    trainer_config["callback"] = [callback for callback in trainer_config.get(
+        "callback", []) if not isinstance(callback, ModelCheckpoint)]
+    trainer_config["callback"].append(RayModelCheckpoint(**model_checkpoint_config))
 
     trainer = ptl.Trainer(**trainer_config)
     trainer.fit(lightning_module, datamodule=datamodule)
