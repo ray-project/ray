@@ -275,7 +275,7 @@ def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
 
 def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
     if not ray.data.context.DatasetContext.get_current().use_streaming_executor:
-        return ds_expected.take() == ds_actual.take()
+        assert ds_expected.take() == ds_actual.take()
     else:
         # In streaming, we set batch_format to "default" (because calling
         # ds.dataset_format() will still invoke bulk execution and we want
@@ -292,7 +292,7 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
                     rows.append(row)
             return rows
 
-        return get_rows(ds_expected) == get_rows(ds_actual)
+        assert get_rows(ds_expected) == get_rows(ds_actual)
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
@@ -468,6 +468,9 @@ def test_readback_tfrecords(
     """
 
     # The dataset we will write to a .tfrecords file.
+    # Here and in the read_tfrecords call below, we specify `parallelism=1`
+    # to ensure that all rows end up in the same block, which is required
+    # for type inference involving partially missing columns.
     ds = ray.data.from_items(data_partial, parallelism=1)
     expected_records = tf_records_partial
 
@@ -480,7 +483,7 @@ def test_readback_tfrecords(
     ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
     # Read the TFRecords.
     readback_ds = ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema)
-    assert _ds_eq_streaming(ds, readback_ds)
+    _ds_eq_streaming(ds, readback_ds)
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
@@ -514,7 +517,7 @@ def test_readback_tfrecords_empty_features(
 
         # Read the TFRecords.
         readback_ds = ray.data.read_tfrecords(tmp_path)
-        assert _ds_eq_streaming(ds, readback_ds)
+        _ds_eq_streaming(ds, readback_ds)
 
 
 def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
