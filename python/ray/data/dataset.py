@@ -513,7 +513,7 @@ class Dataset(Generic[T]):
             ...     for i in range(3):
             ...         yield batch * 100
             >>> ds = ray.data.from_items([1])
-            >>> ds = ds.map_batches(map_fn)
+            >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
             +- Dataset(num_blocks=1, num_rows=1, schema=<class 'int'>)
