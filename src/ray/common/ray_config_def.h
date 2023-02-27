@@ -775,3 +775,6 @@ RAY_CONFIG(int64_t,
 /// the mapped plasma pages.
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
+
+/// Whether to kill idle workers of a terminated job.
+RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)

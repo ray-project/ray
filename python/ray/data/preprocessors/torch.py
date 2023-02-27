@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Union
 
 import numpy as np
 
-from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -87,6 +86,7 @@ class TorchVisionPreprocessor(Preprocessor):
         self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
     ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
         import torch
+        from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 
         def apply_torchvision_transform(array: np.ndarray) -> np.ndarray:
             try:

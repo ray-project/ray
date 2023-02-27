@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 import gymnasium as gym
-from typing import Mapping, Any, TYPE_CHECKING, Union, Optional, Type, Dict
+from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -13,11 +13,14 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.serialization import check_if_args_kwargs_serializable
 
 from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+    convert_to_canonical_format,
+)
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
-
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -42,10 +45,18 @@ class SingleAgentRLModuleSpec:
     model_config: Optional[Dict[str, Any]] = None
 
     def build(self) -> "RLModule":
+
+        if self.observation_space is None:
+            raise ValueError("Observation space must be specified.")
+        if self.action_space is None:
+            raise ValueError("Action space must be specified.")
+        if self.model_config is None:
+            raise ValueError("Model config must be specified.")
+
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            model_config=self.model_config,
+            model_config_dict=self.model_config,
         )
 
 
@@ -159,20 +170,31 @@ class RLModule(abc.ABC):
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
         """
-        self._input_specs_train = self.input_specs_train()
-        self._output_specs_train = self.output_specs_train()
-        self._input_specs_exploration = self.input_specs_exploration()
-        self._output_specs_exploration = self.output_specs_exploration()
-        self._input_specs_inference = self.input_specs_inference()
-        self._output_specs_inference = self.output_specs_inference()
+        self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
+        self._output_specs_train = convert_to_canonical_format(
+            self.output_specs_train()
+        )
+        self._input_specs_exploration = convert_to_canonical_format(
+            self.input_specs_exploration()
+        )
+        self._output_specs_exploration = convert_to_canonical_format(
+            self.output_specs_exploration()
+        )
+        self._input_specs_inference = convert_to_canonical_format(
+            self.input_specs_inference()
+        )
+        self._output_specs_inference = convert_to_canonical_format(
+            self.output_specs_inference()
+        )
 
     @classmethod
     def from_model_config(
         cls,
         observation_space: gym.Space,
         action_space: gym.Space,
+        *,
         model_config: Mapping[str, Any],
-    ) -> Union["RLModule", Mapping[str, Any]]:
+    ) -> "RLModule":
         """Creates a RLModule instance from a model config dict and spaces.
 
         The model config dict is the same as the one passed to the AlgorithmConfig
@@ -195,7 +217,6 @@ class RLModule(abc.ABC):
                     observation_space: gym.Space,
                     action_space: gym.Space,
                     model_config: Mapping[str, Any],
-                    return_config: bool = False,
                 ):
                     return cls(
                         input_dim=observation_space.shape[0],
@@ -215,6 +236,8 @@ class RLModule(abc.ABC):
             model_config: The model config dict.
         """
         raise NotImplementedError
+
+    # TODO: (Artur) Add a method `from_catalog` that creates RLModule from Catalog
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -251,15 +274,19 @@ class RLModule(abc.ABC):
 
     def input_specs_inference(self) -> SpecType:
         """Returns the input specs of the forward_inference method."""
-        return {}
+        return self._default_input_specs()
 
     def input_specs_exploration(self) -> SpecType:
         """Returns the input specs of the forward_exploration method."""
-        return {}
+        return self._default_input_specs()
 
     def input_specs_train(self) -> SpecType:
         """Returns the input specs of the forward_train method."""
-        return {}
+        return self._default_input_specs()
+
+    def _default_input_specs(self) -> SpecType:
+        """Returns the default input specs."""
+        return [SampleBatch.OBS]
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
@@ -308,7 +335,7 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during training called from the trainer. This method should
+        """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.
 
         Args:

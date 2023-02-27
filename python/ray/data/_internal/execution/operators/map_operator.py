@@ -147,6 +147,10 @@ class MapOperator(PhysicalOperator, ABC):
 
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
+        # Add ref bundle allocation to operator's object store metrics.
+        self._metrics.cur += refs.size_bytes()
+        if self._metrics.cur > self._metrics.peak:
+            self._metrics.peak = self._metrics.cur
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -181,10 +185,6 @@ class MapOperator(PhysicalOperator, ABC):
         """
         # Notify output queue that this task is pending.
         self._output_queue.notify_pending_task(task)
-        # Update object store metrics.
-        self._metrics.cur += task.inputs.size_bytes()
-        if self._metrics.cur > self._metrics.peak:
-            self._metrics.peak = self._metrics.cur
 
     @abstractmethod
     def notify_work_completed(
