@@ -50,9 +50,9 @@ class RayModelCheckpoint(ModelCheckpoint):
             trainer._results.reset()
         return buffered_metrics
 
-    def _session_report(self, trainer: "pl.Trainer"):
+    def _session_report(self, trainer: "pl.Trainer", on_step: bool):
         kwargs = {}
-        kwargs["metrics"] = self.pop_buffered_metrics(trainer)
+        kwargs["metrics"] = self.pop_buffered_metrics(trainer, on_step)
 
         new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
         if len(new_checkpoint) == 1:
@@ -63,36 +63,15 @@ class RayModelCheckpoint(ModelCheckpoint):
 
     def on_train_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
         super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
-        self._session_report(trainer=trainer)
+        self._session_report(trainer=trainer, on_step=True)
 
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         super().on_train_epoch_end(trainer, pl_module)
-        self._session_report(trainer=trainer)
+        self._session_report(trainer=trainer, on_step=False)
     
     def on_validation_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         super().on_validation_end(trainer, pl_module)
-        self._session_report(trainer=trainer)
-
-# class RayLogger(Logger):
-#     def __init__(self, checkpoint_config: CheckpointConfig):
-#         super().__init__()
-#         self._checkpoint_config = checkpoint_config
-#         self._checkpoint_frequency = checkpoint_config.checkpoint_frequency
-#         self._monitor = checkpoint_config.checkpoint_score_attribute
-#         self._monitor_steps = 0
-        
-#     def set_trainer(self, trainer: Trainer):
-#         self._trainer = trainer
-
-#     def dump_checkpoint(self) -> Dict[str, Any]:
-#         assert self._trainer, "Trainer not initialized in RayLogger."
-#         return self._trainer._checkpoint_connector.dump_checkpoint(weights_only=False)
-
-#     @rank_zero_only
-#     def log_metrics(
-#         self, metrics: Dict[str, float], step: Optional[int] = None
-#     ) -> None:
-#         print("Logget: ", metrics, step)
+        self._session_report(trainer=trainer, on_step=False)
 
 class RayDDPStrategy(DDPStrategy):
     @property
