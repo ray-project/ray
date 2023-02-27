@@ -653,15 +653,23 @@ class TestServeDeploySchema:
             "host": "127.0.0.1",
             "port": 8000,
             "applications": [
-                {"name": "app1", "route_prefix": "/alice"},
-                {"name": "app2", "route_prefix": "/charlie"},
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/charlie",
+                    "import_path": "module.graph",
+                },
             ],
         }
         ServeDeploySchema.parse_obj(deploy_config_dict)
 
         # Duplicate app1
         deploy_config_dict["applications"].append(
-            {"name": "app1", "route_prefix": "/bob"},
+            {"name": "app1", "route_prefix": "/bob", "import_path": "module.graph"},
         )
         with pytest.raises(ValidationError) as e:
             ServeDeploySchema.parse_obj(deploy_config_dict)
@@ -669,7 +677,7 @@ class TestServeDeploySchema:
 
         # Duplicate app2
         deploy_config_dict["applications"].append(
-            {"name": "app2", "route_prefix": "/david"}
+            {"name": "app2", "route_prefix": "/david", "import_path": "module.graph"}
         )
         with pytest.raises(ValidationError) as e:
             ServeDeploySchema.parse_obj(deploy_config_dict)
@@ -680,15 +688,19 @@ class TestServeDeploySchema:
             "host": "127.0.0.1",
             "port": 8000,
             "applications": [
-                {"name": "app1", "route_prefix": "/alice"},
-                {"name": "app2", "route_prefix": "/bob"},
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": "/bob", "import_path": "module.graph"},
             ],
         }
         ServeDeploySchema.parse_obj(deploy_config_dict)
 
         # Duplicate route prefix /alice
         deploy_config_dict["applications"].append(
-            {"name": "app3", "route_prefix": "/alice"},
+            {"name": "app3", "route_prefix": "/alice", "import_path": "module.graph"},
         )
         with pytest.raises(ValidationError) as e:
             ServeDeploySchema.parse_obj(deploy_config_dict)
@@ -696,7 +708,7 @@ class TestServeDeploySchema:
 
         # Duplicate route prefix /bob
         deploy_config_dict["applications"].append(
-            {"name": "app4", "route_prefix": "/bob"},
+            {"name": "app4", "route_prefix": "/bob", "import_path": "module.graph"},
         )
         with pytest.raises(ValidationError) as e:
             ServeDeploySchema.parse_obj(deploy_config_dict)
