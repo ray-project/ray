@@ -1,7 +1,9 @@
+import os
 import torch
 from torch import Tensor
 from typing import Any, Dict, Optional
 from copy import deepcopy
+import time
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -16,7 +18,7 @@ import ray
 from ray.air import session
 from ray.air.config import CheckpointConfig
 from ray.air.checkpoint import Checkpoint
-
+from ray.train.torch import TorchCheckpoint
 
 class RayModelCheckpoint(ModelCheckpoint):
     def setup(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", stage: str) -> None:
@@ -33,7 +35,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         e.g. './epoch=2-validation_loss=0.12.ckpt' -> './epoch=2-validation_loss=0.12/checkpoint.ckpt'
         """
         filepath = super().format_checkpoint_name(metrics, filename, ver)
-        filepath.replace(self.FILE_EXTENSION, f"/checkpoint{self.FILE_EXTENSION}")
+        filepath = filepath.replace(self.FILE_EXTENSION, f"/checkpoint{self.FILE_EXTENSION}")
         return filepath
 
     def pop_buffered_metrics(self, trainer: "pl.Trainer", on_step: bool = True) -> Dict[str, Any]:
@@ -46,17 +48,30 @@ class RayModelCheckpoint(ModelCheckpoint):
         buffered_metrics = {}
         if trainer._results is not None:
             metrics = trainer._results.metrics(on_step=on_step)
-            buffered_metrics.update(metrics["callback"])
+            for k, v in metrics["callback"].items():
+                if isinstance(v, torch.Tensor):
+                    v = v.cpu().numpy()
+                buffered_metrics[k] = v
             trainer._results.reset()
+
         return buffered_metrics
 
     def _session_report(self, trainer: "pl.Trainer", on_step: bool):
         kwargs = {}
-        kwargs["metrics"] = self.pop_buffered_metrics(trainer, on_step)
+
+        metrics = self._monitor_candidates(trainer)
+        for k, v in metrics.items():
+            if isinstance(v, torch.Tensor):
+                metrics[k] = v.cpu().numpy()
+        kwargs["metrics"] = metrics
 
         new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
         if len(new_checkpoint) == 1:
-            kwargs["checkpoint"] = Checkpoint.from_directory(path=new_checkpoint.pop())
+            filepath = new_checkpoint.pop()
+            if trainer.global_rank == 0:
+                kwargs["checkpoint"] = TorchCheckpoint.from_directory(path=os.path.dirname(filepath))
+            else:
+                kwargs["checkpoint"] = TorchCheckpoint.from_dict({"dummy": 123})
         assert len(new_checkpoint) <= 1
         self.last_best_k_models = deepcopy(self.best_k_models)
         session.report(**kwargs)

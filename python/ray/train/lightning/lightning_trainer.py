@@ -1,4 +1,4 @@
-import pytorch_lightning as ptl
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.strategies.ddp import DDPStrategy
 
@@ -20,27 +20,24 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
-from load_checkpoint import RayModelCheckpoint
-from python.ray.train import lightning
 
-from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment
+from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment, RayModelCheckpoint
 
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
+# if TYPE_CHECKING:
+from ray.data.preprocessor import Preprocessor
 
 LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
 MODEL_CHECKPOINT_CONFIG = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
-
+LIGHTNING_DATAMODULE_KEY = "_lightning_datamodule"
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
     def __init__(
         self,
-        lightning_module: ptl.LightningModule,
+        lightning_module: pl.LightningModule,
         *,
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
@@ -51,6 +48,7 @@ class LightningTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        datamodule: Optional[pl.LightningDataModule] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -58,7 +56,7 @@ class LightningTrainer(DataParallelTrainer):
             torch_config = TorchConfig()
 
         train_loop_config = self._create_trainer_loop_config(
-            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config, model_checkpoint_config
+            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config, model_checkpoint_config, datamodule
         )
 
         super(LightningTrainer, self).__init__(
@@ -76,11 +74,12 @@ class LightningTrainer(DataParallelTrainer):
     @classmethod
     def _create_trainer_loop_config(
         cls,
-        lightning_module: ptl.LightningModule,
+        lightning_module: pl.LightningModule,
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
         model_checkpoint_config: Optional[Dict] = None,
+        datamodule: Optional[pl.LightningDataModule] = None,
     ) -> Dict[str, Any]:
 
         trainer_loop_config = {}
@@ -88,7 +87,7 @@ class LightningTrainer(DataParallelTrainer):
             raise ValueError(
                 "'lightning_module' must be a class, not a class instance."
             )
-        if not issubclass(lightning_module, ptl.LightningModule):
+        if not issubclass(lightning_module, pl.LightningModule):
             raise ValueError(
                 "'lightning_module' must be a subclass of "
                 "'pytorch_lightning.LightningModule'"
@@ -106,22 +105,29 @@ class LightningTrainer(DataParallelTrainer):
 
         if model_checkpoint_config:
             trainer_loop_config[MODEL_CHECKPOINT_CONFIG] = model_checkpoint_config
+        
+        if datamodule:
+            trainer_loop_config[LIGHTNING_DATAMODULE_KEY] = datamodule
         return trainer_loop_config
 
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
-    train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
-    eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
-    datamodule = build_data_module(train_dataset, eval_dataset, ...)
+
+    datamodule = config.get(LIGHTNING_DATAMODULE_KEY, None)
+    if not datamodule:
+        # Build Datamodule with Ray Datasets
+        train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
+        eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
+        # datamodule = build_data_module(train_dataset, eval_dataset, ...)
 
     LightningModuleCls = config.pop(LIGHTNING_MODULE_KEY)
     module_init_config = config.get(LIGHTNING_MODULE_CONFIG_KEY, {})
     lightning_module = LightningModuleCls(**module_init_config)
 
     trainer_config = config.get(LIGHTNING_TRAINER_CONFIG_KEY, {})
-    trainer_config["enable_progress_bar"] = False
-    trainer_config["enable_checkpointing"] = False
+    trainer_config["enable_progress_bar"] = True
+    trainer_config["enable_checkpointing"] = True
 
     # set trainer's parallel devices
     current_device = ray.train.torch.get_device()
@@ -138,9 +144,9 @@ def _lightning_train_loop_per_worker(config):
 
     # Insert RayModelCheckpoint Callback
     model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG, {})
-    trainer_config["callback"] = [callback for callback in trainer_config.get(
-        "callback", []) if not isinstance(callback, ModelCheckpoint)]
-    trainer_config["callback"].append(RayModelCheckpoint(**model_checkpoint_config))
+    trainer_config["callbacks"] = [callback for callback in trainer_config.get(
+        "callbacks", []) if not isinstance(callback, ModelCheckpoint)]
+    trainer_config["callbacks"].append(RayModelCheckpoint(**model_checkpoint_config))
 
-    trainer = ptl.Trainer(**trainer_config)
+    trainer = pl.Trainer(**trainer_config)
     trainer.fit(lightning_module, datamodule=datamodule)
