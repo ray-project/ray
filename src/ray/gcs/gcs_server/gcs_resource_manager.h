@@ -111,17 +111,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
 
-  // Update node normal task resources.
-  void UpdateNodeNormalTaskResources(const NodeID &node_id,
-                                     const rpc::ResourcesData &heartbeat);
-
-  /// Update resource usage of given node.
-  ///
-  /// \param node_id Node id.
-  /// \param request Request containing resource usage.
-  void UpdateNodeResourceUsage(const NodeID &node_id,
-                               const rpc::ResourcesData &resources);
-
   /// Process a new resource report from a node, independent of the rpc handler it came
   /// from.
   void UpdateFromResourceReport(const rpc::ResourcesData &data);
@@ -138,12 +127,23 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
+  // Update node normal task resources.
+  void UpdateNodeNormalTaskResources(const NodeID &node_id,
+                                     const rpc::ResourcesData &heartbeat);
+
   /// Returns the mapping from node id to latest resource report.
   ///
   /// \returns The mapping from node id to latest resource report.
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
  private:
+  /// Update resource usage of given node.
+  ///
+  /// \param node_id Node id.
+  /// \param request Request containing resource usage.
+  void UpdateNodeResourceUsage(const NodeID &node_id,
+                               const rpc::ResourcesData &resources);
+
   /// Aggregate nodes' pending task info.
   ///
   /// \param resources_data A node's pending task info (by shape).

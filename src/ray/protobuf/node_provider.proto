@@ -1,0 +1,141 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+// NodeProvider represents a service which provisions and manages nodes.
+service NodeProvider {
+  /*
+   * Returns a list of available node types that autoscaler could use.
+   */
+  rpc AvailableNodeTypes (AvailableNodeTypesRequest) returns (AvailableNodeTypesResponse);
+
+  /* CreateNode marks a number of nodes for creation. Returns metadata on created nodes.
+   * Implementation suggestion: The server should mark nodes for asynchronous creation and return immediately.
+   * The nodes marked for creation should be present in subsequent calls to NonTerminatedNodes.
+   * To determine whether a node is in running or pending state, call NonTerminatedNodes. */
+  rpc CreateNodes (CreateNodesRequest) returns (CreateNodesResponse);
+
+  /* Marks a list of nodes for termination. Returns metadata on terminated nodes.
+   * Nodes marked for termination should be absent from any subsequent NonTerminatedNodes response.
+   * Implementation suggestion: The server should mark nodes for asynchronous deletion and return immediately. */
+   rpc TerminateNodes (TerminateNodesRequest) returns (TerminateNodesResponse);
+
+  /* NonTerminatedNodes returns the list of node ids filtered by the specified tags dict.
+   * Also returns lists of ips and tags of the nodes.
+   * Check tag "ray-node-status" for a node's running or pending status. (See description of NodeTags for details.)
+   * The response should not include any nodes marked for deletion by this client before this method is called.
+   * The response should include all nodes which have been created but not yet deleted by this client before this method is called.
+   * Implementation suggestion: It's fine for NonTerminatedNodes to take a few seconds to return.
+   * Implementation suggestion: The server may batch processing of NonTerminatedNodes requests from multiple clients.  */
+  rpc GetNodesStatus (GetNodesStatusRequest) returns (GetNodesStatusResponse);
+
+}
+
+message AvailableNodeTypesRequest {
+  string cluster_id = 1;
+}
+
+enum RayNodeKind {
+  HEAD = 0;
+  WORKER = 1;
+  UNKNOWN = 2;
+}
+
+message NodeType {
+  string node_type_id = 1;
+  RayNodeKind node_kind = 2;
+  map<string, double> resources = 3;
+}
+
+enum NodeStatus {
+  UNKNOWN = 0;
+  PENDING_CREATION = 1;
+  CREATING = 2;
+  RUNNING = 3;
+  TERMINATING = 4;
+  TERMINATED = 5;
+}
+
+enum RayStatus {
+  UNKNOWN = 0;
+  UNINITIALIZED = 1;
+  WAITING_FOR_SSH = 2;
+  SYNCING_FILES = 3;
+  SETTING_UP = 4;
+  UPDATE_FAILED = 5;
+  UP_TO_DATE = 6;
+}
+
+message Node {
+  string node_id = 1;
+  string node_type_id = 2;
+  NodeStatus node_status = 3;
+  RayNodeStatus ray_status = 4;
+  string external_ip_address = 5;
+  string internal_ip_address = 6;
+}
+
+message AvailableNodeTypesResponse {
+  repeated NodeType node_types = 1;
+  map<node_type_id, double> node_priorties = 2;
+  map<node_type_id, int32> node_capacities = 3;
+}
+
+message CreateNodesRequest {
+  string cluster_id = 1;
+  NodeType node_type = 2;
+  int32 count = 3;
+}
+
+enum CreationStatus {
+  UNSPECIFIED = 0; // Most likely indicates old cluster operator is deployed.
+  SUCCESS = 1;
+  FAILURE = 2;
+  PENDING = 3;
+}
+
+message CreateNodesResponse {
+  repeated CreationStatus status = 0;
+}
+
+message TerminateNodesRequest {
+  string cluster_id = 0;
+  repeated string node_ids = 1;
+}
+
+enum TerminationStatus {
+  UNSPECIFIED = 0; // Most likely indicates old cluster operator is deployed.
+  SUCCESS = 1;
+  FAILURE = 2;
+  PENDING = 3;
+}
+
+message TerminateNodesResponse {
+  repeated TerminationStatus status = 0;
+}
+
+message GetNodesStatusRequest {
+  string cluster_id = 0;
+  optional RayNodeKind ray_node_kind = 1;
+  repeated string node_ids = 2;
+  optional NodeStatus node_status = 3;
+}
+
+message GetNodesStatusResponse {
+  repeated Node nodes = 0;
+}

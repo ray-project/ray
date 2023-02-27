@@ -47,6 +47,14 @@ proto_library(
 )
 
 proto_library(
+    name = "node_provider_proto",
+    srcs = ["node_provider.proto"],
+    visibility = ["//java:__subpackages__"],
+    deps = [
+    ],
+)
+
+proto_library(
     name = "runtime_env_common_proto",
     srcs = ["runtime_env_common.proto"],
     visibility = ["//java:__subpackages__"],
@@ -80,6 +88,11 @@ cc_proto_library(
 python_grpc_compile(
     name = "gcs_py_proto",
     deps = [":gcs_proto"],
+)
+
+cc_proto_library(
+    name = "node_provider_cc_proto",
+    deps = [":node_provider_proto"],
 )
 
 # Function and class dependencies.
