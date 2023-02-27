@@ -1,17 +1,19 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.policy.rnn_sequencing import (
     pad_batch_to_sequences_of_same_size,
     add_time_dimension,
     chop_into_sequences,
+    add_states_and_seq_lens_if_missing,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check
-
+from ray.rllib.utils.test_utils import check_same_batch
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -204,6 +206,68 @@ class TestRNNSequencing(unittest.TestCase):
             check(time_major_outputs.shape, (T, B, F))
             time_shift_diff = time_major_outputs[1:] - time_major_outputs[:-1]
             check(time_shift_diff, time_shift_diff_time_major)
+
+    def test_add_states_and_seq_lens_if_missing(self):
+
+        batch = SampleBatch(
+            {
+                SampleBatch.OBS: np.array([[1, 2], [3, 4], [5, 6], [7, 8]]),
+                SampleBatch.ACTIONS: np.array([[1], [2], [3], [4]]),
+                SampleBatch.REWARDS: np.array([1, 2, 3, 4]),
+            }
+        )
+
+        # Expected outputs are stated with numpy because that's how
+        # check_same_batch() works
+        state_structs_and_expected_outputs = [
+            (np.ones((1, 2), dtype=np.float32), np.ones((4, 1, 2), dtype=np.float32)),
+            (
+                {
+                    "a": np.ones((1, 2), dtype=np.float32),
+                    "b": np.ones((1, 2), dtype=np.float32),
+                },
+                {
+                    "a": np.ones((4, 1, 2), dtype=np.float32),
+                    "b": np.ones((4, 1, 2), dtype=np.float32),
+                },
+            ),
+            (
+                {"a": {"a": np.ones((1, 2), dtype=np.float32)}},
+                {"a": {"a": np.ones((4, 1, 2), dtype=np.float32)}},
+            ),
+            (tf.zeros((1, 2), dtype=tf.float32), np.zeros((4, 1, 2), dtype=np.float32)),
+            (
+                np.zeros((1, 2), dtype=np.float32),
+                np.zeros((4, 1, 2), dtype=np.float32),
+            ),
+            (None, None),
+            ({"a": None}, {"a": None}),
+            ({"a": {"a": None}}, {"a": {"a": None}}),
+            ({"a": {}}, {"a": {}}),
+            (
+                {"a": {}, "b": tf.zeros((1, 2), dtype=tf.float32)},
+                {"a": {}, "b": np.zeros((4, 1, 2), dtype=np.float32)},
+            ),
+            (
+                {"a": None, "b": torch.zeros((1, 2), dtype=torch.float32)},
+                {"a": None, "b": np.zeros((4, 1, 2), dtype=np.float32)},
+            ),
+        ]
+
+        class DummyModel:
+            def get_initial_state(self):
+                return None
+
+        for state_struct, expected_outcome in state_structs_and_expected_outputs:
+            print(f"testing struct: \n{state_struct}")
+            test_batch = batch.copy()
+            expected_batch = batch.copy()
+            expected_batch["state_in"] = expected_outcome
+            expected_batch["seq_lens"] = np.array([1, 1, 1, 1])
+
+            DummyModel.get_initial_state = lambda d: state_struct
+            fixed_batch = add_states_and_seq_lens_if_missing(DummyModel(), test_batch)
+            check_same_batch(fixed_batch, expected_batch)
 
 
 if __name__ == "__main__":

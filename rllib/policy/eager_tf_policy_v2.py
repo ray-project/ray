@@ -40,6 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_GRAD_UPDATES_LIFETIME,
 )
+from ray.rllib.policy.rnn_sequencing import add_states_and_seq_lens_if_missing
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -466,13 +467,7 @@ class EagerTFPolicyV2(Policy):
             # Unlike in torch policies, we can not add additional values to
             # input_dict inside self._compute_actions_helper, because it may be
             # eager-traced
-            if SampleBatch.SEQ_LENS not in input_dict:
-                batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
-                seq_lens = tf.ones(batch_size, dtype=tf.int32)
-                input_dict[SampleBatch.SEQ_LENS] = seq_lens
-
-            if "state_in" not in input_dict:
-                input_dict["state_in"] = self.model.get_initial_state()
+            add_states_and_seq_lens_if_missing(self.model, input_dict)
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(

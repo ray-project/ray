@@ -1,12 +1,13 @@
 import collections
-import numpy as np
-import sys
 import itertools
-import tree  # pip install dm_tree
-from typing import Dict, Iterator, List, Optional, Set, Union
+import sys
 from numbers import Number
+from typing import Dict, Iterator, Set, Union
+from typing import List, Optional, Mapping
 
-from ray.util import log_once
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -19,6 +20,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     ViewRequirementsDict,
 )
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -1650,3 +1652,24 @@ def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
                 "Load single-agent data instead to resolve this."
             )
     return batch
+
+
+def add_batch_dim(struct, dim_size):
+    """Return the given structure with an additional batch dimension."""
+    if isinstance(struct, Mapping):
+        return tree.map_structure(
+            lambda s: add_batch_dim(s, dim_size),
+            struct,
+        )
+    elif struct is None:
+        return None
+    elif isinstance(struct, np.ndarray):
+        return np.repeat(np.expand_dims(struct, axis=0), axis=0, repeats=dim_size)
+    elif isinstance(struct, torch.Tensor):
+        return torch.repeat_interleave(
+            torch.unsqueeze(struct, dim=0), dim=0, repeats=dim_size
+        )
+    elif isinstance(struct, tf.Tensor):
+        return tf.repeat(tf.expand_dims(struct, axis=0), axis=0, repeats=dim_size)
+    else:
+        raise ValueError("Unsupported type: {}".format(type(struct)))

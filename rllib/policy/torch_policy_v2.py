@@ -12,16 +12,17 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.rnn_sequencing import add_states_and_seq_lens_if_missing
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.utils import NullContextManager, force_list
-from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
@@ -1085,12 +1086,7 @@ class TorchPolicyV2(Policy):
         extra_fetches = {}
         if isinstance(self.model, RLModule):
             # TODO(Artur): Require upstream calls to this to provide seq_lens and states
-            if seq_lens is None:
-                input_dict[SampleBatch.SEQ_LENS] = torch.ones(
-                    len(input_dict[SampleBatch.OBS]), device=self.device, dtype=int
-                )
-            if state_batches is None:
-                input_dict["state_in"] = self.model.get_initial_state()
+            add_states_and_seq_lens_if_missing(self.model, input_dict)
 
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)

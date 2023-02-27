@@ -23,6 +23,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
 from ray.util import log_once
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.policy.sample_batch import add_batch_dim
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -558,3 +559,24 @@ def timeslice_along_seq_lens_with_overlap(
             ts.right_zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices
+
+
+def add_states_and_seq_lens_if_missing(model, batch: SampleBatch):
+    """Adds "state_in" and "seq_lens" keys to the batch if they are missing.
+
+    Args:
+        model: The model to check for state-requirements.
+        batch: The batch to add state- and seq-len-columns to.
+
+    Returns:
+        SampleBatch: The batch with added state- and seq-len-columns.
+    """
+    if SampleBatch.SEQ_LENS not in batch:
+        batch[SampleBatch.SEQ_LENS] = np.ones([len(batch[SampleBatch.OBS])])
+
+    if "state_in" not in batch:
+        batch["state_in"] = add_batch_dim(
+            model.get_initial_state(), len(batch[SampleBatch.OBS])
+        )
+
+    return batch
