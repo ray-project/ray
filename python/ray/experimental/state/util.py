@@ -68,6 +68,9 @@ class HumanReadable:
     def __init__(self, config: dict) -> None:
         self.config = config
 
+    def prepare(self, obj: dict):
+        pass
+
     def format_list(self, objects: List[dict]):
         for obj in objects:
             if type(obj) is dict:
