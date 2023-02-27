@@ -403,8 +403,6 @@ Runtime environment resources on each node (such as conda environments, pip pack
 
 When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
 
-To disable all deletion behavior (for example, for debugging purposes) you may set the environment variable ``RAY_RUNTIME_ENV_SKIP_LOCAL_GC`` to ``1`` on each node in your cluster before starting Ray.
-
 Inheritance
 """""""""""
 
