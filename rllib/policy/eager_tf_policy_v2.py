@@ -3,13 +3,15 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gymnasium as gym
 import logging
 import os
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
+import gymnasium as gym
+import tree  # pip install dm_tree
+
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -457,11 +459,20 @@ class EagerTFPolicyV2(Policy):
         self._state_in = state_batches
         self._is_recurrent = len(tree.flatten(self._state_in)) > 0
 
-        # Calculate RNN sequence lengths if not given.
-        if SampleBatch.SEQ_LENS not in input_dict:
-            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
-            seq_lens = tf.ones(batch_size, dtype=tf.int32)
-            input_dict[SampleBatch.SEQ_LENS] = seq_lens
+        if isinstance(self.model, RLModule):
+            # TODO(Artur): Require upstream calls to this to provide seq_lens and states
+            # Calculate RNN sequence lengths if not given.
+
+            # Unlike in torch policies, we can not add additional values to
+            # input_dict inside self._compute_actions_helper, because it may be
+            # eager-traced
+            if SampleBatch.SEQ_LENS not in input_dict:
+                batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
+                seq_lens = tf.ones(batch_size, dtype=tf.int32)
+                input_dict[SampleBatch.SEQ_LENS] = seq_lens
+
+            if "state_in" not in input_dict:
+                input_dict["state_in"] = self.model.get_initial_state()
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(

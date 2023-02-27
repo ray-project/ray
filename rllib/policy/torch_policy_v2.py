@@ -1084,6 +1084,14 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = {}
         if isinstance(self.model, RLModule):
+            # TODO(Artur): Require upstream calls to this to provide seq_lens and states
+            if seq_lens is None:
+                input_dict[SampleBatch.SEQ_LENS] = torch.ones(
+                    len(input_dict[SampleBatch.OBS]), device=self.device, dtype=int
+                )
+            if state_batches is None:
+                input_dict["state_in"] = self.model.get_initial_state()
+
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
             else:
