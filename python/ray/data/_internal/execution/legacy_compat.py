@@ -125,6 +125,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
     if hasattr(blocks, "_tasks"):
         read_tasks = blocks._tasks
+        remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
         inputs = InputDataBuffer(
             [
@@ -157,7 +158,9 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
-        return MapOperator.create(do_read, inputs, name="DoRead")
+        return MapOperator.create(
+            do_read, inputs, name="DoRead", ray_remote_args=remote_args
+        )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
         for i in output:
