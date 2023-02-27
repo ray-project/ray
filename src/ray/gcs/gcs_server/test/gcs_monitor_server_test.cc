@@ -298,7 +298,8 @@ TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
     bool gpu_bundle_found = false;
     for (const auto &bundle : request.bundles()) {
       if (bundle.resources().size() == 2) {
-        cpu_bundle_found = bundle.resources().at("CPU") == 1 && bundle.resources().at("GPU") == 1;
+        cpu_bundle_found =
+            bundle.resources().at("CPU") == 1 && bundle.resources().at("GPU") == 1;
       } else if (bundle.resources().size() == 1) {
         gpu_bundle_found = bundle.resources().at("GPU") == 1;
       }
@@ -308,46 +309,49 @@ TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
   };
 
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::STRICT_PACK);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
     RAY_LOG(ERROR) << request.DebugString();
-    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
-              ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION);
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION);
     check_bundles(request);
   }
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::STRICT_SPREAD);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
     RAY_LOG(ERROR) << request.DebugString();
-    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
-              ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION);
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION);
     check_bundles(request);
   }
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::PACK);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
     RAY_LOG(ERROR) << request.DebugString();
-    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
-              ResourceRequest_ResourceRequestType_PACK_RESERVATION);
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_PACK_RESERVATION);
     check_bundles(request);
   }
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::SPREAD);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
     RAY_LOG(ERROR) << request.DebugString();
-    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
-              ResourceRequest_ResourceRequestType_SPREAD_RESERVATION);
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_SPREAD_RESERVATION);
     check_bundles(request);
   }
-
 }
 
 }  // namespace ray

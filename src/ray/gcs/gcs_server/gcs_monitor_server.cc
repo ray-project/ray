@@ -32,9 +32,8 @@ static const rpc::ResourceRequest_ResourceRequestType
         rpc::ResourceRequest_ResourceRequestType::
             ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION};
 
-void GcsPlacementGroupToResourceRequest(
-    const GcsPlacementGroup &gcs_placement_group,
-    rpc::ResourceRequest &resource_request) {
+void GcsPlacementGroupToResourceRequest(const GcsPlacementGroup &gcs_placement_group,
+                                        rpc::ResourceRequest &resource_request) {
   rpc::ResourceRequest_ResourceRequestType request_type =
       PLACEMENT_STRATEGY_TO_REQUEST_TYPE[gcs_placement_group.GetStrategy()];
 
