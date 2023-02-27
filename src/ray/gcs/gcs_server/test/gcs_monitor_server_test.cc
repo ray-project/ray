@@ -189,19 +189,19 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   {
     // Setup some placement group demand mocks.
     auto &pending_pgs = PendingPlacementGroups();
-    auto pg = constructPlacementGroupDemand({{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
-                                            rpc::PlacementStrategy::STRICT_SPREAD);
-    std::unordered_multimap<
-        int64_t,
-        std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
-        test;
-    RAY_LOG(ERROR) << "1";
-    auto size = test.size();
-    RAY_LOG(ERROR) << "2";
-    ASSERT_EQ(size, 0);
-    RAY_LOG(ERROR) << "a";
-    pending_pgs.insert({0, {{}, pg}});
-    RAY_LOG(ERROR) << "3";
+    for (int i = 0; i < 2; i++) {
+      pending_pgs.insert(
+          {0,
+           {{},
+            constructPlacementGroupDemand({{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
+                                          rpc::PlacementStrategy::STRICT_SPREAD)}});
+    }
+
+    auto &infeasible_pgs = InfeasiblePlacementGroups();
+    for (int i = 0; i < 3; i++) {
+      infeasible_pgs.push_back(constructPlacementGroupDemand(
+          {{{"GPU", 1}}, {{"GPU", 1}}}, rpc::PlacementStrategy::STRICT_PACK));
+    }
   }
   {
     // Setup the node management mocks.
@@ -242,41 +242,112 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   }
   {
     // Check the resource requests field looks good.
-    ASSERT_EQ(reply.resource_requests().size(), 3);
+    ASSERT_EQ(reply.resource_requests().size(), 8);
 
     bool cpu_found = false;
     bool custom_found = false;
     bool cpu_and_custom_found = false;
+    bool found_pending_pg = false;
+    bool found_infeasible_pg = false;
 
     for (const auto &request : reply.resource_requests()) {
       RAY_LOG(ERROR) << request.DebugString();
-      ASSERT_EQ(request.resource_request_type(),
-                rpc::ResourceRequest_ResourceRequestType::
-                    ResourceRequest_ResourceRequestType_TASK_RESERVATION);
-      ASSERT_EQ(request.bundles().size(), 1);
-      const auto &resources = request.bundles()[0].resources();
-      if (resources.size() == 1 && resources.begin()->first == "CPU") {
-        cpu_found = true;
-        ASSERT_EQ(request.count(), 6);
-        ASSERT_EQ(resources.begin()->second, 0.75);
-      }
-      if (resources.size() == 1 && resources.begin()->first == "custom") {
-        custom_found = true;
-        ASSERT_EQ(request.count(), 3);
-        ASSERT_EQ(resources.begin()->second, 0.25);
-      }
-      if (resources.size() == 2) {
-        cpu_and_custom_found = true;
-        ASSERT_EQ(resources.at("CPU"), 0.75);
-        ASSERT_EQ(resources.at("custom"), 0.25);
-        ASSERT_EQ(request.count(), 3);
+      if (request.resource_request_type() ==
+          rpc::ResourceRequest_ResourceRequestType::
+              ResourceRequest_ResourceRequestType_TASK_RESERVATION) {
+        ASSERT_EQ(request.bundles().size(), 1);
+        const auto &resources = request.bundles()[0].resources();
+        if (resources.size() == 1 && resources.begin()->first == "CPU") {
+          cpu_found = true;
+          ASSERT_EQ(request.count(), 6);
+          ASSERT_EQ(resources.begin()->second, 0.75);
+        }
+        if (resources.size() == 1 && resources.begin()->first == "custom") {
+          custom_found = true;
+          ASSERT_EQ(request.count(), 3);
+          ASSERT_EQ(resources.begin()->second, 0.25);
+        }
+        if (resources.size() == 2) {
+          cpu_and_custom_found = true;
+          ASSERT_EQ(resources.at("CPU"), 0.75);
+          ASSERT_EQ(resources.at("custom"), 0.25);
+          ASSERT_EQ(request.count(), 3);
+        }
+      } else if (request.resource_request_type() ==
+                 rpc::ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION) {
+        found_pending_pg = true;
+
+      } else if (request.resource_request_type() ==
+                 rpc::ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION) {
+        found_infeasible_pg = true;
       }
     }
 
     ASSERT_TRUE(cpu_found);
     ASSERT_TRUE(custom_found);
     ASSERT_TRUE(cpu_and_custom_found);
+    ASSERT_TRUE(found_pending_pg);
+    ASSERT_TRUE(found_infeasible_pg);
   }
+}
+
+TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
+  auto check_bundles = [](const rpc::ResourceRequest &request) {
+    ASSERT_EQ(request.bundles().size(), 2);
+    bool cpu_bundle_found = false;
+    bool gpu_bundle_found = false;
+    for (const auto &bundle : request.bundles()) {
+      if (bundle.resources().size() == 2) {
+        cpu_bundle_found = bundle.resources().at("CPU") == 1 && bundle.resources().at("GPU") == 1;
+      } else if (bundle.resources().size() == 1) {
+        gpu_bundle_found = bundle.resources().at("GPU") == 1;
+      }
+    }
+    ASSERT_TRUE(cpu_bundle_found);
+    ASSERT_TRUE(gpu_bundle_found);
+  };
+
+  {
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::STRICT_PACK);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
+              ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION);
+    check_bundles(request);
+  }
+  {
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::STRICT_SPREAD);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
+              ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION);
+    check_bundles(request);
+  }
+  {
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::PACK);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
+              ResourceRequest_ResourceRequestType_PACK_RESERVATION);
+    check_bundles(request);
+  }
+  {
+    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1},{"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::SPREAD);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(), rpc::ResourceRequest_ResourceRequestType::
+              ResourceRequest_ResourceRequestType_SPREAD_RESERVATION);
+    check_bundles(request);
+  }
+
 }
 
 }  // namespace ray

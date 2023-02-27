@@ -21,6 +21,11 @@
 namespace ray {
 namespace gcs {
 
+/// Extract the necessary fields from GcsPlacementGroup in order to populate a
+/// rpc::ResourceRequest message.
+void GcsPlacementGroupToResourceRequest(const GcsPlacementGroup &gcs_placement_group,
+                                        rpc::ResourceRequest &resource_request);
+
 /// GcsMonitorServer is a shim responsible for providing a compatible interface between
 /// GCS and `monitor.py`
 class GcsMonitorServer : public rpc::MonitorServiceHandler {
@@ -46,11 +51,13 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
  private:
   void PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply) const;
   void PopulateResourceDemands(rpc::GetSchedulingStatusReply *reply) const;
+  void PopulatePlacementGroupDemands(rpc::GetSchedulingStatusReply *reply) const;
 
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   ClusterResourceManager &cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
 };
+
 }  // namespace gcs
 }  // namespace ray
