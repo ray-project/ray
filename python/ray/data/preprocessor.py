@@ -72,9 +72,10 @@ class Preprocessor(abc.ABC):
         """Return Dataset stats for the most recent transform call, if any."""
 
         raise DeprecationWarning(
-            "`preprocessor.transform_stats()` is no longer supported in Ray 2.4 "
-            "with Datasets now lazy by default. The stats for the Dataset "
-            "can instead be accessed directly from the transformed dataset "
+            "`preprocessor.transform_stats()` is no longer supported in Ray 2.4. "
+            "With Datasets now lazy by default, the stats are only populated "
+            "after execution. Once the dataset transform is executed, the "
+            "stats can be accessed directly from the transformed dataset "
             "(`ds.stats()`), or can be viewed in the ray-data.log "
             "file saved in the Ray logs directory "
             "(defaults to /tmp/ray/session_{SESSION_ID}/logs/)."
