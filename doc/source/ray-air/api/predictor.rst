@@ -63,10 +63,9 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
-    batch_predictor.BatchPredictor
-
+    batch_predictor.BatchPredictor.from_checkpoint
+    batch_predictor.BatchPredictor.from_pandas_udf
 
 Batch Prediction API
 ~~~~~~~~~~~~~~~~~~~~
