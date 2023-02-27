@@ -41,15 +41,3 @@ class TfRLModule(RLModule, tf.keras.Model):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.set_weights(state_dict)
-
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed."""
-        # TODO (Avnish): Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        """Returns True if the module is distributed."""
-        # TODO (Avnish): Implement this.
-        return False
