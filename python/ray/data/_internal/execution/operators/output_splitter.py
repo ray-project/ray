@@ -1,10 +1,12 @@
 from typing import List
 
+from ray.data.block import Block, BlockMetadata
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
+from ray.types import ObjectRef
 
 
 class OutputSplitter(PhysicalOperator):
@@ -121,22 +123,56 @@ class OutputSplitter(PhysicalOperator):
 
     def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
         output = []
-        n = 0
-        while n < nrow:
+        acc = 0
+        while acc < nrow:
             b = self._buffer.pop()
-            if n + b.num_rows() < nrow:
+            if acc + b.num_rows() <= nrow:
                 output.append(b)
-                n += b.num_rows()
+                acc += b.num_rows()
             else:
-                left, right = _split(b, nrow - n)
+                left, right = _split(b, nrow - acc)
                 output.append(left)
-                n += left.num_rows()
-                assert n == nrow, (n, nrow)
+                acc += left.num_rows()
                 self._buffer.append(right)
+                assert acc == nrow, (acc, nrow)
 
-        assert sum(b.num_rows() for b in output) == nrow, (n, nrow)
+        assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
         return output
 
 
-def _split(bundle: RefBundle, n: int) -> (RefBundle, RefBundle):
-    pass
+def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
+    left_blocks, left_meta = [], []
+    right_blocks, right_meta = [], []
+    acc = 0
+    for b, m in bundle.blocks:
+        if acc >= left_size:
+            right_blocks.append(b)
+            right_meta.append(m)
+        elif acc + m.num_rows <= left_size:
+            left_blocks.append(b)
+            left_meta.append(m)
+        else:
+            # Trouble case: split it up.
+            lm, rm = _split_meta(m, left_size - acc)
+            lb, rb = _split_block(b, left_size - acc)
+            left_meta.append(lm)
+            right_meta.append(rm)
+            left_blocks.append(lb)
+            right_blocks.append(rb)
+    left = RefBundle(list(zip(left_blocks, left_meta)), owns_blocks=bundle.owns_blocks)
+    right = RefBundle(
+        list(zip(right_blocks, right_meta)), owns_blocks=bundle.owns_blocks
+    )
+    assert left.num_rows() == left_size
+    assert left.num_rows() + right.num_rows() == bundle.num_rows()
+    return left, right
+
+
+def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetadata):
+    raise NotImplementedError
+
+
+def _split_block(
+    b: ObjectRef[Block], left_size: int
+) -> (ObjectRef[Block], ObjectRef[Block]):
+    raise NotImplementedError
