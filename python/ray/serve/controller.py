@@ -568,6 +568,13 @@ class ServeController:
             pickle.dumps((deployment_time, new_config_checkpoint)),
         )
 
+        # Delete live applications not listed in config
+        existing_applications = set(
+            self.application_state_manager._application_states.keys()
+        )
+        new_applications = {app_config.name for app_config in config.applications}
+        self.delete_apps(existing_applications.difference(new_applications))
+
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
@@ -699,6 +706,11 @@ class ServeController:
                 .remove_app_name_from_deployment_names()
                 .dict(exclude_unset=True)
             )
+
+    def get_all_deployment_statuses(self) -> List[bytes]:
+        """Gets deployment status bytes for all live deployments."""
+        statuses = self.deployment_state_manager.get_deployment_statuses()
+        return [status.to_proto().SerializeToString() for status in statuses]
 
     def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""

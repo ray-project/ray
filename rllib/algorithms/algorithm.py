@@ -35,7 +35,7 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator

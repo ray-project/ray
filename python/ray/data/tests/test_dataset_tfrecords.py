@@ -31,6 +31,28 @@ def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
     return tf_schema
 
 
+def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
+    if not ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        return ds_expected.take() == ds_actual.take()
+    else:
+        # In streaming, we set batch_format to "default" (because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that). As a result, it's receiving PandasRow (the defaut
+        # batch format), which doesn't have the same ordering of columns as
+        # the ArrowRow.
+        from ray.data.block import BlockAccessor
+
+        def get_rows(ds):
+            rows = []
+            for batch in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
+                batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+                for row in batch.iter_rows():
+                    rows.append(row)
+            return rows
+
+        return get_rows(ds_expected) == get_rows(ds_actual)
+
+
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_read_tfrecords(with_tf_schema, ray_start_regular_shared, tmp_path):
     import tensorflow as tf
@@ -390,6 +412,52 @@ def test_write_tfrecords_empty_features(
         assert tfrecords == expected_records
 
 
+def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
+    """
+    Test reading back TFRecords written using datasets.
+    The dataset we read back should be the same that we wrote.
+    """
+
+    # The dataset we will write to a .tfrecords file.
+    ds = ray.data.from_items(
+        [
+            # Row one.
+            {
+                "int_item": 1,
+                "int_list": [2, 2, 3],
+                "int_empty": [],
+                "float_item": 1.0,
+                "float_list": [2.0, 3.0, 4.0],
+                "float_empty": 1.0,
+                "bytes_item": b"abc",
+                "bytes_list": [b"def", b"1234"],
+                "bytes_empty": None,
+            },
+            # Row two.
+            {
+                "int_item": 2,
+                "int_list": [3, 3, 4],
+                "int_empty": [9, 2],
+                "float_item": 2.0,
+                "float_list": [5.0, 6.0, 7.0],
+                "float_empty": None,
+                "bytes_item": b"ghi",
+                "bytes_list": [b"jkl", b"5678"],
+                "bytes_empty": b"hello",
+            },
+        ],
+        # Here and in the read_tfrecords call below, we specify `parallelism=1`
+        # to ensure that all rows end up in the same block, which is required
+        # for type inference involving partially missing columns.
+        parallelism=1,
+    )
+    # Write the TFRecords.
+    ds.write_tfrecords(tmp_path)
+    # Read the TFRecords.
+    readback_ds = ray.data.read_tfrecords(tmp_path)
+    assert _ds_eq_streaming(ds, readback_ds)
+
+
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_readback_tfrecords_empty_features(
     ray_start_regular_shared, tmp_path, with_tf_schema
@@ -439,7 +507,6 @@ def test_readback_tfrecords_empty_features(
         with pytest.raises(ValueError):
             ds.write_tfrecords(tmp_path)
     else:
-
         expected_records = [
             # Record one (corresponding to row one).
             tf.train.Example(
@@ -536,8 +603,8 @@ def test_readback_tfrecords_empty_features(
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
 
         # Read the TFRecords.
-        readback_ds = ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema)
-        assert ds.take() == readback_ds.take()
+        readback_ds = ray.data.read_tfrecords(tmp_path)
+        assert _ds_eq_streaming(ds, readback_ds)
 
 
 def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
