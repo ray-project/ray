@@ -343,6 +343,19 @@ def read_datasource(
             "dataset blocks."
         )
 
+    if (
+        requested_parallelism
+        and len(read_tasks) > ray.available_resources().get("CPU", 1) * 4
+    ):
+        logger.warn(
+            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} is "
+            "more than the number of available CPU slots in the cluster. This can "
+            "lead to slowdowns during the data reading phase due to excessive "
+            "task creation. Reduce the parallelism to match with the available "
+            "CPU slots in the cluster. You can ignore this message if the cluster "
+            "is expected to autoscale."
+        )
+
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
