@@ -2295,6 +2295,7 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    size = "medium",
     tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
