@@ -1,3 +1,4 @@
+import math
 from typing import List
 
 from ray.data.block import Block, BlockMetadata
@@ -169,7 +170,22 @@ def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
 
 
 def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetadata):
-    raise NotImplementedError
+    left_bytes = int(math.floor(m.size_bytes * (left_size / m.num_rows)))
+    left = BlockMetadata(
+        num_rows=left_size,
+        size_bytes=left_bytes,
+        schema=m.schema,
+        input_files=m.input_files,
+        exec_stats=None,
+    )
+    right = BlockMetadata(
+        num_rows=m.num_rows - left_size,
+        size_bytes=m.size_bytes - left_bytes,
+        schema=m.schema,
+        input_files=m.input_files,
+        exec_stats=None,
+    )
+    return left, right
 
 
 def _split_block(
