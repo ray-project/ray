@@ -96,10 +96,6 @@ Note that in production scenarios, you will want to use larger Ray pods. In fact
 If your Kubernetes has a default deny network policy for pods, you need to manually create a network policy to allow bidirectional
 communication among the head and worker nodes in the Ray cluster as mentioned in [the ports configurations doc](https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations).
 
-Note that the statically set port ranges for the worker ports in [the Kubernetes deployment config file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml)
-are only required when there is a corresponding network policy created for the default deny behavior.
-Otherwise the statically set worker port ranges are not required.
-
 ```
 # Create a sample network policy for the static Ray cluster from the Ray repo:
 ! kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster-networkpolicy.yaml
@@ -111,8 +107,10 @@ Once the network policy has been deployed, you can view the network policy for t
 ! kubectl get networkpolicies
 
 # NAME                               POD-SELECTOR                           AGE
-# ray-cluster-egress                 app=ray-cluster-head                   XXs
-# ray-cluster-ingress                app=ray-cluster-head                   XXs
+# ray-head-egress                    app=ray-cluster-head                   XXs
+# ray-head-ingress                   app=ray-cluster-head                   XXs
+# ray-worker-egress                  app=ray-cluster-worker                 XXs
+# ray-worker-ingress                 app=ray-cluster-worker                 XXs
 ```
 
 ### External Redis Integration for fault tolerance
