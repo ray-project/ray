@@ -4,6 +4,7 @@ import io
 import time
 import re
 import uuid
+import os
 
 from ray.util.annotations import PublicAPI
 from ray.data.block import BlockAccessor
@@ -115,16 +116,107 @@ def table_to_list(table):
         result.append(row)
     return result
 
+
+def default_decoder(sample: Dict[str, Any]):
+    """A default decoder for webdataset. 
+    
+    This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl.
+
+    Args:
+        sample (Dict[str, Any]): sample, modified in place
+    """
+    sample = dict(sample)
+    for key, value in sample.items():
+        extension = os.path.splitext(key)[1]
+        if key.startswith("__"):
+            continue
+        elif extension in [".txt"]:
+            sample[key] = value.decode("utf-8")
+        elif extension in [".cls", ".cls2"]:
+            sample[key] = int(value.decode("utf-8"))
+        elif extension in [".jpg", ".png", ".ppm", ".pgm", ".pbm", ".pnm"]:
+            import PIL.Image
+            sample[key] = PIL.Image.open(io.BytesIO(value))
+        elif extension == ".json":
+            import json
+            sample[key] = json.loads(value)
+        elif extension == ".npy":
+            import numpy as np
+            sample[key] = np.load(io.BytesIO(value))
+        elif extension == ".mp":
+            import msgpack
+            sample[key] = msgpack.unpackb(value, raw=False)
+        elif extension in [".pt", ".pth"]:
+            import torch
+            sample[key] = torch.load(io.BytesIO(value))
+        elif extension in [".pickle", ".pkl"]:
+            import pickle
+            sample[key] = pickle.loads(value)
+    return sample
+
+
+def default_encoder(sample: Dict[str, Any]):
+    """A default encoder for webdataset.
+    
+    This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl
+
+    Args:
+        sample (Dict[str, Any]): sample
+    """
+    sample = dict(sample)
+    for key, value in sample.items():
+        extension = os.path.splitext(key)[1]
+        if key.startswith("__"):
+            continue
+        elif extension in [".txt"]:
+            sample[key] = value.encode("utf-8")
+        elif extension in [".cls", ".cls2"]:
+            sample[key] = str(value).encode("utf-8")
+        elif extension in [".jpg", ".png", ".ppm", ".pgm", ".pbm", ".pnm"]:
+            import PIL.Image
+            import numpy as np
+            if isinstance(value, np.ndarray):
+                value = PIL.Image.fromarray(value)
+            assert isinstance(value, PIL.Image.Image)
+            stream = io.BytesIO()
+            value.save(stream, format=extension[1:])
+            sample[key] = stream.getvalue()
+        elif extension == ".json":
+            import json
+            sample[key] = json.dumps(value).encode("utf-8")
+        elif extension == ".npy":
+            import numpy as np
+            stream = io.BytesIO()
+            np.save(stream, value)
+            sample[key] = stream.getvalue()
+        elif extension == ".mp":
+            import msgpack
+            sample[key] = msgpack.dumps(value)
+        elif extension in [".pt", ".pth"]:
+            import torch
+            stream = io.BytesIO()
+            torch.save(value, stream)
+            sample[key] = stream.getvalue()
+        elif extension in [".pickle", ".pkl"]:
+            import pickle
+            stream = io.BytesIO()
+            pickle.dump(value, stream)
+            sample[key] = stream.getvalue()
+        return sample
+
+
 @PublicAPI(stability="alpha")
 class WebDatasetDatasource(FileBasedDatasource):
     _FILE_EXTENSION = "tar"
 
-    def _read_stream(self, stream: "pyarrow.NativeFile", path: str, **kw):
+    def _read_stream(self, stream: "pyarrow.NativeFile", path: str, decoder=default_decoder, **kw):
         import pyarrow as pa
 
         files = tar_file_iterator(stream, meta=dict(__url__=path))
         samples = group_by_keys(files)
         for sample in samples:
+            if decoder is not None:
+                sample = decoder(sample)
             sample = {k: [v] for k, v in sample.items()}
             yield pa.Table.from_pydict(sample)
 
@@ -133,6 +225,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        encoder=default_encoder,
         **kw,
     ):
         import pyarrow
@@ -142,6 +235,8 @@ class WebDatasetDatasource(FileBasedDatasource):
         samples = table_to_list(table)
         stream = tarfile.open(fileobj=f, mode="w|")
         for sample in samples:
+            if encoder is not None:
+                sample = encoder(sample)            
             if not "__key__" in sample:
                 sample["__key__"] = uuid.uuid4().hex
             key = sample["__key__"]
