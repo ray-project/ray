@@ -130,7 +130,8 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 """
             )
         else:

@@ -104,18 +104,13 @@ RayServerBidiReactor::RayServerBidiReactor(
   StartPull();
 }
 
-void RayServerBidiReactor::Disconnect() {
-  io_context_.dispatch(
-      [this]() {
-        if (!disconnected_) {
-          disconnected_ = true;
-          Finish(grpc::Status::OK);
-        }
-      },
-      "");
+void RayServerBidiReactor::DoDisconnect() {
+  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
 }
 
-void RayServerBidiReactor::OnCancel() { Disconnect(); }
+void RayServerBidiReactor::OnCancel() {
+  io_context_.dispatch([this]() { Disconnect(); }, "");
+}
 
 void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
@@ -155,15 +150,12 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
       "");
 }
 
-void RayClientBidiReactor::Disconnect() {
+void RayClientBidiReactor::DoDisconnect() {
   io_context_.dispatch(
       [this]() {
-        if (!disconnected_) {
-          disconnected_ = true;
-          StartWritesDone();
-          // Free the hold to allow OnDone being called.
-          RemoveHold();
-        }
+        StartWritesDone();
+        // Free the hold to allow OnDone being called.
+        RemoveHold();
       },
       "");
 }
