@@ -57,7 +57,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "Ray master branch. Can also be `<repo_url>:<branch>` or "
         "`<repo_url>:<commit>` to specify a different repository to "
         "fetch wheels from, if available. Can also be "
-        "`file://<path to local wheel` for a wheel built locally."
+        "`file://<path to local wheel>` for wheels built locally."
     ),
 )
 @click.option(
