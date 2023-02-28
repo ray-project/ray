@@ -297,9 +297,12 @@ class HTTPProxy:
         )
         self.processing_latency_tracker = metrics.Histogram(
             "serve_http_request_latency_ms",
-            description="The latency for http request to be processed.",
+            description=(
+                "The end-to-end latency of HTTP requests "
+                "(measured from the Serve HTTP proxy)."
+            ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("endpoint",),
+            tag_keys=("route_prefix",),
         )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -381,7 +384,7 @@ class HTTPProxy:
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
         self.processing_latency_tracker.observe(
-            latency_ms, tags={"endpoint": route_prefix}
+            latency_ms, tags={"route_prefix": route_prefix}
         )
         logger.info(
             access_log_msg(

@@ -281,7 +281,7 @@ The following metrics are exposed by Ray Serve:
      - The number of non-200 HTTP responses returned by each deployment.
    * - ``serve_http_request_latency_ms`` [*]
      - * endpoint
-     - The latency of HTTP requests to be processed.
+     - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
 ```
 [*] - only available when using HTTP calls  
 [**] - only available when using Python `ServeHandle` calls
