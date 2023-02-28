@@ -1143,7 +1143,9 @@ class Dataset(Generic[T]):
         return self.map_batches(process_batch)
 
     @ConsumptionAPI
-    def streaming_split(self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None) -> List[DatasetIterator]:
+    def streaming_split(
+        self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
+    ) -> List[DatasetIterator]:
         # Launch streaming driver in an async coordinator actor.
         # Return iterators that reference that actor.
         pass
