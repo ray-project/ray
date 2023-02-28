@@ -47,6 +47,29 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
+        """Create a :class:`BatchPredictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Example:
+
+            .. testcode::
+
+                from torchvision import models
+
+                from ray.train.batch_predictor import BatchPredictor
+                from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+                model = models.resnet50(pretrained=True)
+                checkpoint = TorchCheckpoint.from_model(model)
+                predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+
+        Args:
+            checkpoint: A :class:`~ray.air.checkpoint.Checkpoint` containing model state
+                and optionally a preprocessor.
+            predictor_cls: The type of predictor to use.
+            **kwargs: Optional arguments to pass the ``predictor_cls`` constructor.
+        """
+
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     @classmethod
@@ -119,7 +142,10 @@ class BatchPredictor:
             min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
+                Set to 1 by default.
             num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+                Set to 0 by default. If you want to use GPUs for inference, please
+                specify this parameter.
             separate_gpu_stage: If using GPUs, specifies whether to execute GPU
                 processing in a separate stage (enabled by default). This avoids
                 running expensive preprocessing steps on GPU workers.

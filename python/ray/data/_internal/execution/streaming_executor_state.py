@@ -53,8 +53,7 @@ class TopologyResourceUsage:
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.
             if not isinstance(op, InputDataBuffer):
-                for bundle in state.outqueue:
-                    cur_usage.object_store_memory += bundle.size_bytes()
+                cur_usage.object_store_memory += state.outqueue_memory_usage()
             # Subtract one from denom to account for input buffer.
             f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
             downstream_usage[op] = DownstreamMemoryInfo(
@@ -92,6 +91,10 @@ class OpState:
         self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
+        #
+        # Note: this queue is also accessed concurrently from the consumer thread.
+        # (in addition to the streaming executor thread). Hence, it must be a
+        # thread-safe type such as `deque`.
         self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
@@ -152,6 +155,23 @@ class OpState:
                 return self.outqueue.popleft()
             except IndexError:
                 time.sleep(0.01)
+
+    def outqueue_memory_usage(self) -> int:
+        """Return the object store memory of this operator's outqueue.
+
+        Note: Python's deque isn't truly thread-safe since it raises RuntimeError
+        if it detects concurrent iteration. Hence we don't use its iterator but
+        manually index into it.
+        """
+
+        object_store_memory = 0
+        for i in range(len(self.outqueue)):
+            try:
+                bundle = self.outqueue[i]
+                object_store_memory += bundle.size_bytes()
+            except IndexError:
+                break  # Concurrent pop from the outqueue by the consumer thread.
+        return object_store_memory
 
 
 def build_streaming_topology(
