@@ -89,6 +89,7 @@ class OutputSplitter(PhysicalOperator):
     def current_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
             object_store_memory=sum(b.size_bytes() for b in self._buffer)
+            + sum(b.size_bytes() for b in self._output_queue)
         )
 
     def progress_str(self) -> str:
