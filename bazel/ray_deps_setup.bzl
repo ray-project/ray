@@ -84,9 +84,15 @@ def auto_http_archive(
     )
 
 def ray_deps_setup():
-
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
     # all of http/git_repository should add prefix for patches defined in ray directory.
+    http_archive(
+        name = "com_google_protobuf",
+        strip_prefix = "protobuf-3.19.6",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.6.tar.gz"],
+        sha256 = "9a301cf94a8ddcb380b901e7aac852780b826595075577bb967004050c835056",
+    )
+
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
@@ -225,11 +231,11 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.52.1.tar.gz",
-        sha256 = "ec125d7fdb77ecc25b01050a0d5d32616594834d3fe163b016768e2ae42a2df6",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.48.4.tar.gz",
+        sha256 = "0c3faa83e39d4f1ab55fe1476362b9ac3b81632a46dce7fd4d50271bce816b53",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-win.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-cherrypick-64d124.patch",
         ],
         patch_args = ["-p1"],
     )

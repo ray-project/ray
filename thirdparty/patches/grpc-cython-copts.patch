@@ -1,5 +1,5 @@
 diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
-index 8e003c2246..134779d92d 100644
+index 8e003c2246..4fefd3e155 100644
 --- a/bazel/cython_library.bzl
 +++ b/bazel/cython_library.bzl
 @@ -19,7 +19,7 @@
@@ -9,7 +9,7 @@ index 8e003c2246..134779d92d 100644
 -def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
 +def pyx_library(name, deps = [], cc_kwargs = {},py_deps = [], srcs = [], **kwargs):
      """Compiles a group of .pyx / .pxd / .py files.
- 
+
      First runs Cython to create .cpp files for each input .pyx or .py + .pxd
 @@ -69,10 +69,11 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
          stem = src.split(".")[0]
@@ -23,7 +23,6 @@ index 8e003c2246..134779d92d 100644
 +            srcs = [stem + ".cpp"] + cc_kwargs.pop("srcs", []),
 +            deps = deps + ["@local_config_python//:python_headers"] + cc_kwargs.pop("deps", []),
 +            linkshared = cc_kwargs.pop("linkshared", 1),
-+            **cc_kwargs
++            **cc_kwargs,
          )
          shared_objects.append(shared_object_name)
- 
