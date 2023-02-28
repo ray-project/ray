@@ -85,7 +85,7 @@
 #     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
 - label: ":docker: Build Images: py37 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -95,7 +95,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py37 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -105,7 +105,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 cu118 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -115,7 +115,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -125,7 +125,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 cu116 cu118 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -135,7 +135,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -145,7 +145,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 cu116 cu118 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py310 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -155,7 +155,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py310 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
