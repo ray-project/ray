@@ -3,8 +3,11 @@ from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
-from ray.data.block import Block, BlockMetadata
+import ray
+import ray.cloudpickle as cloudpickle
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 
 
@@ -94,9 +97,10 @@ class BlockList:
         cur_size = 0
         for b, m in zip(self._blocks, self._metadata):
             if m.size_bytes is None:
-                raise RuntimeError(
-                    "Block has unknown size, cannot use split_by_bytes()"
-                )
+                # Fetch the block size in bytes if missing.
+                get_size_bytes = cached_remote_fn(_get_size_bytes)
+                # Cache on the block metadata.
+                m.size_bytes = ray.get(get_size_bytes.remote(b))
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
                 output.append(
@@ -242,3 +246,12 @@ class BlockList:
         blocks, metadata = map(list, zip(*blocks_with_metadata))
 
         return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)
+
+
+def _get_size_bytes(block: Block) -> int:
+    """Get the size in bytes for the provided block."""
+    try:
+        return BlockAccessor.for_block(block).size_bytes()
+    except TypeError:
+        # Fallback for read tasks, which we currently shoehorn into block lists.
+        return len(cloudpickle.dumps(block))

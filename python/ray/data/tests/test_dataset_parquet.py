@@ -410,6 +410,31 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     ]
 
 
+def test_parquet_read_bulk_fetched_size_bytes(ray_start_regular_shared, local_path):
+    df1 = pd.DataFrame({"a": list(range(1000))})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(local_path, "test1.parquet")
+    pq.write_table(table, path1)
+    df2 = pd.DataFrame({"a": list(range(1000))})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(local_path, "test2.parquet")
+    pq.write_table(table, path2)
+    paths = [path1, path2]
+
+    ds = ray.data.read_parquet_bulk(paths)
+    ds = ds.map_batches(lambda df: df)
+
+    # Sanity check: fast meta provider should result in no file sizes being fetched, so
+    # the size in bytes should be None.
+    metadata = ds._plan._in_blocks.get_metadata()
+    for meta in metadata:
+        assert meta.size_bytes is None
+
+    ds = ds.fully_executed()
+    # Check that size in bytes is resolved and represents the actual data size.
+    assert ds.size_bytes() > 2 * 8 * 1000
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [

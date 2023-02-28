@@ -14,8 +14,9 @@ from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import RandomizeBlocksStage
-from ray.data._internal.block_list import BlockList
+from ray.data._internal.block_list import BlockList, _get_size_bytes
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.compute import (
     get_compute,
     CallableClass,
@@ -296,6 +297,11 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
 def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBundle]:
     output = []
     for block, meta in blocks.iter_blocks_with_metadata():
+        if meta.size_bytes is None:
+            # Fetch the block size in bytes if missing.
+            get_size_bytes = cached_remote_fn(_get_size_bytes)
+            # Cache on the block metadata.
+            meta.size_bytes = ray.get(get_size_bytes.remote(block))
         output.append(
             RefBundle(
                 [

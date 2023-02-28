@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 import numpy as np
 
 import ray
-from ray.data._internal.block_list import BlockList
+from ray.data._internal.block_list import BlockList, _get_size_bytes
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.memory_tracing import trace_allocation
@@ -191,9 +191,10 @@ class LazyBlockList(BlockList):
         ):
             m = t.get_metadata()
             if m.size_bytes is None:
-                raise RuntimeError(
-                    "Block has unknown size, cannot use split_by_bytes()"
-                )
+                # Fetch the block size in bytes if missing.
+                get_size_bytes = cached_remote_fn(_get_size_bytes)
+                # Cache on the block metadata.
+                m.size_bytes = ray.get(get_size_bytes.remote(b))
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
                 output.append(

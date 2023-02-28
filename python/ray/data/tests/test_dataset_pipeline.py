@@ -5,6 +5,8 @@ from typing import Tuple
 import pytest
 import pandas as pd
 import numpy as np
+import pyarrow.parquet as pq
+import pyarrow as pa
 
 import ray
 from ray.data import dataset
@@ -14,6 +16,15 @@ from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(params=[True, False])
+def enable_optimize_fuse_read_stages(request):
+    ctx = DatasetContext.get_current()
+    old_config = ctx.optimize_fuse_read_stages
+    ctx.optimize_fuse_read_stages = request.param
+    yield request.param
+    ctx.optimize_fuse_read_stages = old_config
 
 
 class MockLogger:
@@ -213,6 +224,35 @@ def test_window_by_bytes(ray_start_regular_shared):
         assert dataset.take(10) == list(range(10))
     finally:
         context.optimize_fuse_read_stages = old
+
+
+def test_window_by_bytes_needing_bytes_fetch(
+    ray_start_regular_shared, local_path, enable_optimize_fuse_read_stages
+):
+    # Test that windowing by bytes works on a Dataset that doesn't have block sizes in
+    # bytes stored in the block metadata.
+    parallelism = 10
+    paths = []
+    for i in range(parallelism):
+        # 4 * 1024 bytes per block.
+        df = pd.DataFrame({"a": list(range(i * 1024, (i + 1) * 1024))})
+        table = pa.Table.from_pandas(df)
+        path = os.path.join(local_path, f"test{i}.parquet")
+        pq.write_table(table, path)
+        paths.append(path)
+
+    # read_parquet_bulk uses a fast meta provider that doesn't resolve file sizes.
+    ds = ray.data.read_parquet_bulk(paths, parallelism=parallelism)
+
+    # 2 blocks per window.
+    pipe = ds.window(bytes_per_window=8 * 1024)
+    for ds in pipe.iter_datasets():
+        if enable_optimize_fuse_read_stages:
+            assert ds.num_blocks() == 2
+        else:
+            # If read stage fusion is disabled, the block size in bytes will be the
+            # serialized size of the read tasks, which is comparatively small.
+            assert ds.num_blocks() == 10
 
 
 def test_epoch(ray_start_regular_shared):
