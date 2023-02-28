@@ -219,7 +219,7 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
             ref = op.get_next()
             assert ref.owns_blocks, ref
             for block, _ in ref.blocks:
-                output_splits[ref.output_split].extend(ray.get(block))
+                output_splits[ref.output_split_idx].extend(ray.get(block))
     op.inputs_done()
     if equal:
         for i in range(3):
@@ -252,7 +252,7 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
         ref = op.get_next()
         assert ref.owns_blocks, ref
         for block, _ in ref.blocks:
-            output_splits[ref.output_split].extend(ray.get(block))
+            output_splits[ref.output_split_idx].extend(ray.get(block))
     if equal:
         actual = [len(output_splits[i]) for i in range(3)]
         expected = [num_inputs // 3] * 3

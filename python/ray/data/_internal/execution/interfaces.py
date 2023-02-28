@@ -36,7 +36,7 @@ class RefBundle:
 
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
-    output_split: Optional[int] = None
+    output_split_idx: Optional[int] = None
 
     def __post_init__(self):
         for b in self.blocks:

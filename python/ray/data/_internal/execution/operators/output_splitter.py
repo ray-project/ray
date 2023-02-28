@@ -15,12 +15,14 @@ from ray.types import ObjectRef
 class OutputSplitter(PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
-    The output bundles of this operator will have a `bundle.output_split` attribute
+    The output bundles of this operator will have a `bundle.output_split_idx` attr
     set to an integer from [0..n-1]. This operator tries to divide the rows evenly
     across output splits.
 
     If the `equal` option is set, the operator will furthermore guarantee an exact
     split of rows across outputs, truncating the Dataset as needed.
+
+    OutputSplitter does not provide any ordering guarantees.
     """
 
     def __init__(
@@ -30,7 +32,6 @@ class OutputSplitter(PhysicalOperator):
         equal: bool,
     ):
         super().__init__(f"split({n}, equal={equal})", [input_op])
-        self._n = n
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
@@ -82,7 +83,7 @@ class OutputSplitter(PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b.output_split = i
+                b.output_split_idx = i
                 self._output_queue.append(b)
         self._buffer = []
 
@@ -105,7 +106,7 @@ class OutputSplitter(PhysicalOperator):
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
-                target_bundle.output_split = target_index
+                target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
             else:
