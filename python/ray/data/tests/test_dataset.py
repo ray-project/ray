@@ -337,20 +337,14 @@ def test_zip_pandas(ray_start_regular_shared):
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds2)
     assert ds.count() == 2
-    assert (
-        "{col1: int64, col2: int64, col3: object, col4: object}"
-        in str(ds)
-    )
+    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
 
     ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds3)
     assert ds.count() == 2
-    assert (
-        "{col1: int64, col2: int64, col2_1: object, col4: object}"
-        in str(ds)
-    )
+    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
 
@@ -1345,13 +1339,10 @@ def test_schema(ray_start_regular_shared):
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4.fully_executed()
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
-    assert (
-        str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
-    )
+    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert (
-        str(ds4)
-        == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
+        str(ds4) == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
     )
 
 
@@ -4513,9 +4504,7 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
-    )
+    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):

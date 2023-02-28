@@ -122,8 +122,8 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=?, "
-        "schema={\n\t__value__: ArrowTensorType(shape=(1,), dtype=int64)\n})"
+        "Dataset(\n\tnum_blocks=2,\n\tnum_rows=?,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -134,8 +134,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=10, "
-        "schema={\n\t__value__: ArrowTensorType(shape=(1,), dtype=int64)\n})"
+        "Dataset(\n\tnum_blocks=1,\n\tnum_rows=10,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -147,8 +147,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=10, "
-        "schema={\n\t__value__: ArrowTensorType(shape=(1,), dtype=int64)\n})"
+        "Dataset(\n\tnum_blocks=1,\n\tnum_rows=10,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
     )
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
@@ -160,8 +160,8 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=10, "
-        "schema={\n\t__value__: ArrowTensorType(shape=(1,), dtype=int64)\n})"
+        "Dataset(\n\tnum_blocks=1,\n\tnum_rows=10,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -218,7 +218,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{\n\t__value__: ArrowTensorType(shape=(2,), dtype=int8)\n}",
+            schema="{__value__: ArrowTensorType(shape=(2,), dtype=int8)}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),

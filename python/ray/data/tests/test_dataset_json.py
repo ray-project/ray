@@ -65,7 +65,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{\n\tone: int64,\n\ttwo: string\n}" in str(ds), ds
+    assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -267,7 +267,7 @@ def test_json_read_meta_provider(
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{\n\tone: int64,\n\ttwo: string\n}" in str(ds), ds
+    assert "{one: int64, two: string}" in str(ds), ds
 
     with pytest.raises(NotImplementedError):
         ray.data.read_json(
@@ -313,7 +313,7 @@ def test_json_read_with_read_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{\n\tone: int64,\n\ttwo: string\n}" in str(ds), ds
+    assert "{one: int64, two: string}" in str(ds), ds
 
 
 @pytest.mark.parametrize(
@@ -356,7 +356,7 @@ def test_json_read_with_parse_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{\n\ttwo: string\n}" in str(ds), ds
+    assert "{two: string}" in str(ds), ds
 
 
 @pytest.mark.parametrize(
