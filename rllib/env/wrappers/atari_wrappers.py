@@ -208,12 +208,34 @@ class EpisodicLifeEnv(gym.Wrapper):
 
 @PublicAPI
 class MaxAndSkipEnv(gym.Wrapper):
-    def __init__(self, env, skip=4):
+    """Performs frame skipping on env with max'ing observations over last 2 frames.
+
+    Note that when using this wrapper with Atari envs, your `frameskip` gym.make()
+    setting should probably be set to 1, as you probably don't want to have two
+    frame skipping wrappers active.
+
+    Within the skipped frames, this wrapper will return the maximum individual-dim
+    observation values over the last two frames.
+    For example, if observation_space = Box(0, 255, (1, ), uint8) and we skip over the
+    4 observations: [9] [4] [100] and [59], we would return [100] (max over the last
+    two skipped frames).
+    """
+    def __init__(self, env, skip: int = 4, max_over: int = 2):
         """Return only every `skip`-th frame"""
         gym.Wrapper.__init__(self, env)
-        # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
+
+        assert skip >= max_over, (
+            f"`skip` ({skip}) value must be larger or equal to `max_over` "
+            f"({max_over}) value!"
+        )
         self._skip = skip
+        self._max_over = max_over
+
+        # Most recent raw observations (for max pooling across last two time steps).
+        self._obs_buffer = np.zeros(
+            (self._max_over,) + env.observation_space.shape,
+            dtype=env.observation_space.dtype,
+        )
 
     def step(self, action):
         """Repeat action, sum reward, and max over last observations."""
@@ -221,15 +243,16 @@ class MaxAndSkipEnv(gym.Wrapper):
         terminated = truncated = info = None
         for i in range(self._skip):
             obs, reward, terminated, truncated, info = self.env.step(action)
-            if i == self._skip - 2:
-                self._obs_buffer[0] = obs
-            if i == self._skip - 1:
-                self._obs_buffer[1] = obs
+            # If self._skip == 4, buffer_idx moves from [3 .. 0]
+            buffer_idx = self._skip - i - 1
+            # If buffer_idx valid for buffer, store the returned obs for later max'ing.
+            if buffer_idx < self._max_over:
+                self._obs_buffer[buffer_idx] = obs
             total_reward += reward
             if terminated or truncated:
                 break
         # Note that the observation on the terminated|truncated=True frame
-        # doesn't matter
+        # doesn't matter.
         max_frame = self._obs_buffer.max(axis=0)
 
         return max_frame, total_reward, terminated, truncated, info
