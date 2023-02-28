@@ -58,8 +58,8 @@ Supported Data Formats
 Batch Predictor
 ---------------
 
-Constructor
-~~~~~~~~~~~
+Constructor Options
+~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
@@ -67,6 +67,11 @@ Constructor
 
     batch_predictor.BatchPredictor
 
+.. autosummary::
+    :toctree: doc/
+
+    batch_predictor.BatchPredictor.from_checkpoint
+    batch_predictor.BatchPredictor.from_pandas_udf
 
 Batch Prediction API
 ~~~~~~~~~~~~~~~~~~~~
