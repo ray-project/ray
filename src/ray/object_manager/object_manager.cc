@@ -78,9 +78,7 @@ ObjectManager::ObjectManager(
           [this, add_object_callback = std::move(add_object_callback)](
               const ObjectInfo &object_info) {
             main_service_->post(
-                [this,
-                 object_info,
-                 add_object_callback = std::move(add_object_callback)]() {
+                [this, object_info, &add_object_callback]() {
                   HandleObjectAdded(object_info);
                   add_object_callback(object_info);
                 },
@@ -90,9 +88,7 @@ ObjectManager::ObjectManager(
           [this, delete_object_callback = std::move(delete_object_callback)](
               const ObjectID &object_id) {
             main_service_->post(
-                [this,
-                 object_id,
-                 delete_object_callback = std::move(delete_object_callback)]() {
+                [this, object_id, &delete_object_callback]() {
                   HandleObjectDeleted(object_id);
                   delete_object_callback(object_id);
                 },

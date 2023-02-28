@@ -47,6 +47,29 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
+        """Create a :class:`BatchPredictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Example:
+
+            .. testcode::
+
+                from torchvision import models
+
+                from ray.train.batch_predictor import BatchPredictor
+                from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+                model = models.resnet50(pretrained=True)
+                checkpoint = TorchCheckpoint.from_model(model)
+                predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+
+        Args:
+            checkpoint: A :class:`~ray.air.checkpoint.Checkpoint` containing model state
+                and optionally a preprocessor.
+            predictor_cls: The type of predictor to use.
+            **kwargs: Optional arguments to pass the ``predictor_cls`` constructor.
+        """
+
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     @classmethod
