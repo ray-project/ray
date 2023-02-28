@@ -75,6 +75,7 @@ ds = ray.data.read_dbapi2(
 #       num_rows=150000, 
 #       schema={int_val: int64, str_val: string, flt_val: double, bool_val: int64}
 # )
+
 ds.take(2)
 #.-> [
 #       {'int_val': 0, 'str_val': '0', 'flt_val': 0.0, 'bool_val': 1},
@@ -93,6 +94,7 @@ ds = ray.data.read_dbapi2(
 #       num_rows=150000, 
 #       schema={int_val: int64}
 # )
+
 ds.take(2)
 #.-> [
 #       {'int_val': 3, 'str_val': '3'},
@@ -154,6 +156,7 @@ ds = ray.data.read_databricks(
 #       c_mktsegment: string, c_comment: string
 #   }
 # )
+
 ds.take(2)
 #.-> [{'c_custkey': 412445,
 #  'c_name': 'Customer#000412445',
@@ -184,6 +187,7 @@ ds = ray.data.read_databricks(
 #       num_rows=1000, 
 #       schema={C_ACCTBAL: decimal128(18, 2), C_MKTSEGMENT: string}
 # )
+
 ds.take(2)
 #.-> [{'C_ACCTBAL': Decimal('-219.53'), 'C_MKTSEGMENT': 'BUILDING'},
 #  {'C_ACCTBAL': Decimal('-778.23'), 'C_MKTSEGMENT': 'AUTOMOBILE'}]

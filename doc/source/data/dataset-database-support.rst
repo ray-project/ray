@@ -3,20 +3,18 @@
 .. _Python DB API 2: https://peps.python.org/pep-0249/
 
 ======================================================
-Working with databases, data warehouses and data lakes
+Working with Databases
 ======================================================
 
-Ray :class:`Datasets <ray.data.Dataset>` can be read from:
-* Any table or query from a database with a `Python DB API 2`_ library
-* Databricks tables or SQL queries
-* Snowflake tables or SQL queries
-* MongoDB documents or document queries
+Ray Datasets can be read from:
+- Any table or query from a database with a `Python DB API 2`_ library
+- Databricks tables or SQL queries
+- Snowflake tables or SQL queries
 
-Ray :class:`Datasets <ray.data.Dataset>` can be written to:
-* Any table in a database with a compliant `Python DB API 2`_  library
-* Delta Lake tables
-* Snowflake tables
-* MongoDB documents
+Ray Datasets can be written to:
+- Any table in a database with a compliant `Python DB API 2`_  library
+- Delta Lake tables
+- Snowflake tables
 
 .. note::
     This guide surveys the current database integrations. If none of these meet your
@@ -62,7 +60,9 @@ The below is an example how to import the sqlite DB API 2 connector that
 comes with Python.
 
 .. note::
-  SQLite is part of the standard Python packages, and does not need to be installed.
+  SQLite is part of the standard Python packages, and does not need to be installed. 
+  In order to read and write to Postgress, MySQL, or any database with a DB API 2
+  compliant library, the underlying library needs to be installed onto all nodes of the cluster.
 
 .. warning::
   For parallel reads to work with SQLite on a multi-instance cluster, 
@@ -78,8 +78,6 @@ comes with Python.
 The example below shows how to read and write from and to a database. 
 For reading from the database, a table name or a full query can be specified. For writing, 
 the name of a table that has already been created in the database must be provided. 
-In order to read and write to Postgress, MySQL, or any database with a DB API 2
-compliant library, the underlying library needs to be installed onto all nodes of the cluster.
 
 .. literalinclude:: ./doc_code/database_support.py
   :language: python
@@ -95,7 +93,7 @@ can use indexes and cache query results. Be sure to understand how the database 
 multiple parallel queries, as it may neccesary to implement optimizations such as indexes,
 materialized views, etc.
 
-.. image:: images/database/dbapi2_read.png)
+.. image:: ./images/database/dbapi2_read.png)
   :width: 200
 
 If the data set size is small enough, setting the read mode to `direct`, Ray data will cause only 
@@ -106,7 +104,7 @@ How writing works
 The default write mode is `direct`. In this mode, every partition in the dataset will
 be written to a destination table in parallel using `executemany` calls and `INSERT` statements.
 
-.. image:: images/database/dbapi2_write.png)
+.. image:: ./images/database/dbapi2_write.png)
   :width: 200
 
 The write mode `stage` will write every partition to a stage table in parallel and then upon successful 
@@ -114,20 +112,20 @@ completion of the partition writes, a `COPY INTO` query is executed to copy the 
 the destination table. All staging tables are cleaned up after a `write_dbapi2` operation, regardless of 
 success or not.
 
-.. image:: images/database/dbapi2_write_staged.png)
+.. image:: ./images/database/dbapi2_write_staged.png)
   :width: 200
 
 Controlling parallelism
 =======================
 Ray datasets are read and written to and from the cluster in parallel to the database. 
-For reading, a query is created using standard SQL `LIMIT`` and `OFFSET`` semantics, 
+For reading, a query is created using standard SQL `LIMIT` and `OFFSET` semantics, 
 and each of these queries is then issued by a seperate Ray task according to the parallism specified.
 
 For writing, a write task is created for each partition of the dataset. To control
 the number of parallel write operations the dataset can be repartitioned prior to writing.
 
 If needed, a dataset can be written to staging tables, prior to being copied into 
-a single destination table. To enable this, you need to specify ``stage`` mode when writing. 
+a single destination table. To enable this, you need to specify `stage` mode when writing. 
 This will cause each partition in the dataset to be written to an individual stage table. 
 Stage tables are named according to the destination table name and a suffix of 
 `_stage_<partition number>`.  The staging tables are created prior to writing. After all partitions
@@ -171,7 +169,7 @@ Reading
 Ray data uses the `Databricks Python SQL Connector`_ `execute`_ method to parallelize 
 loading the results of queries across the cluster using `LIMIT` and `OFFSET`.
 
-.. image:: images/database/databricks_read.png
+.. image:: ./images/database/databricks_read.png
   :width: 200
 
 Additional read parameters
@@ -186,7 +184,7 @@ and the the `Databricks Python SQL Connector`_ `execute`_ method to copy the par
 into a Delta tables in parallel from each partition in the dataset.
 After the copy operation is complete, the intermediate parquet data is deleted.
 
-.. image:: images/database/databricks_write.png)
+.. image:: ./images/database/databricks_write.png)
   :width: 200
 
 Example
@@ -226,7 +224,7 @@ Reading
 Ray data uses the `Snowflake Python API`_ `get_result_batches`_ method to parallelize 
 loading the results of queries across the cluster.
 
-.. image:: images/snowflake_read_table.png
+.. image:: ./images/snowflake_read_table.png
   :width: 200
 
 .. warning::
@@ -245,7 +243,7 @@ Snowflake tables. Each partition in the Ray dataset will call this method in par
 `write_pandas`_ method will write data to a Snowflake stage, and then upon successful 
 write to the stage, copy the data into the destination table.
 
-.. image:: images/snowflake_write_table.png)
+.. image:: ./images/snowflake_write_table.png)
   :width: 200
 
 Additional write parameters
