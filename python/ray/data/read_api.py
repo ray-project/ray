@@ -385,7 +385,7 @@ def read_dbapi2(
     query: Optional[str] = None,
     mode: str = "partition",
     parallelism: int = -1,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     **dbapi2_kwargs,
 ) -> Dataset[ArrowRow]:
     """Read a dataset from a database that provides a
@@ -458,7 +458,7 @@ def read_databricks(
     query: Optional[str] = None,
     mode: str = "partition",
     parallelism: int = -1,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     **databricks_kwargs,
 ) -> Dataset[ArrowRow]:
     """Read a dataset from Databricks with the Databricks
@@ -526,7 +526,7 @@ def read_snowflake(
     query: Optional[str] = None,
     mode: str = "partition",
     parallelism: int = -1,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     **snowflake_kwargs,
 ) -> Dataset[PandasRow]:
     """Read a dataset from Snowflake with the Snowflake

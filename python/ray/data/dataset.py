@@ -2750,7 +2750,7 @@ class Dataset(Generic[T]):
         *,
         table: Optional[str] = None,
         mode: str = "writepandas",
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         **snowflake_kwargs,
     ) -> None:
         """Write the dataset to a Snowflake datasource.

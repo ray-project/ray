@@ -157,6 +157,9 @@ class DBAPI2Datasource(DatabaseDatasource):
         write_queries: Optional[Dict[str, str]] = None,
         template_keys: Optional[List[str]] = None,
     ):
+        read_queries = read_queries or {}
+        write_queries = write_queries or {}
+        template_keys = template_keys or []
         super().__init__(
             connector,
             read_modes=read_modes or ["partition", "direct"],

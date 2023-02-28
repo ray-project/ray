@@ -1,0 +1,54 @@
+Requirement already satisfied: ipywidgets in /efs/workspaces/expwrk_rwxyeglypr8xwx2yqf89cxs9xh/cluster_storage/pypi/lib/python3.10/site-packages (7.7.3)
+Collecting ipywidgets
+  Downloading ipywidgets-8.0.4-py3-none-any.whl (137 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 137.8/137.8 kB 16.2 MB/s eta 0:00:00
+Requirement already satisfied: traitlets>=4.3.1 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipywidgets) (5.9.0)
+Requirement already satisfied: ipykernel>=4.5.1 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipywidgets) (6.21.2)
+Collecting widgetsnbextension~=4.0
+  Downloading widgetsnbextension-4.0.5-py3-none-any.whl (2.0 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 78.1 MB/s eta 0:00:00
+Collecting jupyterlab-widgets~=3.0
+  Downloading jupyterlab_widgets-3.0.5-py3-none-any.whl (384 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 384.3/384.3 kB 50.7 MB/s eta 0:00:00
+Requirement already satisfied: ipython>=6.1.0 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipywidgets) (8.10.0)
+Requirement already satisfied: debugpy>=1.6.5 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (1.6.6)
+Requirement already satisfied: packaging in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (23.0)
+Requirement already satisfied: nest-asyncio in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (1.5.6)
+Requirement already satisfied: comm>=0.1.1 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (0.1.2)
+Requirement already satisfied: matplotlib-inline>=0.1 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (0.1.6)
+Requirement already satisfied: jupyter-client>=6.1.12 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (8.0.3)
+Requirement already satisfied: psutil in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (5.9.4)
+Requirement already satisfied: jupyter-core!=5.0.*,>=4.12 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (5.2.0)
+Requirement already satisfied: pyzmq>=20 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (25.0.0)
+Requirement already satisfied: tornado>=6.1 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipykernel>=4.5.1->ipywidgets) (6.2)
+Requirement already satisfied: pexpect>4.3 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (4.8.0)
+Requirement already satisfied: pygments>=2.4.0 in /efs/workspaces/expwrk_rwxyeglypr8xwx2yqf89cxs9xh/cluster_storage/pypi/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (2.11.2)
+Requirement already satisfied: backcall in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (0.2.0)
+Requirement already satisfied: decorator in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (5.1.1)
+Requirement already satisfied: pickleshare in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (0.7.5)
+Requirement already satisfied: prompt-toolkit<3.1.0,>=3.0.30 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (3.0.36)
+Requirement already satisfied: stack-data in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (0.6.2)
+Requirement already satisfied: jedi>=0.16 in /home/ray/anaconda3/lib/python3.10/site-packages (from ipython>=6.1.0->ipywidgets) (0.18.2)
+Requirement already satisfied: parso<0.9.0,>=0.8.0 in /home/ray/anaconda3/lib/python3.10/site-packages (from jedi>=0.16->ipython>=6.1.0->ipywidgets) (0.8.3)
+Requirement already satisfied: python-dateutil>=2.8.2 in /home/ray/anaconda3/lib/python3.10/site-packages (from jupyter-client>=6.1.12->ipykernel>=4.5.1->ipywidgets) (2.8.2)
+Requirement already satisfied: platformdirs>=2.5 in /home/ray/anaconda3/lib/python3.10/site-packages (from jupyter-core!=5.0.*,>=4.12->ipykernel>=4.5.1->ipywidgets) (3.0.0)
+Requirement already satisfied: ptyprocess>=0.5 in /home/ray/anaconda3/lib/python3.10/site-packages (from pexpect>4.3->ipython>=6.1.0->ipywidgets) (0.7.0)
+Requirement already satisfied: wcwidth in /home/ray/anaconda3/lib/python3.10/site-packages (from prompt-toolkit<3.1.0,>=3.0.30->ipython>=6.1.0->ipywidgets) (0.2.6)
+Requirement already satisfied: pure-eval in /home/ray/anaconda3/lib/python3.10/site-packages (from stack-data->ipython>=6.1.0->ipywidgets) (0.2.2)
+Requirement already satisfied: executing>=1.2.0 in /home/ray/anaconda3/lib/python3.10/site-packages (from stack-data->ipython>=6.1.0->ipywidgets) (1.2.0)
+Requirement already satisfied: asttokens>=2.1.0 in /home/ray/anaconda3/lib/python3.10/site-packages (from stack-data->ipython>=6.1.0->ipywidgets) (2.2.1)
+Requirement already satisfied: six in /home/ray/anaconda3/lib/python3.10/site-packages (from asttokens>=2.1.0->stack-data->ipython>=6.1.0->ipywidgets) (1.13.0)
+Installing collected packages: widgetsnbextension, jupyterlab-widgets, ipywidgets
+  Attempting uninstall: widgetsnbextension
+    Found existing installation: widgetsnbextension 3.6.2
+    Uninstalling widgetsnbextension-3.6.2:
+      Successfully uninstalled widgetsnbextension-3.6.2
+  Attempting uninstall: jupyterlab-widgets
+    Found existing installation: jupyterlab-widgets 1.1.2
+    Uninstalling jupyterlab-widgets-1.1.2:
+      Successfully uninstalled jupyterlab-widgets-1.1.2
+  Attempting uninstall: ipywidgets
+    Found existing installation: ipywidgets 7.7.3
+    Uninstalling ipywidgets-7.7.3:
+      Successfully uninstalled ipywidgets-7.7.3
+Successfully installed ipywidgets-8.0.4 jupyterlab-widgets-3.0.5 widgetsnbextension-4.0.5
