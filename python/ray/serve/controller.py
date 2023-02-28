@@ -723,8 +723,8 @@ class ServeController:
         return status[0].to_proto().SerializeToString()
 
     def get_docs_path(self, name: str):
-        """Docs path for application. 
-        
+        """Docs path for application.
+
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
 
