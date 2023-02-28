@@ -7,6 +7,7 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
+    ExecutionResources,
 )
 from ray.types import ObjectRef
 
@@ -84,6 +85,11 @@ class OutputSplitter(PhysicalOperator):
                 b.output_split = i
                 self._output_queue.append(b)
         self._buffer = []
+
+    def current_resource_usage(self) -> ExecutionResources:
+        return ExecutionResources(
+            object_store_memory=sum(b.size_bytes() for b in self._buffer)
+        )
 
     def progress_str(self) -> str:
         if self._equal:
