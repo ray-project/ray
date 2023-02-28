@@ -53,6 +53,7 @@ class BatchPredictor:
         Example:
 
             .. testcode::
+
                 from torchvision import models
 
                 from ray.train.batch_predictor import BatchPredictor
