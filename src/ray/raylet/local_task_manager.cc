@@ -408,6 +408,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     bool is_detached_actor,
     const rpc::Address &owner_address,
     const std::string &runtime_env_setup_error_message) {
+  RAY_LOG(DEBUG) << "PoppedWorkerHandler: " << task_id;
   const auto &reply = work->reply;
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
