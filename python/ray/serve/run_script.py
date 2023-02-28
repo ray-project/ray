@@ -16,27 +16,22 @@ from ray.serve._private.constants import (
 from ray.serve.schema import ServeApplicationSchema
 
 
-def main():
+def main(
+    config_or_import_path: str,
+    app_dir: str,
+    host: str,
+    port: int,
+    blocking: bool,
+    gradio: bool,
+):
     """
-    This is the Job that gets submitted to the Ray Cluster when `serve run` is executed.
-
     Loads the Serve app (either from a YAML config file or a direct import path), starts
     Serve and runs the app. By default, the code blocks until a SIGINT signal is
     received, at which point Serve is shutdown and the process exits.
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config-or-import-path")
-    parser.add_argument("--app-dir")
-    parser.add_argument("--host")
-    parser.add_argument("--port", type=int)
-    parser.add_argument("--blocking", action="store_true")
-    parser.add_argument("--gradio", action="store_true")
-    args = parser.parse_args()
-    host, port = args.host, args.port
-
-    sys.path.insert(0, args.app_dir)
-    if pathlib.Path(args.config_or_import_path).is_file():
-        config_path = args.config_or_import_path
+    sys.path.insert(0, app_dir)
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
         cli_logger.print(f"Deploying from config file: '{config_path}'.")
 
         with open(config_path, "r") as config_file:
@@ -58,7 +53,7 @@ def main():
             host = DEFAULT_HTTP_HOST
         if port is None:
             port = DEFAULT_HTTP_PORT
-        import_path = args.config_or_import_path
+        import_path = config_or_import_path
         cli_logger.print(f"Deploying from import path: '{import_path}'.")
         node = import_attr(import_path)
         is_config = False
@@ -84,15 +79,15 @@ def main():
 
     try:
         if is_config:
-            client.deploy_apps(config, _blocking=args.gradio)
+            client.deploy_apps(config, _blocking=gradio)
             cli_logger.success("Submitted deploy config successfully.")
-            if args.gradio:
+            if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
-        if args.gradio:
+        if gradio:
             from ray.serve.experimental.gradio_visualize_graph import (
                 GraphVisualizer,
             )
@@ -100,7 +95,7 @@ def main():
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
         else:
-            if args.blocking:
+            if blocking:
                 while True:
                     # Block, letting Ray print logs to the terminal.
                     time.sleep(10)
@@ -121,4 +116,21 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # This is the Job that gets submitted to the Ray Cluster when `serve run` is
+    # used to connect to a remote Ray cluster.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config-or-import-path")
+    parser.add_argument("--app-dir")
+    parser.add_argument("--host")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--blocking", action="store_true")
+    parser.add_argument("--gradio", action="store_true")
+    args = parser.parse_args()
+    main(
+        config_or_import_path=args.config_or_import_path,
+        app_dir=args.app_dir,
+        host=args.host,
+        port=args.port,
+        blocking=args.blocking,
+        gradio=args.gradio,
+    )

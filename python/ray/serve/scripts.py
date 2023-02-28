@@ -290,55 +290,65 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
-    # If no address is given and no local ray instance is running, we want to start one.
-    if address is None:
-        ray.init(namespace=SERVE_NAMESPACE)
-
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-    if "env_vars" not in final_runtime_env:
-        final_runtime_env["env_vars"] = {}
-    # Send interrupt signal to run_script, which triggers shutdown of Serve.
-    final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
-    # Make sure Serve is shutdown correctly before the job is forcefully killed.
-    final_runtime_env["env_vars"]["RAY_JOB_STOP_WAIT_TIME_S"] = "30"
+    if address is None or address == "auto":
+        ray.init(
+            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        )
+        run_script.main(
+            config_or_import_path=config_or_import_path,
+            app_dir=app_dir,
+            host=host,
+            port=port,
+            blocking=blocking,
+            gradio=gradio,
+        )
+    else:
+        if "env_vars" not in final_runtime_env:
+            final_runtime_env["env_vars"] = {}
+        # Send interrupt signal to run_script, which triggers shutdown of Serve.
+        final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
+        # Make sure Serve is shutdown correctly before the job is forcefully killed.
+        final_runtime_env["env_vars"]["RAY_JOB_STOP_WAIT_TIME_S"] = "30"
 
-    # The job to run on the cluster, which imports and runs the serve app.
-    with open(run_script.__file__, "r") as f:
-        script = f.read()
+        # The job to run on the cluster, which imports and runs the serve app.
+        with open(run_script.__file__, "r") as f:
+            script = f.read()
 
-    # Use Ray Job Submission to run serve.
-    client = JobSubmissionClient(address)
-    submission_id = client.submit_job(
-        entrypoint=(
-            f"python -c '{script}' "
-            f"--config-or-import-path={config_or_import_path} "
-            f"--app-dir={app_dir} "
-            + (f"--host={host} " if host is not None else "")
-            + (f"--port={port} " if port is not None else "")
-            + ("--blocking " if blocking else "")
-            + ("--gradio " if gradio else "")
-        ),
-        # Setting the runtime_env will set defaults for the deployments.
-        runtime_env=final_runtime_env,
-    )
+        # Use Ray Job Submission to run serve.
+        client = JobSubmissionClient(address)
+        submission_id = client.submit_job(
+            entrypoint=(
+                f"python -c '{script}' "
+                f"--config-or-import-path={config_or_import_path} "
+                f"--app-dir={app_dir} "
+                + (f"--host={host} " if host is not None else "")
+                + (f"--port={port} " if port is not None else "")
+                + ("--blocking " if blocking else "")
+                + ("--gradio " if gradio else "")
+            ),
+            # Setting the runtime_env will set defaults for the deployments.
+            runtime_env=final_runtime_env,
+        )
 
-    async def print_logs():
-        async for lines in client.tail_job_logs(submission_id):
-            print(lines, end="")
+        async def print_logs():
+            async for lines in client.tail_job_logs(submission_id):
+                print(lines, end="")
 
-    def interrupt_handler():
-        # Upon keyboard interrupt, stop job (which sends an interrupt signal to the job
-        # and shuts down serve). Then continue to stream logs until the job finishes.
-        client.stop_job(submission_id)
+        def interrupt_handler():
+            # Upon keyboard interrupt, stop job (which sends an interrupt signal to the
+            # job and shuts down serve). Then continue to stream logs until the job
+            # finishes.
+            client.stop_job(submission_id)
 
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, interrupt_handler)
-    loop.run_until_complete(print_logs())
-    loop.close()
+        loop = asyncio.get_event_loop()
+        loop.add_signal_handler(signal.SIGINT, interrupt_handler)
+        loop.run_until_complete(print_logs())
+        loop.close()
 
 
 @cli.command(help="Get the current config of the running Serve app.")
