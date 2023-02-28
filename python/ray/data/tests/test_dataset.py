@@ -4,6 +4,7 @@ import os
 import random
 import signal
 import time
+from typing import Iterator
 from unittest.mock import patch
 
 import numpy as np
@@ -320,6 +321,16 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert ds.count() == 5
     ds = maybe_pipeline(ds0, pipelined)
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+
+def test_flat_map_generator(ray_start_regular_shared):
+    ds = ray.data.range(3)
+
+    def map_generator(item: int) -> Iterator[int]:
+        for _ in range(2):
+            yield item + 1
+
+    assert sorted(ds.flat_map(map_generator).take()) == [1, 1, 2, 2, 3, 3]
 
 
 def test_zip(ray_start_regular_shared):
@@ -2676,6 +2687,37 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     assert values == [7, 11, 15]
     values = [s["two"] for s in ds_list]
     assert values == [11, 15, 19]
+
+
+def test_map_batches_generator(ray_start_regular_shared, tmp_path):
+    # Set up.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    def pandas_generator(batch: pd.DataFrame) -> Iterator[pd.DataFrame]:
+        for i in range(len(batch)):
+            yield batch.iloc[[i]] + 1
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(pandas_generator, batch_size=1, batch_format="pandas")
+    assert ds2.dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = sorted([s["one"] for s in ds_list])
+    assert values == [2, 3, 4]
+    values = sorted([s["two"] for s in ds_list])
+    assert values == [3, 4, 5]
+
+    def fail_generator(batch):
+        for i in range(len(batch)):
+            yield i
+
+    # Test the wrong return value raises an exception.
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(ValueError):
+        ds_list = ds.map_batches(
+            fail_generator, batch_size=2, batch_format="pyarrow"
+        ).take()
 
 
 def test_map_batches_actors_preserves_order(ray_start_regular_shared):
