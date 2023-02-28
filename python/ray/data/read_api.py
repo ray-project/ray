@@ -92,25 +92,35 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
+    import builtins
+
+    if parallelism == 0:
+        raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
     detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DatasetContext.get_current(),
     )
-    block_size = max(
-        1,
-        len(items) // detected_parallelism,
-    )
+    # Truncate parallelism to number of items to avoid empty blocks.
+    detected_parallelism = min(len(items), detected_parallelism)
 
+    if detected_parallelism > 0:
+        block_size, remainder = divmod(len(items), detected_parallelism)
+    else:
+        block_size, remainder = 0, 0
+    # NOTE: We need to explicitly use the builtins range since we override range below,
+    # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
-    i = 0
-    while i < len(items):
+    for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        for item in items[i : i + block_size]:
-            builder.add(item)
+        # Evenly distribute remainder across block slices while preserving record order.
+        block_start = i * block_size + min(i, remainder)
+        block_end = (i + 1) * block_size + min(i + 1, remainder)
+        for j in builtins.range(block_start, block_end):
+            builder.add(items[j])
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
@@ -118,7 +128,6 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
                 input_files=None, exec_stats=stats.build()
             )
         )
-        i += block_size
 
     return Dataset(
         ExecutionPlan(
@@ -332,6 +341,23 @@ def read_datasource(
             "of available CPU slots in the cluster. Use `.repartition(n)` to "
             "increase the number of "
             "dataset blocks."
+        )
+
+    available_cpu_slots = ray.available_resources().get("CPU", 1)
+    if (
+        requested_parallelism
+        and len(read_tasks) > available_cpu_slots * 4
+        and len(read_tasks) >= 5000
+    ):
+        logger.warn(
+            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
+            "is more than 4x the number of available CPU slots in the cluster of "
+            f"{available_cpu_slots}. This can "
+            "lead to slowdowns during the data reading phase due to excessive "
+            "task creation. Reduce the parallelism to match with the available "
+            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
+            "to automatically determine the parallelism. "
+            "You can ignore this message if the cluster is expected to autoscale."
         )
 
     block_list = LazyBlockList(

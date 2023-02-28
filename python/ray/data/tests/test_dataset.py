@@ -1,9 +1,11 @@
 import itertools
+import logging
 import math
 import os
 import random
 import signal
 import time
+from typing import Iterator
 from unittest.mock import patch
 
 import numpy as np
@@ -322,6 +324,16 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
+def test_flat_map_generator(ray_start_regular_shared):
+    ds = ray.data.range(3)
+
+    def map_generator(item: int) -> Iterator[int]:
+        for _ in range(2):
+            yield item + 1
+
+    assert sorted(ds.flat_map(map_generator).take()) == [1, 1, 2, 2, 3, 3]
+
+
 def test_zip(ray_start_regular_shared):
     ds1 = ray.data.range(5, parallelism=5)
     ds2 = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
@@ -330,6 +342,55 @@ def test_zip(ray_start_regular_shared):
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
         ds.zip(ray.data.range(3)).fully_executed()
+
+
+@pytest.mark.parametrize(
+    "num_blocks1,num_blocks2",
+    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+)
+def test_zip_different_num_blocks_combinations(
+    ray_start_regular_shared, num_blocks1, num_blocks2
+):
+    n = 12
+    ds1 = ray.data.range(n, parallelism=num_blocks1)
+    ds2 = ray.data.range(n, parallelism=num_blocks2).map(lambda x: x + 1)
+    ds = ds1.zip(ds2)
+    assert ds.schema() == tuple
+    assert ds.take() == list(zip(range(n), range(1, n + 1)))
+
+
+@pytest.mark.parametrize(
+    "num_cols1,num_cols2,should_invert",
+    [
+        (1, 1, False),
+        (4, 1, False),
+        (1, 4, True),
+        (1, 10, True),
+        (10, 10, False),
+    ],
+)
+def test_zip_different_num_blocks_split_smallest(
+    ray_start_regular_shared,
+    num_cols1,
+    num_cols2,
+    should_invert,
+):
+    n = 12
+    num_blocks1 = 4
+    num_blocks2 = 2
+    ds1 = ray.data.from_items(
+        [{str(i): i for i in range(num_cols1)}] * n, parallelism=num_blocks1
+    )
+    ds2 = ray.data.from_items(
+        [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
+        parallelism=num_blocks2,
+    )
+    ds = ds1.zip(ds2)
+    assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
+    if should_invert:
+        assert ds.num_blocks() == num_blocks2
+    else:
+        assert ds.num_blocks() == num_blocks1
 
 
 def test_zip_pandas(ray_start_regular_shared):
@@ -1369,17 +1430,26 @@ def test_count_lazy(ray_start_regular_shared):
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert ds._plan.execute()._num_computed() == 0
+
+    def check_num_computed(expected):
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            # In streaing executor, ds.take() will not invoke partial execution
+            # in LazyBlocklist.
+            assert ds._plan.execute()._num_computed() == 0
+        else:
+            assert ds._plan.execute()._num_computed() == expected
+
+    check_num_computed(0)
     assert ds.take(10) == list(range(10))
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(2)
     assert ds.take(20) == list(range(20))
-    assert ds._plan.execute()._num_computed() == 4
+    check_num_computed(4)
     assert ds.take(30) == list(range(30))
-    assert ds._plan.execute()._num_computed() == 8
+    check_num_computed(8)
     assert ds.take(50) == list(range(50))
-    assert ds._plan.execute()._num_computed() == 16
+    check_num_computed(16)
     assert ds.take(100) == list(range(100))
-    assert ds._plan.execute()._num_computed() == 20
+    check_num_computed(20)
 
 
 def test_dataset_repr(ray_start_regular_shared):
@@ -1533,12 +1603,42 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_table(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
+    # In streaming, we set batch_format to "default" (because calling
+    # ds.dataset_format() will still invoke bulk execution and we want
+    # to avoid that). As a result, it's receiving PandasRow (the defaut
+    # batch format), which unwraps [0] to plain 0.
+    if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": 0}]
+    else:
+        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert ds.take() == ["hello", "world"]
+
+
+@pytest.mark.parametrize("parallelism", list(range(1, 21)))
+def test_from_items_parallelism(ray_start_regular_shared, parallelism):
+    # Test that specifying parallelism yields the expected number of blocks.
+    n = 20
+    records = [{"a": i} for i in range(n)]
+    ds = ray.data.from_items(records, parallelism=parallelism)
+    out = ds.take_all()
+    assert out == records
+    assert ds.num_blocks() == parallelism
+
+
+def test_from_items_parallelism_truncated(ray_start_regular_shared):
+    # Test that specifying parallelism greater than the number of items is truncated to
+    # the number of items.
+    n = 10
+    parallelism = 20
+    records = [{"a": i} for i in range(n)]
+    ds = ray.data.from_items(records, parallelism=parallelism)
+    out = ds.take_all()
+    assert out == records
+    assert ds.num_blocks() == n
 
 
 def test_repartition_shuffle(ray_start_regular_shared):
@@ -1696,7 +1796,14 @@ def test_iter_rows(ray_start_regular_shared):
     # Default ArrowRows.
     for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
         assert isinstance(row, TableRow)
-        assert isinstance(row, ArrowRow)
+        # In streaming, we set batch_format to "default" because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that. As a result, it's receiving PandasRow (the defaut
+        # batch format).
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            assert isinstance(row, PandasRow)
+        else:
+            assert isinstance(row, ArrowRow)
         assert row == t_row
 
     # PandasRows after conversion.
@@ -1710,7 +1817,14 @@ def test_iter_rows(ray_start_regular_shared):
     # Prefetch.
     for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
         assert isinstance(row, TableRow)
-        assert isinstance(row, ArrowRow)
+        # In streaming, we set batch_format to "default" because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that. As a result, it's receiving PandasRow (the defaut
+        # batch format).
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            assert isinstance(row, PandasRow)
+        else:
+            assert isinstance(row, ArrowRow)
         assert row == t_row
 
 
@@ -2181,7 +2295,12 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        assert ds._plan.execute()._num_computed() == expected
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            # In streaming execution of ds.iter_batches(), there is no partial
+            # execution so _num_computed() in LazyBlocklist is 0.
+            assert ds._plan.execute()._num_computed() == 0
+        else:
+            assert ds._plan.execute()._num_computed() == expected
 
 
 def test_add_column(ray_start_regular_shared):
@@ -2569,6 +2688,37 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     assert values == [7, 11, 15]
     values = [s["two"] for s in ds_list]
     assert values == [11, 15, 19]
+
+
+def test_map_batches_generator(ray_start_regular_shared, tmp_path):
+    # Set up.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+
+    def pandas_generator(batch: pd.DataFrame) -> Iterator[pd.DataFrame]:
+        for i in range(len(batch)):
+            yield batch.iloc[[i]] + 1
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds2 = ds.map_batches(pandas_generator, batch_size=1, batch_format="pandas")
+    assert ds2.dataset_format() == "pandas"
+    ds_list = ds2.take()
+    values = sorted([s["one"] for s in ds_list])
+    assert values == [2, 3, 4]
+    values = sorted([s["two"] for s in ds_list])
+    assert values == [3, 4, 5]
+
+    def fail_generator(batch):
+        for i in range(len(batch)):
+            yield i
+
+    # Test the wrong return value raises an exception.
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(ValueError):
+        ds_list = ds.map_batches(
+            fail_generator, batch_size=2, batch_format="pyarrow"
+        ).take()
 
 
 def test_map_batches_actors_preserves_order(ray_start_regular_shared):
@@ -4781,6 +4931,15 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
         ds.write_parquet("local://" + data_path).fully_executed()
+
+
+def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
+    with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
+        ray.data.range(5000, parallelism=5000).fully_executed()
+    assert (
+        "The requested parallelism of 5000 is "
+        "more than 4x the number of available CPU slots in the cluster" in caplog.text
+    ), caplog.text
 
 
 def test_read_write_local_node(ray_start_cluster):
