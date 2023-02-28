@@ -103,6 +103,10 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
   stats::NumWorkersStarted.Record(0);
+  stats::NumWorkersStartedFromCache.Record(0);
+  stats::NumCachedWorkersSkippedJobMismatch.Record(0);
+  stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
+  stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
@@ -362,14 +366,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Set native library path for shared library search.
     if (!native_library_path_.empty() || !code_search_path.empty()) {
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
-#if defined(__APPLE__)
-      static const std::string kLibraryPathEnvName = "DYLD_LIBRARY_PATH";
-#elif defined(__linux__)
-      static const std::string kLibraryPathEnvName = "LD_LIBRARY_PATH";
-#elif defined(_WIN32)
-      static const std::string kLibraryPathEnvName = "PATH";
-#endif
-      auto path_env_p = std::getenv(kLibraryPathEnvName.c_str());
+      auto path_env_p = std::getenv(kLibraryPathEnvName);
       std::string path_env = native_library_path_;
       if (path_env_p != nullptr && strlen(path_env_p) != 0) {
         path_env.append(":").append(path_env_p);
@@ -378,7 +375,12 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
       if (!code_search_path.empty()) {
         path_env.append(":").append(code_search_path);
       }
-      env.emplace(kLibraryPathEnvName, path_env);
+      auto path_env_iter = env.find(kLibraryPathEnvName);
+      if (path_env_iter == env.end()) {
+        env.emplace(kLibraryPathEnvName, path_env);
+      } else {
+        env[kLibraryPathEnvName] = path_env_iter->second.append(":").append(path_env);
+      }
 #endif
     }
   }
@@ -1224,6 +1226,10 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     dynamic_options = task_spec.DynamicWorkerOptions();
   }
 
+  int64_t skip_cached_worker_job_mismatch = 0;
+  int64_t skip_cached_worker_dynamic_options_mismatch = 0;
+  int64_t skip_cached_worker_runtime_env_mismatch = 0;
+
   const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
@@ -1235,11 +1241,15 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
     if (!it->first->GetAssignedJobId().IsNil() &&
         it->first->GetAssignedJobId() != task_spec.JobId()) {
+      skip_cached_worker_job_mismatch++;
+      stats::NumCachedWorkersSkippedJobMismatch.Record(1);
       continue;
     }
 
     // Skip if the dynamic_options doesn't match.
     if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
+      skip_cached_worker_dynamic_options_mismatch++;
+      stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
       continue;
     }
 
@@ -1247,8 +1257,13 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
       continue;
     }
+
     // Skip if the runtime env doesn't match.
+    // TODO(clarng): consider re-using worker that has runtime envionrment
+    // if the task doesn't require one.
     if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
+      skip_cached_worker_runtime_env_mismatch++;
+      stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(1);
       continue;
     }
 
@@ -1265,9 +1280,15 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   if (worker == nullptr) {
     // There are no more cached workers available to execute this task.
     // Start a new worker process.
+    RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to mismatch job "
+                   << skip_cached_worker_job_mismatch
+                   << " due to mismatch dynamic options "
+                   << skip_cached_worker_dynamic_options_mismatch
+                   << " due to mismatch runtime environment "
+                   << skip_cached_worker_runtime_env_mismatch;
     if (task_spec.HasRuntimeEnv()) {
       // create runtime env.
-      RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
+      RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for task " << task_spec.TaskId();
       GetOrCreateRuntimeEnv(
           task_spec.SerializedRuntimeEnv(),
           task_spec.RuntimeEnvConfig(),
@@ -1308,6 +1329,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   if (worker) {
     RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
               worker->GetAssignedJobId() == task_spec.JobId());
+    RAY_LOG(DEBUG) << "Re-using worker " << worker->WorkerId() << " for task "
+                   << task_spec.DebugString();
+    stats::NumWorkersStartedFromCache.Record(1);
     PopWorkerCallbackAsync(callback, worker);
   }
 }
@@ -1351,6 +1375,7 @@ void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_n
                                                         {{"CPU", 1}},
                                                         /*is_actor*/ false,
                                                         /*is_gpu*/ false};
+  RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;
     StartWorkerProcess(language,

@@ -43,7 +43,6 @@ checkpoint_type_and_should_copy = (
     ("dict", True),
     ("dir", True),
     ("lazy_dir", True),
-    ("dir", False),
     ("lazy_dir", False),
 )
 

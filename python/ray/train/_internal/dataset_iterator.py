@@ -1,4 +1,4 @@
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import Iterator, Optional, Union, TYPE_CHECKING
 import warnings
 
 from ray.data.block import DataBatch
@@ -8,6 +8,8 @@ from ray.train.error import SessionMisuseError
 if TYPE_CHECKING:
     import tensorflow as tf
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from ray.data.dataset import Dataset
+    from ray.data.dataset_pipeline import DatasetPipeline
 
 
 class TrainDatasetIterator(DatasetIterator):
@@ -47,6 +49,10 @@ class TrainDatasetIterator(DatasetIterator):
     def stats(self) -> str:
         return self._dataset_iterator.stats()
 
+    @property
+    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
+        return self._dataset_iterator._base_dataset_or_pipeline
+
     def __getattr__(self, name):
         if name == "_dataset_iterator":
             raise AttributeError
@@ -64,4 +70,4 @@ class TrainDatasetIterator(DatasetIterator):
             "for full DatasetIterator docs."
         )
 
-        return getattr(self._dataset_iterator._base_dataset, name)
+        return getattr(self._base_dataset_or_pipeline, name)

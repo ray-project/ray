@@ -16,8 +16,13 @@ JobSubmissionClient
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
    JobSubmissionClient
+
+.. autosummary::
+   :toctree: doc/
+
    JobSubmissionClient.submit_job
    JobSubmissionClient.stop_job
    JobSubmissionClient.get_job_status

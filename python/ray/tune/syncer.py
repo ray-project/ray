@@ -27,6 +27,7 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
+from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -57,6 +58,7 @@ _EXCLUDE_FROM_SYNC = [
     "./checkpoint_tmp*",
     "./save_to_object*",
     "./rank_*",
+    f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
 
@@ -81,6 +83,8 @@ class SyncConfig:
     (2) Workers directly syncing trial checkpoints to the cloud
     (3) Workers syncing their trial directories to the head node
         (this is the default option when no cloud storage is used)
+    (4) Workers syncing artifacts (which include all files saved in the trial directory
+        *except* for checkpoints) directly to the cloud.
 
     See :ref:`tune-storage-options` for more details and examples.
 
@@ -107,6 +111,10 @@ class SyncConfig:
             so that experiment execution can continue and the syncs can be retried.
             Defaults to 30 minutes.
             **Note**: Currently, this timeout only affects cloud syncing: (1) and (2).
+        sync_artifacts: Whether or not to sync artifacts that are saved to the
+            trial directory (accessed via `session.get_trial_dir()`) to the cloud.
+            Artifact syncing happens at the same frequency as trial checkpoint syncing.
+            **Note**: This is scenario (4).
         sync_on_checkpoint: If *True*, a sync from a worker's remote trial directory
             to the head node will be forced on every trial checkpoint, regardless
             of the ``sync_period``.
@@ -119,6 +127,7 @@ class SyncConfig:
     syncer: Optional[Union[str, "Syncer"]] = "auto"
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
+    sync_artifacts: bool = True
 
     sync_on_checkpoint: bool = True
 
@@ -407,7 +416,7 @@ class Syncer(abc.ABC):
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
         last_error = None
-        for _ in range(max_retries - 1):
+        for _ in range(max_retries):
             try:
                 self.wait()
             except Exception as e:
