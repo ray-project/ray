@@ -36,14 +36,6 @@ def ray_start_4_cpus_extra():
     ray.shutdown()
 
 
-@pytest.fixture
-def propagate_logs():
-    logger = logging.getLogger("ray")
-    logger.propagate = True
-    yield
-    logger.propagate = False
-
-
 class FrequentPausesScheduler(FIFOScheduler):
     def on_trial_result(self, trial_runner, trial, result):
         return TrialScheduler.PAUSE
