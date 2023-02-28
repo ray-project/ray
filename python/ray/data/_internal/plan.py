@@ -255,7 +255,7 @@ class ExecutionPlan:
                 for n, t in zip(schema.names, schema.types):
                     if hasattr(t, "__name__"):
                         t = t.__name__
-                    col_str = f"\t{n}: {t}"
+                    col_str = f"\t\t{n}: {t}"
                     # If the field line exceeds the char limit, abbreviate
                     # the field name to fit while maintaining the full type
                     if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
@@ -271,7 +271,7 @@ class ExecutionPlan:
                         )
                     schema_str.append(f"{col_str}")
                 schema_str = ",\n".join(schema_str)
-                schema_str = "{\n" + schema_str + "\n}"
+                schema_str = "{\n" + schema_str + "\n\t}"
             dataset_str = (
                 "Dataset(\n\tnum_blocks={},\n\tnum_rows={},\n\tschema={}\n)".format(
                     num_blocks, count, schema_str

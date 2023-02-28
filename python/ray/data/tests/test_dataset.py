@@ -5306,6 +5306,46 @@ def test_nowarning_execute_with_cpu(ray_start_cluster_init):
         mock_logger.assert_not_called()
 
 
+def test_dataset_plan_repr_truncation(ray_start_cluster_init):
+    # Test short Dataset str representations where the schema fits in one line.
+    ds_one_line = ray.data.from_pandas(
+        pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
+    )
+    assert (
+        str(ds_one_line)
+        == "Dataset(num_blocks=1, num_rows=2, schema={col1: int64, col2: object})"
+    )
+
+    # Test Dataset str representations that don't fit in one line,
+    # but the schema is short enough to fit in one line.
+    ds_schema_one_line = ray.data.from_pandas(
+        pd.DataFrame({"longer_col1": [1, 2], "longer_col2": ["a", "b"]})
+    )
+    assert (
+        str(ds_schema_one_line)
+        == "Dataset(\n\tnum_blocks=1,\n\tnum_rows=2,\n\tschema={longer_col1: int64, longer_col2: object}\n)"  # noqa: E501
+    )
+
+    # Test Dataset str representations which have very long schemas,
+    # which require new lines for each schema field.
+    ds_schema_indiv_lines = ray.data.from_pandas(
+        pd.DataFrame(
+            {
+                "really_really_really_really_really_really_really_really_long_col": [
+                    1,
+                    2,
+                ],
+                "col_2": ["a", "b"],
+            }
+        )
+    )
+    long_schema_str = "{\n\t\treally_really_really_really_really_really_really_really_long_col: int64,\n\t\tcol_2: object\n\t}"  # noqa: E501
+    assert (
+        str(ds_schema_indiv_lines)
+        == f"Dataset(\n\tnum_blocks=1,\n\tnum_rows=2,\n\tschema={long_schema_str}\n)"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
