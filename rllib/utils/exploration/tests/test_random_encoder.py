@@ -48,6 +48,9 @@ class TestRE3(unittest.TestCase):
             },
         }
 
+        config["_enable_rl_module_api"] = False
+        config["_enable_learner_api"] = False
+
         num_iterations = 60
         for _ in framework_iterator(config, frameworks=("tf", "tf2"), session=True):
             algo = algo_cls(config=config)

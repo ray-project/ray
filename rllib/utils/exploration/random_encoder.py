@@ -224,6 +224,8 @@ class RE3(Exploration):
         self.sub_exploration = sub_exploration
 
         # Creates ModelV2 embedding module / layers.
+
+        # Find the model observation space.
         self._encoder_net = ModelCatalog.get_model_v2(
             self.model.obs_space,
             self.action_space,
