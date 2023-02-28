@@ -11,6 +11,7 @@ import warnings
 import ray
 from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air._internal.uri_utils import URI
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.experiment_state import (
@@ -41,7 +42,7 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
@@ -149,7 +150,11 @@ class TrialRunner:
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
-            trainable_kwargs={"sync_timeout": self._sync_config.sync_timeout},
+            # TODO(ml-team): Remove these in 2.6.
+            trainable_kwargs={
+                "sync_timeout": self._sync_config.sync_timeout,
+                "custom_syncer": get_node_to_storage_syncer(self._sync_config),
+            },
         )
 
         self._metric = metric
@@ -292,7 +297,7 @@ class TrialRunner:
     @property
     def _remote_checkpoint_dir(self):
         if self._sync_config.upload_dir and self._experiment_dir_name:
-            return os.path.join(self._sync_config.upload_dir, self._experiment_dir_name)
+            return str(URI(self._sync_config.upload_dir) / self._experiment_dir_name)
         return None
 
     @classmethod

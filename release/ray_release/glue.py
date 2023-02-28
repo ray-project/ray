@@ -6,8 +6,10 @@ from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
+from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
+from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
     Test,
@@ -53,6 +55,7 @@ type_str_to_command_runner = {
     "command": SDKRunner,
     "sdk_command": SDKRunner,
     "job": JobRunner,
+    "anyscale_job": AnyscaleJobRunner,
     "client": ClientRunner,
 }
 
@@ -60,22 +63,26 @@ command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
     JobRunner: FullClusterManager,
+    AnyscaleJobRunner: MinimalClusterManager,
 }
 
 file_manager_str_to_file_manager = {
     "sdk": SessionControllerFileManager,
     "client": RemoteTaskFileManager,
     "job": JobFileManager,
+    "anyscale_job": JobFileManager,
 }
 
 command_runner_to_file_manager = {
     SDKRunner: JobFileManager,  # Use job file manager per default
     ClientRunner: RemoteTaskFileManager,
     JobRunner: JobFileManager,
+    AnyscaleJobRunner: JobFileManager,
 }
 
 
-DEFAULT_RUN_TYPE = "sdk_command"
+DEFAULT_RUN_TYPE = "anyscale_job"
+TIMEOUT_BUFFER_MINUTES = 15
 
 
 def _get_extra_tags_from_env() -> dict:
@@ -128,6 +135,16 @@ def run_release_test(
     start_time = time.monotonic()
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
+
+    # Workaround while Anyscale Jobs don't support leaving cluster alive
+    # after the job has finished.
+    # TODO: Remove once we have support in Anyscale
+    if no_terminate and run_type == "anyscale_job":
+        logger.warning(
+            "anyscale_job run type does not support --no-terminate. "
+            "Switching to job (Ray Job) run type."
+        )
+        run_type = "job"
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -204,6 +221,17 @@ def run_release_test(
         cluster_timeout = int(
             test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
         )
+
+        # Get prepare command timeout, if any
+        prepare_cmd = test["run"].get("prepare", None)
+        if prepare_cmd:
+            prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
+        else:
+            prepare_timeout = 0
+
+        # Base maximum uptime on the combined command and prepare timeouts
+        command_and_prepare_timeout = command_timeout + prepare_timeout
+
         # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
         # sure we don't inflate the maximum_uptime_minutes too much if we don't wait
         # for nodes at all.
@@ -216,18 +244,21 @@ def run_release_test(
             autosuspend_base = autosuspend_mins
         else:
             cluster_manager.autosuspend_minutes = min(
-                DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
+                DEFAULT_AUTOSUSPEND_MINS,
+                int(command_and_prepare_timeout / 60) + TIMEOUT_BUFFER_MINUTES,
             )
             # Maximum uptime should be based on the command timeout, not the
             # DEFAULT_AUTOSUSPEND_MINS
-            autosuspend_base = int(command_timeout / 60) + 10
+            autosuspend_base = (
+                int(command_and_prepare_timeout / 60) + TIMEOUT_BUFFER_MINUTES
+            )
 
         maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
         if maximum_uptime_minutes:
             cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
         else:
             cluster_manager.maximum_uptime_minutes = (
-                autosuspend_base + wait_timeout + 10
+                autosuspend_base + wait_timeout + TIMEOUT_BUFFER_MINUTES
             )
 
         # Set cluster compute here. Note that this may use timeouts provided
@@ -277,8 +308,11 @@ def run_release_test(
 
             cluster_manager.build_configs(timeout=build_timeout)
 
-            buildkite_group(":rocket: Starting up cluster")
-            cluster_manager.start_cluster(timeout=cluster_timeout)
+            if isinstance(cluster_manager, FullClusterManager):
+                buildkite_group(":rocket: Starting up cluster")
+                cluster_manager.start_cluster(timeout=cluster_timeout)
+            elif isinstance(command_runner, AnyscaleJobRunner):
+                command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
         result.cluster_url = cluster_manager.get_cluster_url()
         result.cluster_id = cluster_manager.cluster_id
@@ -288,6 +322,7 @@ def run_release_test(
         command_runner.prepare_remote_env()
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
+
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
             # Overwrite wait_timeout from above to account for better default
@@ -297,9 +332,7 @@ def run_release_test(
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
-        prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
-            prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
             try:
                 command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
             except CommandError as e:
@@ -321,8 +354,18 @@ def run_release_test(
 
         try:
             command_runner.run_command(
-                command, env=command_env, timeout=command_timeout
+                command,
+                env=command_env,
+                timeout=command_timeout,
+                raise_on_timeout=not is_long_running,
             )
+        except (
+            TestCommandError,
+            PrepareCommandError,
+            TestCommandTimeout,
+            PrepareCommandTimeout,
+        ) as e:
+            raise e
         except CommandError as e:
             raise TestCommandError(e)
         except CommandTimeout as e:
@@ -345,6 +388,7 @@ def run_release_test(
             )
 
         try:
+            # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.py
             # Timeout is the time the test took divided by 200
             # (~7 minutes for a 24h test) but no less than 30s
             # and no more than 900s
@@ -367,6 +411,14 @@ def run_release_test(
         pipeline_exception = e
         metrics = {}
 
+    # Obtain the cluster URL again as it is set after the
+    # command was run in case of anyscale jobs
+    if isinstance(command_runner, AnyscaleJobRunner):
+        result.cluster_url = cluster_manager.get_cluster_url()
+        result.cluster_id = cluster_manager.cluster_id
+        result.job_url = command_runner.job_manager.job_url
+        result.job_id = command_runner.job_manager.job_id
+
     try:
         last_logs = command_runner.get_last_logs()
     except Exception as e:
@@ -375,12 +427,15 @@ def run_release_test(
 
     result.last_logs = last_logs
 
-    if not no_terminate:
+    if not no_terminate and isinstance(cluster_manager, FullClusterManager):
         buildkite_group(":earth_africa: Terminating cluster")
         try:
             cluster_manager.terminate_cluster(wait=False)
         except Exception as e:
             logger.exception(f"Could not terminate cluster: {e}")
+
+    if hasattr(command_runner, "cleanup"):
+        command_runner.cleanup()
 
     reset_signal_handling()
 
