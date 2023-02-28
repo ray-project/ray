@@ -1,0 +1,11 @@
+- name: Add To GitHub projects
+  uses: actions/add-to-project@v0.4.1
+  with:
+    # URL of the project to add issues to
+    project-url: 
+    # A GitHub personal access token with write access to the project
+    github-token: 
+    # A comma-separated list of labels to use as a filter for issue to be added
+    labeled: # optional
+    # The behavior of the labels filter, AND to match all labels, OR to match any label, NOT to exclude any listed label (default is OR)
+    label-operator: # optional
