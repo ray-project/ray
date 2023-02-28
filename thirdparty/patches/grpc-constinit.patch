@@ -1,0 +1,51 @@
+diff --git a/src/core/ext/transport/binder/wire_format/binder_constants.h b/src/core/ext/transport/binder/wire_format/binder_constants.h
+index 5b06bd919b..c52f77bd0b 100644
+--- a/src/core/ext/transport/binder/wire_format/binder_constants.h
++++ b/src/core/ext/transport/binder/wire_format/binder_constants.h
+@@ -23,8 +23,8 @@
+ 
+ using transaction_code_t = uint32_t;
+ 
+-ABSL_CONST_INIT extern const int FIRST_CALL_TRANSACTION;
+-ABSL_CONST_INIT extern const int LAST_CALL_TRANSACTION;
++extern const int FIRST_CALL_TRANSACTION;
++extern const int LAST_CALL_TRANSACTION;
+ 
+ namespace grpc_binder {
+ 
+@@ -36,7 +36,7 @@ enum class BinderTransportTxCode : int32_t {
+   PING_RESPONSE = 5,
+ };
+ 
+-ABSL_CONST_INIT extern const int kFirstCallId;
++extern const int kFirstCallId;
+ 
+ }  // namespace grpc_binder
+ 
+diff --git a/src/core/ext/transport/binder/wire_format/transaction.h b/src/core/ext/transport/binder/wire_format/transaction.h
+index 1bd61377c7..3408874a86 100644
+--- a/src/core/ext/transport/binder/wire_format/transaction.h
++++ b/src/core/ext/transport/binder/wire_format/transaction.h
+@@ -26,14 +26,14 @@
+ 
+ namespace grpc_binder {
+ 
+-ABSL_CONST_INIT extern const int kFlagPrefix;
+-ABSL_CONST_INIT extern const int kFlagMessageData;
+-ABSL_CONST_INIT extern const int kFlagSuffix;
+-ABSL_CONST_INIT extern const int kFlagOutOfBandClose;
+-ABSL_CONST_INIT extern const int kFlagExpectSingleMessage;
+-ABSL_CONST_INIT extern const int kFlagStatusDescription;
+-ABSL_CONST_INIT extern const int kFlagMessageDataIsParcelable;
+-ABSL_CONST_INIT extern const int kFlagMessageDataIsPartial;
++extern const int kFlagPrefix;
++extern const int kFlagMessageData;
++extern const int kFlagSuffix;
++extern const int kFlagOutOfBandClose;
++extern const int kFlagExpectSingleMessage;
++extern const int kFlagStatusDescription;
++extern const int kFlagMessageDataIsParcelable;
++extern const int kFlagMessageDataIsPartial;
+ 
+ using Metadata = std::vector<std::pair<std::string, std::string>>;
+ 

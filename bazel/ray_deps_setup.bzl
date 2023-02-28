@@ -236,6 +236,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cherrypick-64d124.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-constinit.patch",
         ],
         patch_args = ["-p1"],
     )
