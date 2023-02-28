@@ -2,7 +2,8 @@ import ray
 import argparse
 from time import time, sleep
 from math import floor
-from ray._private.test_utils import safe_write_to_results_json
+import os
+import json
 
 
 @ray.remote
@@ -104,6 +105,8 @@ if __name__ == "__main__":
         args.total_num_actors, args.num_actors_per_nodes, job
     )
 
+    output = os.environ.get("TEST_OUTPUT_JSON")
+
     result = {
         "total_num_task": args.total_num_task,
         "num_cpu_per_task": args.num_cpu_per_task,
@@ -118,6 +121,10 @@ if __name__ == "__main__":
         "_runtime": submission_cost + ready_cost + actor_job_cost,
     }
 
-    safe_write_to_results_json(result)
+    if output is not None:
+        from pathlib import Path
+
+        p = Path(output)
+        p.write_text(json.dumps(result))
 
     print(result)
