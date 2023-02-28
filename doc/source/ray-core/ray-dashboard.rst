@@ -71,7 +71,7 @@ Ray exports metrics by default. Metrics are available from the :ref:`Metrics Vie
 - The hardware resource usage across nodes.
 - The autoscaler status.
 
-See :ref:`System Metrics Page <system-metrics:>` for available metrics.
+See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
 .. _dash-workflow-resource-utilization:
 
