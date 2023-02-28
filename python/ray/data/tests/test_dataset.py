@@ -1,4 +1,5 @@
 import itertools
+import logging
 import math
 import os
 import random
@@ -4930,6 +4931,15 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
         ds.write_parquet("local://" + data_path).fully_executed()
+
+
+def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
+    with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
+        ray.data.range(5000, parallelism=5000).fully_executed()
+    assert (
+        "The requested parallelism of 5000 is "
+        "more than 4x the number of available CPU slots in the cluster" in caplog.text
+    ), caplog.text
 
 
 def test_read_write_local_node(ray_start_cluster):
