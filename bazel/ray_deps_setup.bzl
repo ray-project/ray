@@ -235,6 +235,7 @@ def ray_deps_setup():
         sha256 = "0c3faa83e39d4f1ab55fe1476362b9ac3b81632a46dce7fd4d50271bce816b53",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-cherrypick-64d124.patch",
         ],
         patch_args = ["-p1"],
     )

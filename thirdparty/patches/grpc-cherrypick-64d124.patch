@@ -1,0 +1,232 @@
+diff --git a/BUILD b/BUILD
+index ed17b28738..0a0985b781 100644
+--- a/BUILD
++++ b/BUILD
+@@ -1475,6 +1475,7 @@ grpc_cc_library(
+         "basic_seq",
+         "gpr_platform",
+         "poll",
++        "promise_like",
+     ],
+ )
+ 
+@@ -1494,6 +1495,7 @@ grpc_cc_library(
+         "basic_seq",
+         "gpr_platform",
+         "poll",
++        "promise_like",
+         "promise_status",
+     ],
+ )
+@@ -5694,7 +5696,6 @@ grpc_cc_library(
+         "activity",
+         "arena",
+         "arena_promise",
+-        "basic_seq",
+         "channel_args",
+         "channel_fwd",
+         "closure",
+diff --git a/src/core/lib/iomgr/resolve_address_windows.cc b/src/core/lib/iomgr/resolve_address_windows.cc
+index 0051b74093..5fceaafd51 100644
+--- a/src/core/lib/iomgr/resolve_address_windows.cc
++++ b/src/core/lib/iomgr/resolve_address_windows.cc
+@@ -115,7 +115,7 @@ NativeDNSResolver::ResolveNameBlocking(absl::string_view name,
+     goto done;
+   }
+   if (port.empty()) {
+-    if (default_port == NULL) {
++    if (default_port.empty()) {
+       error = GRPC_ERROR_CREATE_FROM_CPP_STRING(
+           absl::StrFormat("no port in name '%s'", name));
+       goto done;
+diff --git a/src/core/lib/promise/detail/basic_seq.h b/src/core/lib/promise/detail/basic_seq.h
+index 93c9facea3..e128ab439c 100644
+--- a/src/core/lib/promise/detail/basic_seq.h
++++ b/src/core/lib/promise/detail/basic_seq.h
+@@ -403,20 +403,22 @@ class BasicSeq {
+ 
+ // As above, but models a sequence of unknown size
+ // At each element, the accumulator A and the current value V is passed to some
+-// function of type F as f(V, A); f is expected to return a promise that
+-// resolves to Traits::WrappedType.
+-template <template <typename Wrapped> class Traits, typename F, typename Arg,
+-          typename Iter>
++// function of type IterTraits::Factory as f(V, IterTraits::Argument); f is
++// expected to return a promise that resolves to IterTraits::Wrapped.
++template <class IterTraits>
+ class BasicSeqIter {
+  private:
+-  using IterValue = decltype(*std::declval<Iter>());
+-  using StateCreated = decltype(std::declval<F>()(std::declval<IterValue>(),
+-                                                  std::declval<Arg>()));
+-  using State = PromiseLike<StateCreated>;
+-  using Wrapped = typename State::Result;
++  using Traits = typename IterTraits::Traits;
++  using Iter = typename IterTraits::Iter;
++  using Factory = typename IterTraits::Factory;
++  using Argument = typename IterTraits::Argument;
++  using IterValue = typename IterTraits::IterValue;
++  using StateCreated = typename IterTraits::StateCreated;
++  using State = typename IterTraits::State;
++  using Wrapped = typename IterTraits::Wrapped;
+ 
+  public:
+-  BasicSeqIter(Iter begin, Iter end, F f, Arg arg)
++  BasicSeqIter(Iter begin, Iter end, Factory f, Argument arg)
+       : cur_(begin), end_(end), f_(std::move(f)) {
+     if (cur_ == end_) {
+       Construct(&result_, std::move(arg));
+@@ -466,7 +468,7 @@ class BasicSeqIter {
+   Poll<Wrapped> PollNonEmpty() {
+     Poll<Wrapped> r = state_();
+     if (absl::holds_alternative<Pending>(r)) return r;
+-    return Traits<Wrapped>::template CheckResultAndRunNext<Wrapped>(
++    return Traits::template CheckResultAndRunNext<Wrapped>(
+         std::move(absl::get<Wrapped>(r)), [this](Wrapped arg) -> Poll<Wrapped> {
+           auto next = cur_;
+           ++next;
+@@ -476,17 +478,17 @@ class BasicSeqIter {
+           cur_ = next;
+           state_.~State();
+           Construct(&state_,
+-                    Traits<Wrapped>::CallSeqFactory(f_, *cur_, std::move(arg)));
++                    Traits::template CallSeqFactory(f_, *cur_, std::move(arg)));
+           return PollNonEmpty();
+         });
+   }
+ 
+   Iter cur_;
+   const Iter end_;
+-  GPR_NO_UNIQUE_ADDRESS F f_;
++  GPR_NO_UNIQUE_ADDRESS Factory f_;
+   union {
+     GPR_NO_UNIQUE_ADDRESS State state_;
+-    GPR_NO_UNIQUE_ADDRESS Arg result_;
++    GPR_NO_UNIQUE_ADDRESS Argument result_;
+   };
+ };
+ 
+diff --git a/src/core/lib/promise/seq.h b/src/core/lib/promise/seq.h
+index 651a7aff07..c2b757d02d 100644
+--- a/src/core/lib/promise/seq.h
++++ b/src/core/lib/promise/seq.h
+@@ -20,6 +20,7 @@
+ #include <utility>
+ 
+ #include "src/core/lib/promise/detail/basic_seq.h"
++#include "src/core/lib/promise/detail/promise_like.h"
+ #include "src/core/lib/promise/poll.h"
+ 
+ namespace grpc_core {
+@@ -50,6 +51,26 @@ struct SeqTraits {
+ template <typename... Fs>
+ using Seq = BasicSeq<SeqTraits, Fs...>;
+ 
++template <typename I, typename F, typename Arg>
++struct SeqIterTraits {
++  using Iter = I;
++  using Factory = F;
++  using Argument = Arg;
++  using IterValue = decltype(*std::declval<Iter>());
++  using StateCreated = decltype(std::declval<F>()(std::declval<IterValue>(),
++                                                  std::declval<Arg>()));
++  using State = PromiseLike<StateCreated>;
++  using Wrapped = typename State::Result;
++
++  using Traits = SeqTraits<Wrapped>;
++};
++
++template <typename Iter, typename Factory, typename Argument>
++struct SeqIterResultTraits {
++  using IterTraits = SeqIterTraits<Iter, Factory, Argument>;
++  using Result = BasicSeqIter<IterTraits>;
++};
++
+ }  // namespace promise_detail
+ 
+ // Sequencing combinator.
+@@ -75,11 +96,11 @@ F Seq(F functor) {
+ //   }
+ //   return argument;
+ template <typename Iter, typename Factory, typename Argument>
+-promise_detail::BasicSeqIter<promise_detail::SeqTraits, Factory, Argument, Iter>
++typename promise_detail::SeqIterResultTraits<Iter, Factory, Argument>::Result
+ SeqIter(Iter begin, Iter end, Argument argument, Factory factory) {
+-  return promise_detail::BasicSeqIter<promise_detail::SeqTraits, Factory,
+-                                      Argument, Iter>(
+-      begin, end, std::move(factory), std::move(argument));
++  using Result = typename promise_detail::SeqIterResultTraits<Iter, Factory,
++                                                              Argument>::Result;
++  return Result(begin, end, std::move(factory), std::move(argument));
+ }
+ 
+ }  // namespace grpc_core
+diff --git a/src/core/lib/promise/try_seq.h b/src/core/lib/promise/try_seq.h
+index fcaca8f2fe..f4cd68f15b 100644
+--- a/src/core/lib/promise/try_seq.h
++++ b/src/core/lib/promise/try_seq.h
+@@ -25,6 +25,7 @@
+ #include "absl/status/statusor.h"
+ 
+ #include "src/core/lib/promise/detail/basic_seq.h"
++#include "src/core/lib/promise/detail/promise_like.h"
+ #include "src/core/lib/promise/detail/status.h"
+ #include "src/core/lib/promise/poll.h"
+ 
+@@ -116,6 +117,26 @@ using TrySeqTraits = TrySeqTraitsWithSfinae<T>;
+ template <typename... Fs>
+ using TrySeq = BasicSeq<TrySeqTraits, Fs...>;
+ 
++template <typename I, typename F, typename Arg>
++struct TrySeqIterTraits {
++  using Iter = I;
++  using Factory = F;
++  using Argument = Arg;
++  using IterValue = decltype(*std::declval<Iter>());
++  using StateCreated = decltype(std::declval<F>()(std::declval<IterValue>(),
++                                                  std::declval<Arg>()));
++  using State = PromiseLike<StateCreated>;
++  using Wrapped = typename State::Result;
++
++  using Traits = TrySeqTraits<Wrapped>;
++};
++
++template <typename Iter, typename Factory, typename Argument>
++struct TrySeqIterResultTraits {
++  using IterTraits = TrySeqIterTraits<Iter, Factory, Argument>;
++  using Result = BasicSeqIter<IterTraits>;
++};
++
+ }  // namespace promise_detail
+ 
+ // Try a sequence of operations.
+@@ -144,12 +165,12 @@ promise_detail::TrySeq<Functors...> TrySeq(Functors... functors) {
+ //   }
+ //   return argument;
+ template <typename Iter, typename Factory, typename Argument>
+-promise_detail::BasicSeqIter<promise_detail::TrySeqTraits, Factory, Argument,
+-                             Iter>
++typename promise_detail::TrySeqIterResultTraits<Iter, Factory, Argument>::Result
+ TrySeqIter(Iter begin, Iter end, Argument argument, Factory factory) {
+-  return promise_detail::BasicSeqIter<promise_detail::TrySeqTraits, Factory,
+-                                      Argument, Iter>(
+-      begin, end, std::move(factory), std::move(argument));
++  using Result =
++      typename promise_detail::TrySeqIterResultTraits<Iter, Factory,
++                                                      Argument>::Result;
++  return Result(begin, end, std::move(factory), std::move(argument));
+ }
+ 
+ }  // namespace grpc_core
+diff --git a/src/core/lib/security/credentials/composite/composite_credentials.cc b/src/core/lib/security/credentials/composite/composite_credentials.cc
+index 324018c922..8963704d92 100644
+--- a/src/core/lib/security/credentials/composite/composite_credentials.cc
++++ b/src/core/lib/security/credentials/composite/composite_credentials.cc
+@@ -31,7 +31,6 @@
+ 
+ #include "src/core/lib/debug/trace.h"
+ #include "src/core/lib/gprpp/ref_counted_ptr.h"
+-#include "src/core/lib/promise/detail/basic_seq.h"
+ #include "src/core/lib/promise/poll.h"
+ #include "src/core/lib/promise/try_seq.h"
+ #include "src/core/lib/surface/api_trace.h"
