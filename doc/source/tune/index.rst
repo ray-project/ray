@@ -2,8 +2,8 @@
 
 .. _tune-main:
 
-Tune: Scalable Hyperparameter Tuning
-====================================
+Ray Tune: Hyperparameter Tuning
+===============================
 
 .. image:: images/tune_overview.png
     :scale: 50%
