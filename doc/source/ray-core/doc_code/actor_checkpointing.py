@@ -3,6 +3,8 @@ import os
 import sys
 import ray
 import json
+import tempfile
+import shutil
 
 
 @ray.remote(num_cpus=1)
@@ -58,10 +60,12 @@ assert ray.get(controller.worker.checkpoint.remote())["num_tasks_executed"] == 2
 # __actor_checkpointing_auto_restart_begin__
 @ray.remote(max_restarts=-1, max_task_retries=-1)
 class ImmortalActor:
-    def __init__(self):
-        if os.path.exists("/tmp/checkpoint.json"):
+    def __init__(self, checkpoint_file):
+        self.checkpoint_file = checkpoint_file
+
+        if os.path.exists(self.checkpoint_file):
             # Restore from a checkpoint
-            with open("/tmp/checkpoint.json", "r") as f:
+            with open(self.checkpoint_file, "r") as f:
                 self.state = json.load(f)
         else:
             self.state = {}
@@ -75,15 +79,17 @@ class ImmortalActor:
         self.state[key] = value
 
         # Checkpoint the latest state
-        with open("/tmp/checkpoint.json", "w") as f:
+        with open(self.checkpoint_file, "w") as f:
             json.dump(self.state, f)
 
     def get(self, key):
         return self.state[key]
 
 
-actor = ImmortalActor.remote()
-actor.update.remote("1", 1)
-actor.update.remote("2", 2)
+checkpoint_dir = tempfile.mkdtemp()
+actor = ImmortalActor.remote(os.path.join(checkpoint_dir, "checkpoint.json"))
+ray.get(actor.update.remote("1", 1))
+ray.get(actor.update.remote("2", 2))
 assert ray.get(actor.get.remote("1")) == 1
+shutil.rmtree(checkpoint_dir)
 # __actor_checkpointing_auto_restart_end__
