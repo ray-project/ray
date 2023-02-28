@@ -48,6 +48,7 @@ class TestRE3(unittest.TestCase):
             },
         }
 
+        # The RE3 encoder is not compatible wit hthe rl_module API.
         config["_enable_rl_module_api"] = False
         config["_enable_learner_api"] = False
 
