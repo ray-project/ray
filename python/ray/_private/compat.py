@@ -1,8 +1,6 @@
 import io
 import platform
 
-from python.ray import LINUX_OS
-
 
 def patch_psutil():
     """WSL's /proc/meminfo has an inconsistency where it
@@ -14,7 +12,7 @@ def patch_psutil():
     Workaround: We ensure there is a space following each colon.
     """
     assert (
-        platform.system() == LINUX_OS
+        platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()
     )
 

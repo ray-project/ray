@@ -47,8 +47,6 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
 
-from ray.constants import WINDOWS_OS, LINUX_OS
-
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
 
@@ -665,10 +663,10 @@ class Trial:
             True if the path is too long, False otherwise.
         """
         safety_buffer = 15  # arbitrary size to account for other path components.
-        if platform.system() == WINDOWS_OS:
+        if platform.system() == "Windows":
             # Windows has a 260-character limit:
             return len(str(logdir_path)) + safety_buffer > 260
-        elif platform.system() == LINUX_OS:
+        elif platform.system() == "Linux":
             # Linux has a 4096-character limit:
             return len(str(logdir_path)) + safety_buffer > 4096
         return False

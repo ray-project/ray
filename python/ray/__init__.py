@@ -3,8 +3,6 @@ import logging
 import os
 import sys
 
-from ray.constants import DARWIN_OS, LINUX_OS
-
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +58,7 @@ def _configure_system():
     # Check that grpc can actually be imported on Apple Silicon. Some package
     # managers (such as `pip`) can't properly install the grpcio library yet,
     # so provide a proactive error message if that's the case.
-    if platform.system() == DARWIN_OS and platform.machine() == "arm64":
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
         try:
             import grpc  # noqa: F401
         except ImportError:
@@ -80,7 +78,7 @@ def _configure_system():
     sys.path.insert(0, thirdparty_files)
 
     if (
-        platform.system() == LINUX_OS
+        platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()
     ):
         import ray._private.compat  # noqa: E402
