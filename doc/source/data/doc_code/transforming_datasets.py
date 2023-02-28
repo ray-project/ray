@@ -260,6 +260,25 @@ ds.map_batches(ModelUDF, compute="actors").show(2)
 # fmt: on
 
 # fmt: off
+# __writing_generator_udfs_begin__
+import ray
+from typing import Iterator
+
+# Load dataset.
+ds = ray.data.read_csv("example://iris.csv")
+
+# UDF to repeat the dataframe 100 times, in chunks of 20.
+def repeat_dataframe(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
+    for _ in range(5):
+        yield pd.concat([df]*20)
+
+ds.map_batches(repeat_dataframe).show(2)
+# -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# __writing_generator_udfs_end__
+# fmt: on
+
+# fmt: off
 # __writing_pandas_out_udfs_begin__
 import ray
 import pandas as pd
