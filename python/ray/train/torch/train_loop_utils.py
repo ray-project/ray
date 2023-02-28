@@ -80,10 +80,9 @@ def get_device() -> Union[torch.device, List[torch.device]]:
                 cuda_visible_list = cuda_visible_str.split(",")
             else:
                 raise RuntimeError(
-                    "CUDA_VISIBLE_DEVICES set incorrectly. "
-                    f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                    "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                    " variable? If not, please help file an issue on Github."
+                    "CUDA_VISIBLE_DEVICES is empty even though GPU training "
+                    "is requested. Make sure to explicitly set "
+                    "`use_gpu=False` for CPU training."
                 )
 
             # By default, there should only be one GPU ID if `use_gpu=True`.
@@ -91,7 +90,15 @@ def get_device() -> Union[torch.device, List[torch.device]]:
             # If using fractional GPUs, these IDs are not guaranteed
             # to be unique across different processes.
             for gpu_id in gpu_ids:
-                device_ids.append(cuda_visible_list.index(gpu_id))
+                try:
+                    device_ids.append(cuda_visible_list.index(gpu_id))
+                except IndexError:
+                    raise RuntimeError(
+                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                        " variable? If not, please help file an issue on Github."
+                    )
 
         else:
             # If called on the driver or outside of Ray Train, return the
@@ -311,6 +318,8 @@ class _TorchAccelerator(Accelerator):
             device = move_to_device
         else:
             device = get_device()
+            if isinstance(device, list):
+                device = device[0]
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
