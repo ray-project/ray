@@ -79,7 +79,7 @@ you can do:
 
     await some_task.remote()
     # If you need to directly access the future object, you could 
-    # convert the ObjectRefs to the future to make it work with asyncio:
+    # convert the ObjectRefs to the asyncio.Future:
     ref = some_task.remote()
     fut: asyncio.Future = asyncio.wrap_future(ref.future())
     await asyncio.wait([fut])
