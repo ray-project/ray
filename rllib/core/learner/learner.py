@@ -749,6 +749,38 @@ class Learner:
         module = module.as_multi_agent()
         return module
 
+    def _check_result(self, result: Mapping[str, Any]) -> None:
+        """Checks whether the result has the correct format.
+
+        All the keys should be referencing the module ids that got updated. There is a
+        special key `__all__` that hold any extra information that is not specific to a
+        module.
+
+        Args:
+            results: The result of the update.
+
+        Raises:
+            ValueError: If the result are not in the correct format.
+        """
+        if not isinstance(result, dict):
+            raise ValueError(
+                f"The result of the update must be a dictionary. Got: {type(result)}"
+            )
+
+        if ALL_MODULES not in result:
+            raise ValueError(
+                f"The result of the update must have a key {ALL_MODULES} "
+                "that holds any extra information that is not specific to a module."
+            )
+
+        for key in result:
+            if key != ALL_MODULES:
+                if key not in self.module.keys():
+                    raise ValueError(
+                        f"The key {key} in the result of the update is not a valid "
+                        f"module id. Valid module ids are: {self.module.keys()}"
+                    )
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update(
         self,
@@ -765,6 +797,7 @@ class Learner:
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
         result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        self._check_result(result)
         return convert_to_numpy(result)
 
     def __check_if_build_called(self):
