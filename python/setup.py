@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=("tests", "*.tests"))
         else:
             return []
 
@@ -789,6 +789,7 @@ setuptools.setup(
         "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
+    exclude_package_data={"": "BUILD"},
     zip_safe=False,
     license="Apache 2.0",
 ) if __name__ == "__main__" else None
