@@ -1,5 +1,4 @@
 import os
-from collections import Counter
 import time
 
 from unittest.mock import patch
@@ -118,7 +117,6 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     results = trainer.fit()
     devices = [result["devices"] for result in results.metrics["results"]]
 
-    count = Counter(devices)
     # cluster setups: 2 nodes, 2 gpus per node
     # `CUDA_VISIBLE_DEVICES` is set to "0,1" on node 1 and node 2
     if num_gpus_per_worker == 0.5:
@@ -126,21 +124,22 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
         # 4 workers on node 1, 4 workers on node 2
         # `ray.get_gpu_ids()` returns [0], [0], [1], [1] on node 1
         # and [0], [0], [1], [1] on node 2
-        for i in range(2):
-            assert count[i] == 4
+        assert sorted(devices[0]) == [0, 0, 1, 1]
+        assert sorted(devices[1]) == [0, 0, 1, 1]
     elif num_gpus_per_worker == 1:
         # worker gpu topology:
         # 2 workers on node 1, 2 workers on node 2
         # `ray.get_gpu_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
-        for i in range(2):
-            assert count[i] == 2
+        assert sorted(devices[0]) == [0, 1]
+        assert sorted(devices[1]) == [0, 1]
     elif num_gpus_per_worker == 2:
         # worker gpu topology:
         # 1 workers on node 1, 1 workers on node 2
         # `ray.get_gpu_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
         # and `device_id` returns the one index from each set.
         # So total count of devices should be 2.
-        assert sum(count.values()) == 2
+        assert devices[0] == [[0, 1]]
+        assert devices[1] == [[0, 1]]
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
