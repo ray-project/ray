@@ -57,7 +57,7 @@
 
 
 - label: ":mechanical_arm: :docker: Build Images: py37 [aarch64] (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -67,7 +67,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu112 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py37 [aarch64] (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -77,7 +77,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu113 cu116 cu118 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py38 [aarch64] (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -87,7 +87,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu112 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py38 [aarch64] (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -97,7 +97,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu113 cu116 cu118 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py39 [aarch64] (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -107,7 +107,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu112 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py39 [aarch64] (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -117,7 +117,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu113 cu116 cu118 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py310 [aarch64] (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
@@ -127,7 +127,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu cu112 --build-type BUILDKITE --build-base --suffix aarch64
 
 - label: ":mechanical_arm: :docker: Build Images: py310 [aarch64] (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
