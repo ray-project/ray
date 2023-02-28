@@ -49,7 +49,7 @@ class TorchTrainerPatchedMultipleReturns(TorchTrainer):
 
 
 @pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device(
     shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch
 ):
@@ -62,25 +62,22 @@ def test_torch_get_device(
     def train_fn():
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
-            if num_gpus_per_worker == 0.5:
-                assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
-            elif num_gpus_per_worker == 1:
-                visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
-                # Sort the cuda visible devices to have exact match with
-                # expected result.
-                sorted_devices = ",".join(sorted(visible_devices.split(",")))
-                assert sorted_devices == "1,2"
-
-            else:
-                raise ValueError(
-                    f"Untested paramater configuration: {num_gpus_per_worker}"
-                )
-        session.report(dict(devices=train.torch.get_device().index))
+            visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+            # Sort the cuda visible devices to have exact match with
+            # expected result.
+            sorted_devices = ",".join(sorted(visible_devices.split(",")))
+            assert sorted_devices == "1,2"
+        if num_gpus_per_worker > 1:
+            session.report(
+                dict(devices=[device.index for device in train.torch.get_device()])
+            )
+        else:
+            session.report(dict(devices=train.torch.get_device().index))
 
     trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
         scaling_config=ScalingConfig(
-            num_workers=2,
+            num_workers=2 / num_gpus_per_worker,
             use_gpu=True,
             resources_per_worker={"GPU": num_gpus_per_worker},
         ),
@@ -89,9 +86,11 @@ def test_torch_get_device(
     devices = [result["devices"] for result in results.metrics["results"]]
 
     if num_gpus_per_worker == 0.5:
-        assert devices == [0, 0]
+        assert sorted(devices) == [0, 0, 1, 1]
     elif num_gpus_per_worker == 1:
-        assert set(devices) == {0, 1}
+        assert sorted(devices) == [0, 1]
+    elif num_gpus_per_worker == 2:
+        assert sorted(devices[0]) == [0, 1]
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
