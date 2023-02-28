@@ -1,10 +1,12 @@
 import pytest
+import pandas as pd
 
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Aggregate,
@@ -38,6 +40,25 @@ def test_read_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+
+def test_from_items_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    from_items_op = FromItems(["Hello", "World"])
+    plan = LogicalPlan(from_items_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_items_op.name == "FromItems"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+
+def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
+    data = ["Hello", "World"]
+    ds = ray.data.from_items(data)
+    ds = ds.map_batches(lambda s: s.upper())
+    assert ds.take_all() == [w.upper() for w in data], ds
 
 
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
@@ -521,6 +542,23 @@ def test_write_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
+def test_write_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    datasource = ParquetDatasource()
+    read_op = Read(datasource)
+    op = Write(
+        read_op,
+        datasource,
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Write"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     read_op = Read(ParquetDatasource())
@@ -593,6 +631,33 @@ def test_aggregate_e2e(
     for idx, row in enumerate(ds.sort("value").iter_rows()):
         assert row.as_pydict() == {"value": idx, "count()": 1}
 
+
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas(ray_start_regular_shared, enable_optimizer, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas([df1, df2])
+        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
+
+        # test from single pandas dataframe
+        ds = ray.data.from_pandas(df1)
+        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "from_pandas_refs" in ds.stats()
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 def test_streaming_executor(
     ray_start_regular_shared,

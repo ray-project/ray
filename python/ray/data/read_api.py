@@ -9,6 +9,7 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
@@ -129,14 +130,29 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             )
         )
 
+    # read_tasks = [ReadTask(..., ...)]
+
+    # return Dataset(
+    #     plan=ExecutionPlan(
+    #         BlockList(blocks, metadata, owned_by_consumer=False),
+    #         DatasetStats(stages={"from_items": metadata}, parent=None),
+    #         run_by_consumer=False,
+    #     ),
+    #     epoch=0,
+    #     lazy=True,
+    #     logical_plan=logical_plan
+    # )
+    # block_list = LazyBlockList(
+    #     read_tasks, owned_by_consumer=False
+    # )
+
+    from_items_op = FromItems(items, detected_parallelism)
+    logical_plan = LogicalPlan(from_items_op)
     return Dataset(
-        ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"from_items": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
-        0,
-        True,
+        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        epoch=0,
+        lazy=True,
+        logical_plan=logical_plan,
     )
 
 
