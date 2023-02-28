@@ -7,14 +7,16 @@ Working with Databases
 ======================================================
 
 Ray Datasets can be read from:
-- Any table or query from a database with a `Python DB API 2`_ library
-- Databricks tables or SQL queries
-- Snowflake tables or SQL queries
+
+* Any table or query from a database with a `Python DB API 2`_ library
+* Databricks tables or SQL queries
+* Snowflake tables or SQL queries
 
 Ray Datasets can be written to:
-- Any table in a database with a compliant `Python DB API 2`_  library
-- Delta Lake tables
-- Snowflake tables
+
+* Any table in a database with a compliant `Python DB API 2`_  library
+* Delta Lake tables
+* Snowflake tables
 
 .. note::
     This guide surveys the current database integrations. If none of these meet your
@@ -25,9 +27,9 @@ Ray Datasets can be written to:
 
 .. _dataset_db_api2:
 
-----------------------------------
-From an DB API 2 compliant library
-----------------------------------
+--------------------------------------
+From a Database with a DB API 2 library
+--------------------------------------
 Any database that provides a `Python DB API 2`_ compliant library can be read from and written 
 to using Ray Datasets with the :py:class:`~ray.data.read_dbapi2` 
 and :py:class:`~ray.data.Dataset.write_dbapi2` methods.
@@ -36,7 +38,7 @@ Connection properties
 ==========================
 Connection properties need to be provided to these methods. The 
 required properties depend on the underlying databases connection properties, 
-but typically ``user`` and ``password`` are required. 
+but typically `user` and `password` are required. 
 
 Below are examples of creating connect properties in code, loading them with yaml or 
 reading them from the environment.
@@ -93,8 +95,8 @@ can use indexes and cache query results. Be sure to understand how the database 
 multiple parallel queries, as it may neccesary to implement optimizations such as indexes,
 materialized views, etc.
 
-.. image:: ./images/database/dbapi2_read.png)
-  :width: 200
+.. image:: images/dbapi2_read.png
+  :width: 600
 
 If the data set size is small enough, setting the read mode to `direct`, Ray data will cause only 
 a single query to be excuted, and the results parsed within a single task.
@@ -104,16 +106,16 @@ How writing works
 The default write mode is `direct`. In this mode, every partition in the dataset will
 be written to a destination table in parallel using `executemany` calls and `INSERT` statements.
 
-.. image:: ./images/database/dbapi2_write.png)
-  :width: 200
+.. image:: images/dbapi2_write.png
+  :width: 600
 
 The write mode `stage` will write every partition to a stage table in parallel and then upon successful 
 completion of the partition writes, a `COPY INTO` query is executed to copy the stage tables into
 the destination table. All staging tables are cleaned up after a `write_dbapi2` operation, regardless of 
 success or not.
 
-.. image:: ./images/database/dbapi2_write_staged.png)
-  :width: 200
+.. image:: images/dbapi2_write_staged.png
+  :width: 600
 
 Controlling parallelism
 =======================
@@ -169,8 +171,8 @@ Reading
 Ray data uses the `Databricks Python SQL Connector`_ `execute`_ method to parallelize 
 loading the results of queries across the cluster using `LIMIT` and `OFFSET`.
 
-.. image:: ./images/database/databricks_read.png
-  :width: 200
+.. image:: images/databricks_read.png
+  :width: 600
 
 Additional read parameters
 ==========================
@@ -184,8 +186,8 @@ and the the `Databricks Python SQL Connector`_ `execute`_ method to copy the par
 into a Delta tables in parallel from each partition in the dataset.
 After the copy operation is complete, the intermediate parquet data is deleted.
 
-.. image:: ./images/database/databricks_write.png)
-  :width: 200
+.. image:: images/databricks_write.png
+  :width: 600
 
 Example
 ========
@@ -224,8 +226,8 @@ Reading
 Ray data uses the `Snowflake Python API`_ `get_result_batches`_ method to parallelize 
 loading the results of queries across the cluster.
 
-.. image:: ./images/snowflake_read_table.png
-  :width: 200
+.. image:: images/snowflake_read.png
+  :width: 600
 
 .. warning::
   The `get_result_batches`_ has no way to specify the number of batches returned. Setting parallism 
@@ -233,26 +235,28 @@ loading the results of queries across the cluster.
 
 Additional read parameters
 ==========================
-The native `Snowflake Python API`_  arguments are also available when reading. 
+The native `Snowflake Python API`_ arguments are also available when reading. 
 The `timeout` and `params` arguments may be used in the method.
 
 Writing
 =======
-Ray data uses the `Snowflake Python API`_  `write_pandas`_ method to write Ray datasets to 
+Ray data uses the `Snowflake Python API`_ `write_pandas`_ method to write Ray datasets to 
 Snowflake tables. Each partition in the Ray dataset will call this method in parallel. 
 `write_pandas`_ method will write data to a Snowflake stage, and then upon successful 
 write to the stage, copy the data into the destination table.
 
-.. image:: ./images/snowflake_write_table.png)
-  :width: 200
+.. image:: images/snowflake_write.png
+  :width: 600
 
 Additional write parameters
 ===========================
 The native `Snowflake Python API`_  arguments are also available from the `write_pandas`_ method.
-- ``auto_create_table``: When true, will automatically create a table with corresponding columns for each column in the passed in DataFrame. The table will not be created if it already exists
-- ``overwrite``: When true, and if auto_create_table is true, then it drops the table. Otherwise, it truncates the table. In both cases it will replace the existing contents of the table with that of the passed in Pandas DataFrame.
-- ``table_type``: The table type of to-be-created table. 
-The supported table types include ``temp``/``temporary`` and ``transient``. 
+
+* `auto_create_table`: When true, will automatically create a table with corresponding columns for each column in the passed in DataFrame. The table will not be created if it already exists
+* `overwrite`: When true, and if auto_create_table is true, then it drops the table. Otherwise, it truncates the table. In both cases it will replace the existing contents of the table with that of the passed in Pandas DataFrame.
+* `table_type`: The table type of to-be-created table. 
+
+The supported table types include `temp`, `temporary` and `transient`. 
 Empty means permanent table as per SQL convention.
 
 Example
