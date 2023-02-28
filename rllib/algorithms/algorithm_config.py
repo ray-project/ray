@@ -302,18 +302,12 @@ class AlgorithmConfig(_Config):
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
         self.validate_workers_after_construction = True
-        self.ignore_worker_failures = False
-        self.recreate_failed_workers = False
-        self.restart_failed_sub_environments = False
-        self.num_consecutive_worker_failures_tolerance = 100
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
-        self.worker_health_probe_timeout_s = 60
-        self.worker_restore_timeout_s = 1800
 
         # `self.training()`
         self.gamma = 0.99
@@ -405,6 +399,26 @@ class AlgorithmConfig(_Config):
         self.fake_sampler = False
         self.seed = None
         self.worker_cls = None
+
+        # `self.fault_tolerance()`
+        self.ignore_worker_failures = False
+        self.recreate_failed_workers = False
+        # By default restart failed worker a thousand times.
+        # This should be enough to handle normal transient failures.
+        # This also prevents infinite number of restarts in case
+        # the worker or env has a bug.
+        self.max_num_worker_restarts = 1000
+        # Small delay between worker restarts. In case rollout or
+        # evaluation workers have remote dependencies, this delay can be
+        # adjusted to make sure we don't flood them with re-connection
+        # requests, and allow them enough time to recover.
+        # This delay also gives Ray time to stream back error logging
+        # and exceptions.
+        self.delay_between_worker_restarts_s = 60.0
+        self.restart_failed_sub_environments = False
+        self.num_consecutive_worker_failures_tolerance = 100
+        self.worker_health_probe_timeout_s = 60
+        self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
         self.rl_module_spec = None
@@ -1241,21 +1255,21 @@ class AlgorithmConfig(_Config):
         remote_worker_envs: Optional[bool] = NotProvided,
         remote_env_batch_wait_ms: Optional[float] = NotProvided,
         validate_workers_after_construction: Optional[bool] = NotProvided,
-        ignore_worker_failures: Optional[bool] = NotProvided,
-        recreate_failed_workers: Optional[bool] = NotProvided,
-        restart_failed_sub_environments: Optional[bool] = NotProvided,
-        num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
         synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        worker_health_probe_timeout_s: int = NotProvided,
-        worker_restore_timeout_s: int = NotProvided,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
         no_done_at_end=DEPRECATED_VALUE,
+        ignore_worker_failures=DEPRECATED_VALUE,
+        recreate_failed_workers=DEPRECATED_VALUE,
+        restart_failed_sub_environments=DEPRECATED_VALUE,
+        num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
+        worker_health_probe_timeout_s=DEPRECATED_VALUE,
+        worker_restore_timeout_s=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1329,27 +1343,6 @@ class AlgorithmConfig(_Config):
                 your environment step / reset and model inference perf.
             validate_workers_after_construction: Whether to validate that each created
                 remote worker is healthy after its construction process.
-            ignore_worker_failures: Whether to attempt to continue training if a worker
-                crashes. The number of currently healthy workers is reported as the
-                "num_healthy_workers" metric.
-            recreate_failed_workers: Whether - upon a worker failure - RLlib will try to
-                recreate the lost worker as an identical copy of the failed one. The new
-                worker will only differ from the failed one in its
-                `self.recreated_worker=True` property value. It will have the same
-                `worker_index` as the original one. If True, the
-                `ignore_worker_failures` setting will be ignored.
-            restart_failed_sub_environments: If True and any sub-environment (within
-                a vectorized env) throws any error during env stepping, the
-                Sampler will try to restart the faulty sub-environment. This is done
-                without disturbing the other (still intact) sub-environment and without
-                the RolloutWorker crashing.
-            num_consecutive_worker_failures_tolerance: The number of consecutive times
-                a rollout worker (or evaluation worker) failure is tolerated before
-                finally crashing the Algorithm. Only useful if either
-                `ignore_worker_failures` or `recreate_failed_workers` is True.
-                Note that for `restart_failed_sub_environments` and sub-environment
-                failures, the worker itself is NOT affected and won't throw any errors
-                as the flawed sub-environment is silently restarted under the hood.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1367,11 +1360,6 @@ class AlgorithmConfig(_Config):
                 is the coeff of how much new data points contribute to the averages.
                 Default is None, which uses simple global average instead.
                 The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
-            worker_health_probe_timeout_s: Max amount of time we should spend waiting
-                for health probe calls to finish. Health pings are very cheap, so the
-                default is 1 minute.
-            worker_restore_timeout_s: Max amount of time we should wait to restore
-                states on recovered worker actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1400,16 +1388,6 @@ class AlgorithmConfig(_Config):
             self.validate_workers_after_construction = (
                 validate_workers_after_construction
             )
-        if ignore_worker_failures is not NotProvided:
-            self.ignore_worker_failures = ignore_worker_failures
-        if recreate_failed_workers is not NotProvided:
-            self.recreate_failed_workers = recreate_failed_workers
-        if restart_failed_sub_environments is not NotProvided:
-            self.restart_failed_sub_environments = restart_failed_sub_environments
-        if num_consecutive_worker_failures_tolerance is not NotProvided:
-            self.num_consecutive_worker_failures_tolerance = (
-                num_consecutive_worker_failures_tolerance
-            )
         if preprocessor_pref is not NotProvided:
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not NotProvided:
@@ -1422,10 +1400,6 @@ class AlgorithmConfig(_Config):
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
-        if worker_health_probe_timeout_s is not NotProvided:
-            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
-        if worker_restore_timeout_s is not NotProvided:
-            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         # Deprecated settings.
         if horizon != DEPRECATED_VALUE:
@@ -1447,6 +1421,59 @@ class AlgorithmConfig(_Config):
                 new="Your gymnasium.Env.step() should return a truncated=True flag",
                 error=True,
             )
+
+        if ignore_worker_failures != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="ignore_worker_failures is deprecated, and will soon be a no-op",
+                error=False,
+            )
+            self.ignore_worker_failures = ignore_worker_failures
+        if recreate_failed_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(recreate_failed_workers=..)",
+                new="AlgorithmConfig.fault_tolerance(recreate_failed_workers=..)",
+                error=False,
+            )
+            self.recreate_failed_workers = recreate_failed_workers
+        if restart_failed_sub_environments != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(restart_failed_sub_environments=..)",
+                new=(
+                    "AlgorithmConfig.fault_tolerance("
+                    "restart_failed_sub_environments=..)"
+                ),
+                error=False,
+            )
+            self.restart_failed_sub_environments = restart_failed_sub_environments
+        if num_consecutive_worker_failures_tolerance != DEPRECATED_VALUE:
+            deprecation_warning(
+                old=(
+                    "AlgorithmConfig.rollouts("
+                    "num_consecutive_worker_failures_tolerance=..)"
+                ),
+                new=(
+                    "AlgorithmConfig.fault_tolerance("
+                    "num_consecutive_worker_failures_tolerance=..)"
+                ),
+                error=False,
+            )
+            self.num_consecutive_worker_failures_tolerance = (
+                num_consecutive_worker_failures_tolerance
+            )
+        if worker_health_probe_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(worker_health_probe_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s=..)",
+                error=False,
+            )
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(worker_restore_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s=..)",
+                error=False,
+            )
+            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         return self
 
@@ -2177,6 +2204,69 @@ class AlgorithmConfig(_Config):
             self.seed = seed
         if worker_cls is not NotProvided:
             self.worker_cls = worker_cls
+
+        return self
+
+    def fault_tolerance(
+        self,
+        recreate_failed_workers: Optional[bool] = NotProvided,
+        max_num_worker_restarts: Optional[int] = NotProvided,
+        delay_between_worker_restarts_s: Optional[float] = NotProvided,
+        restart_failed_sub_environments: Optional[bool] = NotProvided,
+        num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
+        worker_health_probe_timeout_s: int = NotProvided,
+        worker_restore_timeout_s: int = NotProvided,
+    ):
+        """Sets the config's fault tolerance settings.
+
+        Args:
+            recreate_failed_workers: Whether - upon a worker failure - RLlib will try to
+                recreate the lost worker as an identical copy of the failed one. The new
+                worker will only differ from the failed one in its
+                `self.recreated_worker=True` property value. It will have the same
+                `worker_index` as the original one. If True, the
+                `ignore_worker_failures` setting will be ignored.
+            max_num_worker_restarts: The maximum number of times a worker is allowed to
+                be restarted (if `recreate_failed_workers` is True).
+            delay_between_worker_restarts_s: The delay (in seconds) between two
+                consecutive worker restarts (if `recreate_failed_workers` is True).
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environment and without
+                the RolloutWorker crashing.
+            num_consecutive_worker_failures_tolerance: The number of consecutive times
+                a rollout worker (or evaluation worker) failure is tolerated before
+                finally crashing the Algorithm. Only useful if either
+                `ignore_worker_failures` or `recreate_failed_workers` is True.
+                Note that for `restart_failed_sub_environments` and sub-environment
+                failures, the worker itself is NOT affected and won't throw any errors
+                as the flawed sub-environment is silently restarted under the hood.
+            worker_health_probe_timeout_s: Max amount of time we should spend waiting
+                for health probe calls to finish. Health pings are very cheap, so the
+                default is 1 minute.
+            worker_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered worker actors. Default is 30 mins.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        if recreate_failed_workers is not NotProvided:
+            self.recreate_failed_workers = recreate_failed_workers
+        if max_num_worker_restarts is not NotProvided:
+            self.max_num_worker_restarts = max_num_worker_restarts
+        if delay_between_worker_restarts_s is not NotProvided:
+            self.delay_between_worker_restarts_s = delay_between_worker_restarts_s
+        if restart_failed_sub_environments is not NotProvided:
+            self.restart_failed_sub_environments = restart_failed_sub_environments
+        if num_consecutive_worker_failures_tolerance is not NotProvided:
+            self.num_consecutive_worker_failures_tolerance = (
+                num_consecutive_worker_failures_tolerance
+            )
+        if worker_health_probe_timeout_s is not NotProvided:
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s is not NotProvided:
+            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         return self
 
