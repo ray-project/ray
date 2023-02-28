@@ -776,6 +776,17 @@ class ExecutionPlan:
             )
         )
 
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
+
 
 def _pack_args(
     self_fn_args: Iterable[Any],
