@@ -366,8 +366,8 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
-        fastapi_docs_path: Optional[str],
         deployer_job_id: Union[str, bytes],
+        fastapi_docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:

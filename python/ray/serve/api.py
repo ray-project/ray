@@ -243,7 +243,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
-        ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
+        if hasattr(frozen_app, "docs_url"):
+            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
         return ASGIAppWrapper
 
     return decorator
