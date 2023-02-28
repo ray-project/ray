@@ -38,6 +38,7 @@ class MNISTDataModule(pl.LightningDataModule):
             self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
 
     def train_dataloader(self):
+        # TODO(): figure out how does lightning create distributed samplers
         dataloader = DataLoader(self.mnist_train, batch_size=self.batch_size, num_workers=4)
         return train.torch.prepare_data_loader(dataloader)
 
@@ -129,7 +130,7 @@ scaling_config = ScalingConfig(num_workers=8, use_gpu=True, resources_per_worker
 run_config = RunConfig(
     name="ptl-e2e-test",
     local_dir="/mnt/cluster_storage/ray_lightning_results",
-    sync_config=SyncConfig(),
+    sync_config=SyncConfig(syncer=None),
 )
 
 trainer = LightningTrainer(

@@ -14,6 +14,7 @@ from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
+from ray.tune import checkpoint_dir
 from ray.util import PublicAPI
 from ray.air import CheckpointConfig, session
 from ray.train.constants import (
@@ -113,7 +114,6 @@ class LightningTrainer(DataParallelTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
-
     datamodule = config.get(LIGHTNING_DATAMODULE_KEY, None)
     if not datamodule:
         # Build Datamodule with Ray Datasets
@@ -149,4 +149,10 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["callbacks"].append(RayModelCheckpoint(**model_checkpoint_config))
 
     trainer = pl.Trainer(**trainer_config)
-    trainer.fit(lightning_module, datamodule=datamodule)
+
+    checkpoint_path = None
+    checkpoint = session.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as ckpt_dir:
+            checkpoint_path = f"{ckpt_dir}/checkpoint.ckpt"
+    trainer.fit(lightning_module, datamodule=datamodule, ckpt_path=checkpoint_path)
