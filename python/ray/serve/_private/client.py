@@ -418,10 +418,6 @@ class ServeControllerClient:
         ]
 
     @_ensure_connected
-    def get_fastapi_docs_path(self, name: str):
-        return ray.get(self._controller.get_fastapi_docs_path.remote(name))
-
-    @_ensure_connected
     def get_handle(
         self,
         deployment_name: str,

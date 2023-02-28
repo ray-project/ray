@@ -30,7 +30,7 @@ from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 def test_fastapi_function(serve_instance):
@@ -666,25 +666,35 @@ def test_fastapi_custom_serializers(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "docs_path,expected_path", [(None, "/docs"), ("/documentation", "/documentation")]
+    "is_fastapi,docs_path",
+    [
+        (False, None),  # Not integrated with FastAPI
+        (True, "/docs"),  # Don't specify docs_url, use default
+        (True, "/documentation"),  # Override default docs url
+    ],
 )
 def test_fastapi_docs_path(
-    serve_instance: ServeControllerClient, docs_path, expected_path
+    serve_instance: ServeControllerClient, is_fastapi, docs_path
 ):
-    if docs_path:
+    # If not the default docs_url, override it.
+    if docs_path != "/docs":
         app = FastAPI(docs_url=docs_path)
     else:
         app = FastAPI()
 
-    @serve.deployment
-    @serve.ingress(app)
     class Model:
         @app.get("/{a}")
         def func(a: int):
             return {"result": a}
 
-    serve.run(Model.bind(), name="app1")
-    assert serve_instance.get_fastapi_docs_path("app1") == expected_path
+    if is_fastapi:
+        Model = serve.ingress(app)(Model)
+
+    serve.run(serve.deployment(Model).bind(), name="app1")
+    wait_for_condition(
+        lambda: ray.get(serve_instance._controller.get_fastapi_docs_path.remote("app1"))
+        == docs_path
+    )
 
 
 if __name__ == "__main__":
