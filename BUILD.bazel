@@ -117,6 +117,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "autoscaler_lib",
+    srcs = [
+    ],
+    hdrs = [
+        "src/ray/gcs/autoscaler/node_provider.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        "//src/ray/protobuf:node_provider_cc_proto",
+    ],
+)
+
 # Object manager gRPC lib.
 cc_grpc_library(
     name = "object_manager_cc_grpc",

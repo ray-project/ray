@@ -13,9 +13,7 @@
 // limitations under the License.
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "src/ray/protobuf/node_provider.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -28,16 +26,17 @@ class INodeProvider {
   virtual ~INodeProvider() = default;
 
   // Query the available node types.
-  virtual rpc::AvailableNodeTypesResponse GetAvailableNodeTypes() const = 0;
+  virtual AvailableNodeTypesResponse GetAvailableNodeTypes() const = 0;
 
   // Create new nodes.
   virtual std::vector<rpc::CreationStatus> CreateNodes(const std::string &node_type_id,
-                                             int32_t count) = 0;
+                                                       int32_t count) = 0;
 
   virtual std::vector<rpc::TerminationStatus> TerminateNodes(
       const std::vector<std::string> &node_ids) = 0;
 
-  virtual std::vector<rpc::Node> GetNodesStatus(const std::vector<std::string> &node_ids) const = 0;
+  virtual std::vector<rpc::Node> GetNodesStatus(
+      const std::vector<std::string> &node_ids) const = 0;
 
   virtual std::vector<rpc::Node> GetNodesStatus(rpc::RayNodeKind node_kind) const = 0;
 

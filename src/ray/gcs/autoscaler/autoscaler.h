@@ -15,7 +15,7 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/autoscaler/node_provider.h"
 
 namespace ray {
 namespace gcs {
