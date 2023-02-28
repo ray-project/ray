@@ -343,7 +343,7 @@ def read_datasource(
             "dataset blocks."
         )
 
-    read_stage_name = datasource.get_name()
+    read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
     if (
         requested_parallelism

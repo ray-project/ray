@@ -126,7 +126,7 @@ class Datasource(Generic[T]):
         datasource_suffix = "Datasource"
         if name.endswith(datasource_suffix):
             name = name[: -len(datasource_suffix)]
-        return f"Read{name}"
+        return name
 
 
 @PublicAPI
