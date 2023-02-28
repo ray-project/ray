@@ -7,9 +7,9 @@ index 8e003c2246..4fefd3e155 100644
  # Tensorflow's version as it is more actively maintained and works for gRPC
  # Python's needs.
 -def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
-+def pyx_library(name, deps = [], cc_kwargs = {},py_deps = [], srcs = [], **kwargs):
++def pyx_library(name, deps = [], cc_kwargs = {}, py_deps = [], srcs = [], **kwargs):
      """Compiles a group of .pyx / .pxd / .py files.
-
+ 
      First runs Cython to create .cpp files for each input .pyx or .py + .pxd
 @@ -69,10 +69,11 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
          stem = src.split(".")[0]
@@ -26,3 +26,4 @@ index 8e003c2246..4fefd3e155 100644
 +            **cc_kwargs,
          )
          shared_objects.append(shared_object_name)
+ 
