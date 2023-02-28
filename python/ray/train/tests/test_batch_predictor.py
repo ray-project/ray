@@ -114,7 +114,7 @@ def test_separate_gpu_stage(shutdown_only):
         num_gpus_per_worker=1,
         separate_gpu_stage=True,
         allow_gpu=True,
-    )
+    ).fully_executed()
     stats = ds.stats()
     assert "Stage 1 read->DummyPreprocessor:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
@@ -125,7 +125,7 @@ def test_separate_gpu_stage(shutdown_only):
         num_gpus_per_worker=1,
         separate_gpu_stage=False,
         allow_gpu=True,
-    )
+    ).fully_executed()
     stats = ds.stats()
     assert "Stage 1 read:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
@@ -148,7 +148,7 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
     with pytest.raises(
         ValueError, match="DummyPredictor does not support GPU prediction"
     ):
-        _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
+        batch_predictor.predict(test_dataset, num_gpus_per_worker=1).fully_executed()
 
 
 def test_batch_prediction():
@@ -158,7 +158,7 @@ def test_batch_prediction():
     )
 
     test_dataset = ray.data.range_table(4)
-    ds = batch_predictor.predict(test_dataset)
+    ds = batch_predictor.predict(test_dataset).fully_executed()
     # Check fusion occurred.
     assert "read->DummyPreprocessor" in ds.stats(), ds.stats()
     assert ds.to_pandas().to_numpy().squeeze().tolist() == [
@@ -275,8 +275,7 @@ def test_batch_prediction_various_combination():
             predictor_cls,
         )
 
-        ds = batch_predictor.predict(input_dataset)
-        print(ds.stats())
+        ds = batch_predictor.predict(input_dataset).fully_executed()
         # Check no fusion needed since we're not doing a dataset read.
         assert f"Stage 1 {preprocessor.__class__.__name__}" in ds.stats(), ds.stats()
         assert ds.to_pandas().to_numpy().squeeze().tolist() == [
