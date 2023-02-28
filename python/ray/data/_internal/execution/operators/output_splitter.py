@@ -69,9 +69,9 @@ class OutputSplitter(PhysicalOperator):
 
         # First calculate the min rows to add per output to equalize them.
         allocation = [max_n - n for n in self._num_output]
-        remainder = sum(allocation) - buffer_size
+        remainder = buffer_size - sum(allocation)
         # Invariant: buffer should always be large enough to equalize.
-        assert remainder >= 0, (buffer_size, allocation)
+        assert remainder >= 0, (remainder, buffer_size, allocation)
 
         # Equally distribute remaining rows in buffer to outputs.
         x = remainder // len(allocation)
@@ -99,7 +99,7 @@ class OutputSplitter(PhysicalOperator):
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
                 target_bundle.output_split = target_index
-                self._num_sent[target_index] += target_bundle.num_rows()
+                self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
             else:
                 # Put it back and abort.
@@ -161,6 +161,7 @@ def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
         elif acc + m.num_rows <= left_size:
             left_blocks.append(b)
             left_meta.append(m)
+            acc += m.num_rows
         else:
             # Trouble case: split it up.
             lm, rm = _split_meta(m, left_size - acc)
@@ -169,6 +170,8 @@ def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
             right_meta.append(rm)
             left_blocks.append(lb)
             right_blocks.append(rb)
+            acc += lm.num_rows
+            assert acc == left_size
     left = RefBundle(list(zip(left_blocks, left_meta)), owns_blocks=bundle.owns_blocks)
     right = RefBundle(
         list(zip(right_blocks, right_meta)), owns_blocks=bundle.owns_blocks
