@@ -168,6 +168,23 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     )
     trainer.fit()
 
+    def train_fn_manual_override():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP and manually specify CPU.
+        model = train.torch.prepare_model(model, device=torch.device("cpu"))
+
+        # Make sure model is wrapped in DDP.
+        assert isinstance(model, DistributedDataParallel)
+
+        # Make sure model is NOT on cuda since we manually specified CPU.
+        assert not next(model.parameters()).is_cuda
+
+    trainer = TorchTrainer(
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    trainer.fit()
+
 
 def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
     """Tests if `prepare_model` uses the train.torch.get_device even if it does not

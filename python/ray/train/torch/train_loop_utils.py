@@ -110,7 +110,7 @@ def get_device() -> Union[torch.device, List[torch.device]]:
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
-    move_to_device: bool = True,
+    move_to_device: Union[bool, torch.device] = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
@@ -121,9 +121,10 @@ def prepare_model(
 
     Args:
         model (torch.nn.Module): A torch model to prepare.
-        move_to_device: Whether to move the model to the correct
-            device. If set to False, the model needs to manually be moved
-            to the correct device.
+        move_to_device: Either a boolean indiciating whether to move
+            the model to the correct device or an actual device to
+            move the model to. If set to False, the model needs
+            to manually be moved to the correct device.
         parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
             in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
             or neither.
@@ -305,7 +306,11 @@ class _TorchAccelerator(Accelerator):
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
         rank = session.get_local_rank()
-        device = get_device()
+
+        if isinstance(move_to_device, torch.device):
+            device = move_to_device
+        else:
+            device = get_device()
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
