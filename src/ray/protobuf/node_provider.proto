@@ -63,37 +63,37 @@ message NodeType {
 }
 
 enum NodeStatus {
-  UNKNOWN = 0;
-  PENDING_CREATION = 1;
-  CREATING = 2;
-  RUNNING = 3;
-  TERMINATING = 4;
-  TERMINATED = 5;
+  NODE_STATUS_UNKNOWN = 0;
+  NODE_STATUS_PENDING_CREATION = 1;
+  NODE_STATUS_CREATING = 2;
+  NODE_STATUS_RUNNING = 3;
+  NODE_STATUS_TERMINATING = 4;
+  NODE_STATUS_TERMINATED = 5;
 }
 
 enum RayStatus {
-  UNKNOWN = 0;
-  UNINITIALIZED = 1;
-  WAITING_FOR_SSH = 2;
-  SYNCING_FILES = 3;
-  SETTING_UP = 4;
-  UPDATE_FAILED = 5;
-  UP_TO_DATE = 6;
+  RAY_STATUS_UNKNOWN = 0;
+  RAY_STATUS_UNINITIALIZED = 1;
+  RAY_STATUS_WAITING_FOR_SSH = 2;
+  RAY_STATUS_SYNCING_FILES = 3;
+  RAY_STATUS_SETTING_UP = 4;
+  RAY_STATUS_UPDATE_FAILED = 5;
+  RAY_STATUS_UP_TO_DATE = 6;
 }
 
 message Node {
   string node_id = 1;
   string node_type_id = 2;
   NodeStatus node_status = 3;
-  RayNodeStatus ray_status = 4;
+  RayStatus ray_status = 4;
   string external_ip_address = 5;
   string internal_ip_address = 6;
 }
 
 message AvailableNodeTypesResponse {
   repeated NodeType node_types = 1;
-  map<node_type_id, double> node_priorties = 2;
-  map<node_type_id, int32> node_capacities = 3;
+  map<string, double> node_priorties = 2;
+  map<string, int32> node_capacities = 3;
 }
 
 message CreateNodesRequest {
@@ -103,39 +103,39 @@ message CreateNodesRequest {
 }
 
 enum CreationStatus {
-  UNSPECIFIED = 0; // Most likely indicates old cluster operator is deployed.
-  SUCCESS = 1;
-  FAILURE = 2;
-  PENDING = 3;
+  CREATION_STATUS_UNSPECIFIED = 0;
+  CREATION_STATUS_SUCCESS = 1;
+  CREATION_STATUS_FAILURE = 2;
+  CREATION_STATUS_PENDING = 3;
 }
 
 message CreateNodesResponse {
-  repeated CreationStatus status = 0;
+  repeated CreationStatus status = 1;
 }
 
 message TerminateNodesRequest {
-  string cluster_id = 0;
-  repeated string node_ids = 1;
+  string cluster_id = 1;
+  repeated string node_ids = 2;
 }
 
 enum TerminationStatus {
-  UNSPECIFIED = 0; // Most likely indicates old cluster operator is deployed.
-  SUCCESS = 1;
-  FAILURE = 2;
-  PENDING = 3;
+  TERMINATION_STATUS_UNSPECIFIED = 0;
+  TERMINATION_STATUS_SUCCESS = 1;
+  TERMINATION_STATUS_FAILURE = 2;
+  TERMINATION_STATUS_PENDING = 3;
 }
 
 message TerminateNodesResponse {
-  repeated TerminationStatus status = 0;
+  repeated TerminationStatus status = 1;
 }
 
 message GetNodesStatusRequest {
-  string cluster_id = 0;
-  optional RayNodeKind ray_node_kind = 1;
-  repeated string node_ids = 2;
-  optional NodeStatus node_status = 3;
+  string cluster_id = 1;
+  optional RayNodeKind ray_node_kind = 2;
+  repeated string node_ids = 3;
+  optional NodeStatus node_status = 4;
 }
 
 message GetNodesStatusResponse {
-  repeated Node nodes = 0;
+  repeated Node nodes = 1;
 }
