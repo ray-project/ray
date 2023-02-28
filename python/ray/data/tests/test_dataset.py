@@ -1591,7 +1591,14 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_table(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
+    # In streaming, we set batch_format to "default" (because calling
+    # ds.dataset_format() will still invoke bulk execution and we want
+    # to avoid that). As a result, it's receiving PandasRow (the defaut
+    # batch format), which unwraps [0] to plain 0.
+    if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": 0}]
+    else:
+        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):
