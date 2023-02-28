@@ -683,7 +683,8 @@ class TestServeDeploySchema:
             ServeDeploySchema.parse_obj(deploy_config_dict)
         assert "app1" in str(e.value) and "app2" in str(e.value)
 
-    def test_deploy_config_duplicate_routes(self):
+    def test_deploy_config_duplicate_routes1(self):
+        """Test that apps with duplicate route prefixes raises validation error"""
         deploy_config_dict = {
             "host": "127.0.0.1",
             "port": 8000,
@@ -713,6 +714,23 @@ class TestServeDeploySchema:
         with pytest.raises(ValidationError) as e:
             ServeDeploySchema.parse_obj(deploy_config_dict)
         assert "alice" in str(e.value) and "bob" in str(e.value)
+
+    def test_deploy_config_duplicate_routes2(self):
+        """Test that multiple apps with route_prefix set to None parses with no error"""
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": None, "import_path": "module.graph"},
+                {"name": "app3", "route_prefix": None, "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
 
 
 class TestServeStatusSchema:
