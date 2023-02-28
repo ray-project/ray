@@ -1,7 +1,7 @@
 Anti-pattern: Returning ray.put() ObjectRefs from a task harms performance and fault tolerance
 ==============================================================================================
 
-**TLDR:** Avoid calling :ref:`ray.put() <ray-put-ref>` on task return values and returning the resulting ObjectRefs.
+**TLDR:** Avoid calling :func:`ray.put() <ray.put>` on task return values and returning the resulting ObjectRefs.
 Instead, return these values directly if possible.
 
 Returning ray.put() ObjectRefs are considered anti-patterns for the following reasons:

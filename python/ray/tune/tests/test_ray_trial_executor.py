@@ -21,7 +21,6 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_traina
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
-from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -233,7 +232,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testStartFailure(self):
         _global_registry.register(TRAINABLE_CLASS, "asdf", None)
-        trial = _make_trial("asdf", resources=Resources(1, 0))
+        trial = _make_trial("asdf")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.ERROR, trial.status)
 

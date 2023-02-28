@@ -28,7 +28,7 @@ Concepts
 
 - **Packages**. External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client <ray-client-ref>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or use `ray attach` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**. A :ref:`Ray job <cluster-clients-and-jobs>` is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
 
@@ -110,7 +110,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`, or using :ref:`Ray Client <ray-client-ref>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
@@ -138,16 +138,6 @@ You can specify a runtime environment for your whole job, whether running a scri
     If using the Ray Jobs API (either the Python SDK or the CLI), specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit``, not in the ``ray.init()`` call in the entrypoint script (in this example, ``my_ray_script.py``). 
     
     This ensures the runtime environment is installed on the cluster before the entrypoint script is run.
-
-..
-  TODO(architkulkarni): run Ray Client doc example in CI
-
-.. code-block:: python
-
-    # Option 4: Connecting to remote cluster using Ray Client
-    ray.init("ray://<head-node-ip>:10001", runtime_env=runtime_env)
-
-This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.
 
 .. note::
 
@@ -412,8 +402,6 @@ Caching and Garbage Collection
 Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` directories) will be cached on the cluster to enable quick reuse across different runtime environments within a job.  Each field (``working_dir``, ``py_modules``, etc.) has its own cache whose size defaults to 10 GB.  To change this default, you may set the environment variable ``RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB`` on each node in your cluster before starting Ray e.g. ``export RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB=1.5``.
 
 When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
-
-To disable all deletion behavior (for example, for debugging purposes) you may set the environment variable ``RAY_RUNTIME_ENV_SKIP_LOCAL_GC`` to ``1`` on each node in your cluster before starting Ray.
 
 Inheritance
 """""""""""

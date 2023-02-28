@@ -41,3 +41,23 @@ TEST(SerializationTest, TypeHybridTest) {
   EXPECT_EQ(in_arg1, out_arg1);
   EXPECT_EQ(in_arg2, out_arg2);
 }
+
+TEST(SerializationTest, BoundaryValueTest) {
+  std::string in_arg1 = "", out_arg1;
+  msgpack::sbuffer buffer1 = ray::internal::Serializer::Serialize(in_arg1);
+  out_arg1 =
+      ray::internal::Serializer::Deserialize<std::string>(buffer1.data(), buffer1.size());
+  EXPECT_EQ(in_arg1, out_arg1);
+
+  std::vector<std::byte> in_arg2, out_arg2;
+  msgpack::sbuffer buffer2 = ray::internal::Serializer::Serialize(in_arg2);
+  out_arg2 = ray::internal::Serializer::Deserialize<std::vector<std::byte>>(
+      buffer1.data(), buffer1.size());
+  EXPECT_EQ(in_arg2, out_arg2);
+
+  char *in_arg3 = nullptr;
+  msgpack::sbuffer buffer3 = ray::internal::Serializer::Serialize(in_arg3, 0);
+  auto out_arg3 = ray::internal::Serializer::Deserialize<std::vector<std::byte>>(
+      buffer1.data(), buffer1.size());
+  EXPECT_EQ(std::vector<std::byte>(), out_arg3);
+}

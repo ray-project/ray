@@ -1,3 +1,4 @@
+import logging
 import os
 import pytest
 import sys
@@ -7,6 +8,7 @@ import ray
 from ray import tune, logger
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
+from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune import _check_mixin
 
@@ -21,10 +23,25 @@ def ray_start_1_cpu():
 
 
 @pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
 def ray_start_4_cpus_extra():
     address_info = ray.init(num_cpus=4, resources={"extra": 4})
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture
+def propagate_logs():
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
 
 
 class FrequentPausesScheduler(FIFOScheduler):
@@ -85,7 +102,7 @@ class MyResettableClass(Trainable):
         return None
 
 
-def _run_trials_with_frequent_pauses(trainable, reuse=False):
+def _run_trials_with_frequent_pauses(trainable, reuse=False, **kwargs):
     analysis = tune.run(
         trainable,
         num_samples=1,
@@ -93,8 +110,9 @@ def _run_trials_with_frequent_pauses(trainable, reuse=False):
         reuse_actors=reuse,
         scheduler=FrequentPausesScheduler(),
         verbose=0,
+        **kwargs,
     )
-    return analysis.trials
+    return analysis
 
 
 def test_trial_reuse_disabled(ray_start_1_cpu):
@@ -104,7 +122,8 @@ def test_trial_reuse_disabled(ray_start_1_cpu):
 
     We assert the `num_resets` of each trainable class to be 0 (no reuse).
     """
-    trials = _run_trials_with_frequent_pauses(MyResettableClass, reuse=False)
+    analysis = _run_trials_with_frequent_pauses(MyResettableClass, reuse=False)
+    trials = analysis.trials
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
@@ -117,7 +136,8 @@ def test_trial_reuse_disabled_per_default(ray_start_1_cpu):
 
     We assert the `num_resets` of each trainable class to be 0 (no reuse).
     """
-    trials = _run_trials_with_frequent_pauses(MyResettableClass, reuse=None)
+    analysis = _run_trials_with_frequent_pauses(MyResettableClass, reuse=None)
+    trials = analysis.trials
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
@@ -136,7 +156,8 @@ def test_trial_reuse_enabled(ray_start_1_cpu):
     - After each iteration, trials are paused and actors cached for reuse
     - Thus, the first trial finishes after 4 resets, the second after 5, etc.
     """
-    trials = _run_trials_with_frequent_pauses(MyResettableClass, reuse=True)
+    analysis = _run_trials_with_frequent_pauses(MyResettableClass, reuse=True)
+    trials = analysis.trials
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [4, 5, 6, 7]
@@ -396,6 +417,143 @@ def test_detect_reuse_mixins():
 
     assert not _check_mixin(MyTrainable)
     assert _check_mixin(mlflow_mixin(MyTrainable))
+
+
+def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
+    """Check that the trainable has its remote directory set to the right
+    location, when new trials get swapped in on actor reuse.
+    Each trial runs for 2 iterations, with checkpoint_freq=1, so each remote
+    trial dir should have 2 checkpoints.
+    """
+    tmp_target = str(tmp_path / "upload_dir")
+    exp_name = "remote_trial_dir_update_on_actor_reuse"
+
+    def get_remote_trial_dir(trial_id: int):
+        return os.path.join(tmp_target, exp_name, str(trial_id))
+
+    class _MyResettableClass(MyResettableClass):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._should_raise = False
+
+        def load_checkpoint(self, *args, **kwargs):
+            super().load_checkpoint(*args, **kwargs)
+
+            # Make sure that `remote_checkpoint_dir` gets updated correctly
+            trial_id = self.config.get("id")
+            remote_trial_dir = get_remote_trial_dir(trial_id)
+            if self.remote_checkpoint_dir != "file://" + remote_trial_dir:
+                # Delay raising the exception, since raising here would cause
+                # an unhandled exception that doesn't fail the test.
+                self._should_raise = True
+
+        def step(self):
+            if self._should_raise:
+                raise RuntimeError(
+                    f"Failing! {self.remote_checkpoint_dir} not updated properly "
+                    f"for trial {self.config.get('id')}"
+                )
+            return super().step()
+
+    analysis = _run_trials_with_frequent_pauses(
+        _MyResettableClass,
+        reuse=True,
+        max_concurrent_trials=2,
+        local_dir=str(tmp_path),
+        name=exp_name,
+        sync_config=tune.SyncConfig(upload_dir=f"file://{tmp_target}"),
+        trial_dirname_creator=lambda t: str(t.config.get("id")),
+        checkpoint_freq=1,
+    )
+    result_grid = ResultGrid(analysis)
+    assert not result_grid.errors
+
+    # Check that each remote trial dir has 2 checkpoints.
+    for result in result_grid:
+        trial_id = result.config["id"]
+        remote_dir = get_remote_trial_dir(trial_id)
+        num_checkpoints = len(
+            [file for file in os.listdir(remote_dir) if file.startswith("checkpoint_")]
+        )
+        assert num_checkpoints == 2
+
+
+def test_artifact_syncing_with_actor_reuse(
+    ray_start_2_cpus, tmp_path, propagate_logs, caplog
+):
+    """Check that artifacts get synced to the right places with actor reuse.
+
+    In this test, 4 trials are paused and reused.
+    max_concurrent_trials=2 to force trials to swap places with each other.
+    On each pause and Trainable.reset, artifacts should get synced to their respective
+    locations in the target directory.
+    """
+    tmp_target = str(tmp_path / "target")
+    local_dir = str(tmp_path / "local_dir")
+
+    exp_name = "sync_artifacts_with_actor_reuse"
+
+    class MyResettableClassWithArtifacts(MyResettableClass):
+        """Helper class that implements `reset_config` and also saves artifacts."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._should_raise = False
+            self._failure_message = ""
+
+        def step(self) -> dict:
+            if self._should_raise:
+                raise RuntimeError(self._failure_message)
+            result = super().step()
+            # Mock some artifact logging (appending to a log)
+            with open(os.path.join(self.logdir, "artifact.txt"), "a") as f:
+                f.write(f"{self.config.get('id')}\n")
+            return result
+
+        def reset(self, *args, **kwargs):
+            return super().reset(*args, **kwargs)
+
+        def load_checkpoint(self, *args, **kwargs):
+            super().load_checkpoint(*args, **kwargs)
+
+            # Make sure that `remote_checkpoint_dir` gets updated correctly
+            trial_id = self.config.get("id")
+            remote_trial_dir = os.path.join(tmp_target, exp_name, str(trial_id))
+            assert self.remote_checkpoint_dir == "file://" + remote_trial_dir
+
+            # Check the artifact contents of the current trial being restored
+            artifact_path = os.path.join(remote_trial_dir, "artifact.txt")
+            with open(artifact_path, "r") as f:
+                artifact_data = f.read()
+            artifact_data = artifact_data.split("\n")[:-1]
+            expected = [str(trial_id)] * self.iteration
+            self._should_raise = artifact_data != expected
+            if self._should_raise:
+                self._failure_message = (
+                    "Failing! `artifact.txt` is out of sync. "
+                    f"Expected {expected}, but got {artifact_data}."
+                )
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        analysis = _run_trials_with_frequent_pauses(
+            MyResettableClassWithArtifacts,
+            reuse=True,
+            max_concurrent_trials=2,
+            local_dir=str(local_dir),
+            name=exp_name,
+            sync_config=tune.SyncConfig(
+                upload_dir=f"file://{tmp_target}", sync_artifacts=True
+            ),
+            trial_dirname_creator=lambda t: str(t.config.get("id")),
+            checkpoint_freq=1,
+        )
+    result_grid = ResultGrid(analysis)
+    assert not result_grid.errors
+
+    # Make sure that no sync errors/warnings get logged
+    assert "Trial Runner checkpointing failed" not in caplog.text
+    assert "Caught sync error:" not in caplog.text
 
 
 if __name__ == "__main__":

@@ -297,11 +297,22 @@
     - sudo service mongodb stop
     - sudo apt-get purge -y mongodb*
 
+- label: "Dataset tests (streaming executor)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATASET_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATASET_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+
 - label: "Dataset tests (Arrow nightly)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=nightly ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -312,6 +323,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=10.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -322,6 +334,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -332,6 +345,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=8.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -342,6 +356,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
@@ -352,6 +367,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=6.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
