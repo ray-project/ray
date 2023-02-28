@@ -215,7 +215,8 @@ class DatasetIterator(abc.ABC):
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
-            DatasetIterator(Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)}))
+            DatasetIterator(Concatenator
+            +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}))
             >>> it.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
