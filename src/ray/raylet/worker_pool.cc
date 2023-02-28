@@ -538,11 +538,8 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool used;
-      InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
-                                        proc_startup_token,
-                                        nullptr,
-                                        status,
-                                        &used);
+      InvokePopWorkerCallbackForProcess(
+          state.starting_workers_to_tasks, proc_startup_token, nullptr, status, &used);
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
@@ -975,7 +972,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   } else {
     if (RayConfig::instance().crash_on_worker_leak()) {
       RAY_LOG(FATAL) << "Worker not returned to the idle pool after being used. This may "
-                        "cause a worker leak, worker id:" << worker->WorkerId();
+                        "cause a worker leak, worker id:"
+                     << worker->WorkerId();
     }
   }
 
