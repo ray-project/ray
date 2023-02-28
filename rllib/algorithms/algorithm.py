@@ -2122,24 +2122,23 @@ class Algorithm(Trainable):
         # resources for the driver of this trainable
         if cf._enable_learner_api:
             if cf.num_learner_workers == 0:
-                # in this case local_worker only does sampling and training is done on 
+                # in this case local_worker only does sampling and training is done on
                 # local learner worker
-                driver =  {
-                    # sampling and training is not done concurrently when local is 
+                driver = {
+                    # sampling and training is not done concurrently when local is
                     # used, so pick the max.
                     "CPU": max(
-                        cf.num_cpus_per_learner_worker, 
-                        cf.num_cpus_for_local_worker
+                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
                     ),
-                    "GPU": cf.num_gpus_per_learner_worker
+                    "GPU": cf.num_gpus_per_learner_worker,
                 }
             else:
-                # in this case local_worker only does sampling and training is done on 
+                # in this case local_worker only does sampling and training is done on
                 # remote learner workers
                 driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
-            # Without Learner API, the local_worker can do both sampling and training. 
-            # So, we need to allocate the same resources for the driver as for the 
+            # Without Learner API, the local_worker can do both sampling and training.
+            # So, we need to allocate the same resources for the driver as for the
             # local_worker.
             driver = {
                 "CPU": cf.num_cpus_for_local_worker,
@@ -2194,13 +2193,8 @@ class Algorithm(Trainable):
                 }
                 for _ in range(cf.num_learner_workers)
             ]
-        
-        bundles = (
-            [driver] + 
-            rollout_bundles +
-            evaluation_bundles +
-            learner_bundles
-        )
+
+        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
