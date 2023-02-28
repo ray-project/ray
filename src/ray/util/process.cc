@@ -556,8 +556,7 @@ typedef NTSTATUS WINAPI NtQueryInformationProcess_t(HANDLE ProcessHandle,
                                                     ULONG ProcessInformationLength,
                                                     ULONG *ReturnLength);
 
-static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
-    ATOMIC_VAR_INIT(NULL);
+static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ = NULL;
 
 pid_t GetParentPID() {
   NtQueryInformationProcess_t *NtQueryInformationProcess = NtQueryInformationProcess_;
