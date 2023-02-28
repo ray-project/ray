@@ -2119,19 +2119,34 @@ class Algorithm(Trainable):
         eval_cf.validate()
         eval_cf.freeze()
 
-        # resources for local worker
+        # resources for the driver of this trainable
         if cf._enable_learner_api:
-            local_worker = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+            if cf.num_learner_workers == 0:
+                # in this case local_worker only does sampling and training is done on
+                # local learner worker
+                driver = {
+                    # sampling and training is not done concurrently when local is
+                    # used, so pick the max.
+                    "CPU": max(
+                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                    ),
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+            else:
+                # in this case local_worker only does sampling and training is done on
+                # remote learner workers
+                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
-            local_worker = {
+            # Without Learner API, the local_worker can do both sampling and training.
+            # So, we need to allocate the same resources for the driver as for the
+            # local_worker.
+            driver = {
                 "CPU": cf.num_cpus_for_local_worker,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
             }
 
-        bundles = [local_worker]
-
-        # resources for rollout env samplers
-        rollout_workers = [
+        # resources for remote rollout env samplers
+        rollout_bundles = [
             {
                 "CPU": cf.num_cpus_per_worker,
                 "GPU": cf.num_gpus_per_worker,
@@ -2140,11 +2155,11 @@ class Algorithm(Trainable):
             for _ in range(cf.num_rollout_workers)
         ]
 
-        # resources for evaluation env samplers or datasets (if any)
+        # resources for remote evaluation env samplers or datasets (if any)
         if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
-            evaluation_bundle = [
+            evaluation_bundles = [
                 {
                     "CPU": eval_cf.num_cpus_per_worker,
                     "GPU": eval_cf.num_gpus_per_worker,
@@ -2166,31 +2181,20 @@ class Algorithm(Trainable):
             # operations. This behavior should get fixed by the dataset team. more info
             # found here:
             # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
-            evaluation_bundle = []
+            evaluation_bundles = []
 
-        bundles += rollout_workers + evaluation_bundle
+        # resources for remote learner workers
+        learner_bundles = []
+        if cf._enable_learner_api and cf.num_learner_workers > 0:
+            learner_bundles = [
+                {
+                    "CPU": cf.num_cpus_per_learner_worker,
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+                for _ in range(cf.num_learner_workers)
+            ]
 
-        if cf._enable_learner_api:
-            # resources for the trainer
-            if cf.num_learner_workers == 0:
-                # if num_learner_workers is 0, then we need to allocate one gpu if
-                # num_gpus_per_learner_worker is greater than 0.
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                ]
-            else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
-
-            bundles += trainer_bundle
+        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
