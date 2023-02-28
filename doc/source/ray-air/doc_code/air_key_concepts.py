@@ -35,6 +35,8 @@ trainer = XGBoostTrainer(
     scaling_config=ScalingConfig(
         num_workers=num_workers,
         use_gpu=use_gpu,
+        # Make sure to leave some CPUs free for Ray Data operations.
+        _max_cpu_fraction_per_node=0.9,
     ),
     label_column="target",
     params=params,
