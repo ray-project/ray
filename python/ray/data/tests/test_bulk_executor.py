@@ -125,13 +125,10 @@ def test_actor_strategy(ray_start_10_cpus_shared):
 
 def test_new_execution_backend_invocation(ray_start_10_cpus_shared):
     DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = False
     # Read-only: will use legacy executor for now.
     ds = ray.data.range(10)
-    if DatasetContext.get_current().use_streaming_executor:
-        # Streaming executor doesn't preserve order by default.
-        assert set(ds.take_all()) == set(list(range(10)))
-    else:
-        assert ds.take_all() == list(range(10))
+    assert ds.take_all() == list(range(10))
     # read->randomize_block_order: will use new executor, although it's also
     # a read-equivalent once fused.
     ds = ray.data.range(10).randomize_block_order()
