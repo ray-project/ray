@@ -629,14 +629,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// `PopWorkerCallback`.
   /// \param worker_used Whether the worker is used by the task, only valid when found is
   /// true.
-  /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
       absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
       StartupToken startup_token,
       const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status,
-      bool *worker_used /* output */,
-      TaskID *task_id /* output */);
+      bool *worker_used /* output */);
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.

@@ -538,13 +538,11 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool used;
-      TaskID task_id;
       InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                         proc_startup_token,
                                         nullptr,
                                         status,
-                                        &used,
-                                        &task_id);
+                                        &used);
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
@@ -941,14 +939,10 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     StartupToken startup_token,
     const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status,
-    bool *worker_used,
-    TaskID *task_id) {
-  *found = false;
+    bool *worker_used) {
   *worker_used = false;
   auto it = starting_workers_to_tasks.find(startup_token);
   if (it != starting_workers_to_tasks.end()) {
-    *found = true;
-    *task_id = it->second.task_id;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
     // This method shouldn't be invoked when runtime env creation has failed because
@@ -966,13 +960,11 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
   bool used;
-  TaskID task_id;
   InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                     worker->GetStartupToken(),
                                     worker,
                                     PopWorkerStatus::OK,
-                                    &used,
-                                    &task_id);
+                                    &used);
   RAY_LOG(DEBUG) << "PushWorker " << worker->WorkerId() << " used: " << used;
   if (!used) {
     // Put the worker to the idle pool.
@@ -980,7 +972,13 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
+  } else {
+    if (RayConfig::instance().crash_on_worker_leak()) {
+      RAY_LOG(FATAL) << "Worker not returned to the idle pool after being used. This may "
+                        "cause a worker leak, worker id:" << worker->WorkerId();
+    }
   }
+
   // We either have an idle worker or a slot to start a new worker.
   if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
     TryPendingPopWorkerRequests(worker->GetLanguage());
