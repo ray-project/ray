@@ -131,9 +131,7 @@ def default_decoder(sample: Dict[str, Any]):
         sample (Dict[str, Any]): sample, modified in place
     """
     sample = dict(sample)
-    print("***", sample.keys())
     for key, value in sample.items():
-        print("---", key, repr(value)[:20])
         extension = key.split(".")[-1]
         if key.startswith("__"):
             continue
@@ -226,6 +224,12 @@ def default_encoder(sample: Dict[str, Any]):
             sample[key] = stream.getvalue()
     return sample
 
+def as_arrow(a):
+    import numpy as np
+    import pyarrow as pa
+    if isinstance(a, np.ndarray):
+        return pa.Tensor.from_numpy(a)
+    return a
 
 @PublicAPI(stability="alpha")
 class WebDatasetDatasource(FileBasedDatasource):
@@ -237,30 +241,32 @@ class WebDatasetDatasource(FileBasedDatasource):
         self,
         stream: "pyarrow.NativeFile",
         path: str,
-        decoder=default_decoder,
+        decoder=None,
         skipfn=lambda _: False,
         suffixes=None,
         **kw,
     ):
         import pyarrow as pa
+        import pandas as pd
+        from ray.data.extensions import ArrowTensorArray
         
-        print(decoder)
-
         files = tar_file_iterator(stream, skipfn=skipfn)
         samples = group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
         for sample in samples:
             if decoder is not None:
                 sample = decoder(sample)
-            # sample = {k: [v] for k, v in sample.items()}
-            # yield pa.Table.from_pydict(sample)
-            yield [sample]
+            sample = {k: [v] for k, v in sample.items()}
+            result = pa.Table.from_pydict(sample)
+            # result = ArrowTensorArray.from_numpy(sample)
+            # result = pd.DataFrame(sample)
+            yield result
 
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        encoder=default_encoder,
+        encoder=None,
         **kw,
     ):
         import pyarrow
