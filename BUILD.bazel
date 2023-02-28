@@ -2283,6 +2283,7 @@ cc_test(
 
 cc_test(
     name = "gcs_client_test",
+    size = "medium",
     srcs = [
         "src/ray/gcs/gcs_client/test/gcs_client_test.cc",
     ],
