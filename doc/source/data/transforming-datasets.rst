@@ -89,28 +89,55 @@ API in Datasets.
 
 Here are the basics that you need to know about UDFs:
 
-* A UDF can be either a function, or if using the :ref:`actor compute strategy <transform_datasets_compute_strategy>`, a :ref:`callable class <transform_datasets_callable_classes>`.
+* A UDF can be either a function, a generator, or if using the :ref:`actor compute strategy <transform_datasets_compute_strategy>`, a :ref:`callable class <transform_datasets_callable_classes>`.
 * Select the UDF input :ref:`batch format <transform_datasets_batch_formats>` using the ``batch_format`` argument.
 * The UDF output type determines the Dataset schema of the transformation result.
 
 .. _transform_datasets_callable_classes:
 
-Callable Class UDFs
-===================
+Types of UDFs
+=============
+There are three types of UDFs that you can use with Ray Data: Function UDFs, Callable Class UDFs, and Generator UDFs.
 
-When using the actor compute strategy, per-row and per-batch UDFs can also be
-*callable classes*, i.e. classes that implement the ``__call__`` magic method. The
-constructor of the class can be used for stateful setup, and will be only invoked once
-per worker actor.
+.. tabbed:: "Function UDFs"
 
-.. note::
-  These transformation APIs take the uninstantiated callable class as an argument,
-  not an instance of the class.
+  The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datasets_batch_formats` for the supported batch formats.
 
-.. literalinclude:: ./doc_code/transforming_datasets.py
-   :language: python
-   :start-after: __writing_callable_classes_udfs_begin__
-   :end-before: __writing_callable_classes_udfs_end__
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_default_udfs_tabular_begin__
+    :end-before: __writing_default_udfs_tabular_end__
+
+.. tabbed:: "Callable Class UDFs"
+
+  When using the actor compute strategy, per-row and per-batch UDFs can also be
+  *callable classes*, i.e. classes that implement the ``__call__`` magic method. The
+  constructor of the class can be used for stateful setup, and will be only invoked once
+  per worker actor. 
+  
+  Callable classes are useful if there is expensive state (such as a neural network) that need to be loaded for the UDF. By using an actor class, the state only needs to be loaded once in the beginning, rather than for each batch.
+
+  .. note::
+    These transformation APIs take the uninstantiated callable class as an argument,
+    not an instance of the class.
+
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_callable_classes_udfs_begin__
+    :end-before: __writing_callable_classes_udfs_end__
+
+.. tabbed:: "Generator UDFs"
+
+  UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+
+  .. warning::
+    When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Dataset.flat_map>` API and not the :meth:`.map() <ray.data.Dataset.map>` API.
+
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_generator_udfs_begin__
+    :end-before: __writing_generator_udfs_end__
+
 
 .. _transform_datasets_batch_formats:
 
