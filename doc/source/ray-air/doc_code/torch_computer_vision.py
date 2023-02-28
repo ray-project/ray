@@ -24,17 +24,20 @@ def test(*, framework: str, datasource: str):
 
 
 def read_tfrecords():
-    # __read_tfrecords_start__
-    import io
-    from typing import Dict
-
-    import numpy as np
-    from PIL import Image
+    # __read_tfrecords1_start__
     import ray
 
     dataset = ray.data.read_tfrecords(
         "s3://anonymous@air-example-data/cifar-10/tfrecords"
     )
+    # __read_tfrecords1_stop__
+
+    # __read_tfrecords2_start__
+    import io
+    from typing import Dict
+
+    import numpy as np
+    from PIL import Image
 
     def decode_bytes(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         images = []
@@ -45,23 +48,26 @@ def read_tfrecords():
         return batch
 
     dataset = dataset.map_batches(decode_bytes, batch_format="numpy")
-    # __read_tfrecords_stop__
+    # __read_tfrecords2_stop__
     return dataset
 
 
 def read_numpy():
-    # __read_numpy_start__
+    # __read_numpy1_start__
     import ray
 
     images = ray.data.read_numpy("s3://anonymous@air-example-data/cifar-10/images.npy")
     labels = ray.data.read_numpy("s3://anonymous@air-example-data/cifar-10/labels.npy")
+    # __read_numpy1_stop__
+
+    # __read_numpy2_start__
     dataset = images.zip(labels)
     dataset = dataset.map_batches(
         lambda batch: batch.rename(
             columns={"__value__": "image", "__value___1": "label"}
         )
     )
-    # __read_numpy_stop__
+    # __read_numpy2_stop__
     return dataset
 
 
@@ -75,18 +81,20 @@ def read_parquet():
 
 
 def read_images():
-    # __read_images_start__
-    import os
-    from typing import Dict
-
-    import numpy as np
-
+    # __read_images1_start__
     import ray
 
     dataset = ray.data.read_images(
         "s3://anonymous@air-example-data/cifar-10/images",
         include_paths=True,
     )
+    # __read_images1_stop__
+
+    # __read_images2_start__
+    import os
+    from typing import Dict
+
+    import numpy as np
 
     def add_class_column(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         classes = []
@@ -103,7 +111,7 @@ def read_images():
         return batch
 
     dataset = dataset.map_batches(add_class_column).map_batches(remove_path_column)
-    # __read_images_stop__
+    # __read_images2_stop__
     return dataset
 
 
@@ -125,7 +133,7 @@ def create_torch_preprocessors():
 
 
 def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
-    # __torch_trainer_start__
+    # __torch_training_loop_start__
     import torch.nn as nn
     import torch.optim as optim
     from torchvision import models
@@ -179,6 +187,9 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
                 epoch=epoch,
             )
 
+    # __torch_training_loop_stop__
+
+    # __torch_trainer_start__
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 32, "lr": 0.02, "epochs": 1},
@@ -230,7 +241,9 @@ def online_predict_torch(checkpoint):
             http_adapter=json_to_ndarray,
         )
     )
+    # __torch_serve_stop__
 
+    # __torch_online_predict_start__
     from io import BytesIO
 
     from PIL import Image
@@ -243,7 +256,7 @@ def online_predict_torch(checkpoint):
     payload = {"array": np.array(image).tolist(), "dtype": "float32"}
     response = requests.post("http://localhost:8000/", json=payload)
     predictions = response.json()
-    # __torch_serve_stop__
+    # __torch_online_predict_stop__
 
 
 if __name__ == "__main__":
