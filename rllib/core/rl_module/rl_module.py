@@ -56,7 +56,7 @@ class SingleAgentRLModuleSpec:
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            model_config=self.model_config,
+            model_config_dict=self.model_config,
         )
 
 
@@ -236,6 +236,8 @@ class RLModule(abc.ABC):
             model_config: The model config dict.
         """
         raise NotImplementedError
+
+    # TODO: (Artur) Add a method `from_catalog` that creates RLModule from Catalog
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
