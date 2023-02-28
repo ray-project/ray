@@ -450,7 +450,6 @@ cdef prepare_args_internal(
         CAddress c_owner_address
         CRayStatus op_status
 
-
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
