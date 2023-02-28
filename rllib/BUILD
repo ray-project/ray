@@ -1073,6 +1073,13 @@ py_test(
     srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )
 
+py_test(
+    name = "test_impala_learner",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/impala/tests/tf/test_impala_learner.py"]
+)
+
 # MARWIL
 py_test(
     name = "test_marwil",
@@ -1837,6 +1844,13 @@ py_test(
 #
 # Tag: core
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_catalog",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_catalog.py"]
+)
 
 py_test(
     name = "test_torch_rl_module",
