@@ -82,7 +82,7 @@ class ApplicationState:
 
         # Update route prefix for application
         num_route_prefixes = 0
-        num_fastapi_docs_paths = 0
+        num_docs_paths = 0
         for deploy_param in deployment_params:
             if (
                 "route_prefix" in deploy_param
@@ -93,7 +93,7 @@ class ApplicationState:
 
             if "docs_path" in deploy_param and deploy_param["docs_path"] is not None:
                 self.docs_path = deploy_param["docs_path"]
-                num_fastapi_docs_paths += 1
+                num_docs_paths += 1
         if num_route_prefixes > 1:
             raise RayServeException(
                 f'Found multiple route prefix from application "{self.name}",'
@@ -102,11 +102,12 @@ class ApplicationState:
             )
         # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
         # if user sets the docs path to None in their FastAPI app.
-        if num_fastapi_docs_paths > 1:
+        if num_docs_paths > 1:
             raise RayServeException(
-                f'Found multiple FastAPI deployments from application "{self.name}". '
-                "Please only use one FastAPI deployment in your application to avoid "
-                "this issue."
+                f'Found multiple deployments in application "{self.name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
             )
 
         self.status = ApplicationStatus.DEPLOYING
