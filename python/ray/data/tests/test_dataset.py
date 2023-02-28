@@ -4933,9 +4933,7 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
         ds.write_parquet("local://" + data_path).fully_executed()
 
 
-def test_read_warning_large_parallelism(
-    ray_start_regular_shared, propagate_logs, caplog
-):
+def test_read_warning_large_parallelism(shutdown_only, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, parallelism=5000).fully_executed()
     assert (
