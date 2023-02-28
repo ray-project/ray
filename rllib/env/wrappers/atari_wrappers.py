@@ -221,8 +221,17 @@ class MaxAndSkipEnv(gym.Wrapper):
     two skipped frames).
     """
     def __init__(self, env, skip: int = 4, max_over: int = 2):
-        """Return only every `skip`-th frame"""
-        gym.Wrapper.__init__(self, env)
+        """Initializes a MaxAndSkipEnv instance.
+
+        Args:
+            skip: The number of frames to skip with each `step()` call. Note that
+                after `reset()` no frames are skipped.
+            max_over: The number of the last n frames (within the skipped ones) that
+                we max the returned observations over. Each dim in the observation
+                space is maxed over individually, not changing the shape (or dtype)
+                of the observation space.
+        """
+        super().__init__(env)
 
         assert skip >= max_over, (
             f"`skip` ({skip}) value must be larger or equal to `max_over` "
