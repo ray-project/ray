@@ -31,6 +31,9 @@ def do_test_log_likelihood(
     config = config.copy(copy_frozen=False)
     # Run locally.
     config.num_rollout_workers = 0
+    # RLModule API is not supported well by the policy class.
+    config._enable_rl_module_api = False
+    config._enable_learner_api = False
     # Env setup.
     if continuous:
         config.env = "Pendulum-v1"

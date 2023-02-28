@@ -142,6 +142,10 @@ class TestEnvRunnerV2(unittest.TestCase):
             PPOConfig()
             .framework("torch")
             .environment(disable_env_checking=True, env="env_under_test")
+            .training(
+                # this test is not compatible with the new RLModule API
+                _enable_learner_api=False,
+            )
             .rollouts(
                 num_envs_per_worker=1,
                 num_rollout_workers=0,
@@ -158,6 +162,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=mapping_fn,
             )
             .debugging(seed=42)
+            .rl_module(
+                # this test is not compatible with the new RLModule API
+                _enable_rl_module_api=False,
+            )
         )
 
         algo = PPO(config, env="env_under_test")
@@ -195,6 +203,8 @@ class TestEnvRunnerV2(unittest.TestCase):
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
+                # this test is not compatible with the new RLModule API
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_envs_per_worker=1,
@@ -214,6 +224,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
+            )
+            .rl_module(
+                # this test is not compatible with the new RLModule API
+                _enable_rl_module_api=False,
             )
         )
 
@@ -282,6 +296,8 @@ class TestEnvRunnerV2(unittest.TestCase):
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
+                # this test is not compatible with the new RLModule API
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_envs_per_worker=1,
@@ -301,6 +317,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
+            )
+            .rl_module(
+                # this test is not compatible with the new RLModule API
+                _enable_rl_module_api=False,
             )
         )
 
@@ -329,6 +349,8 @@ class TestEnvRunnerV2(unittest.TestCase):
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
+                # this test is not compatible with the new RLModule API
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_envs_per_worker=1,
@@ -348,6 +370,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
+            )
+            .rl_module(
+                # this test is not compatible with the new RLModule API
+                _enable_rl_module_api=False,
             )
         )
 
@@ -379,6 +405,8 @@ class TestEnvRunnerV2(unittest.TestCase):
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
+                # this test is not compatible with the new RLModule API
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_envs_per_worker=1,
@@ -401,6 +429,10 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .callbacks(
                 callbacks_class=CheckErrorCallbacks,
+            )
+            .rl_module(
+                # this test is not compatible with the new RLModule API
+                _enable_rl_module_api=False,
             )
         )
 
