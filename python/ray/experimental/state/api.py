@@ -1,12 +1,17 @@
+import asyncio
+import dataclasses
 import logging
 import threading
 import urllib
 import warnings
 from contextlib import contextmanager
 from dataclasses import fields
+from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
+import aiohttp
 import requests
+from tqdm.asyncio import tqdm
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
@@ -17,7 +22,11 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    RAY_DOWNLOAD_LOG_CHUNK_SIZE,
+    RAY_DOWNLOAD_LOG_MAX_NUM_CONNECTIONS,
     ActorState,
+    DownloadLogFileResult,
+    DownloadLogResult,
     GetApiOptions,
     GetLogOptions,
     ListApiOptions,
@@ -1207,6 +1216,152 @@ def get_log(
                 error_msg = bytes.decode("utf-8")
                 raise RayStateApiException(error_msg)
             yield logs
+
+
+async def _download_file(
+    log_filename: str,
+    download_dir: str,
+    timeout: int,
+    api_server_url: str,
+    node_ip: Optional[str] = None,
+    node_id: Optional[str] = None,
+) -> DownloadLogFileResult:
+    """Helper function to download a single log file from a node
+
+    Args:
+        log_filename: File name relative to the log directory.
+        download_dir: Directory path to download the logs into.
+        timeout: Max timeout for requests made when downloading the logs.
+        api_server_url: API server URL where the download HTTP request is made to.
+        node_id: Id of the node containing the logs.
+        node_ip: Ip of the node containing the logs.
+
+    Return:
+        :class:`DownloadLogFileResult <ray.experimental.state.common.DownloadLogFileResult>`
+    """  # noqa: E501
+    options = dataclasses.asdict(
+        GetLogOptions(
+            node_id=node_id,
+            node_ip=node_ip,
+            filename=log_filename,
+            timeout=timeout,
+        )
+    )
+    # Remove the None values
+    options = {k: v for k, v in options.items() if v is not None}
+
+    # Open file
+    download_path = Path(f"{download_dir}/{log_filename}")
+
+    # Make sure parent dir exist for recursive files.
+    # Also, we are not cleaning this up if failure happens.
+    download_path.parent.mkdir(exist_ok=True, parents=True)
+
+    num_bytes = 0
+    with open(download_path, "wb") as f:
+        # Stream content to the file
+        try:
+            connector = aiohttp.TCPConnector(limit=RAY_DOWNLOAD_LOG_MAX_NUM_CONNECTIONS)
+            async with aiohttp.ClientSession(
+                api_server_url, connector=connector
+            ) as sess:
+                async with sess.get("/api/v0/logs/file", params=options) as resp:
+                    reader = resp.content
+                    success = None
+                    async for chunk in reader.iter_chunked(RAY_DOWNLOAD_LOG_CHUNK_SIZE):
+                        bytes = bytearray(chunk)
+                        if success is None:
+                            # TODO(rickyx): better streaming header protocol
+                            # First byte 1 means success.
+                            if not bytes.startswith(b"1"):
+                                success = False
+                                assert bytes.startswith(b"0")
+                                error_msg = bytes.decode("utf-8")
+                                raise RayStateApiException(error_msg)
+                            success = True
+                            bytes.pop(0)
+
+                        num_bytes += len(bytes)
+                        f.write(bytes)
+        except Exception as e:
+            return DownloadLogFileResult(
+                filename=log_filename, size=0, download_path=str(download_path), error=e
+            )
+        return DownloadLogFileResult(
+            filename=log_filename, size=num_bytes, download_path=str(download_path)
+        )
+
+
+def download_logs(
+    download_dir: str,
+    address: Optional[str] = None,
+    node_id: Optional[str] = None,
+    node_ip: Optional[str] = None,
+    glob_filter: Optional[str] = None,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+) -> DownloadLogResult:
+    """Download logs from a node to local directory.
+
+    Args:
+        download_dir: Directory path to download the logs into.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If not specified, it will be retrieved from the initialized ray cluster.
+        node_id: Id of the node containing the logs.
+        node_ip: Ip of the node containing the logs.
+        glob_filter: Name of the file (relative to the ray log directory) to be
+            retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
+        timeout: Max timeout for requests made when listing and downloading the logs.
+
+    Return:
+        :clase:`DownloadLogResult <ray.experimental.state.common.DownloadLogResult>`
+
+    Raises:
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
+            failed to query the data, or ConnectionError if failed to resolve the
+            ray address.
+    """  # noqa: E501
+    api_server_url = ray_address_to_api_server_url(address)
+
+    # TODO(rickyx): support downloading from all nodes when node_ip/node_id not
+    #  provided.
+    # List logs to be downloaded
+    list_log_resp = list_logs(
+        address=address,
+        node_id=node_id,
+        node_ip=node_ip,
+        glob_filter=glob_filter,
+        timeout=timeout,
+    )
+
+    # TODO(rickyx): refactor the log listing responses, do categorization here
+    # on the client side.
+    listed_logs = []
+    for _log_category, logs in list_log_resp.items():
+        listed_logs.extend(logs)
+
+    print(f"Downloading {len(listed_logs)} logs...")
+
+    async def _download_logs():
+        downloaded_files = await tqdm.gather(
+            *[
+                _download_file(
+                    log_filename,
+                    download_dir,
+                    timeout,
+                    api_server_url,
+                    node_ip,
+                    node_id,
+                )
+                for log_filename in listed_logs
+            ]
+        )
+
+        return DownloadLogResult(
+            node_id=node_id, node_ip=node_ip, files=downloaded_files
+        )
+
+    # Download each log by streaming the content and write to the target locations
+    return asyncio.run(_download_logs())
 
 
 def list_logs(

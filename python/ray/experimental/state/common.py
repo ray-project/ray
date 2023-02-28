@@ -46,6 +46,13 @@ STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "==========================================================",
 ]
 
+# Chunk size for streaming logs from the API server to the client.
+RAY_DOWNLOAD_LOG_CHUNK_SIZE = 4096  # 4KiB
+
+# Limit the number of concurrent connections made to the API server
+# when downloading logs.
+RAY_DOWNLOAD_LOG_MAX_NUM_CONNECTIONS = 100
+
 
 @unique
 class StateResource(Enum):
@@ -270,6 +277,31 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         else:
             filtered_data[col] = None
     return filtered_data
+
+
+@dataclass(init=True)
+class DownloadLogFileResult:
+    # Filename relative to the log directory (default `/tmp/ray/session_latest/logs`).
+    filename: str
+    # Size of the file.
+    size: int
+    # Local path where the log file is downloaded to.
+    download_path: str
+    # Optional error info if downloading this file errored.
+    error: Optional[Exception] = None
+
+
+@dataclass(init=True)
+class DownloadLogResult:
+    """Return type of state API log downloading."""
+
+    # TODO(rickyx): we should make sure we have the node id info in listing logs reply.
+    # Node id of the node containing the log.
+    node_id: Optional[str] = None
+    # Node ip of the node containing the log.
+    node_ip: Optional[str] = None
+    # List of downloaded log file results.
+    files: List[DownloadLogFileResult] = field(default_factory=list)
 
 
 @dataclass(init=True)

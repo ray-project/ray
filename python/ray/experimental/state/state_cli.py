@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum, unique
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import click
@@ -11,6 +12,7 @@ import ray._private.services as services
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
+    download_logs,
     get_log,
     list_logs,
     summarize_actors,
@@ -845,6 +847,13 @@ Example:
     ray logs raylet.out --tail 500
     ```
 
+    Download worker logs from a node (default head node) with glob filters
+    on file names.
+
+    ```
+    ray logs "worker-*" -d --download-directory /tmp
+    ```
+
     Print the last 500 lines of raylet.out on a worker node id A.
 
     ```
@@ -891,6 +900,22 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @log_tail_option
 @log_interval_option
 @log_timeout_option
+@click.option(
+    "--download",
+    "-d",
+    required=False,
+    is_flag=True,
+    help=(
+        "Download logs with filenames matched with arguments GLOB_FILTER "
+        "into current directory or a specific directory of `--download-dir"
+    ),
+)
+@click.option(
+    "--download-dir",
+    required=False,
+    default=".",
+    help="Directory to download logs into.",
+)
 @click.pass_context
 @PublicAPI(stability="alpha")
 def log_cluster(
@@ -903,11 +928,16 @@ def log_cluster(
     tail: int,
     interval: float,
     timeout: int,
+    download: bool,
+    download_dir: str,
 ):
     """Get/List logs that matches the GLOB_FILTER in the cluster.
     By default, it prints a list of log files that match the filter.
     By default, it prints the head node logs.
     If there's only 1 match, it will print the log file.
+
+    If `--download/-d` flag is supplied, it will download the files into
+    the current directory or specified by `--download-dir`.
 
     Example:
 
@@ -926,7 +956,7 @@ def log_cluster(
         Download the gcs_server.txt file to the local machine.
 
         ```
-        ray logs [cluster] gcs_server.out --tail -1 > gcs_server.txt
+        ray logs [cluster] gcs_server.out -d
         ```
 
         Follow the log files from the last 100 lines.
@@ -942,6 +972,22 @@ def log_cluster(
 
     if node_id is None and node_ip is None:
         node_ip = _get_head_node_ip(address)
+
+    if download:
+        res = download_logs(
+            download_dir=download_dir,
+            address=address,
+            node_id=node_id,
+            node_ip=node_ip,
+            glob_filter=glob_filter,
+            timeout=timeout,
+        )
+
+        print(
+            f"Downloaded {len(res.files)} log files into "
+            f"{Path(download_dir).absolute()} "
+        )
+        return
 
     logs = list_logs(
         address=address,

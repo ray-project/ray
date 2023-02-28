@@ -3,6 +3,8 @@ import os
 import sys
 from typing import List
 from unittest.mock import MagicMock
+from pathlib import Path
+import tempfile
 
 import pytest
 from ray.experimental.state.state_cli import logs_state_cli_group
@@ -23,7 +25,13 @@ from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import tail as tail_file
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
+from ray.experimental.state.api import (
+    download_logs,
+    get_log,
+    list_logs,
+    list_nodes,
+    list_workers,
+)
 from ray.experimental.state.common import GetLogOptions
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -54,6 +62,17 @@ def generate_actor_data(id, node_id, worker_id):
         ),
     )
     return actor_table_data_to_dict(message)
+
+
+def _read_file(filename) -> str:
+    with open(filename, "r") as f:
+        return f.readlines()
+
+
+def _write_file(filename, num_lines):
+    with open(filename, "w") as fp:
+        for i in range(num_lines):
+            fp.write(f"{i}-test-line\n")
 
 
 # Unit Tests (Log Agent)
@@ -787,6 +806,51 @@ def test_log_get(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
+
+
+def test_log_download(shutdown_only):
+    """Test that files in the ray log directory could be downloaded"""
+    ctx = ray.init(num_cpus=1)
+    node_id = ctx.address_info["node_id"]
+    session_dir = ctx.address_info["session_dir"]
+
+    files = [
+        "test-file-a.txt",
+        "another-test-file-a.txt",  # prefix
+        "test-file-b.log",  # different suffix
+        "c/test-file-d.log",  # nested logs
+    ]
+    log_dir = Path(session_dir, "logs")
+
+    for file in files:
+        # Create files and read
+        path = Path(log_dir, file)
+        path.parent.mkdir(exist_ok=True, parents=True)
+        _write_file(str(path), num_lines=100)
+
+    with tempfile.TemporaryDirectory() as download_dir:
+
+        def verify():
+            download_result = download_logs(
+                download_dir, node_id=node_id, glob_filter="*test-file*"
+            )
+            assert download_result.node_id == node_id
+            assert len(download_result.files) == len(files)
+            assert {f.filename for f in download_result.files} == set(files)
+
+            for download_file in download_result.files:
+                download_path = download_file.download_path
+                filename = download_file.filename
+
+                data_path = Path(log_dir, filename)
+                expected_data = _read_file(data_path)
+                actual_data = _read_file(download_path)
+
+                assert expected_data == actual_data
+
+            return True
+
+        wait_for_condition(verify)
 
 
 def test_log_cli(shutdown_only):

@@ -63,8 +63,15 @@ class LogAgentV1Grpc(
                 "It is unexpected. Please report an issue to Ray Github."
             )
         log_files = []
-        for p in path.glob(request.glob_filter):
-            log_files.append(p.name)
+        # Traverse into subdirectory.
+        for p in path.rglob(request.glob_filter):
+            if not p.is_file():
+                # Skip non file paths (e.g. `old``, `events``)
+                continue
+            # Only use the path that's relative to the log dir.
+            file_path = p.relative_to(self._dashboard_agent.log_dir)
+            log_files.append(str(file_path))
+        logger.info(f"Found {len(log_files)} files for filter={request.glob_filter}.")
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     async def StreamLog(self, request, context):
@@ -80,7 +87,7 @@ class LogAgentV1Grpc(
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
-        if "/" in request.log_file_name or not os.path.isfile(filepath):
+        if not os.path.isfile(filepath):
             await context.send_initial_metadata(
                 [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
             )

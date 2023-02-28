@@ -62,6 +62,8 @@ Log APIs
 
     ray.experimental.state.api.list_logs
     ray.experimental.state.api.get_log
+    ray.experimental.state.common.DownloadLogResult
+    ray.experimental.state.common.DownloadLogFileResult
 
 .. _state-api-schema:
 
