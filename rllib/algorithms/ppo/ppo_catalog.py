@@ -66,10 +66,11 @@ class PPOCatalog(Catalog):
             shared=self.model_config_dict["vf_share_layers"],
         )
 
-        if isinstance(action_space, gym.spaces.Discrete):
-            pi_output_dim = action_space.n
-        else:
-            pi_output_dim = action_space.shape[0] * 2
+        # Get a mapping from framework to action distribution class
+        self.action_dist_cls_dict = self.get_action_dist_cls_dict(
+            action_space=action_space,
+            config=self.model_config_dict,
+        )
 
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
@@ -79,7 +80,8 @@ class PPOCatalog(Catalog):
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=pi_output_dim,
+            output_dim=None,  # We don't know the output dimension yet, because it
+            # depends on the action distribution input dimension
         )
 
         self.vf_head_config = MLPHeadConfig(
@@ -137,6 +139,13 @@ class PPOCatalog(Catalog):
         Returns:
             The policy head.
         """
+        # Get action_distribution_cls to find out about the output dimension for pi_head
+        action_distribution_cls = self.action_dist_cls_dict[framework]
+        self.pi_head_config.output_dim = (
+            action_distribution_cls.required_model_output_shape(
+                action_space=self.action_space, config=self.model_config_dict
+            )[0]
+        )
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str):
@@ -153,3 +162,21 @@ class PPOCatalog(Catalog):
             The value function head.
         """
         return self.vf_head_config.build(framework=framework)
+
+    def build_action_dist(self, framework: str):
+        """Builds the action distribution.
+
+        The default behavior is to build the action distribution from the
+        action_dist_cls_dict. This can be overridden to build a custom action
+        distribution as a means of configuring the behavior of a PPORLModuleBase
+        implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf".
+
+        Returns:
+            The action distribution.
+        """
+        return self.action_dist_cls_dict[framework](
+            action_space=self.action_space, config=self.model_config_dict
+        )
