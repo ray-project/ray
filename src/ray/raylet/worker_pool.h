@@ -627,7 +627,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// to the task.
   /// \param status The pop worker status which will be forwarded to
   /// `PopWorkerCallback`.
-  /// \param found  Whether the related task found or not.
   /// \param worker_used Whether the worker is used by the task, only valid when found is
   /// true.
   /// \param task_id  The related task id.
@@ -636,7 +635,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       StartupToken startup_token,
       const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status,
-      bool *found /* output */,
       bool *worker_used /* output */,
       TaskID *task_id /* output */);
 

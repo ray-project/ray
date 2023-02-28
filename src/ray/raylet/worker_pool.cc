@@ -537,14 +537,12 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
-      bool found;
       bool used;
       TaskID task_id;
       InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                         proc_startup_token,
                                         nullptr,
                                         status,
-                                        &found,
                                         &used,
                                         &task_id);
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
@@ -943,7 +941,6 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     StartupToken startup_token,
     const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status,
-    bool *found,
     bool *worker_used,
     TaskID *task_id) {
   *found = false;
@@ -968,14 +965,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  bool found;
   bool used;
   TaskID task_id;
   InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                     worker->GetStartupToken(),
                                     worker,
                                     PopWorkerStatus::OK,
-                                    &found,
                                     &used,
                                     &task_id);
   RAY_LOG(DEBUG) << "PushWorker " << worker->WorkerId() << " used: " << used;
@@ -985,10 +980,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
-  } else if (!found) {
-    RAY_LOG(INFO) << "Worker not returned to the idle pool after being used. This may "
-                     "cause a worker leak, worker id:"
-                  << worker->WorkerId();
   }
   // We either have an idle worker or a slot to start a new worker.
   if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
