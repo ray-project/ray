@@ -92,6 +92,13 @@ class RayDDPStrategy(DDPStrategy):
     @property
     def root_device(self) -> torch.device:
         return ray.train.torch.get_device()
+    
+    @property
+    def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        return dict(
+            num_replicas=self.world_size,
+            rank=self.global_rank,
+        )
 
 class RayEnvironment(LightningEnvironment):
     def world_size(self) -> int:
