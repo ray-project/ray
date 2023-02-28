@@ -383,6 +383,13 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(with_pandas_and_numpy.transform_batch(np_multi_column), dict)
 
 
+def test_transform_stats_raises_deprecation_warning(create_dummy_preprocessors):
+    with_nothing, _, _, _ = create_dummy_preprocessors
+
+    with pytest.raises(DeprecationWarning):
+        with_nothing.transform_stats()
+
+
 if __name__ == "__main__":
     import sys
 
