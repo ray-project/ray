@@ -77,7 +77,7 @@ def test_torch_get_device(
     trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
         scaling_config=ScalingConfig(
-            num_workers=2 / num_gpus_per_worker,
+            num_workers=int(2 / num_gpus_per_worker),
             use_gpu=True,
             resources_per_worker={"GPU": num_gpus_per_worker},
         ),
