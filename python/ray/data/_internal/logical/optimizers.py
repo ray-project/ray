@@ -10,6 +10,7 @@ from ray.data._internal.logical.rules import (
     OperatorFusionRule,
     ReorderRandomizeBlocksRule,
 )
+from ray.data._internal.logical.rules.record_usage_tag import RecordUsageTagRule
 from ray.data._internal.planner.planner import Planner
 
 
@@ -18,7 +19,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [ReorderRandomizeBlocksRule()]
+        return [RecordUsageTagRule(), ReorderRandomizeBlocksRule()]
 
 
 class PhysicalOptimizer(Optimizer):
