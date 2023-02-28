@@ -24,6 +24,10 @@ from ray._raylet import ObjectRefGenerator
 # Type alias for a node id.
 NodeIdStr = str
 
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool."""
@@ -308,7 +312,7 @@ class AutoscalingConfig:
     # Maximum number of tasks that can be in flight for a single worker.
     # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
     # prefetching has been ported to this new actor pool.
-    max_tasks_in_flight: int = 2
+    max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT
     # Minimum ratio of ready workers to the total number of workers. If the pool is
     # above this ratio, it will be allowed to be scaled up.
     ready_to_total_workers_ratio: float = 0.8
@@ -339,7 +343,8 @@ class AutoscalingConfig:
         return cls(
             min_workers=compute_strategy.min_size,
             max_workers=compute_strategy.max_size,
-            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor,
+            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
+            or DEFAULT_MAX_TASKS_IN_FLIGHT,
             ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
         )
 
