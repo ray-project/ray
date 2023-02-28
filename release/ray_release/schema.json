@@ -18,9 +18,6 @@
                 "env": {
 					"type": "string"
 				},
-				"legacy": {
-					"$ref": "#/definitions/Legacy"
-				},
 				"stable": {
 					"type": "boolean"
 				},
