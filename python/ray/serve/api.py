@@ -550,7 +550,7 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
-            "fastapi_docs_path": deployment._fastapi_docs_path,
+            "docs_path": deployment._docs_path,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(

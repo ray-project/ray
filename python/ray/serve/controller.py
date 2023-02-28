@@ -367,13 +367,13 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union[str, bytes],
-        fastapi_docs_path: Optional[str] = None,
+        docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
-        if fastapi_docs_path is not None:
-            assert fastapi_docs_path.startswith("/")
+        if docs_path is not None:
+            assert docs_path.startswith("/")
 
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -722,9 +722,9 @@ class ServeController:
             return None
         return status[0].to_proto().SerializeToString()
 
-    def get_fastapi_docs_path(self, name: str):
+    def get_docs_path(self, name: str):
         """FastAPI docs path for application."""
-        return self.application_state_manager.get_fastapi_docs_path(name)
+        return self.application_state_manager.get_docs_path(name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names

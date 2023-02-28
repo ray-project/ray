@@ -51,7 +51,7 @@ class ApplicationState:
         self.deploy_obj_ref = deploy_obj_ref
         self.app_msg = ""
         self.route_prefix = None
-        self.fastapi_docs_path = None
+        self.docs_path = None
 
         # This set tracks old deployments that are being deleted
         self.deployments_to_delete = set()
@@ -91,11 +91,8 @@ class ApplicationState:
                 self.route_prefix = deploy_param["route_prefix"]
                 num_route_prefixes += 1
 
-            if (
-                "fastapi_docs_path" in deploy_param
-                and deploy_param["fastapi_docs_path"] is not None
-            ):
-                self.fastapi_docs_path = deploy_param["fastapi_docs_path"]
+            if "docs_path" in deploy_param and deploy_param["docs_path"] is not None:
+                self.docs_path = deploy_param["docs_path"]
                 num_fastapi_deployments += 1
         assert num_route_prefixes <= 1, (
             f"Found multiple route prefix from application {self.name},"
@@ -280,8 +277,8 @@ class ApplicationStateManager:
             )
         return self._application_states[name].get_application_status_info()
 
-    def get_fastapi_docs_path(self, app_name: str):
-        return self._application_states[app_name].fastapi_docs_path
+    def get_docs_path(self, app_name: str):
+        return self._application_states[app_name].docs_path
 
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""

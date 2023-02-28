@@ -87,14 +87,14 @@ class Deployment:
         if init_kwargs is None:
             init_kwargs = {}
 
-        fastapi_docs_path = None
+        docs_path = None
         if (
             inspect.isclass(func_or_class)
             and hasattr(func_or_class, "__module__")
             and func_or_class.__module__ == "ray.serve.api"
             and hasattr(func_or_class, "__fastapi_docs_path__")
         ):
-            fastapi_docs_path = func_or_class.__fastapi_docs_path__
+            docs_path = func_or_class.__fastapi_docs_path__
 
         self._func_or_class = func_or_class
         self._name = name
@@ -105,7 +105,7 @@ class Deployment:
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
         self._is_driver_deployment = is_driver_deployment
-        self._fastapi_docs_path = fastapi_docs_path
+        self._docs_path = docs_path
 
     @property
     def name(self) -> str:

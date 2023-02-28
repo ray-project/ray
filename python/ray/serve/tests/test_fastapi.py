@@ -692,7 +692,7 @@ def test_fastapi_docs_path(
 
     serve.run(serve.deployment(Model).bind(), name="app1")
     wait_for_condition(
-        lambda: ray.get(serve_instance._controller.get_fastapi_docs_path.remote("app1"))
+        lambda: ray.get(serve_instance._controller.get_docs_path.remote("app1"))
         == docs_path
     )
 
