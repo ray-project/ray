@@ -19,6 +19,7 @@ from ray.air import session
 from ray.air.config import CheckpointConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train.torch import TorchCheckpoint
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
 class RayModelCheckpoint(ModelCheckpoint):
     def setup(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", stage: str) -> None:
@@ -69,9 +70,9 @@ class RayModelCheckpoint(ModelCheckpoint):
         if len(new_checkpoint) == 1:
             filepath = new_checkpoint.pop()
             if trainer.global_rank == 0:
-                kwargs["checkpoint"] = TorchCheckpoint.from_directory(path=os.path.dirname(filepath))
+                kwargs["checkpoint"] = LightningCheckpoint.from_directory(path=os.path.dirname(filepath))
             else:
-                kwargs["checkpoint"] = TorchCheckpoint.from_dict({"dummy": 123})
+                kwargs["checkpoint"] = LightningCheckpoint.from_dict({"rank": session.get_world_rank()})
         assert len(new_checkpoint) <= 1
         self.last_best_k_models = deepcopy(self.best_k_models)
         session.report(**kwargs)

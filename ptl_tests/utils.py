@@ -1,27 +1,83 @@
-import os
-os.environ['RAY_ML_DEV'] = "1"
-
 import pytorch_lightning as pl
-from ray.train.lightning import LightningTrainer
+from torch import nn
+import torch
+import torch.nn.functional as F
+from typing import Any
+import os
 from torchvision.datasets import MNIST
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
-import torch
-from torch import nn
-import torch.nn.functional as F
-
-from ray.tune.syncer import SyncConfig
-from ray.air.config import CheckpointConfig, ScalingConfig, RunConfig
-import ray.train as train
-# from utils import LitAutoEncoder, LightningMNISTClassifier, MNISTDataModule
 from torchmetrics import Accuracy
 
+class Encoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.l1 = nn.Sequential(nn.Linear(28 * 28, 64), nn.ReLU(), nn.Linear(64, 3))
+
+    def forward(self, x):
+        return self.l1(x)
+
+class Decoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.l1 = nn.Sequential(nn.Linear(3, 64), nn.ReLU(), nn.Linear(64, 28 * 28))
+
+    def forward(self, x):
+        return self.l1(x)
+
+class LitAutoEncoder(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.encoder = Encoder()
+        self.decoder = Decoder()
+        self.global_steps = 0
+
+    def training_step(self, batch, batch_idx):
+        # training_step defines the train loop.
+        x, y = batch
+        x = x.view(x.size(0), -1)
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
+        loss = F.mse_loss(x_hat, x)
+
+        self.global_steps += 1
+        if self.global_steps % 10 == 0:
+            loss_value = loss.item()
+            self.log_dict({"loss": loss_value, "steps": self.global_steps})
+        if self.global_step % 3 == 0:
+            self.log("metric_step_3", self.global_steps)
+        if self.global_step % 5 == 0:
+            self.log("metric_step_5", self.global_steps)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
+
+    def training_epoch_end(self, outputs) -> None:
+        loss = sum(output["loss"] for output in outputs) / len(outputs)
+        self.log_dict({"epoch_end_metric": 123})
+    
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        x = x.view(x.size(0), -1)
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
+        val_loss = F.mse_loss(x_hat, x)
+        return {"val_loss": val_loss}
+    
+    def validation_epoch_end(self, outputs):
+        val_loss_mean = torch.stack([x['val_loss'] for x in outputs]).mean()
+        self.log('val_loss', val_loss_mean.item(), prog_bar=False)
+    
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        return super().predict_step(batch, batch_idx, dataloader_idx)
+
 LightningMNISTModelConfig = {
-    "config": {
-        "layer_1": 32,
-        "layer_2": 64,
-        "lr": 1e-4,
-    }
+    "layer_1": 32,
+    "layer_2": 64,
+    "lr": 1e-4,
+    
 }
 
 class LightningMNISTClassifier(pl.LightningModule):
@@ -74,6 +130,11 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.log("ptl/val_loss", avg_loss)
         self.log("ptl/val_accuracy", avg_acc)
 
+    def predict_step(self, batch, batch_idx, dataloader_idx=None):
+        x = batch
+        logits = self.forward(x)
+        return torch.argmax(logits, dim=-1)
+
 
 class MNISTDataModule(pl.LightningDataModule):
     def __init__(self, batch_size=100):
@@ -101,6 +162,7 @@ class MNISTDataModule(pl.LightningDataModule):
             self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
 
     def train_dataloader(self):
+        # TODO(): figure out how does lightning create distributed samplers
         return DataLoader(self.mnist_train, batch_size=self.batch_size, num_workers=4)
 
     def val_dataloader(self):
@@ -108,40 +170,3 @@ class MNISTDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.mnist_test, batch_size=self.batch_size, num_workers=4)
-
-
-lightning_trainer_config = {
-    "max_epochs": 10, 
-    "accelerator": "gpu",
-    "strategy": "ddp"
-}
-
-model_checkpoint_config = {
-    "monitor": "ptl/val_accuracy",
-    "save_top_k": 3,
-    "mode": "max"
-}
-
-scaling_config = ScalingConfig(num_workers=8, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1})
-
-air_checkpoint_config = CheckpointConfig(num_to_keep=3, checkpoint_score_attribute="ptl/val_accuracy", checkpoint_score_order="max")
-
-run_config = RunConfig(
-    name="ptl-e2e-classifier",
-    local_dir="/mnt/cluster_storage/ray_lightning_results",
-    sync_config=SyncConfig(syncer=None),
-    checkpoint_config=air_checkpoint_config
-)
-
-trainer = LightningTrainer(
-    lightning_module=LightningMNISTClassifier,
-    lightning_module_config=LightningMNISTModelConfig,
-    lightning_trainer_config=lightning_trainer_config,
-    ddp_strategy_config={},
-    model_checkpoint_config=model_checkpoint_config,
-    scaling_config=scaling_config,
-    run_config=run_config,
-    datamodule=MNISTDataModule()
-)
-
-trainer.fit()
