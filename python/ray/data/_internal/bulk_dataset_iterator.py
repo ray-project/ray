@@ -31,50 +31,28 @@ class BulkDatasetIterator(DatasetIterator):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[DataBatch]:
-        # TODO(swang): Delegate Dataset.iter_batches to
-        # DatasetIterator.iter_batches instead of the other way around.
-        return self._base_dataset.iter_batches(
+
+        ds = self._base_dataset
+        block_iterator, stats, executor = ds._plan.execute_to_iterator()
+        ds._current_executor = executor
+        time_start = time.perf_counter()
+
+        yield from batch_block_refs(
+            block_iterator,
+            stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
+            collate_fn=_collate_fn,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
 
-    def iter_torch_batches(
-        self,
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-        drop_last: bool = False,
-        collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
-        ] = None,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator["TorchTensorBatchType"]:
-        return self._base_dataset.iter_torch_batches(
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            dtypes=dtypes,
-            device=device,
-            collate_fn=collate_fn,
-            drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
-        )
+        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def stats(self) -> str:
         return self._base_dataset.stats()
 
-    @property
-    def _base_dataset_or_pipeline(self) -> "Dataset":
-        return self._base_dataset
-
-    def _to_train_iterator(self) -> "TrainDatasetIterator":
-        from ray.train._internal.dataset_iterator import TrainDatasetIterator
-
-        return TrainDatasetIterator(self)
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        return self._base_dataset.schema()
