@@ -31,6 +31,7 @@ Image/CV
 
 - :doc:`/ray-air/examples/torch_image_example`
 - :doc:`/ray-air/examples/pytorch_resnet_finetune`
+- :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
 
 Logging & Observability
 -----------------------

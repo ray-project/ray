@@ -137,10 +137,22 @@ class RaySyncerBidiReactor {
 
   /// Disconnect will terminate the communication between local and remote node.
   /// It also needs to do proper cleanup.
-  virtual void Disconnect() = 0;
+  void Disconnect() {
+    if (!IsDisconnected()) {
+      disconnected_ = true;
+      DoDisconnect();
+    }
+  };
+
+  /// Return true if it's disconnected.
+  bool IsDisconnected() const { return disconnected_; }
 
  private:
+  virtual void DoDisconnect() = 0;
   std::string remote_node_id_;
+  bool disconnected_ = false;
+
+  FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
 
 /// This class implements the communication between two nodes except the initialization
@@ -166,6 +178,10 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         message_processor_(std::move(message_processor)) {}
 
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
+    if (IsDisconnected()) {
+      return false;
+    }
+
     // Try to filter out the messages the target node already has.
     // Usually it'll be the case when the message is generated from the
     // target node or it's sent from the target node.
@@ -254,7 +270,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
     RAY_LOG(DEBUG) << "[BidiReactor] Sending message to "
                    << NodeID::FromBinary(GetRemoteNodeID()) << " about node "
-                   << NodeID::FromBinary(sending_message_->node_id());
+                   << NodeID::FromBinary(sending_message_->node_id()) << " with flush "
+                   << flush;
     StartWrite(sending_message_.get(), opts);
   }
 
@@ -264,29 +281,33 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   using T::StartWrite;
 
   void OnWriteDone(bool ok) override {
-    if (ok) {
-      io_context_.dispatch([this]() { SendNext(); }, "");
-    } else {
-      RAY_LOG_EVERY_N(ERROR, 100)
-          << "Failed to send the message to: " << NodeID::FromBinary(GetRemoteNodeID());
-      Disconnect();
-    }
+    io_context_.dispatch(
+        [this, ok]() {
+          if (ok) {
+            SendNext();
+          } else {
+            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to send the message to: "
+                                        << NodeID::FromBinary(GetRemoteNodeID());
+            Disconnect();
+          }
+        },
+        "");
   }
 
   void OnReadDone(bool ok) override {
-    if (ok) {
-      io_context_.dispatch(
-          [this, msg = std::move(receiving_message_)]() mutable {
+    io_context_.dispatch(
+        [this, ok, msg = std::move(receiving_message_)]() mutable {
+          if (ok) {
             RAY_CHECK(!msg->node_id().empty());
             ReceiveUpdate(std::move(msg));
             StartPull();
-          },
-          "");
-    } else {
-      RAY_LOG_EVERY_N(ERROR, 100)
-          << "Failed to read the message from: " << NodeID::FromBinary(GetRemoteNodeID());
-      Disconnect();
-    }
+          } else {
+            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to read the message from: "
+                                        << NodeID::FromBinary(GetRemoteNodeID());
+            Disconnect();
+          }
+        },
+        "");
   }
 
   /// grpc requests for sending and receiving
@@ -339,9 +360,8 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   ~RayServerBidiReactor() override = default;
 
-  void Disconnect() override;
-
  private:
+  void DoDisconnect() override;
   void OnCancel() override;
   void OnDone() override;
 
@@ -350,7 +370,6 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
-  bool disconnected_ = false;
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
 
@@ -368,9 +387,8 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
 
   ~RayClientBidiReactor() override = default;
 
-  void Disconnect() override;
-
  private:
+  void DoDisconnect() override;
   /// Callback from gRPC
   void OnDone(const grpc::Status &status) override;
 
@@ -381,7 +399,6 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
   grpc::ClientContext client_context_;
 
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
-  bool disconnected_ = false;
 };
 
 }  // namespace syncer

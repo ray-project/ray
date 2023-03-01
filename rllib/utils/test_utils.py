@@ -530,7 +530,10 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
 
 
 def check_learning_achieved(
-    tune_results: "tune.ResultGrid", min_reward, evaluation=False
+    tune_results: "tune.ResultGrid",
+    min_value,
+    evaluation=False,
+    metric: str = "episode_reward_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
@@ -546,18 +549,14 @@ def check_learning_achieved(
     """
     # Get maximum reward of all trials
     # (check if at least one trial achieved some learning)
-    avg_rewards = [
-        (
-            row["episode_reward_mean"]
-            if not evaluation
-            else row["evaluation/episode_reward_mean"]
-        )
+    recorded_values = [
+        (row[metric] if not evaluation else row[f"evaluation/{metric}"])
         for _, row in tune_results.get_dataframe().iterrows()
     ]
-    best_avg_reward = max(avg_rewards)
-    if best_avg_reward < min_reward:
-        raise ValueError(f"`stop-reward` of {min_reward} not reached!")
-    print(f"`stop-reward` of {min_reward} reached! ok")
+    best_value = max(recorded_values)
+    if best_value < min_value:
+        raise ValueError(f"`{metric}` of {min_value} not reached!")
+    print(f"`{metric}` of {min_value} reached! ok")
 
 
 def check_off_policyness(
@@ -634,7 +633,6 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         "episode_reward_max",
         "episode_reward_mean",
         "episode_reward_min",
-        "episodes_total",
         "hist_stats",
         "info",
         "iterations_since_restore",
@@ -646,7 +644,6 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         "sampler_perf",
         "time_since_restore",
         "time_this_iter_s",
-        "timesteps_since_restore",
         "timesteps_total",
         "timers",
         "time_total_s",
@@ -1096,7 +1093,12 @@ def check_reproducibilty(
     for num_workers in [0, 2]:
         algo_config = (
             algo_config.debugging(seed=42)
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .resources(
+                # old API
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+                # new API
+                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
             .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
 

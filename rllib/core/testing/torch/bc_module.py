@@ -1,8 +1,8 @@
 import gymnasium as gym
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, ModuleID
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
@@ -29,18 +29,6 @@ class DiscreteBCTorchModule(TorchRLModule):
         )
 
         self.input_dim = input_dim
-
-    @override(RLModule)
-    def input_specs_exploration(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecType:
-        return ["obs"]
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecType:
-        return ["obs"]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
@@ -76,12 +64,12 @@ class DiscreteBCTorchModule(TorchRLModule):
         observation_space: "gym.Space",
         action_space: "gym.Space",
         *,
-        model_config: Mapping[str, Any],
+        model_config_dict: Mapping[str, Any],
     ) -> "DiscreteBCTorchModule":
 
         config = {
             "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config["hidden_dim"],
+            "hidden_dim": model_config_dict["fcnet_hiddens"][0],
             "output_dim": action_space.n,
         }
 
@@ -144,18 +132,27 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
 
     # TODO: make sure the default class is MultiAgentRLModule
 
-    def build(self):
+    def build(self, module_id: Optional[ModuleID] = None):
 
+        self._check_before_build()
         # constructing the global encoder based on the observation_space of the first
         # module
         module_spec = next(iter(self.module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["hidden_dim"]
+        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
         shared_encoder = nn.Sequential(
             nn.Linear(global_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
+
+        if module_id:
+            return module_spec.module_class(
+                encoder=shared_encoder,
+                local_dim=module_spec.observation_space["local"].shape[0],
+                hidden_dim=hidden_dim,
+                action_dim=module_spec.action_space.n,
+            )
 
         rl_modules = {}
         for module_id, module_spec in self.module_specs.items():
@@ -166,4 +163,4 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
                 action_dim=module_spec.action_space.n,
             )
 
-        return self.module_class(rl_modules)
+        return self.marl_module_class(rl_modules)

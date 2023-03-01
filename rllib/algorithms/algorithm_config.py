@@ -16,12 +16,13 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
-from ray.rllib.core.rl_trainer.trainer_runner_config import (
-    TrainerRunnerConfig,
+from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.learner_group_config import (
+    LearnerGroupConfig,
     ModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -60,6 +61,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     SampleBatchType,
 )
+from ray.tune.tune import _Config
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
@@ -91,8 +93,7 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.core.rl_module import RLModule
-    from ray.rllib.core.rl_trainer import RLTrainer
+    from ray.rllib.core.learner import Learner
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def _resolve_class_path(module) -> Type:
         return getattr(module, class_name)
 
 
-class AlgorithmConfig:
+class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     Example:
@@ -243,9 +244,9 @@ class AlgorithmConfig:
         self.num_gpus_per_worker = 0
         self._fake_gpus = False
         self.num_cpus_for_local_worker = 1
-        self.num_trainer_workers = 0
-        self.num_gpus_per_trainer_worker = 0
-        self.num_cpus_per_trainer_worker = 1
+        self.num_learner_workers = 0
+        self.num_gpus_per_learner_worker = 0
+        self.num_cpus_per_learner_worker = 1
         self.local_gpu_idx = 0
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
@@ -301,18 +302,12 @@ class AlgorithmConfig:
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
         self.validate_workers_after_construction = True
-        self.ignore_worker_failures = False
-        self.recreate_failed_workers = False
-        self.restart_failed_sub_environments = False
-        self.num_consecutive_worker_failures_tolerance = 100
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
-        self.worker_health_probe_timeout_s = 60
-        self.worker_restore_timeout_s = 1800
 
         # `self.training()`
         self.gamma = 0.99
@@ -321,12 +316,12 @@ class AlgorithmConfig:
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
-        self.rl_trainer_class = None
-        self._enable_rl_trainer_api = False
+        self.learner_class = None
+        self._enable_learner_api = False
         # experimental: this will contain the hyper-parameters that are passed to the
-        # RLTrainer, for computing loss, etc. New algorithms have to set this to their
+        # Learner, for computing loss, etc. New algorithms have to set this to their
         # own default. .training() will modify the fields of this object.
-        self._rl_trainer_hps = RLTrainerHPs()
+        self._learner_hps = LearnerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -405,8 +400,28 @@ class AlgorithmConfig:
         self.seed = None
         self.worker_cls = None
 
+        # `self.fault_tolerance()`
+        self.ignore_worker_failures = False
+        self.recreate_failed_workers = False
+        # By default restart failed worker a thousand times.
+        # This should be enough to handle normal transient failures.
+        # This also prevents infinite number of restarts in case
+        # the worker or env has a bug.
+        self.max_num_worker_restarts = 1000
+        # Small delay between worker restarts. In case rollout or
+        # evaluation workers have remote dependencies, this delay can be
+        # adjusted to make sure we don't flood them with re-connection
+        # requests, and allow them enough time to recover.
+        # This delay also gives Ray time to stream back error logging
+        # and exceptions.
+        self.delay_between_worker_restarts_s = 60.0
+        self.restart_failed_sub_environments = False
+        self.num_consecutive_worker_failures_tolerance = 100
+        self.worker_health_probe_timeout_s = 60
+        self.worker_restore_timeout_s = 1800
+
         # `self.rl_module()`
-        self.rl_module_class = None
+        self.rl_module_spec = None
         self._enable_rl_module_api = False
 
         # `self.experimental()`
@@ -453,8 +468,8 @@ class AlgorithmConfig:
         self.no_done_at_end = DEPRECATED_VALUE
 
     @property
-    def rl_trainer_hps(self) -> RLTrainerHPs:
-        return self._rl_trainer_hps
+    def learner_hps(self) -> LearnerHPs:
+        return self._learner_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -777,6 +792,13 @@ class AlgorithmConfig:
                 "`config.rollouts(enable_connectors=True)`."
             )
 
+        if self._enable_learner_api and not self._enable_rl_module_api:
+            raise ValueError(
+                "Learner API requires RLModule API. "
+                "Please enable RLModule API via "
+                "`config.training(_enable_rl_module_api=True)`."
+            )
+
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
@@ -791,7 +813,7 @@ class AlgorithmConfig:
         elif self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
-            #  Remove this hacky check, once we have fully moved to the RLTrainer API.
+            #  Remove this hacky check, once we have fully moved to the Learner API.
             if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
                     "`num_gpus` > 1 not supported yet for "
@@ -879,22 +901,29 @@ class AlgorithmConfig:
                 # compatibility for now. User only needs to set num_rollout_workers.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
-        # resolve rl_module class
-        if self._enable_rl_module_api and self.rl_module_class is None:
-            rl_module_class_path = self.get_default_rl_module_class()
-            self.rl_module_class = _resolve_class_path(rl_module_class_path)
+        # resolve rl_module_spec class
+        if self._enable_rl_module_api and self.rl_module_spec is None:
+            self.rl_module_spec = self.get_default_rl_module_spec()
+            if not isinstance(
+                self.rl_module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)
+            ):
+                raise ValueError(
+                    "rl_module_spec must be an instance of "
+                    "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+                    f"Got {type(self.rl_module_spec)} instead."
+                )
 
-        # make sure the resource requirements for trainer runner is valid
-        if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
+        # make sure the resource requirements for learner_group is valid
+        if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
-                "(i.e. num_trainer_workers = 0)"
+                "(i.e. num_learner_workers = 0)"
             )
 
-        # resolve rl_trainer class
-        if self._enable_rl_trainer_api and self.rl_trainer_class is None:
-            rl_trainer_class_path = self.get_default_rl_trainer_class()
-            self.rl_trainer_class = _resolve_class_path(rl_trainer_class_path)
+        # resolve learner class
+        if self._enable_learner_api and self.learner_class is None:
+            learner_class_path = self.get_default_learner_class()
+            self.learner_class = _resolve_class_path(learner_class_path)
 
     def build(
         self,
@@ -967,9 +996,9 @@ class AlgorithmConfig:
         num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_for_local_worker: Optional[int] = NotProvided,
-        num_trainer_workers: Optional[int] = NotProvided,
-        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
-        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_learner_workers: Optional[int] = NotProvided,
+        num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
@@ -990,18 +1019,18 @@ class AlgorithmConfig:
                 fractional. This is usually needed only if your env itself requires a
                 GPU (i.e., it is a GPU-intensive video game), or model inference is
                 unusually expensive.
-            num_trainer_workers: Number of workers used for training. A value of 0
+            num_learner_workers: Number of workers used for training. A value of 0
                 means training will take place on a local worker on head node CPUs or 1
-                GPU (determined by `num_gpus_per_trainer_worker`). For multi-gpu
+                GPU (determined by `num_gpus_per_learner_worker`). For multi-gpu
                 training, set number of workers greater than 1 and set
-                `num_gpus_per_trainer_worker` accordingly (e.g. 4 GPUs total, and model
-                needs 2 GPUs: `num_trainer_workers = 2` and
-                `num_gpus_per_trainer_worker = 2`)
-            num_cpus_per_trainer_worker: Number of CPUs allocated per trainer worker.
-                Only necessary for custom processing pipeline inside each RLTrainer
-                requiring multiple CPU cores. Ignored if `num_trainer_workers = 0`.
-            num_gpus_per_trainer_worker: Number of GPUs allocated per worker. If
-                `num_trainer_workers = 0`, any value greater than 0 will run the
+                `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
+                needs 2 GPUs: `num_learner_workers = 2` and
+                `num_gpus_per_learner_worker = 2`)
+            num_cpus_per_learner_worker: Number of CPUs allocated per trainer worker.
+                Only necessary for custom processing pipeline inside each Learner
+                requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
+            num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
+                `num_learner_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
                 the training on head node CPU cores.
             local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
@@ -1048,12 +1077,12 @@ class AlgorithmConfig:
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
 
-        if num_trainer_workers is not NotProvided:
-            self.num_trainer_workers = num_trainer_workers
-        if num_cpus_per_trainer_worker is not NotProvided:
-            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
-        if num_gpus_per_trainer_worker is not NotProvided:
-            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
+        if num_learner_workers is not NotProvided:
+            self.num_learner_workers = num_learner_workers
+        if num_cpus_per_learner_worker is not NotProvided:
+            self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
+        if num_gpus_per_learner_worker is not NotProvided:
+            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
 
@@ -1227,21 +1256,21 @@ class AlgorithmConfig:
         remote_worker_envs: Optional[bool] = NotProvided,
         remote_env_batch_wait_ms: Optional[float] = NotProvided,
         validate_workers_after_construction: Optional[bool] = NotProvided,
-        ignore_worker_failures: Optional[bool] = NotProvided,
-        recreate_failed_workers: Optional[bool] = NotProvided,
-        restart_failed_sub_environments: Optional[bool] = NotProvided,
-        num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
         synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        worker_health_probe_timeout_s: int = NotProvided,
-        worker_restore_timeout_s: int = NotProvided,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
         no_done_at_end=DEPRECATED_VALUE,
+        ignore_worker_failures=DEPRECATED_VALUE,
+        recreate_failed_workers=DEPRECATED_VALUE,
+        restart_failed_sub_environments=DEPRECATED_VALUE,
+        num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
+        worker_health_probe_timeout_s=DEPRECATED_VALUE,
+        worker_restore_timeout_s=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1315,27 +1344,6 @@ class AlgorithmConfig:
                 your environment step / reset and model inference perf.
             validate_workers_after_construction: Whether to validate that each created
                 remote worker is healthy after its construction process.
-            ignore_worker_failures: Whether to attempt to continue training if a worker
-                crashes. The number of currently healthy workers is reported as the
-                "num_healthy_workers" metric.
-            recreate_failed_workers: Whether - upon a worker failure - RLlib will try to
-                recreate the lost worker as an identical copy of the failed one. The new
-                worker will only differ from the failed one in its
-                `self.recreated_worker=True` property value. It will have the same
-                `worker_index` as the original one. If True, the
-                `ignore_worker_failures` setting will be ignored.
-            restart_failed_sub_environments: If True and any sub-environment (within
-                a vectorized env) throws any error during env stepping, the
-                Sampler will try to restart the faulty sub-environment. This is done
-                without disturbing the other (still intact) sub-environment and without
-                the RolloutWorker crashing.
-            num_consecutive_worker_failures_tolerance: The number of consecutive times
-                a rollout worker (or evaluation worker) failure is tolerated before
-                finally crashing the Algorithm. Only useful if either
-                `ignore_worker_failures` or `recreate_failed_workers` is True.
-                Note that for `restart_failed_sub_environments` and sub-environment
-                failures, the worker itself is NOT affected and won't throw any errors
-                as the flawed sub-environment is silently restarted under the hood.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
@@ -1353,11 +1361,6 @@ class AlgorithmConfig:
                 is the coeff of how much new data points contribute to the averages.
                 Default is None, which uses simple global average instead.
                 The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
-            worker_health_probe_timeout_s: Max amount of time we should spend waiting
-                for health probe calls to finish. Health pings are very cheap, so the
-                default is 1 minute.
-            worker_restore_timeout_s: Max amount of time we should wait to restore
-                states on recovered worker actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1386,16 +1389,6 @@ class AlgorithmConfig:
             self.validate_workers_after_construction = (
                 validate_workers_after_construction
             )
-        if ignore_worker_failures is not NotProvided:
-            self.ignore_worker_failures = ignore_worker_failures
-        if recreate_failed_workers is not NotProvided:
-            self.recreate_failed_workers = recreate_failed_workers
-        if restart_failed_sub_environments is not NotProvided:
-            self.restart_failed_sub_environments = restart_failed_sub_environments
-        if num_consecutive_worker_failures_tolerance is not NotProvided:
-            self.num_consecutive_worker_failures_tolerance = (
-                num_consecutive_worker_failures_tolerance
-            )
         if preprocessor_pref is not NotProvided:
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not NotProvided:
@@ -1408,10 +1401,6 @@ class AlgorithmConfig:
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
-        if worker_health_probe_timeout_s is not NotProvided:
-            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
-        if worker_restore_timeout_s is not NotProvided:
-            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         # Deprecated settings.
         if horizon != DEPRECATED_VALUE:
@@ -1434,6 +1423,59 @@ class AlgorithmConfig:
                 error=True,
             )
 
+        if ignore_worker_failures != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="ignore_worker_failures is deprecated, and will soon be a no-op",
+                error=False,
+            )
+            self.ignore_worker_failures = ignore_worker_failures
+        if recreate_failed_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(recreate_failed_workers=..)",
+                new="AlgorithmConfig.fault_tolerance(recreate_failed_workers=..)",
+                error=False,
+            )
+            self.recreate_failed_workers = recreate_failed_workers
+        if restart_failed_sub_environments != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(restart_failed_sub_environments=..)",
+                new=(
+                    "AlgorithmConfig.fault_tolerance("
+                    "restart_failed_sub_environments=..)"
+                ),
+                error=False,
+            )
+            self.restart_failed_sub_environments = restart_failed_sub_environments
+        if num_consecutive_worker_failures_tolerance != DEPRECATED_VALUE:
+            deprecation_warning(
+                old=(
+                    "AlgorithmConfig.rollouts("
+                    "num_consecutive_worker_failures_tolerance=..)"
+                ),
+                new=(
+                    "AlgorithmConfig.fault_tolerance("
+                    "num_consecutive_worker_failures_tolerance=..)"
+                ),
+                error=False,
+            )
+            self.num_consecutive_worker_failures_tolerance = (
+                num_consecutive_worker_failures_tolerance
+            )
+        if worker_health_probe_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(worker_health_probe_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s=..)",
+                error=False,
+            )
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(worker_restore_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s=..)",
+                error=False,
+            )
+            self.worker_restore_timeout_s = worker_restore_timeout_s
+
         return self
 
     def training(
@@ -1444,8 +1486,8 @@ class AlgorithmConfig:
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
-        _enable_rl_trainer_api: Optional[bool] = NotProvided,
-        rl_trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
+        _enable_learner_api: Optional[bool] = NotProvided,
+        learner_class: Optional[Type["Learner"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1469,7 +1511,7 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
-            _enable_rl_trainer_api: Whether to enable the TrainerRunner and RLTrainer
+            _enable_learner_api: Whether to enable the LearnerGroup and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
 
@@ -1512,10 +1554,10 @@ class AlgorithmConfig:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if _enable_rl_trainer_api is not NotProvided:
-            self._enable_rl_trainer_api = _enable_rl_trainer_api
-        if rl_trainer_class is not NotProvided:
-            self.rl_trainer_class = rl_trainer_class
+        if _enable_learner_api is not NotProvided:
+            self._enable_learner_api = _enable_learner_api
+        if learner_class is not NotProvided:
+            self.learner_class = learner_class
 
         return self
 
@@ -2166,26 +2208,93 @@ class AlgorithmConfig:
 
         return self
 
+    def fault_tolerance(
+        self,
+        recreate_failed_workers: Optional[bool] = NotProvided,
+        max_num_worker_restarts: Optional[int] = NotProvided,
+        delay_between_worker_restarts_s: Optional[float] = NotProvided,
+        restart_failed_sub_environments: Optional[bool] = NotProvided,
+        num_consecutive_worker_failures_tolerance: Optional[int] = NotProvided,
+        worker_health_probe_timeout_s: int = NotProvided,
+        worker_restore_timeout_s: int = NotProvided,
+    ):
+        """Sets the config's fault tolerance settings.
+
+        Args:
+            recreate_failed_workers: Whether - upon a worker failure - RLlib will try to
+                recreate the lost worker as an identical copy of the failed one. The new
+                worker will only differ from the failed one in its
+                `self.recreated_worker=True` property value. It will have the same
+                `worker_index` as the original one. If True, the
+                `ignore_worker_failures` setting will be ignored.
+            max_num_worker_restarts: The maximum number of times a worker is allowed to
+                be restarted (if `recreate_failed_workers` is True).
+            delay_between_worker_restarts_s: The delay (in seconds) between two
+                consecutive worker restarts (if `recreate_failed_workers` is True).
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environment and without
+                the RolloutWorker crashing.
+            num_consecutive_worker_failures_tolerance: The number of consecutive times
+                a rollout worker (or evaluation worker) failure is tolerated before
+                finally crashing the Algorithm. Only useful if either
+                `ignore_worker_failures` or `recreate_failed_workers` is True.
+                Note that for `restart_failed_sub_environments` and sub-environment
+                failures, the worker itself is NOT affected and won't throw any errors
+                as the flawed sub-environment is silently restarted under the hood.
+            worker_health_probe_timeout_s: Max amount of time we should spend waiting
+                for health probe calls to finish. Health pings are very cheap, so the
+                default is 1 minute.
+            worker_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered worker actors. Default is 30 mins.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        if recreate_failed_workers is not NotProvided:
+            self.recreate_failed_workers = recreate_failed_workers
+        if max_num_worker_restarts is not NotProvided:
+            self.max_num_worker_restarts = max_num_worker_restarts
+        if delay_between_worker_restarts_s is not NotProvided:
+            self.delay_between_worker_restarts_s = delay_between_worker_restarts_s
+        if restart_failed_sub_environments is not NotProvided:
+            self.restart_failed_sub_environments = restart_failed_sub_environments
+        if num_consecutive_worker_failures_tolerance is not NotProvided:
+            self.num_consecutive_worker_failures_tolerance = (
+                num_consecutive_worker_failures_tolerance
+            )
+        if worker_health_probe_timeout_s is not NotProvided:
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s is not NotProvided:
+            self.worker_restore_timeout_s = worker_restore_timeout_s
+
+        return self
+
     @ExperimentalAPI
     def rl_module(
         self,
         *,
-        rl_module_class: Optional[Type["RLModule"]] = NotProvided,
+        rl_module_spec: Optional[ModuleSpec] = NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
-            rl_module_class: The RLModule class to use for this config.
+            rl_module_spec: The RLModule spec to use for this config. It can be either
+                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
+                observation_space, action_space, or the model_config is not specified
+                it will be inferred from the env and other parts of the algorithm
+                config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
-                By default if you call `config.rl_module(rl_module=MyRLModule)`, the
+                By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
         Returns:
             This updated AlgorithmConfig object.
         """
-        if rl_module_class is not NotProvided:
-            self.rl_module_class = rl_module_class
+        if rl_module_spec is not NotProvided:
+            self.rl_module_spec = rl_module_spec
 
         if self._enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
@@ -2641,69 +2750,117 @@ class AlgorithmConfig:
                     f"{suggested_rollout_fragment_length}."
                 )
 
-    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
-        """Returns the RLModule class to use for this algorithm.
+    def get_default_rl_module_spec(self) -> ModuleSpec:
+        """Returns the RLModule spec to use for this algorithm.
 
-        Override this method in the sub-class to return the RLModule class type given
+        Override this method in the sub-class to return the RLModule spec given
         the input framework.
 
         Returns:
-            The RLModule class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCModule).
+            The RLModule spec to use for this algorithm.
         """
         raise NotImplementedError
 
-    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
-        """Returns the RLTrainer class to use for this algorithm.
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        """Returns the Learner class to use for this algorithm.
 
-        Override this method in the sub-class to return the RLTrainer class type given
+        Override this method in the sub-class to return the Learner class type given
         the input framework.
 
         Returns:
-            The RLTrainer class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
+            The Learner class to use for this algorithm either as a class type or as
+            a string (e.g. ray.rllib.core.learner.testing.torch.BCTrainer).
         """
         raise NotImplementedError
 
-    def get_trainer_runner_config(
-        self, module_spec: Optional[ModuleSpec] = None
-    ) -> TrainerRunnerConfig:
+    def get_marl_module_spec(
+        self,
+        policy_dict: Dict[str, PolicySpec],
+        policies_to_train: Callable[[PolicyID, SampleBatchType], bool],
+    ) -> MultiAgentRLModuleSpec:
+        """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
-        if module_spec is None:
-            module_spec = SingleAgentRLModuleSpec()
+        Args:
+            policy_dict: The policy spec dict. Using this dict, we can determine the
+                inferred values for observation_space, action_space, and config for
+                each policy. If the module spec does not have these values specified,
+                they will get auto-filled with these values obtrained from the policy
+                spec dict. Here we are relying on the policy's logic for infering these
+                values from other sources of information (e.g. environement)
+            policies_to_train: The policies to train. This can be optionally used to
+                construct the MultiAgentRLModuleSpec (if necessary).
+        """
+        # TODO (Kourosh): When we replace policy entirely there will be no need for
+        # this function to map policy_dict to marl_module_specs anymore. The module
+        # spec will be directly given by the user or inferred from env and spaces.
 
-        if isinstance(module_spec, SingleAgentRLModuleSpec):
-            if module_spec.module_class is None:
-                module_spec.module_class = self.rl_module_class
+        # If the module is single-agent convert it to multi-agent spec
+        if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
+            marl_module_spec = MultiAgentRLModuleSpec(
+                module_specs={
+                    k: copy.deepcopy(self.rl_module_spec) for k in policy_dict.keys()
+                },
+            )
+        elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
+            marl_module_spec = self.rl_module_spec
+
+            if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
+                # the individual module specs are not given, it is given as one
+                # SingleAgentRLModuleSpec to be re-used for all
+                marl_module_spec.module_specs = {
+                    k: copy.deepcopy(marl_module_spec.module_specs)
+                    for k in policy_dict.keys()
+                }
+
+            # otherwise it is assumed that the module specs are given as a dict that
+            # match the sampler's policy dict
+        else:
+            raise ValueError(
+                "RLModuleSpec must be either SingleAgentRLModuleSpec "
+                f"or MultiAgentRLModuleSpec got {type(self.rl_module_spec)} instead."
+            )
+
+        # Make sure that policy_dict and marl_module_spec have similar keys
+        if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
+            raise ValueError("Policy dict and module spec have different keys!")
+
+        # fill in the missing values from the module spec
+        for module_id in policy_dict:
+            policy_spec = policy_dict[module_id]
+            module_spec = marl_module_spec.module_specs[module_id]
 
             if module_spec.observation_space is None:
-                module_spec.observation_space = self.observation_space
-
+                module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
-                module_spec.action_space = self.action_space
-
+                module_spec.action_space = policy_spec.action_space
             if module_spec.model_config is None:
-                module_spec.model_config = self.model
+                module_spec.model_config = policy_spec.config.get("model", {})
+
+        return marl_module_spec
+
+    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
 
         if not self._is_frozen:
             raise ValueError(
-                "Cannot call `get_trainer_runner_config()` on an unfrozen "
+                "Cannot call `get_learner_group_config()` on an unfrozen "
                 "AlgorithmConfig! Please call `freeze()` first."
             )
 
         config = (
-            TrainerRunnerConfig()
+            LearnerGroupConfig()
             .module(module_spec)
-            .trainer(
-                trainer_class=self.rl_trainer_class,
+            .learner(
+                learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
-                optimizer_config={"lr": self.lr},
-                rl_trainer_hps=self.rl_trainer_hps,
+                optimizer_config={
+                    "lr": self.lr,
+                },
+                learner_hps=self.learner_hps,
             )
             .resources(
-                num_trainer_workers=self.num_trainer_workers,
-                num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
-                num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
+                num_learner_workers=self.num_learner_workers,
+                num_cpus_per_learner_worker=self.num_cpus_per_learner_worker,
+                num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
             .framework(eager_tracing=self.eager_tracing)
