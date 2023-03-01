@@ -59,8 +59,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                 "creation task, actor id = "
                              << actor_id << ", task id = " << task_id;
               // Copy the actor's reply to the GCS for ref counting purposes.
-              // The actor failure is handled from GCS, so we treat it as a task being completed.
-              // We don't use  `FailOrRetryPendingTask` here because actor creation retry is handled by GCS.  
+              // The actor failure is handled from GCS, so we treat it as a task being
+              // completed. We don't use  `FailOrRetryPendingTask` here because actor
+              // creation retry is handled by GCS.
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
               task_finisher_->CompletePendingTask(task_id,
