@@ -2,7 +2,6 @@ import gymnasium as gym
 import grpc
 import numpy as np
 import time
-import atexit
 
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2 as cartpole_pb2
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2_grpc as cartpole_pb2_grpc

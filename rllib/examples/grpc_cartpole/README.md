@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
 This script defines a server class that inherits `cartpole_pb2_grpc.CartPoleServicer`. It implements reset and step methods to return the protobuf messages defined in the `cartpole_pb2` module. The serve function then serves this class as a grpc server with a specified IP address and port number. Additionally, this server accepts a parent process ID as an input argument, which allows it to monitor the health of the process and self-destruct if the parent PID is dead. This helps to free up resources consumed by the process.
 
-To elaborate further, the start_self_destroying_server function defines a monitor hook that starts a thread to continuously check the status of the parent process ID. If the parent process ID is not found, the current process ID is terminated using the os.kill function.
+To elaborate further, the `start_self_destroying_server` function defines a monitor hook that starts a thread to continuously check the status of the parent process ID. If the parent process ID is not found, the current process ID is terminated using the `os.kill` function.
 
 Finally, the serve function adds the `CartPoleEnv` class to the grpc server and starts the server on the specified IP address and port number using grpc.server function. The server then waits for incoming requests using server.`wait_for_termination()`. If a parent PID is provided, the `start_self_destroying_server` function is called to monitor the parent process ID and self-destruct if it is dead. 
 And, here's an example implementation of the `CartPole` environment as an OpenAI Gym class that uses gRPC to communicate with the server:
@@ -147,7 +147,6 @@ import gymnasium as gym
 import grpc
 import numpy as np
 import time
-import atexit
 
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2 as cartpole_pb2
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2_grpc as cartpole_pb2_grpc
@@ -237,12 +236,15 @@ This implementation creates a `CartPoleEnv` class that inherits from the `gym.En
 You can use this class just like any other OpenAI Gym environment, for example:
 
 ```
-env = CartPoleEnv()
-obs = env.reset()
-done = False
-while not done:
-    action = env.action_space.sample()
-    obs, reward, done, info = env.step(action)
+env = CartPoleEnv({"ip": "localhost", "port": "50051"})
+obs, _ = env.reset()
+print(f"obs: {obs}")
+for _ in range(1000):
+    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+    print(
+        f"obs: {obs}, reward: {reward}, terminated: {terminated}, truncated: {truncated}, info: {info}"
+    )
+
 env.close()
 ```
 
@@ -271,7 +273,7 @@ class EnvCreatorOnGRPC:
 tune.register_env("CartPoleGRPCEnv", lambda c: EnvCreatorOnGRPC(30000)(c))
 ```
 
-This env creator will run the `cartpole_grpc_server.py` script with the current PID as the parent PID and the port which is the function of worker_index. Then it will construct and return the client env, so that RLlib can start the sampling process.
+This env creator will run the `cartpole_grpc_server.py` script with the current PID as the parent PID and the port which is the function of `worker_index`. Then it will construct and return the client env, so that RLlib can start the sampling process.
 
 Here is an example of how to run PPO on this environment with 64 workers (`rllib/examples/run_cartpole_with_grpc.py`)
 
