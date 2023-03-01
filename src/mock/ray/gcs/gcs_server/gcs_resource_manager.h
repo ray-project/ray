@@ -20,7 +20,10 @@ namespace gcs {
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
-  MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager)
+  explicit MockGcsResourceManager()
+      : GcsResourceManager(
+            io_context_, cluster_resource_manager_, NodeID::FromRandom(), nullptr) {}
+  explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager)
       : GcsResourceManager(
             io_context_, cluster_resource_manager, NodeID::FromRandom(), nullptr) {}
 
@@ -51,6 +54,7 @@ class MockGcsResourceManager : public GcsResourceManager {
 
  private:
   instrumented_io_context io_context_;
+  ClusterResourceManager cluster_resource_manager_;
 };
 
 }  // namespace gcs
