@@ -5,7 +5,7 @@ import types
 import collections
 from distutils.version import LooseVersion
 
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union
 
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
@@ -40,8 +40,11 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
-def get_device() -> torch.device:
-    """Gets the correct torch device to use for training.
+def get_device() -> Union[torch.device, List[torch.device]]:
+    """Gets the correct torch device configured for this process.
+
+    Returns a list of devices if more than 1 GPU per worker
+    is requested.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
@@ -71,7 +74,7 @@ def get_device() -> torch.device:
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
-    move_to_device: bool = True,
+    move_to_device: Union[bool, torch.device] = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
@@ -82,9 +85,10 @@ def prepare_model(
 
     Args:
         model (torch.nn.Module): A torch model to prepare.
-        move_to_device: Whether to move the model to the correct
-            device. If set to False, the model needs to manually be moved
-            to the correct device.
+        move_to_device: Either a boolean indiciating whether to move
+            the model to the correct device or an actual device to
+            move the model to. If set to False, the model needs
+            to manually be moved to the correct device.
         parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
             in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
             or neither.
@@ -266,7 +270,13 @@ class _TorchAccelerator(Accelerator):
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
         rank = session.get_local_rank()
-        device = get_device()
+
+        if isinstance(move_to_device, torch.device):
+            device = move_to_device
+        else:
+            device = get_device()
+            if isinstance(device, list):
+                device = device[0]
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
