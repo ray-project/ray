@@ -80,13 +80,18 @@ def _convert_example_to_dict(
     tf_schema: Optional["schema_pb2.Schema"],
 ) -> Dict[str, "pyarrow.Array"]:
     record = {}
+    schema_dict = {}
+    # Convert user-specified schema into dict for convenient mapping
+    if tf_schema is not None:
+        for schema_feature in tf_schema.feature:
+            schema_dict[schema_feature.name] = schema_feature.type
+
     for feature_name, feature in example.features.feature.items():
-        schema_feature_type = None
-        if tf_schema is not None:
-            for schema_feature in tf_schema.feature:
-                if schema_feature.name == feature_name:
-                    schema_feature_type = schema_feature.type
-                    break
+        if tf_schema is not None and feature_name not in schema_dict:
+            raise ValueError(
+                f"Missing feature {feature_name} in specified schema: {tf_schema}"
+            )
+        schema_feature_type = schema_dict.get(feature_name)
         record[feature_name] = _get_feature_value(feature, schema_feature_type)
     return record
 
@@ -97,18 +102,23 @@ def _convert_arrow_table_to_examples(
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
 
+    schema_dict = {}
+    # Convert user-specified schema into dict for convenient mapping
+    if tf_schema is not None:
+        for schema_feature in tf_schema.feature:
+            schema_dict[schema_feature.name] = schema_feature.type
+
     # Serialize each row[i] of the block to a tf.train.Example and yield it.
     for i in range(arrow_table.num_rows):
 
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
-            schema_feature_type = None
-            if tf_schema is not None:
-                for schema_feature in tf_schema.feature:
-                    if schema_feature.name == name:
-                        schema_feature_type = schema_feature.type
-                        break
+            if tf_schema is not None and name not in schema_dict:
+                raise ValueError(
+                    f"Missing feature {name} in specified schema: {tf_schema}"
+                )
+            schema_feature_type = schema_dict.get(name)
             features[name] = _value_to_feature(
                 arrow_table[name][i],
                 schema_feature_type,
@@ -120,6 +130,15 @@ def _convert_arrow_table_to_examples(
         yield proto
 
 
+def _get_single_true_type(dct) -> str:
+    """Utility function for getting the single key which has a `True` value in
+    a dict. Used to filter a dict of `{field_type: is_valid}` to get
+    the field type from a schema or data source."""
+    filtered_types = iter([_type for _type in dct if dct[_type]])
+    # In the case where there are no keys with a `True` value, return `None`
+    return next(filtered_types, None)
+
+
 def _get_feature_value(
     feature: "tf.train.Feature",
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
@@ -127,25 +146,40 @@ def _get_feature_value(
     import pyarrow as pa
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    detected_feature_type = {
-        "bytes": feature.HasField("bytes_list")
-        or schema_feature_type == schema_pb2.FeatureType.BYTES,
-        "float": feature.HasField("float_list")
-        or schema_feature_type == schema_pb2.FeatureType.FLOAT,
-        "int": feature.HasField("int64_list")
-        or schema_feature_type == schema_pb2.FeatureType.INT,
+    underlying_feature_type = {
+        "bytes": feature.HasField("bytes_list"),
+        "float": feature.HasField("float_list"),
+        "int": feature.HasField("int64_list"),
     }
-    # At most one of `bytes_list`, `float_list`, and `int64_list` contains data.
-    # If none contain data, this indicates an empty feature value.
-    assert sum(bool(value) for value in detected_feature_type.values()) <= 1
+    # At most one of `bytes_list`, `float_list`, and `int64_list`
+    # should contain values. If none contain data, this indicates
+    # an empty feature value.
+    assert sum(bool(value) for value in underlying_feature_type.values()) <= 1
 
-    if detected_feature_type["bytes"]:
+    if schema_feature_type is not None:
+        # If a schema is specified, compare to the
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+        und_type = _get_single_true_type(underlying_feature_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during read: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type in the user-specified schema.
+        underlying_feature_type = specified_feature_type
+
+    if underlying_feature_type["bytes"]:
         value = feature.bytes_list.value
         type_ = pa.binary()
-    elif detected_feature_type["float"]:
+    elif underlying_feature_type["float"]:
         value = feature.float_list.value
         type_ = pa.float32()
-    elif detected_feature_type["int"]:
+    elif underlying_feature_type["int"]:
         value = feature.int64_list.value
         type_ = pa.int64()
     else:
@@ -189,20 +223,35 @@ def _value_to_feature(
         else:
             value = [value]
 
-    if (
-        pa.types.is_integer(value_type)
-        or schema_feature_type == schema_pb2.FeatureType.INT
-    ):
+    underlying_value_type = {
+        "bytes": pa.types.is_binary(value_type),
+        "float": pa.types.is_floating(value_type),
+        "int": pa.types.is_integer(value_type),
+    }
+    assert sum(bool(value) for value in underlying_value_type.values()) <= 1
+
+    if schema_feature_type is not None:
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+
+        und_type = _get_single_true_type(underlying_value_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during write: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type in the user-specified schema.
+        underlying_value_type = specified_feature_type
+
+    if underlying_value_type["int"]:
         return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-    if (
-        pa.types.is_floating(value_type)
-        or schema_feature_type == schema_pb2.FeatureType.FLOAT
-    ):
+    if underlying_value_type["float"]:
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-    if (
-        pa.types.is_binary(value_type)
-        or schema_feature_type == schema_pb2.FeatureType.BYTES
-    ):
+    if underlying_value_type["bytes"]:
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(

@@ -542,6 +542,59 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
         ray.data.read_tfrecords(file_path).schema()
 
 
+def test_read_with_invalid_schema(
+    ray_start_regular_shared, tmp_path, data_partial, tf_records_partial
+):
+    from tensorflow_metadata.proto.v0 import schema_pb2
+
+    # The dataset we will write to a .tfrecords file.
+    ds = ray.data.from_items(data_partial, parallelism=1)
+    expected_records = tf_records_partial
+
+    # Build fake schema proto with missing/incorrect field name
+    tf_schema_wrong_name = schema_pb2.Schema()
+    schema_feature = tf_schema_wrong_name.feature.add()
+    schema_feature.name = "wrong_name"
+    schema_feature.type = schema_pb2.FeatureType.INT
+
+    # Build a fake schema proto with incorrect type
+    tf_schema_wrong_type = _features_to_schema(expected_records[0].features)
+    for schema_feature in tf_schema_wrong_type.feature:
+        if schema_feature.name == "bytes_item":
+            schema_feature.type = schema_pb2.FeatureType.INT
+            break
+
+    # Writing with incorrect schema should raise a `ValueError`
+    with pytest.raises(ValueError) as e:
+        ds.write_tfrecords(tmp_path, tf_schema=tf_schema_wrong_name)
+    assert "Missing feature" in str(e.value.args[0])
+
+    with pytest.raises(ValueError) as e:
+        ds.write_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type)
+    assert str(e.value.args[0]) == (
+        "Schema field type mismatch during write: "
+        "specified type is int, but underlying type is bytes"
+    )
+
+    # Complete a valid write, then try reading with incorrect schema,
+    # which should raise a `ValueError`.
+    ds.write_tfrecords(tmp_path)
+    with pytest.raises(ValueError) as e:
+        ray.data.read_tfrecords(
+            tmp_path, tf_schema=tf_schema_wrong_name
+        ).fully_executed()
+    assert "Missing feature" in str(e.value.args[0])
+
+    with pytest.raises(ValueError) as e:
+        ray.data.read_tfrecords(
+            tmp_path, tf_schema=tf_schema_wrong_type
+        ).fully_executed()
+    assert str(e.value.args[0]) == (
+        "Schema field type mismatch during read: "
+        "specified type is int, but underlying type is bytes"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
