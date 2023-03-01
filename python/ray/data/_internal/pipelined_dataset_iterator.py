@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
+import warnings
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
@@ -53,3 +54,16 @@ class PipelinedDatasetIterator(DatasetIterator):
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset_pipeline.schema()
+
+    def __getattr__(self, name):
+        # Warning for backwards compatibility. TODO: remove this method in 2.5.
+        warnings.warn(
+            "session.get_dataset_shard returns a ray.data.DatasetIterator "
+            "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
+            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
+            "iterate over one epoch. See "
+            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
+            "for full DatasetIterator docs."
+        )
+
+        return getattr(self._base_dataset_pipeline, name)
