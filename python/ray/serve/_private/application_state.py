@@ -84,14 +84,11 @@ class ApplicationState:
         num_route_prefixes = 0
         num_docs_paths = 0
         for deploy_param in deployment_params:
-            if (
-                "route_prefix" in deploy_param
-                and deploy_param["route_prefix"] is not None
-            ):
+            if deploy_param.get("route_prefix") is not None:
                 self.route_prefix = deploy_param["route_prefix"]
                 num_route_prefixes += 1
 
-            if "docs_path" in deploy_param and deploy_param["docs_path"] is not None:
+            if deploy_param.get("docs_path") is not None:
                 self.docs_path = deploy_param["docs_path"]
                 num_docs_paths += 1
         if num_route_prefixes > 1:
