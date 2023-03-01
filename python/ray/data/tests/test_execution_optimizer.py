@@ -13,6 +13,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     MapBatches,
@@ -497,10 +498,27 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     assert name in ds.stats()
 
 
-def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
+def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
     assert "DoRead->Write" in ds._write_ds.stats()
+
+
+def test_write_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    datasource = ParquetDatasource()
+    read_op = Read(datasource)
+    op = Write(
+        read_op,
+        datasource,
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Write"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
@@ -574,6 +592,24 @@ def test_aggregate_e2e(
     assert ds.count() == 100
     for idx, row in enumerate(ds.sort("value").iter_rows()):
         assert row.as_pydict() == {"value": idx, "count()": 1}
+
+
+def test_streaming_executor(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(100, parallelism=4)
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.filter(lambda x: x > 0)
+    ds = ds.random_shuffle()
+    ds = ds.map_batches(lambda x: x)
+
+    result = []
+    for batch in ds.iter_batches(batch_size=3):
+        assert len(batch) == 3, batch
+        result.extend(batch)
+    assert sorted(result) == list(range(1, 100)), result
 
 
 if __name__ == "__main__":

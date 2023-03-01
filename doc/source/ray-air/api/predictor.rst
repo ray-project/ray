@@ -16,8 +16,13 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     predictor.Predictor
+
+.. autosummary::
+    :toctree: doc/
+
     predictor.Predictor.from_checkpoint
     predictor.Predictor.from_pandas_udf
 
@@ -53,14 +58,20 @@ Supported Data Formats
 Batch Predictor
 ---------------
 
-Constructor
-~~~~~~~~~~~
+Constructor Options
+~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
+
+    batch_predictor.BatchPredictor
 
 .. autosummary::
     :toctree: doc/
 
-    batch_predictor.BatchPredictor
-
+    batch_predictor.BatchPredictor.from_checkpoint
+    batch_predictor.BatchPredictor.from_pandas_udf
 
 Batch Prediction API
 ~~~~~~~~~~~~~~~~~~~~

@@ -43,6 +43,14 @@ Batch Inference
 
 Batch inference refers to generating model predictions over a set of input observations. The model could be a regression model, neural network, or simply a Python function. Ray can scale batch inference from single GPU machines to large clusters.
 
+Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's :ref:`Batch Predictor <air-predictors>` scales predictions on batches across workers.
+
+.. figure:: /images/batch_inference.png
+  
+  Using Ray AIR's ``BatchPredictor`` for batch inference.
+
+Learn more about batch inference with the following resources.
+
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
@@ -91,19 +99,29 @@ Many Model Training
 -------------------
 
 Many model training is common in ML use cases such as time series forecasting, which require fitting of models on multiple data batches corresponding to locations, products, etc.
-Here, the focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
+The focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
+
+When any given model you want to train can fit on a single GPU, Ray can assign each training run to a separate Ray Task. In this way, all available workers are utilized to run independent remote training rather than one worker running jobs sequentially.
+
+.. figure:: /images/training_small_models.png
+  
+  Data parallelism pattern for distributed training on large datasets.
 
 How do I do many model training on Ray?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are three ways of using Ray to express this workload.
+To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune>`) library. This is the recommended library for most cases.
 
-1. If you have a large amount of data, use Ray Data (:ref:`Tutorial <mmt-datasets>`).
-2. If you have a small amount of data (<10GB), want to integrate with tools such as Weights & Biases and MLflow, and have less than 20,000 models, use Ray Tune (:ref:`Tutorial <mmt-tune>`).
-3. If your use case does not fit in any of the above categories (e.g., you need to scale up to 1 million models), use Ray Core (:ref:`Tutorial <mmt-core>`), which gives you finer-grained control over the application. This option requires you to understand the Ray Core :ref:`design patterns and anti-patterns <core-patterns>`.
+You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node). 
+If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <datasets>` library.
+Your data must be a :ref:`supported format <data-compatibility>`, to use Ray Data. 
 
-.. TODO
-  Add link to many model training blog.
+Alternative solutions exist for less common cases: 
+
+#. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
+#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`). 
+
+Learn more about many model training with the following resources.
 
 .. panels::
     :container: container pb-3
@@ -117,6 +135,13 @@ There are three ways of using Ray to express this workload.
         :type: url
         :text: [Blog] Training One Million ML Models in Record Time with Ray
         :classes: btn-link btn-block stretched-link millionModels
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
+        :type: url
+        :text: [Blog] Many Models Batch Training at Scale with Ray Core
+        :classes: btn-link btn-block stretched-link manyModels
     ---
     :img-top: /images/ray_logo.png
 
@@ -156,9 +181,15 @@ There are three ways of using Ray to express this workload.
 Model Serving
 -------------
 
-Ray's official serving solution is Ray Serve.
-Ray Serve is particularly well suited for model composition, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
+:ref:`Ray Serve <rayserve>` is well suited for model composition, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
 
+It supports complex `model deployment patterns <https://www.youtube.com/watch?v=mM4hJLelzSw>`_ requiring the orchestration of multiple Ray actors, where different actors provide inference for different models. Serve handles both batch and online inference and can scale to thousands of models in production.
+
+.. figure:: /images/multi_model_serve.png
+
+  Deployment patterns with Ray Serve. (Click image to enlarge.)
+
+Learn more about model serving with the following resources.
 
 .. panels::
     :container: container pb-3
@@ -211,7 +242,14 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
 Hyperparameter Tuning
 ---------------------
 
-Ray's Tune library enables any parallel Ray workload to be run under a hyperparameter tuning algorithm.
+The :ref:`Ray Tune <tune-main>` library enables any parallel Ray workload to be run under a hyperparameter tuning algorithm.
+
+Running multiple hyperparameter tuning experiments is a pattern apt for distributed computing because each experiment is independent of one another. Ray Tune handles the hard bit of distributing hyperparameter optimization and makes available key features such as checkpointing the best result, optimizing scheduling, and specifying search patterns.
+
+.. figure:: /images/tuning_use_case.png
+
+   Distributed tuning with distributed training per trial.
+
 Learn more about the Tune library with the following talks and user guides.
 
 .. panels::
@@ -265,8 +303,15 @@ Learn more about the Tune library with the following talks and user guides.
 Distributed Training
 --------------------
 
-Ray's Train library integrates many distributed training frameworks under a simple Trainer API,
+The :ref:`Ray Train <train-userguides>` library integrates many distributed training frameworks under a simple Trainer API,
 providing distributed orchestration and management capabilities out of the box.
+
+In contrast to training many models, model parallelism partitions a large model across many machines for training. Ray Train has built-in abstractions for distributing shards of models and running training in parallel.
+
+.. figure:: /images/model_parallelism.png
+
+  Model parallelism pattern for distributed large model training.
+
 Learn more about the Train library with the following talks and user guides.
 
 .. panels::
@@ -322,6 +367,12 @@ Reinforcement Learning
 
 RLlib is an open-source library for reinforcement learning (RL), offering support for production-level, highly distributed RL workloads while maintaining unified and simple APIs for a large variety of industry applications. RLlib is used by industry leaders in many different verticals, such as climate control, industrial control, manufacturing and logistics, finance, gaming, automobile, robotics, boat design, and many others.
 
+.. figure:: /images/rllib_use_case.png
+
+   Decentralized distributed proximal polixy optimiation (DD-PPO) architecture.
+
+Learn more about reinforcement learning with the following resources.
+
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
@@ -372,6 +423,18 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 
 ML Platform
 -----------
+
+`Merlin <https://shopify.engineering/merlin-shopify-machine-learning-platform>`_ is Shopify's ML platform built on Ray. It enables fast-iteration and `scaling of distributed applications <https://www.youtube.com/watch?v=kbvzvdKH7bc>`_ such as product categorization and recommendations.
+
+.. figure:: /images/shopify-workload.png
+
+  Shopify's Merlin architecture built on Ray.
+
+Spotify `uses Ray for advanced applications <https://www.anyscale.com/ray-summit-2022/agenda/sessions/180>`_ that include personalizing content recommendations for home podcasts, and personalizing Spotify Radio track sequencing.
+
+.. figure:: /images/spotify.png
+
+  How Ray ecosystem empowers ML scientists and engineers at Spotify.
 
 The following highlights feature companies leveraging Ray's unified API to build simpler, more flexible ML platforms.
 
@@ -427,7 +490,7 @@ The following highlights feature companies leveraging Ray's unified API to build
 End-to-End ML Workflows
 -----------------------
 
-The following are highlighted examples utilizing Ray AIR to implement end-to-end ML workflows.
+The following highlights examples utilizing Ray AIR to implement end-to-end ML workflows.
 
 .. panels::
     :container: container pb-3

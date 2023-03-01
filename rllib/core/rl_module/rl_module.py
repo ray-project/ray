@@ -56,7 +56,7 @@ class SingleAgentRLModuleSpec:
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            model_config=self.model_config,
+            model_config_dict=self.model_config,
         )
 
 
@@ -237,6 +237,8 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    # TODO: (Artur) Add a method `from_catalog` that creates RLModule from Catalog
+
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
 
@@ -333,7 +335,7 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during training called from the trainer. This method should
+        """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.
 
         Args:

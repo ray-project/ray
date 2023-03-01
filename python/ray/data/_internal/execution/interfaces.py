@@ -34,6 +34,10 @@ class RefBundle:
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
 
+    # This attribute is used by the split() operator to assign bundles to logical
+    # output splits. It is otherwise None.
+    output_split_idx: Optional[int] = None
+
     def __post_init__(self):
         for b in self.blocks:
             assert isinstance(b, tuple), b
@@ -139,6 +143,16 @@ class ExecutionResources:
         ):
             return False
         return True
+
+    def scale(self, f: float) -> "ExecutionResources":
+        """Return copy with all set values scaled by `f`."""
+        return ExecutionResources(
+            cpu=self.cpu * f if self.cpu is not None else None,
+            gpu=self.gpu * f if self.gpu is not None else None,
+            object_store_memory=self.object_store_memory * f
+            if self.object_store_memory is not None
+            else None,
+        )
 
 
 @dataclass
@@ -399,6 +413,13 @@ class Executor:
                 executor. These stats represent actions done to compute inputs.
         """
         raise NotImplementedError
+
+    def shutdown(self):
+        """Shutdown an executor, which may still be running.
+
+        This should interrupt execution and clean up any used resources.
+        """
+        pass
 
     def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far.

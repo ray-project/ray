@@ -15,8 +15,13 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_with_autosummary.rst
 
     Checkpoint
+
+.. autosummary::
+    :toctree: doc/
+
     Checkpoint.from_dict
     Checkpoint.from_bytes
     Checkpoint.from_directory
