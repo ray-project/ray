@@ -16,7 +16,7 @@ from ray.serve.tests.conftest import *  # noqa: F401 F403
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 
-MULTI_APP_PUT_URL = "http://localhost:52365/api/serve/applications"
+GET_OR_PUT_URL_V2 = "http://localhost:52365/api/serve/applications/"
 
 
 def deploy_and_check_config(config: Dict):
@@ -32,7 +32,7 @@ def deploy_and_check_config(config: Dict):
 
 
 def deploy_config_multi_app(config: Dict):
-    put_response = requests.put(MULTI_APP_PUT_URL, json=config, timeout=30)
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=config, timeout=30)
     assert put_response.status_code == 200
     print("PUT request sent successfully.")
 
@@ -198,7 +198,7 @@ def test_put_get_multi_app(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-@pytest.mark.parametrize("put_url", (GET_OR_PUT_URL, MULTI_APP_PUT_URL))
+@pytest.mark.parametrize("put_url", (GET_OR_PUT_URL, GET_OR_PUT_URL_V2))
 def test_put_bad_schema(ray_start_stop, put_url: str):
     config = {"not_a_real_field": "value"}
 
@@ -334,7 +334,7 @@ def test_delete_multi_app(ray_start_stop):
         print("Deployments are live and reachable over HTTP.\n")
 
         print("Sending DELETE request for config.")
-        delete_response = requests.delete(MULTI_APP_PUT_URL, timeout=15)
+        delete_response = requests.delete(GET_OR_PUT_URL_V2, timeout=15)
         assert delete_response.status_code == 200
         print("DELETE request sent successfully.")
 
