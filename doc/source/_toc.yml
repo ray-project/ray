@@ -5,8 +5,6 @@ parts:
     chapters: 
       - file: ray-overview/index
         title: "Overview"
-      - file: ray-overview/workloads
-        title: "ML Workloads with Ray"
       - file: ray-overview/getting-started
         title: "Getting Started"
       - file: ray-overview/installation
