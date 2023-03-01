@@ -1,14 +1,13 @@
-import numpy as np
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, Iterator
+from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
+import time
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
+from ray.data._internal.block_batching import batch_block_refs
 
 if TYPE_CHECKING:
-    import torch
+    import pyarrow
     from ray.data import Dataset
-    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
 class BulkDatasetIterator(DatasetIterator):
@@ -30,6 +29,7 @@ class BulkDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
 
         ds = self._base_dataset

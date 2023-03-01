@@ -49,7 +49,6 @@ from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 from ray.data._internal.compute import (
@@ -64,7 +63,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
-    _is_tensor_schema,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -2919,6 +2917,7 @@ class Dataset(Generic[T]):
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=_collate_fn,
         )
 
     @ConsumptionAPI

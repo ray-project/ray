@@ -3,18 +3,16 @@ import numpy as np
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.block import DataBatch
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
+    import pyarrow
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.data.dataset import Dataset
-    from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.train._internal.dataset_iterator import TrainDatasetIterator
+    from ray.data.dataset import TensorFlowTensorBatchType
 
 
 if sys.version_info >= (3, 8):
@@ -66,6 +64,7 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
