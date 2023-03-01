@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import cartpole_pb2 as cartpole__pb2
+import ray.rllib.examples.grpc_cartpole.cartpole_pb2 as cartpole__pb2
 
 
 class CartPoleStub(object):

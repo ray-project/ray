@@ -16,12 +16,9 @@ class EnvCreatorOnGRPC:
         # Start the server
 
         # use the current path as the working directory
-        path = Path(__file__).parent.absolute() / "cartpole_grpc_server.py"
+        path = "rllib/examples/grpc_cartpole/cartpole_grpc_server.py"
         port = getattr(env_config, "worker_index", 0) + self._port
         server_process = subprocess.Popen(["python", str(path), "--port", str(port)])
-
-        time.sleep(1)
-
         # Create the client
         env = CartPoleEnv(
             {"ip": "localhost", "port": port, "server_process": server_process}
@@ -36,8 +33,8 @@ if __name__ == "__main__":
         PPOConfig()
         .framework("torch")
         .environment("CartPoleGRPCEnv")
-        # .training(train_batch_size=32768)
-        .rollouts(num_rollout_workers=2)
+        .training(train_batch_size=32768)
+        .rollouts(num_rollout_workers=64)
     )
 
     results = tune.Tuner(

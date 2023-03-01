@@ -21,6 +21,7 @@ class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
         self.env = gym.make("CartPole-v1")
 
     def reset(self, request, context):
+        print("server reset")
         state, _ = self.env.reset()
         return cartpole_pb2.State(
             cart_position=state[0],
@@ -30,6 +31,7 @@ class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
         )
 
     def step(self, request, context):
+        print("server step")
         action = request.action
         state, reward, terminated, truncated, _ = self.env.step(action)
         return cartpole_pb2.StepResult(
@@ -50,6 +52,7 @@ def serve(pargs):
     cartpole_pb2_grpc.add_CartPoleServicer_to_server(CartPoleEnv(), server)
     server.add_insecure_port(f"{pargs.ip}:{pargs.port}")
     server.start()
+    print("Server started at port ", pargs.port)
     server.wait_for_termination()
 
 
