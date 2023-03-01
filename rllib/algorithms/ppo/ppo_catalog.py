@@ -69,7 +69,7 @@ class PPOCatalog(Catalog):
         # Get a mapping from framework to action distribution class
         self.action_dist_cls_dict = self.get_action_dist_cls_dict(
             action_space=action_space,
-            config=self.model_config_dict,
+            model_config_dict=self.model_config_dict,
         )
 
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
@@ -143,7 +143,7 @@ class PPOCatalog(Catalog):
         action_distribution_cls = self.action_dist_cls_dict[framework]
         self.pi_head_config.output_dim = (
             action_distribution_cls.required_model_output_shape(
-                action_space=self.action_space, config=self.model_config_dict
+                space=self.action_space, model_config=self.model_config_dict
             )[0]
         )
         return self.pi_head_config.build(framework=framework)
@@ -163,10 +163,10 @@ class PPOCatalog(Catalog):
         """
         return self.vf_head_config.build(framework=framework)
 
-    def build_action_dist(self, framework: str):
-        """Builds the action distribution.
+    def get_action_dist_cls(self, framework: str):
+        """Get the action distribution class.
 
-        The default behavior is to build the action distribution from the
+        The default behavior is to get the action distribution from the
         action_dist_cls_dict. This can be overridden to build a custom action
         distribution as a means of configuring the behavior of a PPORLModuleBase
         implementation.
@@ -177,6 +177,4 @@ class PPOCatalog(Catalog):
         Returns:
             The action distribution.
         """
-        return self.action_dist_cls_dict[framework](
-            action_space=self.action_space, config=self.model_config_dict
-        )
+        return self.action_dist_cls_dict[framework]
