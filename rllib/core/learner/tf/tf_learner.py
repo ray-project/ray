@@ -258,6 +258,7 @@ class TfLearner(Learner):
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
             result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+            self._check_result(result)
             results.append(result)
 
         # Reduce results across all minibatches, if necessary.
