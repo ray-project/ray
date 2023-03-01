@@ -8,7 +8,7 @@ def handle_result(
     test: Test,
     result: Result,
 ) -> Optional[str]:
-    test_name = test["legacy"]["test_name"]
+    test_name = test["name"]
 
     msg = ""
     success = result.status == "finished"
@@ -22,7 +22,7 @@ def handle_result(
         else:
             msg += "Test script failed. "
 
-    if test_name == "long_running_large_checkpoints":
+    if test_name == "tune_scalability_long_running_large_checkpoints":
         last_update_diff = result.results.get("last_update_diff", float("inf"))
         target_update_diff = 360
 
@@ -33,22 +33,22 @@ def handle_result(
             )
         return None
 
-    elif test_name == "bookkeeping_overhead":
+    elif test_name == "tune_scalability_bookkeeping_overhead":
         target_terminated = 10000
         target_time = 800
-    elif test_name == "durable_trainable":
+    elif test_name == "tune_scalability_durable_trainable":
         target_terminated = 16
         target_time = 650
-    elif test_name == "network_overhead":
+    elif test_name == "tune_scalability_network_overhead":
         target_terminated = 100 if not was_smoke_test else 20
         target_time = 900 if not was_smoke_test else 400
-    elif test_name == "result_throughput_cluster":
+    elif test_name == "tune_scalability_result_throughput_cluster":
         target_terminated = 1000
         target_time = 130
-    elif test_name == "result_throughput_single_node":
+    elif test_name == "tune_scalability_result_throughput_single_node":
         target_terminated = 96
         target_time = 120
-    elif test_name == "xgboost_sweep":
+    elif test_name == "tune_scalability_xgboost_sweep":
         target_terminated = 31
         target_time = 3600
     else:
