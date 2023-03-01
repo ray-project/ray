@@ -1,13 +1,12 @@
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type, Union
 
-from ray.air.checkpoint import Checkpoint
-from ray.data.preprocessor import Preprocessor
-
 import numpy as np
 import torch
 
+from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
+from ray.data.preprocessor import Preprocessor
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
@@ -21,9 +20,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class LightningPredictor(DLPredictor):
-    """A predictor for PyTorch models.
+    """A predictor for PyTorchLightning models.
 
     Args:
         model: The torch module to use for predictions.
@@ -107,6 +106,7 @@ class LightningPredictor(DLPredictor):
 
         """
         with torch.no_grad():
+            # TODO(yunxuanx): How to get the batch_idx value?
             output = self.model.predict_step(inputs, batch_idx=0)
         return output
 

@@ -1,41 +1,99 @@
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.strategies.ddp import DDPStrategy
 
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union, Type, Any
 from inspect import isclass
-from pytorch_lightning import strategies
-from pytorch_lightning.core import datamodule
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 import ray
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.data.preprocessor import Preprocessor
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
-from ray.tune import checkpoint_dir
-from ray.util import PublicAPI
-from ray.air import CheckpointConfig, session
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
-
 from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment, RayModelCheckpoint
+from ray.util import PublicAPI
 
-# if TYPE_CHECKING:
-from ray.data.preprocessor import Preprocessor
 
 LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
+LIGHTNING_DATAMODULE_KEY = "_lightning_datamodule"
 MODEL_CHECKPOINT_CONFIG = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
-LIGHTNING_DATAMODULE_KEY = "_lightning_datamodule"
+
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
+    """A Trainer for data parallel PyTorch Lightning training.
+
+    This Trainer runs the ``pytorch_lightning.Trainer.fit()`` method on multiple
+    Ray Actors. The training is carried out in a distributed fashion through PyTorch
+    DDP. These actors already have the necessary Torch process group configured for 
+    distributed data parallel training.
+
+    The training function ran on every Actor will first initialize an instance
+    of the user-provided ``lightning_module`` class, which is a subclass of
+    ``pytorch_lightning.LightningModule`` using the arguments provided in
+    ``lightning_module_init_config``.
+
+    For data ingestion, the LightningTrainer will then either convert the Ray Dataset 
+    shards to a ``pytorch_lightning.LightningDataModule``, or directly use the datamodule 
+    if provided by users. 
+
+    The trainer will also create a ModelCheckpoint callback based on the configuration 
+    provided in ``model_checkpoint_config``. Notice that all the other ModelCheckpoint 
+    callbacks specified in ``lightning_trainer_config`` will be ignored.
+
+    Then, the training function will initialize an instance of ``pytorch_lightning.Trainer``
+    using the arguments provided in ``trainer_init_config`` and then run
+    ``pytorch_lightning.Trainer.fit``.
+
+    Args:
+        lightning_module: A class object (not a class instance) that is a subclass
+            of ``pytorch_lightning.LightningModule``. This class should define your
+            model logic.
+        lightning_module_config: Configurations to pass into
+            ``lightning_module.__init__`` as kwargs.
+        lightning_trainer_config: Configurations to pass into
+            ``pytorch_lightning.Trainer.__init__`` as kwargs. For valid arguments to
+            pass, see
+            https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
+        ddp_strategy_config: Configurations to pass into
+            ``pytorch_lightning.strategies.DDPStrategy.__init__`` as kwargs. Most users
+            should only set this to ``{"find_unused_parameters": False}`` or leave this
+            as-is. For valid arguments to pass, see
+            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html#pytorch_lightning.strategies.DDPStrategy
+            and
+            https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel.
+        model_checkpoint_config: Configurations used to build a RayModelCheckpoint callback.
+            The valid arguments list is the same as ``pytorch_lightning.callbacks.ModelCheckpoint``. Please check:
+            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html#pytorch_lightning.callbacks.ModelCheckpoint
+        torch_config: Configuration for setting up the PyTorch backend. If set to
+            None, use the default configuration. This replaces the ``backend_config``
+            arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
+        scaling_config: Configuration for how to scale data parallel training.
+        dataset_config: Configuration for dataset ingest.
+        run_config: Configuration for the execution of the training run.
+        datasets: Any Ray Datasets to use for training. Use
+            the key "train" to denote which dataset is the training
+            dataset and (optionally) key "evaluation" to denote the evaluation
+            dataset. Can only contain a training dataset
+            and up to one extra dataset to be used for evaluation.
+            If a ``preprocessor`` is provided and has not already been fit,
+            it will be fit on the training dataset. All datasets will be
+            transformed by the ``preprocessor`` if one is provided.
+        preprocessor: A ray.data.Preprocessor to preprocess the
+            provided datasets.
+        resume_from_checkpoint: A checkpoint to resume training from.
+    """
+
     def __init__(
         self,
         lightning_module: pl.LightningModule,
@@ -106,19 +164,20 @@ class LightningTrainer(DataParallelTrainer):
 
         if model_checkpoint_config:
             trainer_loop_config[MODEL_CHECKPOINT_CONFIG] = model_checkpoint_config
-        
+
         if datamodule:
             trainer_loop_config[LIGHTNING_DATAMODULE_KEY] = datamodule
         return trainer_loop_config
 
 
 def _lightning_train_loop_per_worker(config):
-    """Per-worker training loop for HuggingFace Transformers."""
+    """Per-worker training loop for a Lightning Trainer."""
     datamodule = config.get(LIGHTNING_DATAMODULE_KEY, None)
     if not datamodule:
         # Build Datamodule with Ray Datasets
         train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
         eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
+        # TODO(yunxuanx): Integrate with Ray datasets
         # datamodule = build_data_module(train_dataset, eval_dataset, ...)
 
     LightningModuleCls = config.pop(LIGHTNING_MODULE_KEY)
@@ -126,19 +185,19 @@ def _lightning_train_loop_per_worker(config):
     lightning_module = LightningModuleCls(**module_init_config)
 
     trainer_config = config.get(LIGHTNING_TRAINER_CONFIG_KEY, {})
-    trainer_config["enable_progress_bar"] = True
+    trainer_config["enable_progress_bar"] = False
     trainer_config["enable_checkpointing"] = True
 
-    # set trainer's parallel devices
+    # Setup trainer's parallel devices
     current_device = ray.train.torch.get_device()
     trainer_config["devices"] = [current_device.index]
 
-    # set ray cluster env
+    # Setup ray cluster environment info
     trainer_config["plugins"] = [plugin for plugin in trainer_config.get(
         "plugins", []) if not isinstance(plugin, ClusterEnvironment)]
     trainer_config["plugins"].append(RayEnvironment())
 
-    # Setup ddp strategy
+    # Setup ddp strategy for ray orchestration
     ddp_strategy_config = config.get(DDP_STRATEGY_CONFIG_KEY, {})
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
@@ -150,6 +209,7 @@ def _lightning_train_loop_per_worker(config):
 
     trainer = pl.Trainer(**trainer_config)
 
+    # Restore the training from a previously interrupted/failed run.
     checkpoint_path = None
     checkpoint = session.get_checkpoint()
     if checkpoint:
