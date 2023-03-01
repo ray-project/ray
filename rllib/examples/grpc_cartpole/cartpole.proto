@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package cartpole;
+
+service CartPole {
+    rpc reset (Empty) returns (State) {}
+    rpc step (Action) returns (StepResult) {}
+}
+
+message Empty {}
+
+message Action {
+    int32 action = 1;
+}
+
+message State {
+    float cart_position = 1;
+    float cart_velocity = 2;
+    float pole_angle = 3;
+    float pole_velocity = 4;
+}
+
+message StepResult {
+    State state = 1;
+    float reward = 2;
+    bool terminated = 3;
+    bool truncated = 4;
+}
