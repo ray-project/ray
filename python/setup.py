@@ -798,7 +798,11 @@ setuptools.setup(
         "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
-    exclude_package_data={"": ["BUILD"]},
+    exclude_package_data={
+        # Empty string means "any package".
+        # Therefore, exclude BUILD from every package:
+        "": ["BUILD"],
+    },
     zip_safe=False,
     license="Apache 2.0",
 ) if __name__ == "__main__" else None
