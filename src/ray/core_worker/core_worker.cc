@@ -2628,11 +2628,11 @@ Status CoreWorker::ExecuteTask(
     task_manager_->RecordTaskStatusEvent(
         task_spec.AttemptNumber(),
         task_spec,
-        rpc::TaskStatus::NIL, /* We will record the terminal state on the submitter worker
-                               */
-        false,
-        absl::nullopt,
-        absl::nullopt,
+        /* We will record the terminal state on the submitter worker */
+        rpc::TaskStatus::NIL,
+        /* include_task_info */ false,
+        /* node_id */ absl::nullopt,
+        /* worker_id */ absl::nullopt,
         task_log_info);
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()

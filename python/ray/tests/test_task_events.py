@@ -700,7 +700,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
 
 
 def test_task_logs_info_basic(shutdown_only):
-    """Test tasks (normal tasks/actor tasks) execution logging 
+    """Test tasks (normal tasks/actor tasks) execution logging
     to files have the correct task log info
     """
     ray.init(num_cpus=1)
@@ -716,12 +716,12 @@ def test_task_logs_info_basic(shutdown_only):
             err_msg += f"this is log line {j} to stderr from {x}\n"
         print(err_msg, end="", file=sys.stderr)
         return out_msg, err_msg
-        
+
     @ray.remote
     class Actor:
         def print(self, x):
             return do_print(x)
-        
+
     @ray.remote
     def task_print(x):
         return do_print(x)
@@ -729,15 +729,19 @@ def test_task_logs_info_basic(shutdown_only):
     a = Actor.remote()
     expected_logs = {}
     for j in range(3):
-        exp_actor_out, exp_actor_err = ray.get(a.print.options(name=f"actor-task-{j}").remote(f"actor-task-{j}"))
+        exp_actor_out, exp_actor_err = ray.get(
+            a.print.options(name=f"actor-task-{j}").remote(f"actor-task-{j}")
+        )
         expected_logs[f"actor-task-{j}-out"] = exp_actor_out
-        expected_logs[f"actor-task-{j}-err"] = exp_actor_err 
+        expected_logs[f"actor-task-{j}-err"] = exp_actor_err
 
     for j in range(3):
-        exp_task_out, exp_task_err = ray.get(task_print.options(name=f"normal-task-{j}").remote(f"normal-task-{j}"))
+        exp_task_out, exp_task_err = ray.get(
+            task_print.options(name=f"normal-task-{j}").remote(f"normal-task-{j}")
+        )
         expected_logs[f"normal-task-{j}-out"] = exp_task_out
-        expected_logs[f"normal-task-{j}-err"] = exp_task_err 
-    
+        expected_logs[f"normal-task-{j}-err"] = exp_task_err
+
     def _read_file(filepath, start, end):
         with open(filepath, "r") as f:
             f.seek(start, 0)
@@ -757,7 +761,9 @@ def test_task_logs_info_basic(shutdown_only):
             start_offset = log_info[f"std{type}_start"]
             end_offset = log_info[f"std{type}_end"]
             assert end_offset >= start_offset
-            assert start_offset > 0, "offsets should always be positive since there are magical prefix for task logs"
+            assert (
+                start_offset > 0
+            ), "offsets should be > 0 with magical log prefix"
             actual_log = _read_file(file, start_offset, end_offset)
             assert actual_log == expected_logs[f"{task_name}-{type}"]
 
@@ -768,31 +774,30 @@ def test_task_logs_info_basic(shutdown_only):
             check_file("err", f"actor-task-{j}")
 
             return True
-        
+
     wait_for_condition(verify)
 
 
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
-    """Test when redirect disabled, no task log info is available due to missing log file"""
+    """Test when redirect disabled, no task log info is available 
+    due to missing log file
+    """
     with monkeypatch.context() as m:
-        m.setenv(
-            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE, 
-            "1"
-        )
+        m.setenv(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE, "1")
 
         ray.init(num_cpus=1)
 
         @ray.remote
         def f():
             print("hi")
-        
+
         ray.get(f.remote())
+
         def verify():
             tasks = list_tasks()
 
             assert len(tasks) == 1
             assert tasks[0].get("task_log_info") is None
             return True
-        
-        wait_for_condition(verify)
 
+        wait_for_condition(verify)

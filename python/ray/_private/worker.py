@@ -71,7 +71,10 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
-from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger, configure_log_file, get_worker_log_file_name
+from ray._private.ray_logging import (
+    global_worker_stdstream_dispatcher,
+    setup_logger,
+)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -522,24 +525,30 @@ class Worker:
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
 
-    def set_err_file(self, err_file = Optional[IO[AnyStr]]) -> None:
+    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
+        """Set the worker's err file where stderr is redirected to"""
         self._err_file = err_file
 
-    def set_out_file(self, out_file = Optional[IO[AnyStr]]) -> None:
-        self._out_file = out_file 
+    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
+        """Set the worker's out file where stdout is redirected to"""
+        self._out_file = out_file
 
     def get_err_file_path(self) -> str:
+        """Get the err log file path"""
         return self._err_file.name if self._err_file is not None else ""
-    
+
     def get_out_file_path(self) -> str:
+        """Get the out log file path"""
         return self._out_file.name if self._out_file is not None else ""
 
     def get_current_out_offset(self) -> int:
+        """Get the current offset of the out file if seekable, else 0"""
         if self._out_file is not None and self._out_file.seekable():
             return self._out_file.tell()
         return 0
-    
+
     def get_current_err_offset(self) -> int:
+        """Get the current offset of the err file if seekable, else 0"""
         if self._err_file is not None and self._err_file.seekable():
             return self._err_file.tell()
         return 0

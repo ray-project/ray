@@ -321,13 +321,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// for SUBMITTED_TO_WORKER status change.
   /// \param worker_id Worker ID of the worker for which the task's submitted. Only
   /// applicable for SUBMITTED_TO_WORKER status change.
-  void RecordTaskStatusEvent(int32_t attempt_number,
-                             const TaskSpecification &spec,
-                             rpc::TaskStatus status,
-                             bool include_task_info = false,
-                             absl::optional<NodeID> node_id = absl::nullopt,
-                             absl::optional<WorkerID> worker_id = absl::nullopt,
-                             absl::optional<rpc::TaskLogInfo> task_log_info = absl::nullopt);
+  /// \param task_log_info Optional rpc::TaskLogInfo.
+  void RecordTaskStatusEvent(
+      int32_t attempt_number,
+      const TaskSpecification &spec,
+      rpc::TaskStatus status,
+      bool include_task_info = false,
+      absl::optional<NodeID> node_id = absl::nullopt,
+      absl::optional<WorkerID> worker_id = absl::nullopt,
+      absl::optional<rpc::TaskLogInfo> task_log_info = absl::nullopt);
 
  private:
   struct TaskEntry {
