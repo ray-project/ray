@@ -18,6 +18,15 @@ import zipfile
 from enum import Enum
 from itertools import chain
 
+# Workaround for setuptools_scm (used on macos) adding junk files
+# https://stackoverflow.com/a/61274968/8162137
+try:
+    import setuptools_scm.integration
+
+    setuptools_scm.integration.find_files = lambda _: []
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
