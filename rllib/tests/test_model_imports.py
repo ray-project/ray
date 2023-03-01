@@ -175,7 +175,8 @@ def model_import_test(config):
         check(weight_before_import, weight_after_train, false=True)
         check(weight_after_import, weight_after_train, false=True)
 
-        # We can save the entire Algorithm and restore; weights should remain the same.
+        # We can save the entire Agent and restore, weights should remain the
+        # same.
         file = agent.save("after_train")
         check(weight_after_train, current_weight(agent))
         agent.restore(file)

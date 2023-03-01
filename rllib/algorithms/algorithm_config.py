@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import logging
 import math
 import os
@@ -7,6 +8,7 @@ from typing import (
     Callable,
     Container,
     Dict,
+    Mapping,
     Optional,
     Tuple,
     Type,
@@ -50,7 +52,7 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.serialization import serialize_type, serialize_function
+from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -472,16 +474,8 @@ class AlgorithmConfig(_Config):
     def learner_hps(self) -> LearnerHPs:
         return self._learner_hps
 
-    def to_dict(self, serializable: bool = False) -> AlgorithmConfigDict:
+    def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
-
-        Args:
-            serializable: If True, the resulting dict will not have any code in it.
-                Classes (such as `callbacks_class`) will be converted to their full
-                classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
-                Actual code such as lambda functions will be written as their source
-                code (str) plus any closure information for properly restoring the
-                code inside the AlgorithmConfig object made from the returned dict data.
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
@@ -552,10 +546,6 @@ class AlgorithmConfig(_Config):
             if config.get(dep_k) == DEPRECATED_VALUE:
                 config.pop(dep_k, None)
 
-        # Make all fields serializable, if required.
-        if serializable:
-            config = self.make_config_dict_serializable(config)
-
         return config
 
     def update_from_dict(
@@ -608,6 +598,16 @@ class AlgorithmConfig(_Config):
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
             elif key == "callbacks_class":
+                # Resolve classpath.
+                if isinstance(value, str):
+                    value = deserialize_type(value)
+                    if not value:
+                        raise ValueError(
+                            f"Your `callbacks_class` ({config_dict['callbacks_class']})"
+                            " could not be deserialized into a class! Make sure you "
+                            "have all necessary pip packages installed and all custom "
+                            "modules are in your `PYTHONPATH` env variable."
+                        )
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
@@ -631,6 +631,23 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
+
+    def serialize(self) -> Mapping[str, Any]:
+        """Returns a mapping from str to JSON'able values representing this config.
+
+        The resulting values will not have any code in them.
+        Classes (such as `callbacks_class`) will be converted to their full
+        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+        Actual code such as lambda functions will be written as their source
+        code (str) plus any closure information for properly restoring the
+        code inside the AlgorithmConfig object made from the returned dict data.
+        Dataclass objects get converted to dicts.
+
+        Returns:
+            A mapping from str to JSON'able values.
+        """
+        config = self.to_dict()
+        return self._serialize_dict(config)
 
     def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
         """Creates a deep copy of this config and (un)freezes if necessary.
@@ -2007,15 +2024,11 @@ class AlgorithmConfig(_Config):
             self.policy_map_capacity = policy_map_capacity
 
         if policy_mapping_fn is not NotProvided:
+            # Create `policy_mapping_fn` from a config dict.
+            # Helpful is users would like to specify custom callable classes in
+            # yaml files.
             if isinstance(policy_mapping_fn, dict):
-                # Try unserializing from a source-code dict.
-                # Or as a last resort: Create `policy_mapping_fn` from config dict.
-                # Helpful is users would like to specify custom callable classes in
-                # yaml files.
-                policy_mapping_fn = (
-                    unserialize_function(policy_mapping_fn)
-                    or from_config(policy_mapping_fn)
-                )
+                policy_mapping_fn = from_config(policy_mapping_fn)
             self.policy_mapping_fn = policy_mapping_fn
 
         if observation_fn is not NotProvided:
@@ -2886,50 +2899,6 @@ class AlgorithmConfig(_Config):
 
         return config
 
-    @staticmethod
-    def make_config_dict_serializable(config):
-        """Makes the given config dict serializable by replacing all code in it.
-        
-        Classes get converted to full classpath strings.
-        Functions (lambdas) get converted to source code strings.
-        Dataclass objects get converted to dicts.
-        
-        Args:
-            config: The config dict to convert (gets converted in place).
-
-        Returns:
-            The converted config dict (converted in place).
-        """
-        config["callbacks"] = serialize_type(config["callbacks"])
-        config["sample_collector"] = serialize_type(config["sample_collector"])
-        if isinstance(config["_learner_hps"], LearnerHPs):
-            config["_learner_hps"] = config["_learner_hps"].__dict__
-        if isinstance(config["env"], type):
-            config["env"] = serialize_type(config["env"])
-        if "replay_buffer_config" in config and (
-            isinstance(config["replay_buffer_config"].get("type"), type)
-        ):
-            config["replay_buffer_config"]["type"] = serialize_type(
-                config["replay_buffer_config"]["type"]
-            )
-        if isinstance(config["exploration_config"].get("type"), type):
-            config["exploration_config"]["type"] = serialize_type(
-                config["exploration_config"]["type"]
-            )
-        if isinstance(config["model"]["custom_model"], type):
-            config["model"]["custom_model"] = serialize_type(
-                config["model"]["custom_model"]
-            )
-        if config["multiagent"]["policy_mapping_fn"]:
-            config["multiagent"]["policy_mapping_fn"] = serialize_function(
-                config["multiagent"]["policy_mapping_fn"]
-            )
-        if config["multiagent"]["policies"]:
-            config["multiagent"]["policy_mapping_fn"] = serialize_function(
-                config["multiagent"]["policy_mapping_fn"]
-            )
-        return config
-
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
 
@@ -3011,6 +2980,39 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @staticmethod
+    def _serialize_dict(config):
+        # Serialize classes to classpaths:
+        config["callbacks"] = serialize_type(config["callbacks"])
+        config["sample_collector"] = serialize_type(config["sample_collector"])
+        if isinstance(config["env"], type):
+            config["env"] = serialize_type(config["env"])
+        if "replay_buffer_config" in config and (
+            isinstance(config["replay_buffer_config"].get("type"), type)
+        ):
+            config["replay_buffer_config"]["type"] = serialize_type(
+                config["replay_buffer_config"]["type"]
+            )
+        if isinstance(config["exploration_config"].get("type"), type):
+            config["exploration_config"]["type"] = serialize_type(
+                config["exploration_config"]["type"]
+            )
+        if isinstance(config["model"]["custom_model"], type):
+            config["model"]["custom_model"] = serialize_type(
+                config["model"]["custom_model"]
+            )
+
+        # Serialize dataclasses.
+        if isinstance(config["_learner_hps"], LearnerHPs):
+            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
+
+        # Serialize functions/lambdas.
+        if config["multiagent"]["policy_mapping_fn"]:
+            config["multiagent"]["policy_mapping_fn"] = "__not_serializable__"
+        if config["multiagent"]["policies_to_train"]:
+            config["multiagent"]["policies_to_train"] = "__not_serializable__"
+        return config
 
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:

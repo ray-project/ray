@@ -101,6 +101,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
+from ray.rllib.utils.serialization import deserialize_type
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
@@ -262,13 +263,29 @@ class Algorithm(Trainable):
                 "2) Call the `restore()` method of this algo object passing it"
                 " your checkpoint dir or AIR Checkpoint object."
             )
-
-        if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+        elif checkpoint_info["checkpoint_version"] < version.Version("1.0"):
             raise ValueError(
                 "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
                 "()` must be 1.0 or later! You are using a checkpoint with "
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
+
+        if checkpoint_info["format"] == "msgpack":
+            if policy_mapping_fn is None or policies_to_train is None:
+                # Only DEFAULT_POLICY_ID present in this algorithm, provide default
+                # implementations of these two functions. 
+                if checkpoint_info["policy_ids"] == [DEFAULT_POLICY_ID]:
+                    
+                else:
+                    raise ValueError(
+                        "You are trying to restore a multi-agent algorithm from a "
+                        "`msgpack` formatted checkpoint, which do NOT store multi "
+                        "agent related `policy_mapping_fn` or `policies_to_train` "
+                        "information! Make sure that when using the "
+                        "`Algorithm.from_checkpoint()` utility, you also pass the "
+                        "args: `policy_mapping_fn` AND `policies_to_train` these two "
+                        "properties via [algorithm]."
+                    )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
@@ -2638,9 +2655,9 @@ class Algorithm(Trainable):
             # Get Algorithm class.
             algo_cls = state["algorithm_class"]
             if isinstance(algo_cls, str):
-                # Try unserializing from a full classpath.
+                # Try deserializing from a full classpath.
                 # Or as a last resort: Tune registered algorithm name.
-                algo_cls = unserialize_type(algo_cls) or get_trainable_cls(algo_cls)
+                algo_cls = deserialize_type(algo_cls) or get_trainable_cls(algo_cls)
             # Compile actual config object.
             default_config = algo_cls.get_default_config()
             if isinstance(default_config, AlgorithmConfig):

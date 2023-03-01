@@ -84,6 +84,7 @@ class TestCheckpointUtils(unittest.TestCase):
             # Convert pickle checkpoint to msgpack.
             with tempfile.TemporaryDirectory() as msgpack_cp_dir:
                 create_msgpack_checkpoint(pickle_cp_dir, msgpack_cp_dir)
+                TODO: add policies to train, policy_mapping_fn
                 algo2 = Algorithm.from_checkpoint(msgpack_cp_dir)
         msgpack_state = algo2.__getstate__()
 

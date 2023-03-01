@@ -7,7 +7,6 @@ from typing import Any, Dict, Union
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.rllib.utils.serialization import serialize_function
 from ray.util.annotations import PublicAPI
 
 # The current checkpoint version used by RLlib for Algorithm and Policy checkpoints.
@@ -162,12 +161,12 @@ def create_msgpack_checkpoint(
     state = algo.__getstate__()
 
     # Convert all code in state into serializable data.
-    # Algorithm class.
+    # Serialize the algorithm class.
     algo_class = state["algorithm_class"]
     algo_class = algo_class.__module__ + "." + algo_class.__name__
     state["algorithm_class"] = algo_class
-    # All keys in `config`.
-    state["config"] = state["config"].to_dict(serializable=True)
+    # Serialize the algorithm's config object.
+    state["config"] = state["config"].serialize()
 
     # Extract policy states from worker state (Policies get their own
     # checkpoint sub-dirs).
@@ -176,15 +175,9 @@ def create_msgpack_checkpoint(
         policy_states = state["worker"].pop("policy_states", {})
 
     # Policy mapping fn.
-    pol_map_fn = state["worker"]["policy_mapping_fn"]
-    if callable(pol_map_fn):
-        state["worker"]["policy_mapping_fn"] = serialize_function(
-            pol_map_fn
-        )
+    state["worker"]["policy_mapping_fn"] = "__not_serializable__"
     # Is Policy to train function.
-    is_pol_to_train = state["worker"]["is_policy_to_train"]
-    if callable(is_pol_to_train):
-        state["worker"]["is_policy_to_train"] = serialize_function(is_pol_to_train)
+    state["worker"]["is_policy_to_train"] = "__not_serializable__"
 
     # Add RLlib checkpoint version (as string).
     state["checkpoint_version"] = str(CHECKPOINT_VERSION)
@@ -209,7 +202,8 @@ def create_msgpack_checkpoint(
 
     # Write individual policies to disk, each in their own sub-directory.
     for pid, policy_state in policy_states.items():
-        # From here on, disallow policyIDs that would not work as directory names.        validate_policy_id(pid, error=True)
+        # From here on, disallow policyIDs that would not work as directory names.
+        validate_policy_id(pid, error=True)
         policy_dir = os.path.join(msgpack_checkpoint_dir, "policies", pid)
         os.makedirs(policy_dir, exist_ok=True)
         policy = algo.get_policy(pid)

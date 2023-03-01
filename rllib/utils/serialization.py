@@ -1,8 +1,8 @@
 import base64
-import inspect
+import importlib
 import io
 import zlib
-from typing import Any, Callable, Dict, Optional, Sequence, Type, Union
+from typing import Any, Dict, Optional, Sequence, Type, Union
 
 import numpy as np
 
@@ -330,39 +330,6 @@ def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any
 
 
 @DeveloperAPI
-def serialize_function(function: Union[Callable, dict]) -> dict:
-    """Converts a function into a dict of source-code- and closure information.
-
-    Args:
-        function: The callable to convert.
-
-    Returns:
-        A dict with keys: 'source_code' (value: source code string) and
-        'closures_globals' (value: dict mapping global variable names to their values).
-    """
-    # Already serialized.
-    if isinstance(function, dict):
-        return function
-
-    source_code = inspect.getsource(function)
-    globals = inspect.getclosurevars(function).globals
-
-    return {
-        "source_code": source_code,
-        "closures_globals": globals,
-    }
-
-
-@DeveloperAPI
-def deserialize_function(function_dict: str) -> Callable:
-    # Already deserialized.
-    if callable(function_dict):
-        return function_dict
-
-    exec(function_dict["source_code"], function_dict["closures_globals"])
-
-
-@DeveloperAPI
 def serialize_type(type_: Union[Type, str]) -> str:
     """Converts a type into its full classpath ([module file] + "." + [class name]).
 
@@ -383,10 +350,11 @@ def serialize_type(type_: Union[Type, str]) -> str:
 def deserialize_type(type_str: str) -> Optional[type]:
     """TODO: docstr"""
     if type_str.find(".") != -1:
-        module_name, function_name = type_.rsplit(".", 1)
+        module_name, function_name = type_str.rsplit(".", 1)
         try:
             module = importlib.import_module(module_name)
             constructor = getattr(module, function_name)
+            return constructor
         # Module not found.
         except (ModuleNotFoundError, ImportError, AttributeError):
             pass
