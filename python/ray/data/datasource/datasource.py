@@ -403,7 +403,7 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         This will be used as the names of the read tasks.
         Note: overrides the base `Datasource` method.
         """
-        return "ReadRandomInt"
+        return "RandomInt"
 
     def create_reader(
         self,

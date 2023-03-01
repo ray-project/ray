@@ -26,7 +26,7 @@ class ParquetBaseDatasource(FileBasedDatasource):
         This will be used as the names of the read tasks.
         Note: overrides the base `Datasource` method.
         """
-        return "ReadParquetBulk"
+        return "ParquetBulk"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         import pyarrow.parquet as pq
