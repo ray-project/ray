@@ -235,7 +235,10 @@ class Catalog:
             # input_space is a possibly nested structure of spaces.
             else:
                 # NestedModelConfig
-                raise NotImplementedError("No default config for complex spaces yet!")
+                raise NotImplementedError(
+                    f"No default config for observation space"
+                    f" {observation_space} yet!"
+                )
 
         return encoder_config
 

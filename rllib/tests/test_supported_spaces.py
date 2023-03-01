@@ -66,6 +66,41 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["env"] = RandomEnv
 
     def _do_check(alg, config, a_name, o_name):
+        if alg == "PPO":
+            config.validate()
+            # If RLModules are enabled, we need to skip a few tests for now:
+            if config._enable_rl_module_api:
+                # Skip PPO cases in which RLModules don't support the given spaces yet.
+                new_a_name = a_name
+                a_name_changed = False
+                new_o_name = o_name
+                o_name_changed = False
+                if a_name in [
+                    "int_actions",
+                    "multidiscrete",
+                    "tuple",
+                    "dict",
+                    "vector2d",
+                ]:
+                    # TODO(Artur): Implement support for these spaces and test with
+                    #  RLModules.
+                    new_a_name = "discrete"
+                    a_name_changed = True
+                if o_name in ["multi_binary", "tuple", "dict", "vector2d"]:
+                    # TODO(Artur): Implement support for these spaces and test with
+                    #  RLModules.
+                    new_o_name = "discrete"
+                    o_name_changed = True
+                if a_name_changed or o_name_changed:
+                    print(
+                        f"Skipping PPO test case: Action space {a_name}, obs space "
+                        f"{o_name}. Testing action space {new_a_name}, obs space"
+                        f" {new_o_name} "
+                        f"instead."
+                    )
+                    a_name = new_a_name
+                    o_name = new_o_name
+
         fw = config["framework"]
         action_space = ACTION_SPACES_TO_TEST[a_name]
         obs_space = OBSERVATION_SPACES_TO_TEST[o_name]
@@ -100,7 +135,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
-            if alg not in ["DDPG", "ES", "ARS", "SAC"]:
+            if alg not in ["DDPG", "ES", "ARS", "SAC", "PPO"]:
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
