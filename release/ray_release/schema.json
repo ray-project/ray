@@ -18,9 +18,6 @@
                 "env": {
 					"type": "string"
 				},
-				"legacy": {
-					"$ref": "#/definitions/Legacy"
-				},
 				"stable": {
 					"type": "boolean"
 				},
@@ -98,23 +95,6 @@
 				"cluster_env"
 			],
 			"title": "Cluster"
-		},
-		"Legacy": {
-			"type": "object",
-			"additionalProperties": false,
-			"properties": {
-				"test_name": {
-					"type": "string"
-				},
-				"test_suite": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"test_name",
-				"test_suite"
-			],
-			"title": "Legacy"
 		},
 		"Run": {
 			"type": "object",
