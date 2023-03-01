@@ -215,7 +215,7 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TensorFlowTensorBatchType]:
+    ) -> Iterator["TensorFlowTensorBatchType"]:
         """Return a local batched iterator of TensorFlow Tensors over the dataset.
 
         This iterator will yield single-tensor batches of the underlying dataset
