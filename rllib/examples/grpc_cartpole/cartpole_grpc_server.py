@@ -20,13 +20,11 @@ def _parse_args():
 
 
 class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
-    """This uses the old API of gym. but with the new underlying env."""
-
     def __init__(self):
         self.env = gym.make("CartPole-v1")
 
     def reset(self, request, context):
-        print("server reset")
+        print("Server reset")
         state, _ = self.env.reset()
         return cartpole_pb2.State(
             cart_position=state[0],
@@ -36,7 +34,7 @@ class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
         )
 
     def step(self, request, context):
-        print("server step")
+        print("Server step")
         action = request.action
         state, reward, terminated, truncated, _ = self.env.step(action)
         return cartpole_pb2.StepResult(
@@ -55,7 +53,7 @@ class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
 def start_self_destroying_server(parent_pid=None):
     if parent_pid is None:
         return
-    print("started the self destroying monitor hook.")
+    print("Started the self destroying monitor hook.")
     # Set the PID to check
     pid_to_check = parent_pid
 

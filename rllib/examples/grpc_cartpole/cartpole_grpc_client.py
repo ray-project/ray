@@ -18,7 +18,6 @@ class CartPoleEnv(gym.Env):
         # maximum time to wait for channel to be ready, in seconds
         channel_timeout = env_config.get("channel_timeout", 1)
 
-        # self._server_process = env_config.get("server_process")
         self.state = None
 
         if port is None:
@@ -36,16 +35,11 @@ class CartPoleEnv(gym.Env):
                 print("server is ready")
                 break
             except grpc.FutureTimeoutError:
-                print("Waiting for server to start...")
+                print(f"[spent_time = {spent_time:.3f}] Waiting for server to start...")
 
             spent_time = time.time() - start_time
-            print(spent_time)
 
         if spent_time >= max_timeout:
-            # if self._server_process is not None:
-            #     self._server_process.terminate()
-            #     self._server_process.wait()
-
             raise TimeoutError("Server did not start within the specified timeout.")
 
         self.action_space = gym.spaces.Discrete(2)
@@ -92,21 +86,16 @@ class CartPoleEnv(gym.Env):
     def close(self):
         self.channel.close()
 
-    # def cleanup(self):
-    #     """kill the server process corresponding to this env."""
-    #     print("cleaning up")
-    #     if self._server_process is not None:
-    #         self._server_process.terminate()
-    #         self._server_process.wait()
-
 
 if __name__ == "__main__":
 
-    env = CartPoleEnv()
-    obs = env.reset()
+    env = CartPoleEnv({"ip": "localhost", "port": "50051"})
+    obs, _ = env.reset()
     print(f"obs: {obs}")
     for _ in range(1000):
-        obs, reward, done, info = env.step(env.action_space.sample())
-        print(f"obs: {obs}, reward: {reward}, done: {done}, info: {info}")
+        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+        print(
+            f"obs: {obs}, reward: {reward}, terminated: {terminated}, truncated: {truncated}, info: {info}"
+        )
 
     env.close()

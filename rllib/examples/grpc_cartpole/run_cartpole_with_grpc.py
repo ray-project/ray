@@ -23,9 +23,7 @@ class EnvCreatorOnGRPC:
         command = f"python {path} --port {port} --parent-pid {os.getpid()}"
         server_process = subprocess.Popen(command.split(" "))
         # Create the client
-        env = CartPoleEnv(
-            {"ip": "localhost", "port": port, "server_process": server_process}
-        )
+        env = CartPoleEnv({"ip": "localhost", "port": port})
         return env
 
 
@@ -40,12 +38,10 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=64)
     )
 
-    # results = tune.Tuner(
-    #     "PPO",
-    #     param_space=config,
-    #     run_config=air.RunConfig(stop={"training_iteration": 1}),
-    # ).fit()
-    algo = config.build()
-    algo.train()
+    results = tune.Tuner(
+        "PPO",
+        param_space=config,
+        run_config=air.RunConfig(stop={"training_iteration": 1}),
+    ).fit()
 
     breakpoint()
