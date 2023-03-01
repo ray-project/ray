@@ -31,8 +31,6 @@ class Autoscaler {
   void RunOnce();
 
  private:
-  rpc::AvailableNodeTypesResponse GetAvailableNodeTypes();
-  std::vector<std::pair<rpc::NodeType, int32_t>> GetLaunchingNodes();
   std::vector<std::pair<rpc::NodeType, int32_t>> GetNodesToLaunch();
   void LaunchNewNodes(const std::vector<std::pair<rpc::NodeType, int32_t>> &);
 

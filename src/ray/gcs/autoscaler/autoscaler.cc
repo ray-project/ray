@@ -29,14 +29,6 @@ void Autoscaler::RunOnce() {
   LaunchNewNodes(new_nodes_to_launch);
 }
 
-rpc::AvailableNodeTypesResponse Autoscaler::GetAvailableNodeTypes() {
-  return node_provider_.GetAvailableNodeTypes();
-}
-
-std::vector<std::pair<rpc::NodeType, int32_t>> Autoscaler::GetLaunchingNodes() {
-  return {};
-}
-
 std::vector<std::pair<rpc::NodeType, int32_t>> Autoscaler::GetNodesToLaunch() {
   ray::rpc::GetAllResourceUsageReply reply;
   resource_manager_.GetAllResourceUsage(&reply);
@@ -53,10 +45,10 @@ std::vector<std::pair<rpc::NodeType, int32_t>> Autoscaler::GetNodesToLaunch() {
   auto cluster_resources_view = resource_manager_.NodeResourceReportView();
 
   // available node types.
-  auto available_node_types = GetAvailableNodeTypes();
+  auto available_node_types = node_provider_.GetAvailableNodeTypes();
 
   // nodes pending scaling up.
-  auto nodes_launching = GetLaunchingNodes();
+  auto nodes_launching = node_provider_.GetLaunchingNodes();
 
   return policy_->GetNewNodesToLaunch(normal_resource_load,
                                       pg_load,

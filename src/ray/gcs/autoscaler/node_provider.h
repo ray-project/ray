@@ -38,9 +38,8 @@ class INodeProvider {
   virtual std::vector<rpc::Node> GetNodesStatus(
       const std::vector<std::string> &node_ids) const = 0;
 
-  virtual std::vector<rpc::Node> GetNodesStatus(rpc::RayNodeKind node_kind) const = 0;
-
-  virtual std::vector<rpc::Node> GetNodesStatus(rpc::NodeStatus node_status) const = 0;
+  virtual std::vector<std::pair<rpc::NodeType, int32_t>> GetLaunchingNodes() const = 0;
 };
+
 }  // namespace autoscaler
 }  // namespace ray
