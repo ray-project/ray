@@ -4,27 +4,31 @@ import unittest
 import gym
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete, Dict, MultiDiscrete
 
 from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
     TfDeterministic,
     TfDiagGaussian,
+    TfMultiActionDistribution,
+    TfMultiCategorical,
 )
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDeterministic,
     TorchDiagGaussian,
+    TorchMultiActionDistribution,
+    TorchMultiCategorical,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 _, tf, _ = try_import_tf()
@@ -197,6 +201,11 @@ class TestCatalog(unittest.TestCase):
         """
         action_spaces_dist_types_and_expected_cls_dicts = [
             (
+                Box(0, 10, (5,), dtype=np.int64),
+                False,
+                {"torch": TorchMultiCategorical, "tf": TfMultiCategorical},
+            ),
+            (
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 False,
                 {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
@@ -207,6 +216,11 @@ class TestCatalog(unittest.TestCase):
                 {"torch": TorchDeterministic, "tf": TfDeterministic},
             ),
             (Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}),
+            (
+                MultiDiscrete([2, 3, 4]),
+                False,
+                {"torch": TorchMultiCategorical, "tf": TfMultiCategorical},
+            ),
         ]
 
         for (
@@ -254,6 +268,53 @@ class TestCatalog(unittest.TestCase):
                     action = sess.run(outputs)[0]
 
                 assert action_space.contains(action)
+
+        # Test MultiActionDistributions
+
+        action_space = Dict(
+            {
+                "task": Discrete(10),
+                "position": Box(-np.inf, np.inf, (5,), dtype=np.float32),
+            }
+        )
+        expected_cls_dict = {
+            "torch": TorchMultiActionDistribution,
+            "tf": TfMultiActionDistribution,
+        }
+
+        print(f"Testing action space: {action_space}")
+        catalog = Catalog(
+            observation_space=Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+            action_space=action_space,
+            model_config_dict=MODEL_DEFAULTS.copy(),
+        )
+        dist_dict = catalog.get_action_dist_cls_dict(
+            action_space=action_space,
+            model_config_dict=MODEL_DEFAULTS.copy(),
+            deterministic=False,
+        )
+
+        for framework, sess in framework_iterator(
+            frameworks=["tf", "torch"], session=True
+        ):
+            dist_cls = dist_dict[framework]
+            # Check if we can query the required input dimensions
+            input_shape = np.sum(dist_cls.keywords["input_lens"], dtype=np.int32)
+            inputs = np.ones((32, int(input_shape)), dtype=np.float32)
+            if framework == "torch":
+                inputs = torch.from_numpy(inputs)
+            else:
+                inputs = tf.convert_to_tensor(inputs)
+            # We don't need a model if we input tensors
+            dist = dist_cls(inputs=inputs, model=None)
+            assert isinstance(dist, expected_cls_dict[framework])
+            outputs = dist.sample()
+            if framework == "torch":
+                action = tree.map_structure(lambda s: s.numpy()[0], outputs)
+            else:
+                action = tree.map_structure(lambda s: sess.run(s)[0], outputs)
+
+            assert action_space.contains(action)
 
 
 if __name__ == "__main__":
