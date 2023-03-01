@@ -897,7 +897,8 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
                                         rpc::TaskStatus status,
                                         bool include_task_info,
                                         absl::optional<NodeID> node_id,
-                                        absl::optional<WorkerID> worker_id) {
+                                        absl::optional<WorkerID> worker_id,
+                                        absl::optional<rpc::TaskLogInfo> task_log_info) {
   if (!task_event_buffer_.Enabled()) {
     return;
   }
@@ -909,7 +910,8 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
       /* timestamp */ absl::GetCurrentTimeNanos(),
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
       node_id,
-      worker_id);
+      worker_id,
+      task_log_info);
 
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }

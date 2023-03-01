@@ -2560,6 +2560,7 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
+  rpc::TaskLogInfo task_log_info;
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2577,7 +2578,8 @@ Status CoreWorker::ExecuteTask(
       is_application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0);
+      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
+      task_log_info);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2623,6 +2625,15 @@ Status CoreWorker::ExecuteTask(
 
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
+    task_manager_->RecordTaskStatusEvent(
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::NIL, /* We will record the terminal state on the submitter worker
+                               */
+        false,
+        absl::nullopt,
+        absl::nullopt,
+        task_log_info);
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;

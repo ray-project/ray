@@ -354,6 +354,10 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     state_updates->set_running_ts(timestamp);
     break;
   }
+  case rpc::TaskStatus::NIL: {
+    // Not status change.
+    break;
+  }
   default: {
     UNREACHABLE;
   }

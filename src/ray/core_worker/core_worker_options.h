@@ -55,7 +55,8 @@ struct CoreWorkerOptions {
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt)>;
+      bool is_reattempt,
+      rpc::TaskLogInfo &task_log_info)>;
 
   CoreWorkerOptions()
       : store_socket(""),

@@ -18,7 +18,9 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
+    IO,
     Any,
+    AnyStr,
     Callable,
     Dict,
     Generic,
@@ -69,7 +71,7 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
-from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger
+from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger, configure_log_file, get_worker_log_file_name
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -446,6 +448,9 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        # Opened file descriptor to stdout/stderr for this python worker.
+        self._out_file = None
+        self._err_file = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -516,6 +521,28 @@ class Worker:
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
+
+    def set_err_file(self, err_file = Optional[IO[AnyStr]]) -> None:
+        self._err_file = err_file
+
+    def set_out_file(self, out_file = Optional[IO[AnyStr]]) -> None:
+        self._out_file = out_file 
+
+    def get_err_file_path(self) -> str:
+        return self._err_file.name if self._err_file is not None else ""
+    
+    def get_out_file_path(self) -> str:
+        return self._out_file.name if self._out_file is not None else ""
+
+    def get_current_out_offset(self) -> int:
+        if self._out_file is not None and self._out_file.seekable():
+            return self._out_file.tell()
+        return 0
+    
+    def get_current_err_offset(self) -> int:
+        if self._err_file is not None and self._err_file.seekable():
+            return self._err_file.tell()
+        return 0
 
     def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.

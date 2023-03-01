@@ -145,6 +145,14 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
                                  const CTaskID &parent_task_id,
                                  int parent_task_counter)
 
+cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
+    cdef cppclass CTaskLogInfo "ray::rpc::TaskLogInfo":
+        void set_stdout_start(int32_t stdout_start)
+        void set_stdout_end(int32_t stdout_end)
+        void set_stderr_start(int32_t stderr_start)
+        void set_stderr_end(int32_t stderr_end)
+        void set_stdout_file(const c_string& stdout_file)
+        void set_stderr_file(const c_string& stderr_file)
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":

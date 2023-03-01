@@ -326,7 +326,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                              rpc::TaskStatus status,
                              bool include_task_info = false,
                              absl::optional<NodeID> node_id = absl::nullopt,
-                             absl::optional<WorkerID> worker_id = absl::nullopt);
+                             absl::optional<WorkerID> worker_id = absl::nullopt,
+                             absl::optional<rpc::TaskLogInfo> task_log_info = absl::nullopt);
 
  private:
   struct TaskEntry {
