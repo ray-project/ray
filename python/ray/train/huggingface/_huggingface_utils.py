@@ -7,7 +7,7 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
-from ray.data.dataset_iterator import TrainDatasetIterator
+from ray.train._internal.dataset_iterator import TrainDatasetIterator
 from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 if TYPE_CHECKING:
