@@ -2,6 +2,7 @@ import gymnasium as gym
 import grpc
 import numpy as np
 import time
+import atexit
 
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2 as cartpole_pb2
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2_grpc as cartpole_pb2_grpc
@@ -17,15 +18,15 @@ class CartPoleEnv(gym.Env):
         # maximum time to wait for channel to be ready, in seconds
         channel_timeout = env_config.get("channel_timeout", 1)
 
-        self._server_process = env_config.get("server_process")
+        # self._server_process = env_config.get("server_process")
         self.state = None
 
         if port is None:
             raise ValueError("Port is not specified")
-        
+
         self.channel = grpc.insecure_channel(f"{ip}:{port}")
         self.client = cartpole_pb2_grpc.CartPoleStub(self.channel)
-        
+
         # Wait for the server to become ready
         start_time = time.time()
         spent_time = 0
@@ -41,9 +42,9 @@ class CartPoleEnv(gym.Env):
             print(spent_time)
 
         if spent_time >= max_timeout:
-            if self._server_process is not None:
-                self._server_process.terminate()
-                self._server_process.wait()
+            # if self._server_process is not None:
+            #     self._server_process.terminate()
+            #     self._server_process.wait()
 
             raise TimeoutError("Server did not start within the specified timeout.")
 
@@ -53,7 +54,6 @@ class CartPoleEnv(gym.Env):
             high=np.array([float("inf")] * 4),
             dtype=np.float32,
         )
-
 
     def reset(self, *, seed=None, options=None):
         state = self.client.reset(cartpole_pb2.Empty())
@@ -92,11 +92,12 @@ class CartPoleEnv(gym.Env):
     def close(self):
         self.channel.close()
 
-    def __del__(self):
-        """For GC, kill the server process corresponding to this env."""
-        if self._server_process is not None:
-            self._server_process.terminate()
-            self._server_process.wait()
+    # def cleanup(self):
+    #     """kill the server process corresponding to this env."""
+    #     print("cleaning up")
+    #     if self._server_process is not None:
+    #         self._server_process.terminate()
+    #         self._server_process.wait()
 
 
 if __name__ == "__main__":
