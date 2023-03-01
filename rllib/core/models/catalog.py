@@ -13,20 +13,15 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.models.tf.tf_action_dist import (
-    Categorical,
-    Deterministic,
-    DiagGaussian,
-    Dirichlet,
-    MultiActionDistribution,
-    MultiCategorical,
+from ray.rllib.models.tf.tf_distributions import (
+    TfCategorical,
+    TfDeterministic,
+    TfDiagGaussian,
 )
-from ray.rllib.models.torch.torch_action_dist import (
+from ray.rllib.models.torch.torch_diststributions import (
     TorchCategorical,
     TorchDeterministic,
     TorchDiagGaussian,
-    TorchMultiActionDistribution,
-    TorchMultiCategorical,
 )
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -331,20 +326,20 @@ class Catalog:
                         "using a Tuple action space, or the multi-agent API."
                     )
                 if deterministic:
-                    return {"torch": TorchDeterministic, "tf": Deterministic}
+                    return {"torch": TorchDeterministic, "tf": TfDeterministic}
                 else:
                     return {
                         "torch": _pass_through_required_model_output_shape_method(
                             partial(TorchDiagGaussian, action_space=action_space)
                         ),
                         "tf": _pass_through_required_model_output_shape_method(
-                            partial(DiagGaussian, action_space=action_space)
+                            partial(TfDiagGaussian, action_space=action_space)
                         ),
                     }
 
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            return {"torch": TorchCategorical, "tf": Categorical}
+            return {"torch": TorchCategorical, "tf": TfCategorical}
 
         # Tuple/Dict Spaces -> MultiAction.
         elif isinstance(action_space, (Tuple, Dict)):
@@ -384,7 +379,8 @@ class Catalog:
 
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
-            return {"tf": Dirichlet}
+            # TODO(Artur): Supported this (in torch)
+            raise NotImplementedError("Simplex action space not supported yet.")
 
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
