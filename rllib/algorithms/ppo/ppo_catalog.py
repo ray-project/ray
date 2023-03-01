@@ -69,7 +69,7 @@ class PPOCatalog(Catalog):
         # Get a mapping from framework to action distribution class
         self.action_dist_cls_dict = self.get_action_dist_cls_dict(
             action_space=action_space,
-            config=self.model_config_dict,
+            model_config_dict=self.model_config_dict,
         )
 
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
