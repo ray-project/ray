@@ -7,7 +7,6 @@ from distutils.version import LooseVersion
 
 from typing import Any, Dict, Optional, Callable
 
-import ray
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
@@ -63,39 +62,9 @@ def get_device() -> torch.device:
         >>> # torch.cuda.is_available() == True
         >>> # get_device() == torch.device("cuda:4")
     """
-    if torch.cuda.is_available():
-        # GPU IDs are assigned by Ray after you specify "use_gpu"
-        # GPU `ray.get_gpu_ids()` may return ints or may return strings.
-        # We should always convert to strings.
-        gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+    from ray.air._internal import torch_utils
 
-        if len(gpu_ids) > 0:
-            # By default, there should only be one GPU ID if `use_gpu=True`.
-            # If there are multiple GPUs, use the first one.
-            # If using fractional GPUs, these IDs are not guaranteed
-            # to be unique across different processes.
-            gpu_id = gpu_ids[0]
-
-            cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-            if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                cuda_visible_list = cuda_visible_str.split(",")
-                device_id = cuda_visible_list.index(gpu_id)
-            else:
-                raise RuntimeError(
-                    "CUDA_VISIBLE_DEVICES set incorrectly. "
-                    f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                    "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                    " variable? If not, please help file an issue on Github."
-                )
-        else:
-            # If called on the driver or outside of Ray Train, return the
-            # 0th device.
-            device_id = 0
-        device = torch.device(f"cuda:{device_id}")
-    else:
-        device = torch.device("cpu")
-
-    return device
+    return torch_utils.get_device()
 
 
 # TODO: Deprecation: Hard-deprecate args in Ray 2.2.

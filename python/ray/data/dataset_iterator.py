@@ -179,21 +179,16 @@ class DatasetIterator(abc.ABC):
             An iterator over Torch Tensor batches.
         """
 
-        # Automatically move torch tensors to the appropriate device.
-        if device is None:
-            from ray.train.torch import get_device
-            from ray.train.error import SessionMisuseError
-
-            try:
-                train_device = get_device()
-                if train_device.type != "cpu":
-                    device = train_device
-            except SessionMisuseError:
-                pass
-
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
+            get_device,
         )
+
+        # Automatically move torch tensors to the appropriate device.
+        if device is None:
+            default_device = get_device()
+            if default_device.type != "cpu":
+                device = default_device
 
         if collate_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
@@ -572,6 +567,13 @@ class DatasetIterator(abc.ABC):
             )
 
         schema = self.schema()
+        if isinstance(schema, type):
+            raise NotImplementedError(
+                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
+                "convert your data to a tabular format. Alternatively, call the more-"
+                "flexible `iter_batches` in place of `to_tf`."
+            )
+
         valid_columns = schema.names
 
         def validate_column(column: str) -> None:
