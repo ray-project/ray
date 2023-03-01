@@ -28,7 +28,7 @@ epilogue_commands: &epilogue_commands |-
 steps:
 - label: ":mac: :apple: Wheels and Jars"
   <<: *common
-  conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
+  # conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
   agents:
     arch: amd64
   commands:
