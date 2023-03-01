@@ -5,7 +5,7 @@ import types
 import collections
 from distutils.version import LooseVersion
 
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union
 
 import ray
 from ray.air import session
@@ -41,8 +41,11 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
-def get_device() -> torch.device:
+def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device to use for training.
+
+    Returns a list of devices if more than 1 GPU per worker
+    is requested.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
@@ -69,29 +72,41 @@ def get_device() -> torch.device:
         # We should always convert to strings.
         gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
-        if len(gpu_ids) > 0:
-            # By default, there should only be one GPU ID if `use_gpu=True`.
-            # If there are multiple GPUs, use the first one.
-            # If using fractional GPUs, these IDs are not guaranteed
-            # to be unique across different processes.
-            gpu_id = gpu_ids[0]
+        device_ids = []
 
+        if len(gpu_ids) > 0:
             cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
             if cuda_visible_str and cuda_visible_str != "NoDevFiles":
                 cuda_visible_list = cuda_visible_str.split(",")
-                device_id = cuda_visible_list.index(gpu_id)
             else:
                 raise RuntimeError(
-                    "CUDA_VISIBLE_DEVICES set incorrectly. "
-                    f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                    "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                    " variable? If not, please help file an issue on Github."
+                    "CUDA_VISIBLE_DEVICES is empty even though GPU training "
+                    "is requested. Make sure to explicitly set "
+                    "`use_gpu=False` for CPU training."
                 )
+
+            # By default, there should only be one GPU ID if `use_gpu=True`.
+            # If there are multiple GPUs, return a list of devices.
+            # If using fractional GPUs, these IDs are not guaranteed
+            # to be unique across different processes.
+            for gpu_id in gpu_ids:
+                try:
+                    device_ids.append(cuda_visible_list.index(gpu_id))
+                except IndexError:
+                    raise RuntimeError(
+                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                        " variable? If not, please help file an issue on Github."
+                    )
+
         else:
             # If called on the driver or outside of Ray Train, return the
             # 0th device.
-            device_id = 0
-        device = torch.device(f"cuda:{device_id}")
+            device_ids.append(0)
+
+        devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
+        device = devices[0] if len(devices) == 1 else devices
     else:
         device = torch.device("cpu")
 
@@ -102,7 +117,7 @@ def get_device() -> torch.device:
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
-    move_to_device: bool = True,
+    move_to_device: Union[bool, torch.device] = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
@@ -113,9 +128,10 @@ def prepare_model(
 
     Args:
         model (torch.nn.Module): A torch model to prepare.
-        move_to_device: Whether to move the model to the correct
-            device. If set to False, the model needs to manually be moved
-            to the correct device.
+        move_to_device: Either a boolean indiciating whether to move
+            the model to the correct device or an actual device to
+            move the model to. If set to False, the model needs
+            to manually be moved to the correct device.
         parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
             in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
             or neither.
@@ -297,7 +313,13 @@ class _TorchAccelerator(Accelerator):
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
         rank = session.get_local_rank()
-        device = get_device()
+
+        if isinstance(move_to_device, torch.device):
+            device = move_to_device
+        else:
+            device = get_device()
+            if isinstance(device, list):
+                device = device[0]
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)

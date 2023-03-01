@@ -41,6 +41,9 @@ class TrainDatasetIterator(DatasetIterator):
             except SessionMisuseError:
                 pass
 
+        if isinstance(device, list):
+            device = device[0]
+
         return self._dataset_iterator.iter_torch_batches(device=device, **kwargs)
 
     def to_tf(self, *args, **kwargs) -> "tf.data.Dataset":
