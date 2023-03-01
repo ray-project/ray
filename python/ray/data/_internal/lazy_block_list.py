@@ -162,7 +162,11 @@ class LazyBlockList(BlockList):
         block_partition_meta_refs = np.array_split(
             self._block_partition_meta_refs, num_splits
         )
-        cached_metadata = np.array_split(self._cached_metadata, num_splits)
+        k, m = divmod(len(self._cached_metadata), num_splits)
+        cached_metadata = [
+            self._cached_metadata[i * k + min(i, m) : (i + 1) * k + min(i + 1, m)]
+            for i in range(len(self._cached_metadata))
+        ]
         output = []
         for t, b, m, c in zip(
             tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
@@ -172,7 +176,7 @@ class LazyBlockList(BlockList):
                     t.tolist(),
                     b.tolist(),
                     m.tolist(),
-                    c.tolist(),
+                    c,
                     owned_by_consumer=self._owned_by_consumer,
                 )
             )
