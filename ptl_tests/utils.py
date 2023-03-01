@@ -162,7 +162,6 @@ class MNISTDataModule(pl.LightningDataModule):
             self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
 
     def train_dataloader(self):
-        # TODO(): figure out how does lightning create distributed samplers
         return DataLoader(self.mnist_train, batch_size=self.batch_size, num_workers=4)
 
     def val_dataloader(self):
