@@ -382,12 +382,13 @@ def test_zip_different_num_blocks_split_smallest(
         [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
         parallelism=num_blocks2,
     )
-    ds = ds1.zip(ds2)
+    ds = ds1.zip(ds2).fully_executed()
+    num_blocks = ds._plan._snapshot_blocks.executed_num_blocks()
     assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
     if should_invert:
-        assert ds.num_blocks() == num_blocks2
+        assert num_blocks == num_blocks2
     else:
-        assert ds.num_blocks() == num_blocks1
+        assert num_blocks == num_blocks1
 
 
 def test_zip_pandas(ray_start_regular_shared):
