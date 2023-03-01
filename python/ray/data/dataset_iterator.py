@@ -178,6 +178,17 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over Torch Tensor batches.
         """
+
+        # Automatically move torch tensors to the appropriate device.
+        if device is None:
+            from ray.train.torch import get_device
+            from ray.train.error import SessionMisuseError
+
+            try:
+                device = get_device()
+            except SessionMisuseError:
+                pass
+
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
         )
