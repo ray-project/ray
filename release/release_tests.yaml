@@ -9,12 +9,6 @@
 #  # Provide the working directory which will be uploaded to the cluster
 #  working_dir: example_dir
 #
-#  # For release test infra migration, we provide these fields that are populated
-#  # in the database
-#  legacy:
-#    test_name: example_test
-#    test_suite: examples
-#
 #  # How often to run the tests.
 #  # One of [disabled, any, multi, nightly, weekly].
 #  frequency: weekly
@@ -586,10 +580,6 @@
 #   group: XGBoost
 #   working_dir: xgboost_tests
 
-#   legacy:
-#     test_name: train_small
-#     test_suite: xgboost_tests
-
 #   frequency: nightly
 #   team: ml
 #   env: staging_v2
@@ -613,10 +603,6 @@
   group: XGBoost
   working_dir: xgboost_tests
 
-  legacy:
-    test_name: train_moderate
-    test_suite: xgboost_tests
-
   frequency: nightly
   team: ml
 
@@ -637,10 +623,6 @@
 - name: xgboost_train_gpu
   group: XGBoost
   working_dir: xgboost_tests
-
-  legacy:
-    test_name: train_gpu
-    test_suite: xgboost_tests
 
   frequency: nightly
   team: ml
@@ -663,10 +645,6 @@
   group: XGBoost
   working_dir: xgboost_tests
 
-  legacy:
-    test_name: distributed_api_test
-    test_suite: xgboost_tests
-
   frequency: nightly
   team: ml
 
@@ -686,10 +664,6 @@
 - name: xgboost_ft_small_elastic
   group: XGBoost
   working_dir: xgboost_tests
-
-  legacy:
-    test_name: ft_small_elastic
-    test_suite: xgboost_tests
 
   frequency: nightly
   team: ml
@@ -712,10 +686,6 @@
   group: XGBoost
   working_dir: xgboost_tests
 
-  legacy:
-    test_name: ft_small_non_elastic
-    test_suite: xgboost_tests
-
   frequency: nightly
   team: ml
 
@@ -736,10 +706,6 @@
 - name: xgboost_tune_small
   group: XGBoost
   working_dir: xgboost_tests
-
-  legacy:
-    test_name: tune_small
-    test_suite: xgboost_tests
 
   frequency: nightly
   team: ml
@@ -762,10 +728,6 @@
   group: XGBoost
   working_dir: xgboost_tests
 
-  legacy:
-    test_name: tune_32x4
-    test_suite: xgboost_tests
-
   frequency: nightly
   team: ml
 
@@ -786,10 +748,6 @@
 - name: xgboost_tune_4x32
   group: XGBoost
   working_dir: xgboost_tests
-
-  legacy:
-    test_name: tune_4x32
-    test_suite: xgboost_tests
 
   frequency: nightly
   team: ml
@@ -818,10 +776,6 @@
 #   group: LightGBM tests
 #   working_dir: lightgbm_tests
 
-#   legacy:
-#     test_name: train_small
-#     test_suite: lightgbm_tests
-
 #   frequency: nightly
 #   team: ml
 #   env: staging_v2
@@ -844,10 +798,6 @@
   group: LightGBM tests
   working_dir: lightgbm_tests
 
-  legacy:
-    test_name: train_moderate
-    test_suite: lightgbm_tests
-
   frequency: nightly
   team: ml
 
@@ -867,10 +817,6 @@
 - name: lightgbm_distributed_api_test
   group: LightGBM tests
   working_dir: lightgbm_tests
-
-  legacy:
-    test_name: distributed_api_test
-    test_suite: lightgbm_tests
 
   frequency: nightly
   team: ml
@@ -893,10 +839,6 @@
   group: LightGBM tests
   working_dir: lightgbm_tests
 
-  legacy:
-    test_name: ft_small_non_elastic
-    test_suite: lightgbm_tests
-
   frequency: nightly
   team: ml
 
@@ -918,10 +860,6 @@
   group: LightGBM tests
   working_dir: lightgbm_tests
 
-  legacy:
-    test_name: tune_small
-    test_suite: lightgbm_tests
-
   frequency: nightly
   team: ml
 
@@ -940,10 +878,6 @@
 - name: lightgbm_tune_16x4
   group: LightGBM tests
   working_dir: lightgbm_tests
-
-  legacy:
-    test_name: tune_16x4
-    test_suite: lightgbm_tests
 
   frequency: nightly
   team: ml
@@ -964,10 +898,6 @@
 - name: lightgbm_tune_4x16
   group: LightGBM tests
   working_dir: lightgbm_tests
-
-  legacy:
-    test_name: tune_4x16
-    test_suite: lightgbm_tests
 
   frequency: nightly
   team: ml
@@ -993,10 +923,6 @@
   group: ML user tests
   working_dir: ml_user_tests
 
-  legacy:
-    test_name: horovod_user_test_latest
-    test_suite: ml_user_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1016,10 +942,6 @@
 - name: ml_user_horovod_user_test_master
   group: ML user tests
   working_dir: ml_user_tests
-
-  legacy:
-    test_name: horovod_user_test_master
-    test_suite: ml_user_tests
 
   frequency: nightly-3x
   team: ml
@@ -1041,10 +963,6 @@
   group: ML user tests
   working_dir: ml_user_tests
 
-  legacy:
-    test_name: train_tensorflow_mnist_test
-    test_suite: ml_user_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1064,10 +982,6 @@
 - name: ml_user_train_torch_linear_test
   group: ML user tests
   working_dir: ml_user_tests
-
-  legacy:
-    test_name: train_torch_linear_test
-    test_suite: ml_user_tests
 
   frequency: nightly-3x
   team: ml
@@ -1089,10 +1003,6 @@
   group: ML user tests
   working_dir: ml_user_tests
 
-  legacy:
-    test_name: xgboost_gpu_connect_latest
-    test_suite: ml_user_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1112,10 +1022,6 @@
   group: ML user tests
   working_dir: ml_user_tests
 
-  legacy:
-    test_name: xgboost_gpu_connect_master
-    test_suite: ml_user_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1134,10 +1040,6 @@
 - name: ml_user_ray_lightning_user_test_latest
   group: ML user tests
   working_dir: ml_user_tests
-
-  legacy:
-    test_name: ray_lightning_user_test_latest
-    test_suite: ml_user_tests
 
   frequency: nightly-3x
   team: ml
@@ -1159,10 +1061,6 @@
   group: ML user tests
   working_dir: ml_user_tests
 
-  legacy:
-    test_name: ray_lightning_user_test_master
-    test_suite: ml_user_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1182,10 +1080,6 @@
 - name: ml_user_tune_rllib_connect_test
   group: ML user tests
   working_dir: ml_user_tests
-
-  legacy:
-    test_name: tune_rllib_connect_test
-    test_suite: ml_user_tests
 
   frequency: nightly-3x
   team: ml
@@ -1212,10 +1106,6 @@
 
   stable: true
 
-  legacy:
-    test_name: aws_no_sync_down
-    test_suite: tune_cloud_tests
-
   frequency: nightly
   team: ml
 
@@ -1238,10 +1128,6 @@
   working_dir: tune_tests/cloud_tests
 
   stable: true
-
-  legacy:
-    test_name: aws_ssh_sync
-    test_suite: tune_cloud_tests
 
   frequency: nightly
   team: ml
@@ -1266,10 +1152,6 @@
 
   stable: true
 
-  legacy:
-    test_name: aws_durable_upload
-    test_suite: tune_cloud_tests
-
   frequency: nightly
   team: ml
 
@@ -1292,10 +1174,6 @@
   working_dir: tune_tests/cloud_tests
 
   stable: false
-
-  legacy:
-    test_name: aws_durable_upload_rllib_str
-    test_suite: tune_cloud_tests
 
   frequency: nightly
   team: ml
@@ -1322,10 +1200,6 @@
 
   stable: false
 
-  legacy:
-    test_name: aws_durable_upload_rllib_trainer
-    test_suite: tune_cloud_tests
-
   frequency: nightly
   team: ml
 
@@ -1349,10 +1223,6 @@
   working_dir: tune_tests/cloud_tests
 
   stable: true
-
-  legacy:
-    test_name: gcp_k8s_no_sync_down
-    test_suite: tune_cloud_tests
 
   frequency: nightly
   team: ml
@@ -1381,10 +1251,6 @@
 
   stable: true
 
-  legacy:
-    test_name: gcp_k8s_ssh_sync
-    test_suite: tune_cloud_tests
-
   frequency: nightly
   team: ml
   # TODO: Migrate this test to Anyscale Jobs / staging_v2
@@ -1411,10 +1277,6 @@
   working_dir: tune_tests/cloud_tests
 
   stable: true
-
-  legacy:
-    test_name: gcp_k8s_durable_upload
-    test_suite: tune_cloud_tests
 
   frequency: nightly
   team: ml
@@ -1445,10 +1307,6 @@
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
-  legacy:
-    test_name: bookkeeping_overhead
-    test_suite: tune_tests
-
   frequency: nightly
   team: ml
 
@@ -1465,10 +1323,6 @@
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
-  legacy:
-    test_name: durable_trainable
-    test_suite: tune_tests
 
   frequency: nightly
   team: ml
@@ -1489,10 +1343,6 @@
 - name: tune_scalability_long_running_large_checkpoints
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
-  legacy:
-    test_name: long_running_large_checkpoints
-    test_suite: tune_tests
 
   frequency: weekly
   team: ml
@@ -1517,9 +1367,6 @@
 - name: tune_scalability_network_overhead
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-  legacy:
-    test_name: network_overhead
-    test_suite: tune_tests
 
   frequency: weekly
   team: ml
@@ -1553,10 +1400,6 @@
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
-  legacy:
-    test_name: result_throughput_cluster
-    test_suite: tune_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1576,10 +1419,6 @@
 - name: tune_scalability_result_throughput_single_node
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
-  legacy:
-    test_name: result_throughput_single_node
-    test_suite: tune_tests
 
   frequency: nightly
   team: ml
@@ -1601,10 +1440,6 @@
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
-  legacy:
-    test_name: xgboost_sweep
-    test_suite: tune_tests
 
   frequency: weekly
   team: ml
@@ -1631,10 +1466,6 @@
   group: Golden Notebook tests
   working_dir: golden_notebook_tests
 
-  legacy:
-    test_name: torch_tune_serve_test
-    test_suite: golden_notebook_tests
-
   frequency: nightly-3x
   team: ml
 
@@ -1658,9 +1489,6 @@
 - name: long_running_actor_deaths
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: actor_deaths
-    test_suite: long_running_tests
 
   frequency: weekly
   team: core
@@ -1684,9 +1512,6 @@
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: apex
-    test_suite: long_running_tests
 
   frequency: weekly
   team: rllib
@@ -1713,9 +1538,6 @@
 - name: long_running_impala
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: impala
-    test_suite: long_running_tests
 
   frequency: weekly
   team: rllib
@@ -1739,9 +1561,6 @@
 - name: long_running_many_actor_tasks
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: many_actor_tasks
-    test_suite: long_running_tests
 
   frequency: weekly
   team: core
@@ -1765,9 +1584,6 @@
 - name: long_running_many_drivers
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: many_drivers
-    test_suite: long_running_tests
 
   frequency: weekly
   team: core
@@ -1791,9 +1607,6 @@
 - name: long_running_many_ppo
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: many_ppo
-    test_suite: long_running_tests
 
   stable: false
 
@@ -1822,9 +1635,6 @@
 - name: long_running_many_tasks
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: many_tasks
-    test_suite: long_running_tests
 
   frequency: weekly
   team: core
@@ -1848,9 +1658,6 @@
 - name: long_running_many_tasks_serialized_ids
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: many_tasks_serialized_ids
-    test_suite: long_running_tests
 
   frequency: weekly
   team: core
@@ -1874,9 +1681,6 @@
 - name: long_running_node_failures
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: node_failures
-    test_suite: long_running_tests
 
   frequency: weekly
   team: core
@@ -1900,9 +1704,6 @@
 - name: long_running_pbt
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: pbt
-    test_suite: long_running_tests
 
   frequency: weekly
   team: ml
@@ -1926,9 +1727,6 @@
 - name: long_running_serve
   group: Long running tests
   working_dir: long_running_tests
-  legacy:
-    test_name: serve
-    test_suite: long_running_tests
 
   frequency: weekly
   team: serve
@@ -1957,10 +1755,6 @@
   # TODO: Migrate this test to Anyscale Jobs / staging_v2
   env: staging_v1
 
-  legacy:
-    test_name: serve_failure
-    test_suite: long_running_tests
-
   frequency: weekly
   team: serve
   cluster:
@@ -1987,10 +1781,6 @@
 
   stable: true
 
-  legacy:
-    test_name: long_running_many_jobs
-    test_suite: long_running_tests
-
   frequency: weekly
   team: serve
   cluster:
@@ -2013,10 +1803,6 @@
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
   working_dir: long_running_distributed_tests
-
-  legacy:
-    test_name: pytorch_pbt_failure
-    test_suite: long_running_distributed
 
   frequency: weekly
   team: ml
@@ -2044,10 +1830,6 @@
   group: Jobs tests
   working_dir: jobs_tests
 
-  legacy:
-    test_name: jobs_basic_local_working_dir
-    test_suite: jobs_tests
-
   frequency: nightly
   team: serve
 
@@ -2067,10 +1849,6 @@
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
   working_dir: jobs_tests
-
-  legacy:
-    test_name: jobs_basic_remote_working_dir
-    test_suite: jobs_tests
 
   frequency: nightly
   team: serve
@@ -2093,9 +1871,6 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-  legacy:
-    test_name: jobs_remote_multi_node
-    test_suite: jobs_tests
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -2110,9 +1885,6 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-  legacy:
-    test_name: jobs_check_cuda_available
-    test_suite: jobs_tests
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
@@ -2127,9 +1899,6 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-  legacy:
-    test_name: jobs_specify_num_gpus
-    test_suite: jobs_tests
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_worker.yaml
@@ -2146,10 +1915,6 @@
 - name: runtime_env_rte_many_tasks_actors
   group: Runtime env tests
   working_dir: runtime_env_tests
-
-  legacy:
-    test_name: rte_many_tasks_actors
-    test_suite: runtime_env_tests
 
   frequency: nightly
   team: serve
@@ -2170,10 +1935,6 @@
 - name: runtime_env_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
-
-  legacy:
-    test_name: wheel_urls
-    test_suite: runtime_env_tests
 
   frequency: nightly
   team: serve
@@ -2196,10 +1957,6 @@
 # - name: runtime_env_rte_ray_client
 #   group: Runtime env tests
 #   working_dir: runtime_env_tests
-
-#   legacy:
-#     test_name: rte_ray_client
-#     test_suite: runtime_env_tests
 
 #   frequency: nightly
 #   team: serve
@@ -2227,10 +1984,6 @@
   group: Serve tests
   working_dir: serve_tests
 
-  legacy:
-    test_name: single_deployment_1k_noop_replica
-    test_suite: serve_tests
-
   frequency: nightly
   team: serve
 
@@ -2248,10 +2001,6 @@
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: multi_deployment_1k_noop_replica
-    test_suite: serve_tests
 
   frequency: nightly
   team: serve
@@ -2271,10 +2020,6 @@
   group: Serve tests
   working_dir: serve_tests
 
-  legacy:
-    test_name: autoscaling_single_deployment
-    test_suite: serve_tests
-
   frequency: nightly
   team: serve
 
@@ -2292,10 +2037,6 @@
 - name: serve_autoscaling_multi_deployment
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: autoscaling_multi_deployment
-    test_suite: serve_tests
 
   frequency: nightly
   team: serve
@@ -2315,10 +2056,6 @@
   group: Serve tests
   working_dir: serve_tests
 
-  legacy:
-    test_name: serve_micro_benchmark
-    test_suite: serve_tests
-
   frequency: nightly
   team: serve
 
@@ -2336,10 +2073,6 @@
 - name: serve_serve_micro_benchmark_k8s
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: serve_micro_benchmark_k8s
-    test_suite: serve_tests
 
   # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
   frequency: disabled
@@ -2361,10 +2094,6 @@
   group: Serve tests
   working_dir: serve_tests
 
-  legacy:
-    test_name: deployment_graph_long_chain
-    test_suite: serve_tests
-
   frequency: nightly
   team: serve
 
@@ -2383,10 +2112,6 @@
 - name: deployment_graph_wide_ensemble
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: deployment_graph_wide_ensemble
-    test_suite: serve_tests
 
   frequency: nightly
   team: serve
@@ -2407,10 +2132,6 @@
   group: Serve tests
   working_dir: serve_tests
 
-  legacy:
-    test_name: serve_handle_long_chain
-    test_suite: serve_tests
-
   frequency: nightly
   team: serve
 
@@ -2429,10 +2150,6 @@
 - name: serve_handle_wide_ensemble
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: serve_handle_wide_ensemble
-    test_suite: serve_tests
 
   frequency: nightly
   team: serve
@@ -2454,10 +2171,6 @@
   group: Serve tests
   working_dir: serve_tests
 
-  legacy:
-    test_name: serve_grpc_benchmark
-    test_suite: serve_tests
-
   frequency: nightly
   team: serve
 
@@ -2475,10 +2188,6 @@
 - name: serve_micro_protocol_http_benchmark
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: serve_http_benchmark
-    test_suite: serve_tests
 
   frequency: nightly
   team: serve
@@ -2498,10 +2207,6 @@
 - name: serve_resnet_benchmark
   group: Serve tests
   working_dir: serve_tests
-
-  legacy:
-    test_name: serve_resnet_benchmark
-    test_suite: serve_tests
 
   frequency: nightly
   team: serve
@@ -2550,10 +2255,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2572,10 +2273,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2592,10 +2289,6 @@
 - name: rllib_learning_tests_a3c_tf
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -2616,10 +2309,6 @@
 #  group: RLlib tests
 #  working_dir: rllib_tests
 
-#  legacy:
-#    test_name: learning_tests
-#    test_suite: rllib_tests
-
 #  frequency: nightly
 #  team: rllib
 #  env: staging_v2
@@ -2639,10 +2328,6 @@
 - name: rllib_learning_tests_apex_tf
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -2665,10 +2350,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2686,10 +2367,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2706,10 +2383,6 @@
 - name: rllib_learning_tests_appo_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -2731,10 +2404,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2752,10 +2421,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2772,10 +2437,6 @@
 - name: rllib_learning_tests_cql_tf
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -2797,10 +2458,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
@@ -2821,10 +2478,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2842,10 +2495,6 @@
 - name: rllib_learning_tests_ddpg_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -2865,10 +2514,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2886,10 +2531,6 @@
 - name: rllib_learning_tests_dqn_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -2912,10 +2553,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2933,10 +2570,6 @@
 - name: rllib_learning_tests_es_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -2956,10 +2589,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2978,10 +2607,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -2999,10 +2624,6 @@
 - name: rllib_learning_tests_marwil_tf
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -3025,10 +2646,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
@@ -3050,10 +2667,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -3071,10 +2684,6 @@
 - name: rllib_learning_tests_ppo_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -3097,10 +2706,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -3119,10 +2724,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -3139,10 +2740,6 @@
 - name: rllib_learning_tests_slateq_tf
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -3161,10 +2758,6 @@
 - name: rllib_learning_tests_slateq_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -3187,10 +2780,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -3208,10 +2797,6 @@
 - name: rllib_learning_tests_td3_torch
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -3231,10 +2816,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: multi_gpu_learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -3251,10 +2832,6 @@
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: multi_gpu_with_lstm_learning_tests
-    test_suite: rllib_tests
 
   frequency: nightly
   team: rllib
@@ -3274,10 +2851,6 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  legacy:
-    test_name: multi_gpu_with_attention_learning_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -3295,10 +2868,6 @@
 - name: rllib_stress_tests
   group: RLlib tests
   working_dir: rllib_tests
-
-  legacy:
-    test_name: stress_tests
-    test_suite: rllib_tests
 
   frequency: weekly
   team: rllib
@@ -3331,9 +2900,6 @@
 - name: shuffle_100gb
   group: core-multi-test
   working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_100gb
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3351,9 +2917,6 @@
 - name: stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
-  legacy:
-    test_name: stress_test_placement_group
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3368,9 +2931,6 @@
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
-  legacy:
-    test_name: decision_tree_autoscaling_20_runs
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3385,9 +2945,6 @@
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
   working_dir: nightly_tests
-  legacy:
-    test_name: autoscaling_shuffle_1tb_1000_partitions
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3408,10 +2965,6 @@
   working_dir: microbenchmark
 
   python: "3.7"
-
-  legacy:
-    test_name: microbenchmark
-    test_suite: microbenchmark
 
   cluster:
     cluster_env: app_config.yaml
@@ -3458,9 +3011,6 @@
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: dask_on_ray_100gb_sort
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3477,9 +3027,6 @@
 - name: dask_on_ray_large_scale_test_spilling
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: dask_on_ray_large_scale_test_spilling
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3513,9 +3060,6 @@
 - name: stress_test_state_api_scale
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: stress_test_state_api_scale
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3545,9 +3089,6 @@
 - name: shuffle_20gb_with_state_api
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_20gb_with_state_api
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3564,9 +3105,6 @@
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: stress_test_many_tasks
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3596,9 +3134,6 @@
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: stress_test_dead_actors
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3631,9 +3166,6 @@
 - name: threaded_actors_stress_test
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: threaded_actors_stress_test
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3652,9 +3184,6 @@
 # - name: threaded_actors_stress_test
 #   group: core-daily-test
 #   working_dir: nightly_tests
-#   legacy:
-#     test_name: threaded_actors_stress_test
-#     test_suite: nightly_tests
 #
 #   frequency: nightly
 #   team: core
@@ -3689,9 +3218,6 @@
 - name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: single_node_oom
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3723,9 +3249,6 @@
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: dask_on_ray_1tb_sort
-    test_suite: nightly_tests
 
   frequency: nightly-3x
   team: core
@@ -3745,9 +3268,6 @@
 - name: many_nodes_actor_test_on_v2
   group: core-daily-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_nodes_actor_test
-    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
@@ -3766,9 +3286,6 @@
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
 #  working_dir: nightly_tests
-#  legacy:
-#    test_name: many_nodes_multi_master_test
-#    test_suite: nightly_tests
 #
 #  frequency: nightly-3x
 #  team: core
@@ -3788,9 +3305,6 @@
 - name: pg_autoscaling_regression_test
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: pg_autoscaling_regression_test
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3805,9 +3319,6 @@
 - name: placement_group_performance_test
   group: core-daily-test
   working_dir: nightly_tests
-  legacy:
-    test_name: placement_group_performance_test
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
@@ -3830,9 +3341,6 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: single_node
-    test_suite: benchmark_tests
 
   frequency: nightly
   team: core
@@ -3848,9 +3356,6 @@
 - name: object_store
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: object_store
-    test_suite: benchmark_tests
 
   frequency: nightly
   team: core
@@ -3868,9 +3373,6 @@
 - name: many_actors
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_actors
-    test_suite: benchmark_tests
 
   frequency: nightly-3x
   team: core
@@ -3888,9 +3390,6 @@
 - name: many_actors_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_actors_smoke_test
-    test_suite: benchmark_tests
 
   frequency: nightly
   team: core
@@ -3908,9 +3407,6 @@
 - name: many_tasks
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_tasks
-    test_suite: benchmark_tests
 
   frequency: nightly
   team: core
@@ -3940,9 +3436,6 @@
 - name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_pgs
-    test_suite: benchmark_tests
 
   frequency: nightly-3x
   team: core
@@ -3960,9 +3453,6 @@
 - name: many_pgs_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_pgs_smoke_test
-    test_suite: benchmark_tests
 
   frequency: nightly
   team: core
@@ -3981,10 +3471,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  legacy:
-    test_name: many_nodes
-    test_suite: benchmark_tests
-
   frequency: nightly-3x
   team: core
   cluster:
@@ -4001,9 +3487,6 @@
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
   working_dir: benchmarks
-  legacy:
-    test_name: scheduling_test_many_0s_tasks_many_nodes
-    test_suite: benchmark_tests
 
   frequency: nightly
   team: core
@@ -4023,9 +3506,6 @@
 # - name: scheduling_test_many_5s_tasks_single_node
 #   group: core-scalability-test
 #   working_dir: benchmarks
-#   legacy:
-#     test_name: scheduling_test_many_5s_tasks_single_node
-#     test_suite: benchmark_tests
 
 #   frequency: nightly
 #   team: core
@@ -4047,9 +3527,6 @@
 # - name: scheduling_test_many_5s_tasks_many_nodes
 #   group: core-scalability-test
 #   working_dir: benchmarks
-#   legacy:
-#     test_name: scheduling_test_many_5s_tasks_many_nodes
-#     test_suite: benchmark_tests
 
 #   frequency: nightly
 #   team: core
@@ -4075,9 +3552,6 @@
 - name: inference
   group: data-tests
   working_dir: nightly_tests/dataset
-  legacy:
-    test_name: inference
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4095,9 +3569,6 @@
 - name: shuffle_data_loader
   group: data-tests
   working_dir: nightly_tests/dataset
-  legacy:
-    test_name: shuffle_data_loader
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4113,9 +3584,6 @@
 - name: parquet_metadata_resolution
   group: data-tests
   working_dir: nightly_tests/dataset
-  legacy:
-    test_name: parquet_metadata_resolution
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4277,9 +3745,6 @@
 - name: pipelined_training_50_gb
   group: data-tests
   working_dir: nightly_tests/dataset
-  legacy:
-    test_name: pipelined_training_50_gb
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4297,9 +3762,6 @@
 - name: pipelined_ingestion_1500_gb
   group: data-tests
   working_dir: nightly_tests/dataset
-  legacy:
-    test_name: pipelined_ingestion_1500_gb
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4319,9 +3781,6 @@
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: dataset_shuffle_random_shuffle_1tb
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4343,9 +3802,6 @@
 - name: dataset_shuffle_sort_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: dataset_shuffle_sort_1tb
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4362,9 +3818,6 @@
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: dataset_shuffle_push_based_random_shuffle_1tb
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4381,9 +3834,6 @@
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: dataset_shuffle_push_based_sort_1tb
-    test_suite: dataset_test
 
   frequency: nightly
   team: data
@@ -4400,9 +3850,6 @@
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: dataset_shuffle_push_based_random_shuffle_100tb
-    test_suite: dataset_test
 
   frequency: weekly
   team: data
@@ -4423,9 +3870,6 @@
 - name: chaos_many_tasks_no_object_store
   group: core-nightly-test
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_many_tasks_no_object_store
-    test_suite: chaos_test
 
   frequency: nightly
   team: core
@@ -4444,9 +3888,6 @@
 - name: chaos_many_actors
   group: core-nightly-test
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_many_actors
-    test_suite: chaos_test
 
   frequency: nightly
   team: core
@@ -4465,9 +3906,6 @@
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_dask_on_ray_large_scale_test_no_spilling
-    test_suite: chaos_test
 
   frequency: nightly
   team: data
@@ -4487,9 +3925,6 @@
 - name: chaos_dask_on_ray_large_scale_test_spilling
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_dask_on_ray_large_scale_test_spilling
-    test_suite: chaos_test
 
   frequency: nightly
   team: data
@@ -4509,9 +3944,6 @@
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_pipelined_ingestion_1500_gb_15_windows
-    test_suite: chaos_test
 
   frequency: nightly
   team: data
@@ -4531,9 +3963,6 @@
 - name: chaos_dataset_shuffle_push_based_sort_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_dataset_shuffle_push_based_sort_1tb
-    test_suite: chaos_test
 
   stable: false
 
@@ -4553,9 +3982,6 @@
 - name: chaos_dataset_shuffle_sort_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_dataset_shuffle_sort_1tb
-    test_suite: chaos_test
 
   frequency: nightly
   team: data
@@ -4573,9 +3999,6 @@
 - name: chaos_dataset_shuffle_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_dataset_shuffle_random_shuffle_1tb
-    test_suite: chaos_test
 
   stable: false
 
@@ -4601,9 +4024,6 @@
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
-  legacy:
-    test_name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
-    test_suite: chaos_test
 
   stable: false
 
@@ -4649,9 +4069,6 @@
 - name: k8s_serve_ha_test
   group: k8s-test
   working_dir: k8s_tests
-  legacy:
-    test_name: k8s_serve_ha_test
-    test_suite: k8s_tests
 
   stable: false
   # TODO: Migrate this test to Anyscale Jobs / staging_v2
@@ -4672,9 +4089,6 @@
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
-  legacy:
-    test_name: aws_cluster_launcher
-    test_suite: cluster-launcher-test
 
   stable: true
 
@@ -4695,9 +4109,6 @@
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
-  legacy:
-    test_name: aws_cluster_launcher_minimal
-    test_suite: cluster-launcher-test
 
   stable: true
 
