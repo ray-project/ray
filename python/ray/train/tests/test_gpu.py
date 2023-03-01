@@ -101,7 +101,12 @@ def test_torch_get_device(
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        session.report(dict(devices=train.torch.get_device().index))
+        if num_gpus_per_worker > 1:
+            session.report(
+                dict(devices=[device.index for device in train.torch.get_device()])
+            )
+        else:
+            session.report(dict(devices=train.torch.get_device().index))
 
     trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
@@ -124,22 +129,19 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
         # 4 workers on node 1, 4 workers on node 2
         # `ray.get_gpu_ids()` returns [0], [0], [1], [1] on node 1
         # and [0], [0], [1], [1] on node 2
-        assert sorted(devices[0]) == [0, 0, 1, 1]
-        assert sorted(devices[1]) == [0, 0, 1, 1]
+        assert sorted(devices) == [0, 0, 0, 0, 1, 1, 1, 1]
     elif num_gpus_per_worker == 1:
         # worker gpu topology:
         # 2 workers on node 1, 2 workers on node 2
         # `ray.get_gpu_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
-        assert sorted(devices[0]) == [0, 1]
-        assert sorted(devices[1]) == [0, 1]
+        assert sorted(devices) == [0, 0, 1, 1]
     elif num_gpus_per_worker == 2:
         # worker gpu topology:
         # 1 workers on node 1, 1 workers on node 2
         # `ray.get_gpu_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
         # and `device_id` returns the one index from each set.
         # So total count of devices should be 2.
-        assert devices[0] == [[0, 1]]
-        assert devices[1] == [[0, 1]]
+        assert devices == [[0, 1], [0, 1]]
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
