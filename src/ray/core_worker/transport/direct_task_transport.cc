@@ -54,10 +54,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                                   reply.actor_address(),
                                                   /*is_application_error=*/false);
             } else if (status.IsCreationTaskError()) {
+              // It means the actor's init method has failed due to exceptions.
               RAY_LOG(DEBUG) << "Actor creation failed and we will not be retrying the "
                                 "creation task, actor id = "
                              << actor_id << ", task id = " << task_id;
               // Copy the actor's reply to the GCS for ref counting purposes.
+              // The actor failure is handled from GCS, so we treat it as a task being completed.
+              // We don't use  `FailOrRetryPendingTask` here because actor creation retry is handled by GCS.  
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
               task_finisher_->CompletePendingTask(task_id,

@@ -296,6 +296,7 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
           // exits. So we will need to inform the GCS on the borrowed refs as if the
           // creation task was successful .
           reply->mutable_borrowed_refs()->CopyFrom(creation_task_reply.borrowed_refs());
+          // Notify the owner so that owner can correctly report failure events for actor creation
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, creation_task_status);
           return;
         }
@@ -309,6 +310,7 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, creation_task_status);
           return;
         }
+
         RAY_CHECK(creation_task_status.ok());
         RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
