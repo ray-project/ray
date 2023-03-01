@@ -227,3 +227,6 @@ workflow_data/
 tag-mapping.json
 
 .bazeliskrc
+
+# We need this protobuf generated file for a test
+!rllib/examples/grpc_cartpole/cartpole_pb2.py
