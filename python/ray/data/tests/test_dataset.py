@@ -62,6 +62,8 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     # is no existing Ray cluster.
     ray.shutdown()
 
+    time.sleep(0.5)
+
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
