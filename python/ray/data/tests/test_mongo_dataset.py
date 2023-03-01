@@ -94,7 +94,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
         "Dataset(\n\tnum_blocks=2,\n\tnum_rows=5,\n\t"
-        "schema={_id: fixed_size_binary[12],float_field: double, int_field: int32}\n)"
+        "schema={_id: fixed_size_binary[12], float_field: double, int_field: int32}\n)"
     )
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
@@ -109,7 +109,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
         "Dataset(\n\tnum_blocks=2,\n\tnum_rows=3,\n\t"
-        "schema={_id: fixed_size_binary[12],float_field: double, int_field: int32}\n)"
+        "schema={_id: fixed_size_binary[12], float_field: double, int_field: int32}\n)"
     )
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
@@ -121,7 +121,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert str(ds) == (
         "Dataset(\n\tnum_blocks=5,\n\tnum_rows=5,\n\t"
-        "schema={_id: fixed_size_binary[12],float_field: double, int_field: int32}\n)"
+        "schema={_id: fixed_size_binary[12], float_field: double, int_field: int32}\n)"
     )
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
@@ -134,7 +134,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert str(ds) == (
         "Dataset(\n\tnum_blocks=5,\n\tnum_rows=5,\n\t"
-        "schema={_id: fixed_size_binary[12],float_field: double, int_field: int32}\n)"
+        "schema={_id: fixed_size_binary[12], float_field: double, int_field: int32}\n)"
     )
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
