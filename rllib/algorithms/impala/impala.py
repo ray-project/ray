@@ -32,6 +32,7 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
@@ -664,7 +665,7 @@ class Impala(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.config._enable_learner_api:
                 if train_results:
-                    pids = list(train_results["learner"]["loss"].keys())
+                    pids = list(set(train_results.keys()) - {ALL_MODULES})
                 else:
                     pids = []
                 self.update_workers_from_learner_group(
@@ -865,11 +866,15 @@ class Impala(Algorithm):
             lg_results = None
 
         if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results["env_steps_trained"]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results["agent_steps_trained"]
-            del lg_results["env_steps_trained"]
-            del lg_results["agent_steps_trained"]
-            result = {"learner": lg_results}
+            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES][
+                NUM_ENV_STEPS_TRAINED
+            ]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES][
+                NUM_AGENT_STEPS_TRAINED
+            ]
+            del lg_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
+            del lg_results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED]
+            result = lg_results
 
         return result
 

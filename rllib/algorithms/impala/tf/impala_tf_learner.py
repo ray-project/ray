@@ -8,6 +8,11 @@ from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ResultDict, TensorType
 
@@ -173,8 +178,8 @@ class ImpalaTfLearner(TfLearner):
         results = super().compile_results(
             batch, fwd_out, postprocessed_loss, postprocessed_gradients
         )
-        results["agent_steps_trained"] = batch.agent_steps()
-        results["env_steps_trained"] = batch.env_steps()
+        results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
+        results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
         return results
 
 
@@ -191,8 +196,10 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
         A reduced result dict.
     """
     result = tree.map_structure(lambda *x: np.mean(x), *results)
-    agent_steps_trained = sum([r["agent_steps_trained"] for r in results])
-    env_steps_trained = sum([r["env_steps_trained"] for r in results])
-    result["agent_steps_trained"] = agent_steps_trained
-    result["env_steps_trained"] = env_steps_trained
+    agent_steps_trained = sum(
+        [r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results]
+    )
+    env_steps_trained = sum([r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results])
+    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
+    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
     return result
