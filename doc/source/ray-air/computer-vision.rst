@@ -29,7 +29,7 @@ Reading image data
         root/cat/[...]/asd932_.png
 
     To load images stored in this layout, read the raw images and include the
-    image paths.
+    class names.
 
     .. literalinclude:: ./doc_code/torch_computer_vision.py
         :start-after: __read_images1_start__
@@ -37,12 +37,16 @@ Reading image data
         :dedent:
 
     Then, apply a :ref:`user-defined functions <transform_datasets_writing_udfs>` to
-    parse the class names from the image paths.
+    encode the class names as integer targets.
 
     .. literalinclude:: ./doc_code/torch_computer_vision.py
         :start-after: __read_images2_start__
         :end-before: __read_images2_stop__
         :dedent:
+
+    .. tip::
+
+        You can also use :class:`~ray.data.preprocessors.LabelEncoder` to encode labels.
 
 .. tabbed:: NumPy
 
@@ -132,35 +136,18 @@ standard way to preprocess data with Ray.
         :end-before: __torch_preprocessors_stop__
         :dedent:
 
-    .. warning::
-        If you read raw images in `Reading image data`_, then your dataset
-        contains class names instead of integer targets. To fix this issue, chain
-        ``preprocessor`` with a label encoder:
-
-        .. code-block:: python
-
-            from ray.data.preprocessors import Chain, LabelEncoder
-
-            preprocessor = Chain(
-                preprocessor,
-                LabelEncoder(columns=["label"])
-            )
-
-
 .. tabbed:: TensorFlow
 
-    .. testcode::
+    To apply TorchVision transforms, create a ``BatchMapper``.
 
-        from tensorflow.keras.applications import imagenet_utils
+    Create two ``BatchMapper`` -- one to normalize images, and another to
+    augment images. Later, you'll pass the preprocessors to ``Trainers``, ``Predictors``,
+    and ``PredictorDeployments``.
 
-        from ray.data.preprocessors import BatchMapper
-
-        def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-            batch["image"] = imagenet_utils.preprocess_input(batch["image"])
-            return batch
-
-        preprocessor = BatchMapper(preprocess, batch_format="numpy")
-
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_preprocessors_start__
+        :end-before: __tensorflow_preprocessors_stop__
+        :dedent:
 
 For more information on transforming data, see
 :ref:`Using Preprocessors <air-preprocessors>` and
@@ -193,7 +180,20 @@ Training vision models
 
 .. tabbed:: TensorFlow
 
-    ham
+    To train a vision model, define the training loop per worker.
+
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_training_loop_start__
+        :end-before: __tensorflow_training_loop_stop__
+        :dedent:
+
+    Then, create a :class:`~ray.train.torch.TensorflowTrainer` and call
+    :meth:`~ray.train.torch.TensorflowTrainer.fit`.
+
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_trainer_start__
+        :end-before: __tensorflow_trainer_stop__
+        :dedent:
 
 Creating checkpoints
 --------------------
@@ -219,7 +219,14 @@ If you're going from training to prediction, you don't need to create a new chec
 
 .. tabbed:: TensorFlow
 
-    ham
+    To create a :class:`~ray.train.tensorflow.TensorflowCheckpoint`, pass a TensorFlow model and
+    the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
+    to :meth:`TensorflowCheckpoint.from_model() <ray.train.torch.TensorflowCheckpoint.from_model>`.
+
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_checkpoint_start__
+        :end-before: __tensorflow_checkpoint_stop__
+        :dedent:
 
 
 Batch predicting images
@@ -244,7 +251,16 @@ image datasets.
 
 .. tabbed:: TensorFlow
 
-    ham
+    To create a ``BatchPredictor``, call
+    :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
+    you created in `Creating checkpoints`_.
+
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_batch_predictor_start__
+        :end-before: __tensorflow_batch_predictor_stop__
+        :dedent:
+
+    For a more in-depth example, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`.
 
 Serving vision models
 ---------------------
@@ -287,4 +303,18 @@ To a NumPy ndarrays like:
 
 .. tabbed:: TensorFlow
 
-    ham
+    To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
+    to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
+    :func:`~ray.serve.http_adapters.json_to_ndarray` as the HTTP adapter.
+
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_serve_start__
+        :end-before: __tensorflow_serve_stop__
+        :dedent:
+
+    Then, make a request to classify an image.
+
+    .. literalinclude:: ./doc_code/torch_computer_vision.py
+        :start-after: __tensorflow_online_predict_start__
+        :end-before: __tensorflow_online_predict_stop__
+        :dedent:
