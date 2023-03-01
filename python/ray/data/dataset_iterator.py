@@ -185,7 +185,9 @@ class DatasetIterator(abc.ABC):
             from ray.train.error import SessionMisuseError
 
             try:
-                device = get_device()
+                train_device = get_device()
+                if train_device.type != "cpu":
+                    device = train_device
             except SessionMisuseError:
                 pass
 
