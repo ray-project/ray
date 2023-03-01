@@ -24,14 +24,6 @@ from ray.tune.impl.tuner_internal import _TUNER_PKL
 
 
 @pytest.fixture
-def propagate_logs():
-    logger = logging.getLogger("ray")
-    logger.propagate = True
-    yield
-    logger.propagate = False
-
-
-@pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
     yield address_info
