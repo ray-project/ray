@@ -121,3 +121,16 @@ class Distribution(abc.ABC):
         Returns:
             size of the required input vector (minus leading batch dimension).
         """
+
+    @classmethod
+    def from_logits(cls, logits: TensorType, **kwargs) -> "Distribution":
+        """Creates a Distribution from logits.
+
+        The callee does not need to have knowledge of the distribution class in order
+        to create it and sample from it. The passed batched logits vectors might be
+        split up and are passed to the distribution class' constructor as kwargs.
+
+        Args:
+            logits: The logits to create the distribution from.
+        """
+        raise NotImplementedError
