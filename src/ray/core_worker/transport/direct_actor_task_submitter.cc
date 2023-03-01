@@ -305,7 +305,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     // might require holding mu_ which will lead to a deadlock.
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
     const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
-    rpc::ErrorType error_type = error_info.error_type();
+    const auto error_type = error_info.error_type();
 
     for (auto &task_id : task_ids_to_fail) {
       // No need to increment the number of completed tasks since the actor is
