@@ -136,6 +136,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \returns The mapping from node id to latest resource report.
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
+  /// Handle get all resource usage rpc request.
+  void GetAllResourceUsage(rpc::GetAllResourceUsageReply *reply);
+
  private:
   /// Update resource usage of given node.
   ///

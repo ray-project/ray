@@ -123,8 +123,9 @@ cc_library(
         "src/ray/gcs/autoscaler/autoscaler.cc",
     ],
     hdrs = [
-        "src/ray/gcs/autoscaler/node_provider.h",
         "src/ray/gcs/autoscaler/autoscaler.h",
+        "src/ray/gcs/autoscaler/node_provider.h",
+        "src/ray/gcs/autoscaler/policy.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",

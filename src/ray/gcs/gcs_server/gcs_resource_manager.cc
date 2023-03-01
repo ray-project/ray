@@ -175,10 +175,7 @@ void GcsResourceManager::FillAggregateLoad(
   }
 }
 
-void GcsResourceManager::HandleGetAllResourceUsage(
-    rpc::GetAllResourceUsageRequest request,
-    rpc::GetAllResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsResourceManager::GetAllResourceUsage(rpc::GetAllResourceUsageReply *reply) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
@@ -221,7 +218,13 @@ void GcsResourceManager::HandleGetAllResourceUsage(
 
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
+}
 
+void GcsResourceManager::HandleGetAllResourceUsage(
+    rpc::GetAllResourceUsageRequest request,
+    rpc::GetAllResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  GetAllResourceUsage(reply);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
