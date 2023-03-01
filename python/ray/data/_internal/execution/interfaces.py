@@ -34,6 +34,10 @@ class RefBundle:
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
 
+    # This attribute is used by the split() operator to assign bundles to logical
+    # output splits. It is otherwise None.
+    output_split_idx: Optional[int] = None
+
     def __post_init__(self):
         for b in self.blocks:
             assert isinstance(b, tuple), b
