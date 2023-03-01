@@ -47,6 +47,29 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
+        """Create a :class:`BatchPredictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Example:
+
+            .. testcode::
+
+                from torchvision import models
+
+                from ray.train.batch_predictor import BatchPredictor
+                from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+                model = models.resnet50(pretrained=True)
+                checkpoint = TorchCheckpoint.from_model(model)
+                predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+
+        Args:
+            checkpoint: A :class:`~ray.air.checkpoint.Checkpoint` containing model state
+                and optionally a preprocessor.
+            predictor_cls: The type of predictor to use.
+            **kwargs: Optional arguments to pass the ``predictor_cls`` constructor.
+        """
+
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     @classmethod
@@ -100,6 +123,9 @@ class BatchPredictor:
         **predict_kwargs,
     ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
+
+        .. note::
+            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datasets consumption APIs, such as iterating through the output, to trigger the execution of prediction.
 
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
@@ -161,9 +187,10 @@ class BatchPredictor:
 
             .. testoutput::
 
-                Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
+                MapBatches(ScoringWrapper)
+                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
-        """
+        """  # noqa: E501
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
         if num_cpus_per_worker is None:
@@ -329,10 +356,6 @@ class BatchPredictor:
             fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )
-
-        if isinstance(prediction_results, ray.data.Dataset):
-            # Force execution because Dataset uses lazy execution by default.
-            prediction_results.fully_executed()
 
         return prediction_results
 
