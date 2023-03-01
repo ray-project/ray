@@ -51,6 +51,7 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
 def _check_refcounts(expected):
     actual = ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+    print(actual)
     assert len(expected) == len(actual)
     for object_ref, (local, submitted) in expected.items():
         hex_id = object_ref.hex().encode("ascii")
@@ -600,26 +601,19 @@ def test_actor_constructor_borrow_objs(ray_start_regular):
     @ray.remote
     class Actor:
         def __init__(self, obj_containing_ref):
-            pass
+            raise ValueError("failed")
 
         def never_ready(self):
             raise ValueError(
                 "this should never be invoked since actor should have been killed."
             )
 
+    check_refcounts({})
     ref = ray.put(1)
     a = Actor.remote({"foo": ref})
-    ray.kill(a)
     del ref
 
-    with pytest.raises(
-        ray.exceptions.RayActorError, match="it was killed by `ray.kill"
-    ) as e:
-        ray.get(a.never_ready.remote())
-        print(e)
-
     wait_for_condition(_all_actors_dead, timeout=10)
-
     check_refcounts({})
 
 
