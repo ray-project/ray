@@ -162,7 +162,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
             optimizer.step()
 
             running_loss += loss.item()
-            if i & 2000 == 1999:
+            if i % 2000 == 1999:
                 session.report(
                     metrics={
                         "epoch": epoch,

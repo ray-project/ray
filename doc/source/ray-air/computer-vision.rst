@@ -5,16 +5,16 @@ Computer Vision
 
 This guide explains how to perform common computer vision tasks like:
 
-* Reading image data
-* Transforming images
-* Training vision models
-* Batch predicting images
-* Serving vision models
+* `Reading image data`_
+* `Transforming images`_
+* `Training vision models`_
+* `Batch predicting images`_
+* `Serving vision models`_
 
 Reading image data
 ------------------
 
-.. tabbed:: Images
+.. tabbed:: Raw images
 
     Datasets like ImageNet store files like this:
 
@@ -110,14 +110,14 @@ Reading image data
         :dedent:
 
 
-For more information on creating datasets, see Creating Datasets.
+For more information on creating datasets, see :ref:`Creating Datasets <creating_datasets>`.
 
 
 Transforming images
 -------------------
 
-To transform images, create a Preprocessor. They're the standard way to preprocess data
-with Ray.
+To transform images, create a :class:`~ray.data.preprocessor.Preprocessor`. They're the
+standard way to preprocess data with Ray.
 
 .. tabbed:: Torch
 
@@ -162,7 +162,9 @@ with Ray.
         preprocessor = BatchMapper(preprocess, batch_format="numpy")
 
 
-For more information on transforming data, see Using Preprocessors and Transforming Datasets.
+For more information on transforming data, see
+:ref:`Using Preprocessors <air-preprocessors>` and
+:ref:`Transforming Datasets <transforming_datasets>`.
 
 Training vision models
 ----------------------
@@ -186,7 +188,8 @@ Training vision models
         :end-before: __torch_trainer_stop__
         :dedent:
 
-    For a more in-depth example, read :doc:`/ray-air/examples/torch_image_example`.
+    For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example` and
+    :ref:`Using Trainers <air-trainers>`.
 
 .. tabbed:: TensorFlow
 
@@ -197,6 +200,11 @@ Creating checkpoints
 
 :class:`Checkpoints <ray.air.checkpoint.Checkpoint>` are required for batch inference and model
 serving. They contain model state and optionally a preprocessor.
+
+If you're going from training to prediction, you don't need to create a new checkpoint.
+:meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>` returns a
+:class:`~ray.air.result.Result` object, and you can use
+:attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` instead.
 
 .. tabbed:: Torch
 
@@ -213,10 +221,6 @@ serving. They contain model state and optionally a preprocessor.
 
     ham
 
-.. tip::
-    :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>` returns a :class:`~ray.air.result.Result` object.
-    If you're going from training to prediction, don't create a new checkpoint. Instead,
-    use :attr:`Result.checkpoint <ray.air.result.Result.checkpoint>`.
 
 Batch predicting images
 -----------------------
@@ -235,7 +239,8 @@ image datasets.
         :end-before: __torch_batch_predictor_stop__
         :dedent:
 
-    For a more in-depth example, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`.
+    For more in-depth examples, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
+    and :ref:`Using Predictors for Inference <air-predictors>`.
 
 .. tabbed:: TensorFlow
 
