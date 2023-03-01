@@ -1068,7 +1068,7 @@ py_test(
 )
 py_test(
     name = "test_impala_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "algorithms_dir", "exclusive"],
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )

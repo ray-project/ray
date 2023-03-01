@@ -1093,7 +1093,12 @@ def check_reproducibilty(
     for num_workers in [0, 2]:
         algo_config = (
             algo_config.debugging(seed=42)
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .resources(
+                # old API
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+                # new API
+                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
             .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
 
