@@ -6,28 +6,29 @@ from google.protobuf.internal import builder as _builder
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import symbol_database as _symbol_database
+
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-
-
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x63\x61rtpole.proto\x12\x08\x63\x61rtpole\"\x07\n\x05\x45mpty\"\x18\n\x06\x41\x63tion\x12\x0e\n\x06\x61\x63tion\x18\x01 \x01(\x05\"`\n\x05State\x12\x15\n\rcart_position\x18\x01 \x01(\x02\x12\x15\n\rcart_velocity\x18\x02 \x01(\x02\x12\x12\n\npole_angle\x18\x03 \x01(\x02\x12\x15\n\rpole_velocity\x18\x04 \x01(\x02\"c\n\nStepResult\x12\x1e\n\x05state\x18\x01 \x01(\x0b\x32\x0f.cartpole.State\x12\x0e\n\x06reward\x18\x02 \x01(\x02\x12\x12\n\nterminated\x18\x03 \x01(\x08\x12\x11\n\ttruncated\x18\x04 \x01(\x08\x32i\n\x08\x43\x61rtPole\x12+\n\x05reset\x12\x0f.cartpole.Empty\x1a\x0f.cartpole.State\"\x00\x12\x30\n\x04step\x12\x10.cartpole.Action\x1a\x14.cartpole.StepResult\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x0e\x63\x61rtpole.proto\x12\x08\x63\x61rtpole"\x07\n\x05\x45mpty"\x18\n\x06\x41\x63tion\x12\x0e\n\x06\x61\x63tion\x18\x01 \x01(\x05"`\n\x05State\x12\x15\n\rcart_position\x18\x01 \x01(\x02\x12\x15\n\rcart_velocity\x18\x02 \x01(\x02\x12\x12\n\npole_angle\x18\x03 \x01(\x02\x12\x15\n\rpole_velocity\x18\x04 \x01(\x02"c\n\nStepResult\x12\x1e\n\x05state\x18\x01 \x01(\x0b\x32\x0f.cartpole.State\x12\x0e\n\x06reward\x18\x02 \x01(\x02\x12\x12\n\nterminated\x18\x03 \x01(\x08\x12\x11\n\ttruncated\x18\x04 \x01(\x08\x32i\n\x08\x43\x61rtPole\x12+\n\x05reset\x12\x0f.cartpole.Empty\x1a\x0f.cartpole.State"\x00\x12\x30\n\x04step\x12\x10.cartpole.Action\x1a\x14.cartpole.StepResult"\x00\x62\x06proto3'
+)
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'cartpole_pb2', globals())
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "cartpole_pb2", globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
-  DESCRIPTOR._options = None
-  _EMPTY._serialized_start=28
-  _EMPTY._serialized_end=35
-  _ACTION._serialized_start=37
-  _ACTION._serialized_end=61
-  _STATE._serialized_start=63
-  _STATE._serialized_end=159
-  _STEPRESULT._serialized_start=161
-  _STEPRESULT._serialized_end=260
-  _CARTPOLE._serialized_start=262
-  _CARTPOLE._serialized_end=367
+    DESCRIPTOR._options = None
+    _EMPTY._serialized_start = 28
+    _EMPTY._serialized_end = 35
+    _ACTION._serialized_start = 37
+    _ACTION._serialized_end = 61
+    _STATE._serialized_start = 63
+    _STATE._serialized_end = 159
+    _STEPRESULT._serialized_start = 161
+    _STEPRESULT._serialized_end = 260
+    _CARTPOLE._serialized_start = 262
+    _CARTPOLE._serialized_end = 367
 # @@protoc_insertion_point(module_scope)
