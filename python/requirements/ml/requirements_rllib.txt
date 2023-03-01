@@ -22,7 +22,7 @@ chess==1.7.0
 pymunk==6.2.1
 supersuit==3.7.0; python_version >= '3.7'
 # For tests on minigrid.
-minigrid==2.1.0
+minigrid==2.1.1
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
 tensorflow_estimator==2.11.0
