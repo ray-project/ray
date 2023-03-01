@@ -1,3 +1,5 @@
+import collections
+import random
 import pytest
 import numpy as np
 from typing import List, Iterable, Any
@@ -16,6 +18,7 @@ from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _BlockRefBundler,
 )
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -199,6 +202,63 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
         assert "locality_hits" not in metrics, metrics
         assert "locality_misses" not in metrics, metrics
     assert not op.completed()
+
+
+@pytest.mark.parametrize("equal", [False, True])
+@pytest.mark.parametrize("chunk_size", [1, 10])
+def test_split_operator(ray_start_regular_shared, equal, chunk_size):
+    input_op = InputDataBuffer(make_ref_bundles([[i] * chunk_size for i in range(100)]))
+    op = OutputSplitter(input_op, 3, equal=equal)
+
+    # Feed data and implement streaming exec.
+    output_splits = collections.defaultdict(list)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        while op.has_next():
+            ref = op.get_next()
+            assert ref.owns_blocks, ref
+            for block, _ in ref.blocks:
+                output_splits[ref.output_split_idx].extend(ray.get(block))
+    op.inputs_done()
+    if equal:
+        for i in range(3):
+            assert len(output_splits[i]) == 33 * chunk_size, output_splits
+    else:
+        assert sum(len(output_splits[i]) for i in range(3)) == (100 * chunk_size)
+        for i in range(3):
+            assert len(output_splits[i]) in [
+                33 * chunk_size,
+                34 * chunk_size,
+            ], output_splits
+
+
+@pytest.mark.parametrize("equal", [False, True])
+@pytest.mark.parametrize("random_seed", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
+    random.seed(random_seed)
+    inputs = make_ref_bundles([[i] * random.randint(0, 10) for i in range(100)])
+    num_inputs = sum(x.num_rows() for x in inputs)
+    input_op = InputDataBuffer(inputs)
+    op = OutputSplitter(input_op, 3, equal=equal)
+
+    # Feed data and implement streaming exec.
+    output_splits = collections.defaultdict(list)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.inputs_done()
+    while op.has_next():
+        ref = op.get_next()
+        assert ref.owns_blocks, ref
+        for block, _ in ref.blocks:
+            output_splits[ref.output_split_idx].extend(ray.get(block))
+    if equal:
+        actual = [len(output_splits[i]) for i in range(3)]
+        expected = [num_inputs // 3] * 3
+        assert actual == expected
+    else:
+        assert sum(len(output_splits[i]) for i in range(3)) == num_inputs, output_splits
 
 
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
