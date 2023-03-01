@@ -54,6 +54,22 @@ class StableDiffusionV2:
         return image
 
 
-entrypoint = APIIngress.bind(StableDiffusionV2.bind())
+runtime_env = {
+    "pip": [
+        "accelerate==0.14.0",
+        "diffusers @ git+https://github.com/huggingface/diffusers.git@25f11424f62d8d9bef8a721b806926399a1557f2",
+        "numpy==1.23.4",
+        "Pillow==9.3.0",
+        "scipy==1.9.3",
+        "tensorboard==2.12.0",
+        "torch==1.13.0",
+        "torchvision==0.14.0",
+        "transformers==4.24.0",
+    ]
+}
+
+entrypoint = APIIngress.bind(
+    StableDiffusionV2.options(ray_actor_options={"runtime_env": runtime_env}).bind()
+)
 
 # Run the script with `serve run app:entrypoint` to start the serve application
