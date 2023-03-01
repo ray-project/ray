@@ -69,7 +69,7 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         # Configure.
         from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
         # Build.
         algo = config.build()
@@ -87,19 +87,17 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         # Configure.
         from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
         # Train via Ray Tune.
-        # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
-        # we need to convert back to old-style config dicts.
-        tune.run("PPO", config=config.to_dict())
+        tune.run("PPO", config=config)
 
 
 .. tabbed:: RLlib Command Line
 
     .. code-block:: bash
 
-        rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
+        rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
@@ -121,7 +119,7 @@ Policies
 `Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are
 Python classes that define how an agent acts in an environment.
 `Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions.
-In a `gym <rllib-env.html#openai-gym>`__ environment, there is a single agent and policy.
+In a `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ environment, there is a single agent and policy.
 In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once,
 and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies,
 each controlling one or more agents:
@@ -162,11 +160,11 @@ Here is an example of creating a set of rollout workers and using them gather ex
 .. code-block:: python
 
     # Setup policy and rollout workers.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
         policy_class=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v0"),
+        env_creator=lambda c: gym.make("CartPole-v1"),
         num_workers=10)
 
     while True:

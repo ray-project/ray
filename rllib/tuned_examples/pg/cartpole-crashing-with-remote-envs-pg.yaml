@@ -18,7 +18,7 @@ cartpole-crashing-with-remote-envs-pg:
                 init_time_s: 2.0
         num_workers: 4
         num_envs_per_worker: 3
-        rollout_fragment_length: 50
+        train_batch_size: 600
         # Use parallel remote envs.
         remote_worker_envs: true
 

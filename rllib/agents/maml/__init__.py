@@ -7,4 +7,4 @@ __all__ = [
 
 from ray.rllib.utils.deprecation import deprecation_warning
 
-deprecation_warning("ray.rllib.agents.maml", "ray.rllib.algorithms.maml", error=False)
+deprecation_warning("ray.rllib.agents.maml", "ray.rllib.algorithms.maml", error=True)

@@ -1,0 +1,85 @@
+// Copyright  The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Copyright 2015 gRPC authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This proto file is copied from
+//    https://github.com/Tradias/grpc_bench/blob/master/scenarios/complex_proto/helloworld.proto
+// but some fileds got updated to make it work with ray gRPC framework.
+
+syntax = "proto3";
+
+option go_package = "proto/helloworld";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.helloworld";
+option java_outer_classname = "HelloWorldProto";
+option objc_class_prefix = "HLW";
+
+package helloworld;
+
+// The greeting service definition.
+service Greeter {
+  // Sends a greeting
+  rpc SayHello(SayHelloRequest) returns (SayHelloReply) {}
+}
+
+// The actual message exchanged by the client and the server.
+// NOTE: When creating a custom scenario plese edit only this message.
+message Hello {
+  string name = 1;
+  double d = 2;
+  float f = 3;
+  bool b = 4;
+  int32 n = 5;
+  int64 l = 6;
+  oneof choice {
+    string c1 = 7;
+    bool c2 = 8;
+  }
+  message Pet {
+    enum Color {
+      BLACK = 0;
+      WHITE = 1;
+      BLUE = 2;
+      RED = 3;
+      YELLOW = 4;
+      GREEN = 5;
+    }
+    string name = 1;
+    Color color = 2;
+  }
+  repeated Pet pets = 9;
+}
+
+// The request message from the client.
+message SayHelloRequest {
+  Hello request = 1;
+}
+
+// The response message from the server.
+message SayHelloReply {
+  Hello response = 1;
+}

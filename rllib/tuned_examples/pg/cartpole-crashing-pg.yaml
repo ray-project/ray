@@ -18,7 +18,6 @@ cartpole-crashing-pg:
                 # Every time a remote sub-environment crashes, a new env is created
                 # in its place and will take this long (sleep) to "initialize".
                 init_time_s: 1.0
-        horizon: 200
         num_workers: 2
         num_envs_per_worker: 5
 

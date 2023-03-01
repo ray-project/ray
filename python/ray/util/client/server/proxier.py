@@ -608,6 +608,30 @@ def prepare_runtime_init_req(
     return (init_request, new_job_config)
 
 
+class RequestIteratorProxy:
+    def __init__(self, request_iterator):
+        self.request_iterator = request_iterator
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return next(self.request_iterator)
+        except grpc.RpcError as e:
+            # To stop proxying already CANCLLED request stream gracefully,
+            # we only translate the exact grpc.RpcError to StopIteration,
+            # not its subsclasses. ex: grpc._Rendezvous
+            # https://github.com/grpc/grpc/blob/v1.43.0/src/python/grpcio/grpc/_server.py#L353-L354
+            # This fixes the https://github.com/ray-project/ray/issues/23865
+            if type(e) != grpc.RpcError:
+                raise e  # re-raise other grpc exceptions
+            logger.exception(
+                "Stop iterating cancelled request stream with the following exception:"
+            )
+            raise StopIteration
+
+
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, proxy_manager: ProxyManager):
         self.num_clients = 0
@@ -635,6 +659,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         return modified_resp
 
     def Datapath(self, request_iterator, context):
+        request_iterator = RequestIteratorProxy(request_iterator)
         cleanup_requested = False
         start_time = time.time()
         client_id = _get_client_id_from_context(context)
@@ -761,6 +786,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         self.proxy_manager = proxy_manager
 
     def Logstream(self, request_iterator, context):
+        request_iterator = RequestIteratorProxy(request_iterator)
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return

@@ -1,0 +1,31 @@
+# ATTENTION: THESE DEPENDENCIES SHOULD USUALLY NOT BE UPDATED!
+
+# Updating these dependencies means we remove official support for dependency releases older than
+# the specified version.
+
+# These are compatibility requirements to make sure certain workflows continue to work
+# with these dependency versions. They thus act as a lower bound for compatibility
+# with ML libraries.
+# Concretely, we set up a fresh Python 3.7 environment and
+# run the pipeline job in `Ray Python legacy dependency ML compatibility tests` with these dependencies installed.
+
+# ML libraries
+torch==1.9.0
+tensorflow==2.7.0
+tensorflow-probability==0.14.1
+keras==2.7.0
+
+# Torch addons
+torchvision==0.10.0
+
+pytorch-lightning==1.5.10
+
+# Upstream libraries
+lightgbm_ray==0.1.5
+xgboost_ray==0.1.10
+ray_lightning==0.2.0
+
+# Datasets
+pyarrow==6.0.1
+
+ray[tune,data]

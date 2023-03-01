@@ -1,24 +1,25 @@
 import copy
+from datetime import datetime
 import logging
 import os
+from pathlib import Path
 import platform
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
+import warnings
 
 import ray
-from ray.air._internal.util import skip_exceptions
+from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.uri_utils import URI
+from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
-from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -34,23 +35,24 @@ from ray.tune.result import (
     STDOUT_FILE,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
+    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
     TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
 )
-from ray.tune.syncer import Syncer
-from ray.tune.utils import UtilMonitor
+from ray.tune import TuneError
+from ray.tune.utils import UtilMonitor, warn_if_slow
+from ray.tune.utils.callback import (
+    DEFAULT_CALLBACK_CLASSES,
+    _get_artifact_templates_for_callbacks,
+)
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
-from ray.tune.utils.util import (
-    Tee,
-    _delete_external_checkpoint,
-    _get_checkpoint_from_remote_node,
-    retry_fn,
-)
+from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -79,29 +81,38 @@ class Trainable:
     Other implementation methods that may be helpful to override are
     ``log_result``, ``reset_config``, ``cleanup``, and ``_export_model``.
 
-    When using Tune, Tune will convert this class into a Ray actor, which
-    runs on a separate process. Tune will also change the current working
-    directory of this process to ``self.logdir``. This is designed so that
-    different trials that run on the same physical node won't accidently
-    write to the same location and overstep each other.
+    Tune will convert this class into a Ray actor, which runs on a separate process.
+    By default, Tune will also change the current working directory of this process to
+    its corresponding trial-level log directory ``self.logdir``.
+    This is designed so that different trials that run on the same physical node won't
+    accidently write to the same location and overstep each other.
 
-    If you want to know the orginal working directory path on the driver node,
-    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
-    It is advised that you access this path for read only purposes and you
-    need to make sure that the path exists on the remote nodes.
+    The behavior of changing the working directory can be disabled by setting the
+    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    in the original working directory, but relative paths should be used for read only
+    purposes, and you must make sure that the directory is synced on all nodes if
+    running on multiple machines.
+
+    The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
+    accessing paths relative to the original working directory. This environment
+    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
+    used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 
 
     """
 
+    _checkpoint_cls: Type[Checkpoint] = Checkpoint
+
     def __init__(
         self,
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,
-        sync_timeout: Optional[int] = None,
+        custom_syncer: Optional[Syncer] = None,  # Deprecated
+        sync_timeout: Optional[int] = None,  # Deprecated
+        sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
 
@@ -119,12 +130,10 @@ class Trainable:
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            custom_syncer: Syncer used for synchronizing data from Ray nodes
-                to external storage.
-            sync_timeout: Timeout after which sync processes are aborted.
+            sync_config: Configuration object for syncing.
+                See :class:`~ray.tune.syncer.SyncConfig`.
         """
 
-        self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
@@ -155,10 +164,10 @@ class Trainable:
         self._stdout_file = stdout_file
         self._stderr_file = stderr_file
 
-        start_time = time.time()
-        self._local_ip = self.get_current_ip()
+        self._start_time = time.time()
+        self._local_ip = ray.util.get_node_ip_address()
         self.setup(copy.deepcopy(self.config))
-        setup_time = time.time() - start_time
+        setup_time = time.time() - self._start_time
         if setup_time > SETUP_TIME_THRESHOLD:
             logger.info(
                 "Trainable.setup took {:.3f} seconds. If your "
@@ -167,13 +176,38 @@ class Trainable:
                 "overheads.".format(setup_time)
             )
         log_sys_usage = self.config.get("log_sys_usage", False)
-        self._start_time = start_time
-        self._warmup_time = None
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.custom_syncer = custom_syncer
-        self.sync_timeout = sync_timeout
+        # If no sync_config is provided, but we saving to a remote_checkpoint_dir,
+        # then provide a default syncer. `upload_dir` here is just a dummy directory
+        # that tells the SyncConfig to create a default syncer.
+        self.sync_config = sync_config or SyncConfig(
+            upload_dir=self.remote_checkpoint_dir, syncer="auto"
+        )
+
+        # TODO(ml-team): `custom_syncer` and `syncer` are deprecated. Remove in 2.6.
+        warning_message = (
+            "Specifying `custom_syncer` and `sync_timeout` as arguments in the "
+            "Trainable constructor is deprecated and will be removed in version 2.6. "
+            "Pass in a `tune.SyncConfig` object through the `sync_config` "
+            "argument instead."
+        )
+        if sync_timeout:
+            warnings.warn(warning_message, DeprecationWarning)
+            self.sync_config.sync_timeout = sync_timeout
+        if custom_syncer:
+            warnings.warn(warning_message, DeprecationWarning)
+            self.sync_config.syncer = custom_syncer
+        else:
+            # Resolves syncer="auto" to an actual syncer if needed
+            self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
+
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_sleep_time = float(
+            os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
+        )
+        self._last_artifact_sync_iter = None
 
     @property
     def uses_cloud_checkpointing(self):
@@ -182,13 +216,14 @@ class Trainable:
     def _storage_path(self, local_path):
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
-        rel_local_path = os.path.relpath(local_path, self.logdir)
-        return os.path.join(self.remote_checkpoint_dir, rel_local_path)
+        return TrainableUtil.get_remote_storage_path(
+            local_path, self.logdir, self.remote_checkpoint_dir
+        )
 
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]
-    ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    ) -> Optional[PlacementGroupFactory]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -205,8 +240,8 @@ class Trainable:
             config[Dict[str, Any]]: The Trainable's config dict.
 
         Returns:
-            Union[Resources, PlacementGroupFactory]: A Resources object or
-                PlacementGroupFactory consumed by Tune for queueing.
+            PlacementGroupFactory: A PlacementGroupFactory consumed by Tune
+                for queueing.
         """
         return None
 
@@ -219,14 +254,14 @@ class Trainable:
         """
         return ""
 
-    def get_current_ip(self):
-        self._local_ip = ray.util.get_node_ip_address()
-        return self._local_ip
+    def get_current_ip_pid(self):
+        return self._local_ip, os.getpid()
 
     def get_auto_filled_metrics(
         self,
         now: Optional[datetime] = None,
         time_this_iter: Optional[float] = None,
+        timestamp: Optional[int] = None,
         debug_metrics_only: bool = False,
     ) -> dict:
         """Return a dict with metrics auto-filled by the trainable.
@@ -239,9 +274,8 @@ class Trainable:
             now = datetime.today()
         autofilled = {
             TRIAL_ID: self.trial_id,
-            "experiment_id": self._experiment_id,
             "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
-            "timestamp": int(time.mktime(now.timetuple())),
+            "timestamp": timestamp if timestamp else int(time.mktime(now.timetuple())),
             TIME_THIS_ITER_S: time_this_iter,
             TIME_TOTAL_S: self._time_total,
             PID: os.getpid(),
@@ -249,10 +283,11 @@ class Trainable:
             NODE_IP: self._local_ip,
             "config": self.config,
             "time_since_restore": self._time_since_restore,
-            "timesteps_since_restore": self._timesteps_since_restore,
             "iterations_since_restore": self._iterations_since_restore,
-            "warmup_time": self._warmup_time,
         }
+        if self._timesteps_since_restore:
+            autofilled["timesteps_since_restore"] = self._timesteps_since_restore
+
         if debug_metrics_only:
             autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
         return autofilled
@@ -321,10 +356,6 @@ class Trainable:
             `time_total_s` (float): Accumulated time in seconds for this
             entire experiment.
 
-            `experiment_id` (str): Unique string identifier
-            for this experiment. This id is preserved
-            across checkpoint / restore calls.
-
             `training_iteration` (int): The index of this
             training iteration, e.g. call to train(). This is incremented
             after `step()` is called.
@@ -334,7 +365,7 @@ class Trainable:
             `date` (str): A formatted date of when the result was processed.
 
             `timestamp` (str): A UNIX timestamp of when the result
-            was processed.
+            was processed. This may be overridden.
 
             `hostname` (str): Hostname of the machine hosting the training
             process.
@@ -345,13 +376,12 @@ class Trainable:
         Returns:
             A dict that describes training progress.
         """
-        if self._warmup_time is None:
-            self._warmup_time = time.time() - self._start_time
         start = time.time()
         try:
             result = self.step()
         except Exception as e:
-            raise skip_exceptions(e) from None
+            skipped = skip_exceptions(e)
+            raise skipped from exception_cause(skipped)
 
         assert isinstance(result, dict), "step() needs to return a dict."
 
@@ -371,9 +401,11 @@ class Trainable:
         self._time_total += time_this_iter
         self._time_since_restore += time_this_iter
 
+        result_timestamp = result.get(TIMESTAMP, None)
+
         result.setdefault(DONE, False)
 
-        # self._timesteps_total should only be tracked if increments provided
+        # self._timesteps_total should only be tracked if increments are provided
         if result.get(TIMESTEPS_THIS_ITER) is not None:
             if self._timesteps_total is None:
                 self._timesteps_total = 0
@@ -387,16 +419,18 @@ class Trainable:
             self._episodes_total += result[EPISODES_THIS_ITER]
 
         # self._timesteps_total should not override user-provided total
-        result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
-        result.setdefault(EPISODES_TOTAL, self._episodes_total)
+        if self._timesteps_total is not None:
+            result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+        if self._episodes_total is not None:
+            result.setdefault(EPISODES_TOTAL, self._episodes_total)
         result.setdefault(TRAINING_ITERATION, self._iteration)
 
-        # Provides auto-filled neg_mean_loss for avoiding regressions
-        if result.get("mean_loss"):
-            result.setdefault("neg_mean_loss", -result["mean_loss"])
-
         now = datetime.today()
-        result.update(self.get_auto_filled_metrics(now, time_this_iter))
+        result.update(
+            self.get_auto_filled_metrics(
+                now=now, time_this_iter=time_this_iter, timestamp=result_timestamp
+            )
+        )
 
         monitor_data = self._monitor.get_data()
         if monitor_data:
@@ -415,7 +449,6 @@ class Trainable:
 
     def get_state(self):
         return {
-            "experiment_id": self._experiment_id,
             "iteration": self._iteration,
             "timesteps_total": self._timesteps_total,
             "time_total": self._time_total,
@@ -429,7 +462,7 @@ class Trainable:
     ) -> Optional[str]:
         # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, index=self.iteration
+            checkpoint_dir or self.logdir, index=self.iteration, override=True
         )
         return checkpoint_dir
 
@@ -477,7 +510,9 @@ class Trainable:
         if isinstance(checkpoint_dict_or_path, dict):
             metadata["relative_checkpoint_path"] = ""
             metadata["saved_as_dict"] = True
-            Checkpoint.from_dict(checkpoint_dict_or_path).to_directory(checkpoint_dir)
+            self._checkpoint_cls.from_dict(checkpoint_dict_or_path).to_directory(
+                checkpoint_dir
+            )
             # Re-drop marker
             TrainableUtil.mark_as_checkpoint_dir(checkpoint_dir)
         else:
@@ -497,43 +532,161 @@ class Trainable:
 
         TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
-        # Maybe sync to cloud
         if not prevent_upload:
+            # First, upload the new trial checkpoint to cloud
             self._maybe_save_to_cloud(checkpoint_dir)
+            # Then, save other artifacts that live in the trial logdir
+            self._maybe_save_artifacts_to_cloud()
 
         return checkpoint_dir
 
-    def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
+    def _get_latest_available_checkpoint(self) -> Optional[str]:
+        latest_local_checkpoint = self._get_latest_local_available_checkpoint()
+        latest_remote_checkpoint = self._get_latest_remote_available_checkpoint()
+
+        if not latest_local_checkpoint:
+            return latest_remote_checkpoint
+        elif not latest_remote_checkpoint:
+            return latest_local_checkpoint
+
+        # Else, both are available
+        return max([latest_local_checkpoint, latest_remote_checkpoint])
+
+    def _get_latest_local_available_checkpoint(self) -> Optional[str]:
+        checkpoint_candidates = []
+        for name in os.listdir(self._logdir):
+            if not name.startswith("checkpoint_"):
+                continue
+            candidate_path = os.path.join(self._logdir, name)
+            if not os.path.isdir(candidate_path):
+                continue
+
+            # On local storage it is cheap to check for valid checkpoints
+            try:
+                TrainableUtil.find_checkpoint_dir(candidate_path)
+            except Exception:
+                continue
+
+            checkpoint_candidates.append(candidate_path)
+
+        if not checkpoint_candidates:
+            return None
+
+        return max(checkpoint_candidates)
+
+    def _get_latest_remote_available_checkpoint(self) -> Optional[str]:
+        if not self.remote_checkpoint_dir:
+            return None
+
+        checkpoint_candidates = []
+        for name in list_at_uri(self.remote_checkpoint_dir):
+            if not name.startswith("checkpoint_"):
+                continue
+            candidate_path = os.path.join(self._logdir, name)
+            checkpoint_candidates.append(candidate_path)
+
+        if not checkpoint_candidates:
+            return None
+
+        return max(checkpoint_candidates)
+
+    @property
+    def _should_upload_artifacts(self) -> bool:
+        if not self.sync_config.sync_artifacts:
+            return False
+
+        if self._last_artifact_sync_iter == self.iteration:
+            # No need to sync again, if we have already synced this iteration.
+            return False
+
+        # Check if any files have actually been written
+        # (apart from checkpoints and driver logs)
+        exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
+            DEFAULT_CALLBACK_CLASSES
+        )
+        excluded_files = []
+        for exclude_template in exclude:
+            excluded_files += [
+                path.name for path in Path(self.logdir).glob(exclude_template)
+            ]
+        artifact_files = set(os.listdir(self.logdir)) - set(excluded_files)
+        return bool(artifact_files)
+
+    def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if not self._should_upload_artifacts:
+            return False
+
+        self._last_artifact_sync_iter = self.iteration
+        with warn_if_slow(
+            name="trial_artifact_cloud_upload",
+            message=(
+                "Uploading trial artifacts took {duration:.3f} s, which may be a "
+                "performance bottleneck. Consider saving fewer/smaller artifacts to "
+                "the trial log directory, or disable artifact syncing with "
+                "`SyncConfig(sync_artifacts=False)`."
+            ),
+            # Log a warning if upload time surpasses 10s
+            threshold=10,
+            disable=not self.uses_cloud_checkpointing,
+        ):
+            # Avoid double uploading checkpoints and driver callback artifacts,
+            # if those live in the same directory
+            exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
+                DEFAULT_CALLBACK_CLASSES
+            )
+            uploaded = self._maybe_save_to_cloud(self.logdir, exclude=exclude)
+        return uploaded
+
+    def _maybe_save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
+        """Saves the given directory to the cloud. This is used for checkpoint
+        and artifact uploads to cloud.
+
+        Args:
+            local_dir: The local directory to upload to the `remote_checkpoint_dir`
+
+        Returns:
+            bool: True if (successfully) saved to cloud
+        """
         if not self.uses_cloud_checkpointing:
             return False
 
-        if self.custom_syncer:
-            self.custom_syncer.sync_up(
-                checkpoint_dir, self._storage_path(checkpoint_dir)
-            )
-            self.custom_syncer.wait_or_retry()
-            return True
+        syncer = self.sync_config.syncer
+        assert syncer
 
-        checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        checkpoint_uri = self._storage_path(checkpoint_dir)
-        if not retry_fn(
-            lambda: checkpoint.to_uri(checkpoint_uri),
-            subprocess.CalledProcessError,
-            num_retries=3,
-            sleep_time=1,
-            timeout=self.sync_timeout,
-        ):
-            logger.error(
-                f"Could not upload checkpoint even after 3 retries."
-                f"Please check if the credentials expired and that the remote "
-                f"filesystem is supported.. For large checkpoints, consider "
-                f"increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_timeout} seconds). Checkpoint URI: "
-                f"{checkpoint_uri}"
+        checkpoint_uri = self._storage_path(local_dir)
+
+        syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude)
+        try:
+            syncer.wait_or_retry(
+                max_retries=self.sync_num_retries,
+                backoff_s=self.sync_sleep_time,
             )
+        except TuneError:
+            num_retries = self.sync_num_retries
+            logger.error(
+                f"Could not upload checkpoint to {checkpoint_uri} even after "
+                f"{num_retries} retries."
+                f"Please check if the credentials expired and that the remote "
+                f"filesystem is supported. For large checkpoints or artifacts, "
+                f"consider increasing `SyncConfig(sync_timeout)` "
+                f"(current value: {self.sync_config.sync_timeout} seconds)."
+            )
+            return False
         return True
 
-    def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
+    def _maybe_load_checkpoint_from_cloud(self, checkpoint_path: str) -> bool:
+        """Loads a checkpoint from its corresponding location in remote storage
+        to `checkpoint_path`.
+        If a checkpoint already exists at `checkpoint_path`, the Trainable
+        will continue restoring with that existing checkpoint.
+
+        Args:
+            checkpoint_path: The checkpoint path to download to, which should have
+                `logdir` as part of its path prefix (e.g., `{logdir}/checkpoint_00000`)
+
+        Return:
+            bool: True if the checkpoint was synced down successfully from cloud.
+        """
         if os.path.exists(checkpoint_path):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -541,7 +694,7 @@ class Trainable:
                 pass
             else:
                 # If the path exists locally, we don't have to download
-                return True
+                return False
 
         if not self.uses_cloud_checkpointing:
             return False
@@ -549,27 +702,70 @@ class Trainable:
         rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
             self.logdir, checkpoint_path
         )
-        external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
+        external_uri = str(URI(self.remote_checkpoint_dir) / rel_checkpoint_dir)
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+        path_existed_before = os.path.exists(local_dir)
 
-        if self.custom_syncer:
-            # Only keep for backwards compatibility
-            self.custom_syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
-            self.custom_syncer.wait_or_retry()
-            return True
+        success = self._maybe_load_from_cloud(
+            remote_dir=external_uri, local_dir=local_dir
+        )
+        if not success:
+            # We may have created this dir when we tried to sync, so clean up
+            if not path_existed_before and os.path.exists(local_dir):
+                shutil.rmtree(local_dir)
+        return success
 
-        checkpoint = Checkpoint.from_uri(external_uri)
-        if not retry_fn(
-            lambda: checkpoint.to_directory(local_dir),
-            subprocess.CalledProcessError,
-            num_retries=3,
-            sleep_time=1,
-            timeout=self.sync_timeout,
+    def _maybe_load_artifacts_from_cloud(self) -> bool:
+        if not self.sync_config.sync_artifacts:
+            return False
+
+        remote_dir = self._storage_path(self.logdir)
+        with warn_if_slow(
+            name="trial_artifact_cloud_download",
+            message=(
+                "Downloading trial artifacts took {duration:.3f} s, which may be a "
+                "performance bottleneck. Consider saving fewer/smaller artifacts to "
+                "the trial log directory, or disable artifact syncing with "
+                "`SyncConfig(sync_artifacts=False)`."
+            ),
+            # Log a warning if upload time surpasses 10s
+            threshold=10,
+            disable=not self.uses_cloud_checkpointing,
         ):
-            logger.error(
-                f"Could not download checkpoint even after 3 retries: "
-                f"{external_uri}"
+            exclude = ["checkpoint_*"] + _get_artifact_templates_for_callbacks(
+                DEFAULT_CALLBACK_CLASSES
             )
+            downloaded = self._maybe_load_from_cloud(
+                remote_dir=remote_dir, local_dir=self.logdir, exclude=exclude
+            )
+        return downloaded
+
+    def _maybe_load_from_cloud(
+        self, remote_dir: str, local_dir: str, exclude: List[str] = None
+    ) -> bool:
+        if not self.uses_cloud_checkpointing or not list_at_uri(remote_dir):
+            return False
+
+        syncer = self.sync_config.syncer
+        assert syncer
+
+        syncer.sync_down(remote_dir=remote_dir, local_dir=local_dir, exclude=exclude)
+        try:
+            syncer.wait_or_retry(
+                max_retries=self.sync_num_retries,
+                backoff_s=self.sync_sleep_time,
+            )
+        except TuneError:
+            num_retries = self.sync_num_retries
+            logger.error(
+                f"Could not download from {remote_dir} even after {num_retries} "
+                f"retries. "
+                f"Please check if the credentials expired and that the remote "
+                f"filesystem is supported. For large checkpoints or artifacts, "
+                f"consider increasing `SyncConfig(sync_timeout)` "
+                f"(current value: {self.sync_config.sync_timeout} seconds)."
+            )
+            return False
 
         return True
 
@@ -585,7 +781,7 @@ class Trainable:
         temp_container_dir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_dir = self.save(temp_container_dir, prevent_upload=True)
 
-        obj_ref = Checkpoint.from_directory(checkpoint_dir).to_bytes()
+        obj_ref = self._checkpoint_cls.from_directory(checkpoint_dir).to_bytes()
         shutil.rmtree(temp_container_dir)
         return obj_ref
 
@@ -600,6 +796,7 @@ class Trainable:
         self,
         checkpoint_path: Union[str, Checkpoint],
         checkpoint_node_ip: Optional[str] = None,
+        fallback_to_latest: bool = False,
     ):
         """Restores training state from a given model checkpoint.
 
@@ -630,17 +827,22 @@ class Trainable:
             checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
+            fallback_to_latest: If True, will try to recover the
+                latest available checkpoint if the given ``checkpoint_path``
+                could not be found.
 
         """
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
 
-        if not self._maybe_load_from_cloud(checkpoint_path) and (
+        synced_from_cloud = self._maybe_load_checkpoint_from_cloud(checkpoint_path)
+
+        if not synced_from_cloud and (
             # If a checkpoint source IP is given
             checkpoint_node_ip
             # And the checkpoint does not currently exist on the local node
-            and not os.path.exists(checkpoint_node_ip)
+            and not os.path.exists(checkpoint_path)
             # And the source IP is different to the current IP
             and checkpoint_node_ip != ray.util.get_node_ip_address()
         ):
@@ -651,6 +853,21 @@ class Trainable:
                 checkpoint.to_directory(checkpoint_path)
 
         if not os.path.exists(checkpoint_path):
+            if fallback_to_latest:
+                logger.info(
+                    f"Checkpoint path was not available, trying to recover from latest "
+                    f"available checkpoint instead. Unavailable checkpoint path: "
+                    f"{checkpoint_path}"
+                )
+                checkpoint_path = self._get_latest_available_checkpoint()
+                if checkpoint_path:
+                    logger.info(
+                        f"Trying to recover from latest available checkpoint: "
+                        f"{checkpoint_path}"
+                    )
+                    return self.restore(checkpoint_path, fallback_to_latest=False)
+
+            # Else, raise
             raise ValueError(
                 f"Could not recover from checkpoint as it does not exist on local "
                 f"disk and was not available on cloud storage or another Ray node. "
@@ -663,7 +880,9 @@ class Trainable:
         if metadata["saved_as_dict"]:
             # If data was saved as a dict (e.g. from a class trainable),
             # also pass the dict to `load_checkpoint()`.
-            checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+            checkpoint_dict = self._checkpoint_cls.from_directory(
+                checkpoint_dir
+            ).to_dict()
             # If other files were added to the directory after converting from the
             # original dict (e.g. marker files), clean these up
             checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
@@ -674,7 +893,6 @@ class Trainable:
             to_load = os.path.join(checkpoint_dir, relative_checkpoint_path)
 
         # Set metadata
-        self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
@@ -683,13 +901,17 @@ class Trainable:
         # Actually load checkpoint
         self.load_checkpoint(to_load)
 
+        # Then, download artifacts from cloud if applicable
+        if synced_from_cloud:
+            self._maybe_load_artifacts_from_cloud()
+
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
 
         logger.info(
-            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_dir
+            "Restored on %s from checkpoint: %s", self._local_ip, checkpoint_dir
         )
         state = {
             "_iteration": self._iteration,
@@ -704,7 +926,7 @@ class Trainable:
 
         These checkpoints are returned from calls to save_to_object().
         """
-        checkpoint = Checkpoint.from_bytes(obj)
+        checkpoint = self._checkpoint_cls.from_bytes(obj)
 
         with checkpoint.as_directory() as checkpoint_path:
             self.restore(checkpoint_path)
@@ -731,23 +953,22 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                if self.custom_syncer:
-                    # Keep for backwards compatibility
-                    self.custom_syncer.delete(self._storage_path(checkpoint_dir))
-                    self.custom_syncer.wait_or_retry()
-                else:
-                    checkpoint_uri = self._storage_path(checkpoint_dir)
-                    if not retry_fn(
-                        lambda: _delete_external_checkpoint(checkpoint_uri),
-                        subprocess.CalledProcessError,
-                        num_retries=3,
-                        sleep_time=1,
-                        timeout=self.sync_timeout,
-                    ):
-                        logger.error(
-                            f"Could not delete checkpoint even after 3 retries: "
-                            f"{checkpoint_uri}"
-                        )
+                syncer = self.sync_config.syncer
+                assert syncer
+
+                checkpoint_uri = self._storage_path(checkpoint_dir)
+                syncer.delete(checkpoint_uri)
+                try:
+                    syncer.wait_or_retry(
+                        max_retries=self.sync_num_retries,
+                        backoff_s=self.sync_sleep_time,
+                    )
+                except TuneError:
+                    num_retries = self.sync_num_retries
+                    logger.error(
+                        f"Could not delete checkpoint even after {num_retries} "
+                        f"retries: {checkpoint_uri}"
+                    )
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
@@ -774,11 +995,16 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None):
+    def reset(self, new_config, logger_creator=None, remote_checkpoint_dir=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
+        # Save artifacts one last time, if this actor has been swapped to a
+        # different trial.
+        if remote_checkpoint_dir != self.remote_checkpoint_dir:
+            self._maybe_save_artifacts_to_cloud()
+
         self.config = new_config
 
         trial_info = new_config.pop(TRIAL_INFO, None)
@@ -816,6 +1042,8 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
+        self.remote_checkpoint_dir = remote_checkpoint_dir
+        self._last_artifact_sync_iter = None
         self._restored = False
 
         return True
@@ -908,6 +1136,8 @@ class Trainable:
         Calls ``Trainable.cleanup`` internally. Subclasses should override
         ``Trainable.cleanup`` for custom cleanup procedures.
         """
+        self._maybe_save_artifacts_to_cloud()
+
         self._result_logger.flush()
         self._result_logger.close()
         if self._monitor.is_alive():
@@ -960,7 +1190,7 @@ class Trainable:
             return "default"
 
     @property
-    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+    def trial_resources(self) -> Optional[PlacementGroupFactory]:
         """Resources currently assigned to the trial of this Trainable.
 
         This is not set if not using Tune.
@@ -972,7 +1202,7 @@ class Trainable:
         if self._trial_info:
             return self._trial_info.trial_resources
         else:
-            return "default"
+            return None
 
     @property
     def iteration(self):
@@ -1040,9 +1270,10 @@ class Trainable:
 
         Returns:
             A dict or string. If string, the return value is expected to be
-            prefixed by `tmp_checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune and
-            passed to ``Trainable.load_checkpoint()``.
+            prefixed by `checkpoint_dir`. If dict, the return value will
+            be automatically serialized by Tune. In both cases, the return value
+            is exactly what will be passed to ``Trainable.load_checkpoint()``
+            upon restore.
 
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
@@ -1071,23 +1302,35 @@ class Trainable:
         The directory structure under the checkpoint_dir provided to
         ``Trainable.save_checkpoint`` is preserved.
 
-        See the example below.
+        See the examples below.
+
+        Example:
+            >>> import os
+            >>> from ray.tune.trainable import Trainable
+            >>> class Example(Trainable):
+            ...    def save_checkpoint(self, checkpoint_path):
+            ...        my_checkpoint_path = os.path.join(checkpoint_path, "my/path")
+            ...        return my_checkpoint_path
+            ...    def load_checkpoint(self, my_checkpoint_path):
+            ...        print(my_checkpoint_path)
+            >>> trainer = Example()
+            >>> # This is used when PAUSED.
+            >>> obj = trainer.save_to_object() # doctest: +SKIP
+            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/path
+            >>> # Note the different prefix.
+            >>> trainer.restore_from_object(obj) # doctest: +SKIP
+            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/path
+
+        If `Trainable.save_checkpoint` returned a dict, then Tune will directly pass
+        the dict data as the argument to this method.
 
         Example:
             >>> from ray.tune.trainable import Trainable
             >>> class Example(Trainable):
             ...    def save_checkpoint(self, checkpoint_path):
-            ...        print(checkpoint_path)
-            ...        return os.path.join(checkpoint_path, "my/check/point")
-            ...    def load_checkpoint(self, checkpoint):
-            ...        print(checkpoint)
-            >>> trainer = Example()
-            >>> # This is used when PAUSED.
-            >>> obj = trainer.save_to_object() # doctest: +SKIP
-            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> # Note the different prefix.
-            >>> trainer.restore_from_object(obj) # doctest: +SKIP
-            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
+            ...        return {"my_data": 1}
+            ...    def load_checkpoint(self, checkpoint_dict):
+            ...        print(checkpoint_dict["my_data"])
 
         .. versionadded:: 0.8.7
 
@@ -1096,7 +1339,7 @@ class Trainable:
                 returned by `save_checkpoint`. If a string, then it is
                 a checkpoint path that may have a different prefix than that
                 returned by `save_checkpoint`. The directory structure
-                underneath the `checkpoint_dir` `save_checkpoint` is preserved.
+                underneath the `checkpoint_dir` from `save_checkpoint` is preserved.
         """
         raise NotImplementedError
 
@@ -1131,8 +1374,11 @@ class Trainable:
         If any Ray actors are launched in the Trainable (i.e., with a RLlib
         trainer), be sure to kill the Ray actor process here.
 
-        You can kill a Ray actor by calling `actor.__ray_terminate__.remote()`
-        on the actor.
+        This process should be lightweight. Per default,
+
+        You can kill a Ray actor by calling `ray.kill(actor)`
+        on the actor or removing all references to it and waiting for garbage
+        collection
 
         .. versionadded:: 0.8.7
         """

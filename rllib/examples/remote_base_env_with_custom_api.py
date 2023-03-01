@@ -7,14 +7,15 @@ one a ray Actor.
 You can access your Env's API via a custom callback as shown below.
 """
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import air, tune
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -22,7 +23,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -70,13 +71,14 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
         self.observation_space = gym.spaces.Box(0, 1, shape=(2,))
         self.task = 1
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return self.observation_space.sample()
+        return self.observation_space.sample(), {}
 
     def step(self, action):
         self.steps += 1
-        return self.observation_space.sample(), 0, self.steps > 10, {}
+        done = truncated = self.steps > 10
+        return self.observation_space.sample(), 0, done, truncated, {}
 
     def set_task(self, task) -> None:
         """We can set the task of each sub-env (ray actor)"""
@@ -103,26 +105,30 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
-    config = {
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.
-        "env": NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv,
+        .environment(NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv)
+        .framework(args.framework)
         # Set up our own callbacks.
-        "callbacks": TaskSettingCallback,
-        # Force sub-envs to be ray.actor.ActorHandles, so we can step
-        # through them in parallel.
-        "remote_worker_envs": True,
-        # How many RolloutWorkers (each with n environment copies:
-        # `num_envs_per_worker`)?
-        "num_workers": args.num_workers,
-        # This setting should not really matter as it does not affect the
-        # number of GPUs reserved for each worker.
-        "num_envs_per_worker": args.num_envs_per_worker,
+        .callbacks(TaskSettingCallback)
+        .rollouts(
+            # Force sub-envs to be ray.actor.ActorHandles, so we can step
+            # through them in parallel.
+            remote_worker_envs=True,
+            # How many RolloutWorkers (each with n environment copies:
+            # `num_envs_per_worker`)?
+            num_rollout_workers=args.num_workers,
+            # This setting should not really matter as it does not affect the
+            # number of GPUs reserved for each worker.
+            num_envs_per_worker=args.num_envs_per_worker,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -131,7 +137,9 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:

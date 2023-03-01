@@ -12,7 +12,7 @@ similar.
 Object refs can be created in two ways.
 
   1. They are returned by remote function calls.
-  2. They are returned by ``put`` (:ref:`docstring <ray-put-ref>`).
+  2. They are returned by :func:`ray.put() <ray.put>`.
 
 .. tabbed:: Python
 
@@ -48,7 +48,7 @@ Object refs can be created in two ways.
 Fetching Object Data
 --------------------
 
-You can use the ``get`` method (:ref:`docstring <ray-get-ref>`) to fetch the result of a remote object from an object ref.
+You can use the :func:`ray.get() <ray.get>` method to fetch the result of a remote object from an object ref.
 If the current node's object store does not contain the object, the object is downloaded.
 
 .. tabbed:: Python
@@ -106,7 +106,7 @@ If the current node's object store does not contain the object, the object is do
           return 1;
         }
       }
-      Assert.assertThrows(RayTimeoutException.class, 
+      Assert.assertThrows(RayTimeoutException.class,
         () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
 
 .. tabbed:: C++
@@ -173,6 +173,14 @@ Ray also supports nested object references. This allows you to build composite o
     # alive via reference counting until all outer object references are deleted.
     object_ref_2 = ray.put([object_ref])
 
+Fault Tolerance
+---------------
+
+Ray can automatically recover from object data loss
+via :ref:`lineage reconstruction <fault-tolerance-objects-reconstruction>`
+but not :ref:`owner <fault-tolerance-ownership>` failure.
+See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
+
 More about Ray Objects
 ----------------------
 
@@ -180,6 +188,4 @@ More about Ray Objects
     :maxdepth: 1
 
     objects/serialization.rst
-    objects/memory-management.rst
     objects/object-spilling.rst
-    objects/fault-tolerance.rst

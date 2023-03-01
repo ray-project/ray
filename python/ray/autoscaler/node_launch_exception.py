@@ -27,3 +27,11 @@ class NodeLaunchException(Exception):
         self.category = category
         self.description = description
         self.src_exc_info = src_exc_info
+
+    def __reduce__(self):
+        # NOTE: Since tracebacks can't be pickled, we'll drop the optional
+        # traceback if we have to serialize this object.
+        return (
+            self.__class__,
+            (self.category, self.description, None),
+        )

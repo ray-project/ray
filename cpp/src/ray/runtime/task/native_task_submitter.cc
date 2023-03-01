@@ -27,7 +27,9 @@ using ray::core::TaskOptions;
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   if (invocation.remote_function_holder.lang_type == LangType::CPP) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-        invocation.remote_function_holder.function_name);
+        invocation.remote_function_holder.function_name,
+        "",
+        invocation.remote_function_holder.class_name);
     return RayFunction(ray::Language::CPP, function_descriptor);
   } else if (invocation.remote_function_holder.lang_type == LangType::PYTHON) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildPython(
@@ -180,7 +182,7 @@ ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
   }
 
   ray::PlacementGroup placement_group{placement_group_id.Binary(), create_options};
-  placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
+  placement_group.SetWaitCallbak([this](const std::string &id, int64_t timeout_seconds) {
     return WaitPlacementGroupReady(id, timeout_seconds);
   });
 
@@ -197,7 +199,7 @@ void NativeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
 }
 
 bool NativeTaskSubmitter::WaitPlacementGroupReady(const std::string &group_id,
-                                                  int timeout_seconds) {
+                                                  int64_t timeout_seconds) {
   auto placement_group_id = ray::PlacementGroupID::FromBinary(group_id);
   auto status = CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
       placement_group_id, timeout_seconds);

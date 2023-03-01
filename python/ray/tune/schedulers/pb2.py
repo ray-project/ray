@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from copy import deepcopy
 import logging
 import numpy as np
@@ -6,6 +6,7 @@ import pandas as pd
 
 from ray.tune import TuneError
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.experiment import Trial
 
 
 def import_pb2_dependencies():
@@ -368,7 +369,22 @@ class PB2(PopulationBasedTraining):
         self.data = pd.concat([self.data, entry]).reset_index(drop=True)
         self.data.Trial = self.data.Trial.astype("str")
 
-    def _get_new_config(self, trial, trial_to_clone):
+    def _get_new_config(self, trial: Trial, trial_to_clone: Trial) -> Tuple[Dict, Dict]:
+        """Gets new config for trial by exploring trial_to_clone's config using
+        Bayesian Optimization (BO) to choose the hyperparameter values to explore.
+
+        Overrides `PopulationBasedTraining._get_new_config`.
+
+        Args:
+            trial: The current trial that decided to exploit trial_to_clone.
+            trial_to_clone: The top-performing trial with a hyperparameter config
+                that the current trial will explore.
+
+        Returns:
+            new_config: New hyperparameter configuration (after BO).
+            operations: Empty dict since PB2 doesn't explore in easily labeled ways
+                like PBT does.
+        """
         # If we are at a new timestep, we dont want to penalise for trials
         # still going.
         if self.data["Time"].max() > self.last_exploration_time:
@@ -400,4 +416,4 @@ class PB2(PopulationBasedTraining):
             self.current = np.concatenate((self.current, new), axis=0)
             logger.debug(self.current)
 
-        return new_config
+        return new_config, {}

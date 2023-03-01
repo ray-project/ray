@@ -13,7 +13,7 @@ py_test(
 
 py_test(
     name = "test_dask_callback_client_mode",
-    size = "small",
+    size = "medium",
     main = "test_dask_callback.py",
     srcs = ["tests/test_dask_callback.py"],
     tags = ["team:serverless", "exclusive", "client"],

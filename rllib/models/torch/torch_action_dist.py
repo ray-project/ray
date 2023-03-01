@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
@@ -83,6 +83,17 @@ class TorchCategorical(TorchDistributionWrapper):
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return action_space.n
+
+
+@DeveloperAPI
+def get_torch_categorical_class_with_temperature(t: float):
+    """TorchCategorical distribution class that has customized default temperature."""
+
+    class TorchCategoricalWithTemperature(TorchCategorical):
+        def __init__(self, inputs, model=None, temperature=t):
+            super().__init__(inputs, model, temperature)
+
+    return TorchCategoricalWithTemperature
 
 
 @DeveloperAPI
@@ -334,7 +345,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
         log_prob = log_prob_gaussian - torch.sum(
-            torch.log(1 - unsquashed_values_tanhd ** 2 + SMALL_NUMBER), dim=-1
+            torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1
         )
         return log_prob
 

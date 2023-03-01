@@ -12,4 +12,4 @@ __all__ = [
 
 from ray.rllib.utils.deprecation import deprecation_warning
 
-deprecation_warning("ray.rllib.agents.pg", "ray.rllib.algorithms.pg", error=False)
+deprecation_warning("ray.rllib.agents.pg", "ray.rllib.algorithms.pg", error=True)

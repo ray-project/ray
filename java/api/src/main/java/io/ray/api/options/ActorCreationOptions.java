@@ -17,6 +17,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final String name;
   public ActorLifetime lifetime;
   public final int maxRestarts;
+  public final int maxTaskRetries;
   public final List<String> jvmOptions;
   public final int maxConcurrency;
   public final PlacementGroup group;
@@ -32,6 +33,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
       ActorLifetime lifetime,
       Map<String, Double> resources,
       int maxRestarts,
+      int maxTaskRetries,
       List<String> jvmOptions,
       int maxConcurrency,
       PlacementGroup group,
@@ -45,6 +47,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.name = name;
     this.lifetime = lifetime;
     this.maxRestarts = maxRestarts;
+    this.maxTaskRetries = maxTaskRetries;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
     this.group = group;
@@ -62,6 +65,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private ActorLifetime lifetime = null;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
+    private int maxTaskRetries = 0;
     private List<String> jvmOptions = new ArrayList<>();
     private int maxConcurrency = 1;
     private PlacementGroup group;
@@ -128,6 +132,19 @@ public class ActorCreationOptions extends BaseTaskOptions {
      */
     public Builder setMaxRestarts(int maxRestarts) {
       this.maxRestarts = maxRestarts;
+      return this;
+    }
+
+    /**
+     * This specifies the maximum number of times that the actor task can be resubmitted. The
+     * minimum valid value is 0 (default), which indicates that the actor task can't be resubmited.
+     * A value of -1 indicates that an actor task can be resubmited indefinitely.
+     *
+     * @param maxTaskRetries max number of actor task retries
+     * @return self
+     */
+    public Builder setMaxTaskRetries(int maxTaskRetries) {
+      this.maxTaskRetries = maxTaskRetries;
       return this;
     }
 
@@ -210,6 +227,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
           lifetime,
           resources,
           maxRestarts,
+          maxTaskRetries,
           jvmOptions,
           maxConcurrency,
           group,

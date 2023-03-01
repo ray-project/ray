@@ -11,13 +11,16 @@ https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html
 """
 import argparse
 import os
+from typing import Union
 
 import ray
-from ray.rllib.algorithms.ppo import PPO
+from ray import air, tune
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import air, tune
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import PlacementGroupFactory
 from ray.tune.logger import pretty_print
 
@@ -33,7 +36,7 @@ def get_cli_args():
     # general args
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -82,8 +85,14 @@ def get_cli_args():
 class PPORemoteInference(PPO):
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf = config
+        else:
+            cf = cls.get_default_config().update_from_dict(config)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -94,15 +103,15 @@ class PPORemoteInference(PPO):
                     # main model in this example (num_workers=0).
                     "CPU": 1,
                     # Possibly add n GPUs to this.
-                    "GPU": cf["num_gpus"],
+                    "GPU": cf.num_gpus,
                 },
                 {
                     # Different bundle (meaning: possibly different node)
                     # for your n "remote" envs (set remote_worker_envs=True).
-                    "CPU": cf["num_envs_per_worker"],
+                    "CPU": cf.num_envs_per_worker,
                 },
             ],
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
 
@@ -111,24 +120,29 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
-    config = {
-        "env": "CartPole-v0",
-        # Force sub-envs to be ray.actor.ActorHandles, so we can step
-        # through them in parallel.
-        "remote_worker_envs": True,
-        # Set the number of CPUs used by the (local) worker, aka "driver"
-        # to match the number of ray remote envs.
-        "num_cpus_for_driver": args.num_envs_per_worker + 1,
-        # Use a single worker (however, with n parallelized remote envs, maybe
-        # even running on another node).
-        # Action computations will occur on the "main" (GPU?) node, while
-        # the envs run on one or more CPU node(s).
-        "num_workers": 0,
-        "num_envs_per_worker": args.num_envs_per_worker,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .framework(args.framework)
+        .rollouts(
+            # Force sub-envs to be ray.actor.ActorHandles, so we can step
+            # through them in parallel.
+            remote_worker_envs=True,
+            num_envs_per_worker=args.num_envs_per_worker,
+            # Use a single worker (however, with n parallelized remote envs, maybe
+            # even running on another node).
+            # Action computations will occur on the "main" (GPU?) node, while
+            # the envs run on one or more CPU node(s).
+            num_rollout_workers=0,
+        )
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # Set the number of CPUs used by the (local) worker, aka "driver"
+            # to match the number of ray remote envs.
+            num_cpus_for_local_worker=args.num_envs_per_worker + 1,
+        )
+    )
 
     # Run as manual training loop.
     if args.no_tune:

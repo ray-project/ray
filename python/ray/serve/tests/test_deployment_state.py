@@ -7,7 +7,6 @@ from unittest.mock import patch, Mock
 import pytest
 
 import ray
-from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentConfig,
     DeploymentInfo,
@@ -18,6 +17,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.deployment_state import (
     DeploymentState,
+    DriverDeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
     DeploymentReplica,
@@ -29,6 +29,12 @@ from ray.serve._private.deployment_state import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+
+class MockActorHandle:
+    def __init__(self):
+        self._actor_id = "fake_id"
 
 
 class MockReplicaActorWrapper:
@@ -39,6 +45,7 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        scheduling_strategy="SPREAD",
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
@@ -63,6 +70,8 @@ class MockReplicaActorWrapper:
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
+        self._scheduling_strategy = scheduling_strategy
+        self._actor_handle = MockActorHandle()
 
     @property
     def is_cross_language(self) -> bool:
@@ -77,8 +86,8 @@ class MockReplicaActorWrapper:
         return self._deployment_name
 
     @property
-    def actor_handle(self) -> ActorHandle:
-        return None
+    def actor_handle(self) -> MockActorHandle:
+        return self._actor_handle
 
     @property
     def max_concurrent_queries(self) -> int:
@@ -86,6 +95,8 @@ class MockReplicaActorWrapper:
 
     @property
     def node_id(self) -> Optional[str]:
+        if isinstance(self._scheduling_strategy, NodeAffinitySchedulingStrategy):
+            return self._scheduling_strategy.node_id
         if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
         return None
@@ -164,6 +175,7 @@ def deployment_info(
     version: Optional[str] = None,
     num_replicas: Optional[int] = 1,
     user_config: Optional[Any] = None,
+    is_driver_deployment: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
@@ -173,7 +185,8 @@ def deployment_info(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
         replica_config=ReplicaConfig.create(lambda x: x),
-        deployer_job_id=ray.JobID.nil(),
+        deployer_job_id="",
+        is_driver_deployment=is_driver_deployment,
     )
 
     if version is not None:
@@ -200,7 +213,7 @@ class MockTimer:
 
 
 @pytest.fixture
-def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
+def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
@@ -212,10 +225,24 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         def mock_save_checkpoint_fn(*args, **kwargs):
             pass
 
-        deployment_state = DeploymentState(
-            "name", "name", True, mock_long_poll, mock_save_checkpoint_fn
-        )
-        yield deployment_state, timer
+        # It is a driver deployment test
+        if request.param is True:
+            mock_client = "Fakeclient"
+            deployment_state = DriverDeploymentState(
+                "name",
+                "name",
+                True,
+                mock_long_poll,
+                mock_save_checkpoint_fn,
+                mock_client,
+            )
+            yield deployment_state, timer
+        else:
+            deployment_state = DeploymentState(
+                "name", "name", True, mock_long_poll, mock_save_checkpoint_fn
+            )
+
+            yield deployment_state, timer
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
@@ -395,22 +422,16 @@ class TestReplicaStateContainer:
         assert not c.pop(
             exclude_version=DeploymentVersion("1"), states=[ReplicaState.STOPPING]
         )
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.RUNNING],
-                max_replicas=1,
-            )
-            == [r3]
-        )
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.RUNNING],
-                max_replicas=1,
-            )
-            == [r4]
-        )
+        assert c.pop(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.RUNNING],
+            max_replicas=1,
+        ) == [r3]
+        assert c.pop(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.RUNNING],
+            max_replicas=1,
+        ) == [r4]
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
@@ -422,20 +443,14 @@ class TestReplicaStateContainer:
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("1"),
-                states=[ReplicaState.RUNNING, ReplicaState.STARTING],
-            )
-            == [r3, r4, r2]
-        )
-        assert (
-            c.pop(
-                exclude_version=DeploymentVersion("nonsense"),
-                states=[ReplicaState.STOPPING],
-            )
-            == [r1]
-        )
+        assert c.pop(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.RUNNING, ReplicaState.STARTING],
+        ) == [r3, r4, r2]
+        assert c.pop(
+            exclude_version=DeploymentVersion("nonsense"),
+            states=[ReplicaState.STOPPING],
+        ) == [r1]
 
 
 def check_counts(
@@ -458,8 +473,11 @@ def check_counts(
             assert curr_count == count, msg
 
 
-def test_create_delete_single_replica(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_state):
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info()
     updating = deployment_state.deploy(b_info_1)
@@ -495,8 +513,11 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=0)
 
 
-def test_force_kill(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_force_kill(mock_get_all_node_ids, mock_deployment_state):
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     grace_period_s = 10
     b_info_1, b_version_1 = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
@@ -541,9 +562,12 @@ def test_force_kill(mock_deployment_state):
     check_counts(deployment_state, total=0)
 
 
-def test_redeploy_same_version(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_redeploy_same_version(mock_get_all_node_ids, mock_deployment_state):
     # Redeploying with the same version and code should do nothing.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -595,10 +619,13 @@ def test_redeploy_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_redeploy_no_version(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     # Redeploying with no version specified (`None`) should always redeploy
     # the replicas.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info(version=None)
     updating = deployment_state.deploy(b_info_1)
@@ -668,9 +695,12 @@ def test_redeploy_no_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_redeploy_new_version(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
     # Redeploying with a new version should start a new replica.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -774,10 +804,13 @@ def test_redeploy_new_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_deploy_new_config_same_version(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_deploy_new_config_same_version(mock_get_all_node_ids, mock_deployment_state):
     # Deploying a new config with the same version should not deploy a new
     # replica.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updated = deployment_state.deploy(b_info_1)
@@ -831,9 +864,12 @@ def test_deploy_new_config_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_deploy_new_config_new_version(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_deploy_new_config_new_version(mock_get_all_node_ids, mock_deployment_state):
     # Deploying a new config with a new version should deploy a new replica.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -893,9 +929,12 @@ def test_deploy_new_config_new_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_initial_deploy_no_throttling(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_initial_deploy_no_throttling(mock_get_all_node_ids, mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(10)]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -914,11 +953,14 @@ def test_initial_deploy_no_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_new_version_deploy_throttling(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_new_version_deploy_throttling(mock_get_all_node_ids, mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled. The throttling
     # should apply to both code version and user config updates.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(10)]
 
     b_info_1, b_version_1 = deployment_info(
         num_replicas=10, version="1", user_config="1"
@@ -1206,10 +1248,13 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_reconfigure_throttling(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_reconfigure_throttling(mock_get_all_node_ids, mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
 
     b_info_1, b_version_1 = deployment_info(
         num_replicas=2, version="1", user_config="1"
@@ -1294,11 +1339,14 @@ def test_reconfigure_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_new_version_and_scale_down(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_new_version_and_scale_down(mock_get_all_node_ids, mock_deployment_state):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be
     # turned down, then the rolling update should happen.
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1464,6 +1512,7 @@ def test_new_version_and_scale_down(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
+@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_new_version_and_scale_up(mock_deployment_state):
     # Test the case when we increase the number of replicas and change the
     # version at the same time. The new replicas should all immediately be
@@ -1578,8 +1627,11 @@ def test_new_version_and_scale_up(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_health_check(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_health_check(mock_get_all_node_ids, mock_deployment_state):
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1637,8 +1689,11 @@ def test_health_check(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_update_while_unhealthy(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_update_while_unhealthy(mock_get_all_node_ids, mock_deployment_state):
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1774,13 +1829,18 @@ def _constructor_failure_loop_two_replica(deployment_state, num_loops):
         check_counts(deployment_state, total=0)
 
 
-def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_deploy_with_consistent_constructor_failure(
+    mock_get_all_node_ids, mock_deployment_state
+):
     """
     Test deploy() multiple replicas with consistent constructor failure.
 
     The deployment should get marked FAILED.
     """
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -1794,7 +1854,11 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.message != ""
 
 
-def test_deploy_with_partial_constructor_failure(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_deploy_with_partial_constructor_failure(
+    mock_get_all_node_ids, mock_deployment_state
+):
     """
     Test deploy() multiple replicas with constructor failure exceedining
     pre-set limit but achieved partial success with at least 1 running replica.
@@ -1809,6 +1873,7 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     Same testing for same test case in test_deploy.py.
     """
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -1885,7 +1950,11 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_deploy_with_transient_constructor_failure(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_deploy_with_transient_constructor_failure(
+    mock_get_all_node_ids, mock_deployment_state
+):
     """
     Test deploy() multiple replicas with transient constructor failure.
     Ensures:
@@ -1898,6 +1967,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     Same testing for same test case in test_deploy.py.
     """
     deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -1926,8 +1996,59 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
+@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_exponential_backoff(mock_get_all_node_ids, mock_deployment_state):
+    """Test exponential backoff."""
+    deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
+
+    b_info_1, b_version_1 = deployment_info(num_replicas=2)
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    _constructor_failure_loop_two_replica(deployment_state, 3)
+    assert deployment_state._replica_constructor_retry_counter == 6
+    last_retry = timer.time()
+
+    for i in range(7):
+        while timer.time() - last_retry < 2**i:
+            deployment_state.update()
+            assert deployment_state._replica_constructor_retry_counter == 6 + 2 * i
+            # Check that during backoff time, no replicas are created
+            check_counts(deployment_state, total=0)
+            timer.advance(0.1)  # simulate time passing between each call to udpate
+
+        # Skip past random additional backoff time used to avoid synchronization
+        timer.advance(5)
+
+        # Set new replicas to fail consecutively
+        check_counts(deployment_state, total=0)  # No replicas
+        deployment_state.update()
+        last_retry = timer.time()  # This should be time at which replicas were retried
+        check_counts(deployment_state, total=2)  # Two new replicas
+        replica_1 = deployment_state._replicas.get()[0]
+        replica_2 = deployment_state._replicas.get()[1]
+        replica_1._actor.set_failed_to_start()
+        replica_2._actor.set_failed_to_start()
+        timer.advance(0.1)  # simulate time passing between each call to udpate
+
+        # Now the replica should be marked STOPPING after failure.
+        deployment_state.update()
+        check_counts(deployment_state, total=2, by_state=[(ReplicaState.STOPPING, 2)])
+        timer.advance(0.1)  # simulate time passing between each call to udpate
+
+        # Once it's done stopping, replica should be removed.
+        replica_1._actor.set_done_stopping()
+        replica_2._actor.set_done_stopping()
+        deployment_state.update()
+        check_counts(deployment_state, total=0)
+        timer.advance(0.1)  # simulate time passing between each call to udpate
+
+
 @pytest.fixture
-def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
+def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock]:
     ray.init()
     timer = MockTimer()
     with patch(
@@ -1950,7 +2071,8 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
     ray.shutdown()
 
 
-def test_shutdown(mock_deployment_state_manager):
+@pytest.mark.parametrize("is_driver_deployment", [False, True])
+def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     """
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
@@ -1960,7 +2082,10 @@ def test_shutdown(mock_deployment_state_manager):
     tag = "test"
 
     grace_period_s = 10
-    b_info_1, b_version_1 = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    b_info_1, b_version_1 = deployment_info(
+        graceful_shutdown_timeout_s=grace_period_s,
+        is_driver_deployment=is_driver_deployment,
+    )
     updating = deployment_state_manager.deploy(tag, b_info_1)
     assert updating
 
@@ -1995,13 +2120,20 @@ def test_shutdown(mock_deployment_state_manager):
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
 
 
-def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager):
+@pytest.mark.parametrize("is_driver_deployment", [False, True])
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_resume_deployment_state_from_replica_tags(
+    mock_get_all_node_ids, is_driver_deployment, mock_deployment_state_manager
+):
     deployment_state_manager, timer = mock_deployment_state_manager
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     tag = "test"
 
     # Step 1: Create some deployment info with actors in running state
-    b_info_1, b_version_1 = deployment_info(version="1")
+    b_info_1, b_version_1 = deployment_info(
+        version="1", is_driver_deployment=is_driver_deployment
+    )
     updating = deployment_state_manager.deploy(tag, b_info_1)
     assert updating
 
@@ -2078,7 +2210,9 @@ def test_stopping_replicas_ranking():
     compare([2, 2, 3, 3], [2, 2, 3, 3])  # if equal, ordering should be kept
 
 
-def test_resource_requirements_none(mock_deployment_state):
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_resource_requirements_none(mock_get_all_node_ids, mock_deployment_state):
     """Ensure resource_requirements doesn't break if a requirement is None"""
 
     class FakeActor:
@@ -2092,6 +2226,73 @@ def test_resource_requirements_none(mock_deployment_state):
 
     # resource_requirements() should not error
     replica.resource_requirements()
+
+
+@pytest.mark.parametrize("mock_deployment_state", [True], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_add_and_remove_nodes_for_driver_deployment(
+    mock_get_all_node_ids, mock_deployment_state
+):
+
+    deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("0", "0")]
+
+    b_info_1, b_version_1 = deployment_info()
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    deployment_state.update()
+    check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+
+    # Add a node when previous one is in STARTING state
+    mock_get_all_node_ids.return_value = [("0", "0"), ("1", "1")]
+    deployment_state.update()
+    check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+    for replica in deployment_state._replicas.get(states=[ReplicaState.STARTING]):
+        replica._actor.set_ready()
+    deployment_state.update()
+    check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+
+    # Add another two nodes
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(4)]
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        total=4,
+        by_state=[(ReplicaState.RUNNING, 2), (ReplicaState.STARTING, 2)],
+    )
+    for replica in deployment_state._replicas.get(states=[ReplicaState.STARTING]):
+        replica._actor.set_ready()
+    deployment_state.update()
+    check_counts(deployment_state, total=4, by_state=[(ReplicaState.RUNNING, 4)])
+
+    # Remove one node and add another node, node3 is removed, node4 added
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(3)] + [
+        ("4", "4")
+    ]
+    deployment_state._replicas.get(states=[ReplicaState.RUNNING])[
+        3
+    ]._actor.set_unhealthy()
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        total=5,
+        by_state=[
+            (ReplicaState.RUNNING, 3),
+            (ReplicaState.STARTING, 1),
+            (ReplicaState.STOPPING, 1),
+        ],
+    )
+
+    # Mark stopped replica finish stopping step and starting replica
+    # finish starting step
+    for replica in deployment_state._replicas.get(states=[ReplicaState.STARTING]):
+        replica._actor.set_ready()
+    for replica in deployment_state._replicas.get(states=[ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
+    deployment_state.update()
+    check_counts(deployment_state, total=4, by_state=[(ReplicaState.RUNNING, 4)])
 
 
 if __name__ == "__main__":

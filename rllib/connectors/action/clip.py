@@ -1,10 +1,10 @@
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
     ConnectorContext,
-    register_connector,
 )
+from ray.rllib.connectors.registry import register_connector
 from ray.rllib.utils.spaces.space_utils import clip_action, get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
@@ -26,6 +26,7 @@ class ClipActionsConnector(ActionConnector):
         return ActionConnectorDataType(
             ac_data.env_id,
             ac_data.agent_id,
+            ac_data.input_dict,
             (clip_action(actions, self._action_space_struct), states, fetches),
         )
 
@@ -33,7 +34,7 @@ class ClipActionsConnector(ActionConnector):
         return ClipActionsConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return ClipActionsConnector(ctx)
 
 

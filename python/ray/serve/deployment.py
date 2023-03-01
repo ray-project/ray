@@ -1,4 +1,4 @@
-from copy import copy
+from copy import copy, deepcopy
 import inspect
 import logging
 from typing import (
@@ -20,7 +20,7 @@ from ray.serve.config import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, guarded_deprecation_warning
+from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -44,6 +44,7 @@ class Deployment:
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
         _internal=False,
+        is_driver_deployment: Optional[bool] = False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -94,6 +95,7 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
+        self._is_driver_deployment = is_driver_deployment
 
     @property
     def name(self) -> str:
@@ -153,7 +155,7 @@ class Deployment:
     @property
     def url(self) -> Optional[str]:
         """Full HTTP url for this deployment."""
-        if self._route_prefix is None:
+        if self._route_prefix is None or self._is_driver_deployment:
             # this deployment is not exposed over HTTP
             return None
 
@@ -275,7 +277,8 @@ class Deployment:
 
     # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
     def _get_handle(
-        self, sync: Optional[bool] = True
+        self,
+        sync: Optional[bool] = True,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
 
@@ -289,36 +292,69 @@ class Deployment:
             ServeHandle
         """
 
-        return get_global_client().get_handle(self._name, missing_ok=True, sync=sync)
+        return get_global_client().get_handle(
+            self._name,
+            missing_ok=True,
+            sync=sync,
+        )
 
     @PublicAPI
     def options(
         self,
         func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        num_replicas: Optional[int] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        graceful_shutdown_wait_loop_s: Optional[float] = None,
-        graceful_shutdown_timeout_s: Optional[float] = None,
-        health_check_period_s: Optional[float] = None,
-        health_check_timeout_s: Optional[float] = None,
+        name: Default[str] = DEFAULT.VALUE,
+        version: Default[str] = DEFAULT.VALUE,
+        num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+        ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+        user_config: Default[Optional[Any]] = DEFAULT.VALUE,
+        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+        autoscaling_config: Default[
+            Union[Dict, AutoscalingConfig, None]
+        ] = DEFAULT.VALUE,
+        graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+        graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+        health_check_period_s: Default[float] = DEFAULT.VALUE,
+        health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
-        """
-        new_config = self._config.copy()
 
-        if num_replicas is not None and autoscaling_config is not None:
+        Args:
+            Refer to @serve.deployment decorator docstring for all non-private
+            arguments.
+
+            _internal: If True, this function won't log deprecation warnings
+                and won't update this deployment's config's
+                user_configured_option_names. It should only be True when used
+                internally by Serve. It should be False when called by users.
+        """
+
+        # NOTE: The user_configured_option_names should be the first thing that's
+        # defined in this method. It depends on the locals() dictionary storing
+        # only the function args/kwargs.
+        # Create list of all user-configured options from keyword args
+        user_configured_option_names = [
+            option
+            for option, value in locals().items()
+            if option not in {"self", "func_or_class", "_internal"}
+            and value is not DEFAULT.VALUE
+        ]
+
+        new_config = deepcopy(self._config)
+        if not _internal:
+            new_config.user_configured_option_names.update(user_configured_option_names)
+
+        if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+            DEFAULT.VALUE,
+            None,
+        ]:
             raise ValueError(
                 "Manually setting num_replicas is not allowed when "
                 "autoscaling_config is provided."
@@ -327,56 +363,59 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is not None:
+        if not _internal and version is not DEFAULT.VALUE:
             logger.warning(
                 "DeprecationWarning: `version` in `Deployment.options()` has been "
                 "deprecated. Explicitly specifying version will raise an error in the "
                 "future!"
             )
 
-        if num_replicas is not None:
+        if num_replicas not in [DEFAULT.VALUE, None]:
             new_config.num_replicas = num_replicas
-        if user_config is not None:
+        if user_config is not DEFAULT.VALUE:
             new_config.user_config = user_config
-        if max_concurrent_queries is not None:
+        if max_concurrent_queries is not DEFAULT.VALUE:
             new_config.max_concurrent_queries = max_concurrent_queries
 
         if func_or_class is None:
             func_or_class = self._func_or_class
 
-        if name is None:
+        if name is DEFAULT.VALUE:
             name = self._name
 
-        if version is None:
+        if version is DEFAULT.VALUE:
             version = self._version
 
-        if init_args is None:
+        if init_args is DEFAULT.VALUE:
             init_args = self._init_args
 
-        if init_kwargs is None:
+        if init_kwargs is DEFAULT.VALUE:
             init_kwargs = self._init_kwargs
 
         if route_prefix is DEFAULT.VALUE:
             # Default is to keep the previous value
             route_prefix = self._route_prefix
 
-        if ray_actor_options is None:
+        if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._ray_actor_options
 
-        if autoscaling_config is not None:
+        if autoscaling_config is not DEFAULT.VALUE:
             new_config.autoscaling_config = autoscaling_config
 
-        if graceful_shutdown_wait_loop_s is not None:
+        if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_config.graceful_shutdown_wait_loop_s = graceful_shutdown_wait_loop_s
 
-        if graceful_shutdown_timeout_s is not None:
+        if graceful_shutdown_timeout_s is not DEFAULT.VALUE:
             new_config.graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
 
-        if health_check_period_s is not None:
+        if health_check_period_s is not DEFAULT.VALUE:
             new_config.health_check_period_s = health_check_period_s
 
-        if health_check_timeout_s is not None:
+        if health_check_timeout_s is not DEFAULT.VALUE:
             new_config.health_check_timeout_s = health_check_timeout_s
+
+        if is_driver_deployment is DEFAULT.VALUE:
+            self._is_driver_deployment = False
 
         return Deployment(
             func_or_class,
@@ -388,26 +427,30 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
+            is_driver_deployment=self._is_driver_deployment,
         )
 
     @PublicAPI(stability="alpha")
     def set_options(
         self,
         func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        num_replicas: Optional[int] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        graceful_shutdown_wait_loop_s: Optional[float] = None,
-        graceful_shutdown_timeout_s: Optional[float] = None,
-        health_check_period_s: Optional[float] = None,
-        health_check_timeout_s: Optional[float] = None,
+        name: Default[str] = DEFAULT.VALUE,
+        version: Default[str] = DEFAULT.VALUE,
+        num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+        ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+        user_config: Default[Optional[Any]] = DEFAULT.VALUE,
+        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+        autoscaling_config: Default[
+            Union[Dict, AutoscalingConfig, None]
+        ] = DEFAULT.VALUE,
+        graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+        graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+        health_check_period_s: Default[float] = DEFAULT.VALUE,
+        health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
@@ -433,6 +476,7 @@ class Deployment:
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
             _internal=_internal,
+            is_driver_deployment=is_driver_deployment,
         )
 
         self._func_or_class = validated._func_or_class
@@ -470,36 +514,41 @@ class Deployment:
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    """Converts a live deployment object to a corresponding structured schema.
+    """Converts a live deployment object to a corresponding structured schema."""
 
-    If the deployment has a class or function, it will be attemptetd to be
-    converted to a valid corresponding import path.
-
-    init_args and init_kwargs must also be JSON-serializable or this call will
-    fail.
-    """
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
     else:
         ray_actor_options_schema = None
 
-    return DeploymentSchema(
-        name=d.name,
-        # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
-        # because internally we use these two field for autoscale and deploy.
-        # We can improve the code after we separate the user faced deployment config and
-        # internal deployment config.
-        num_replicas=None if d._config.autoscaling_config else d.num_replicas,
-        route_prefix=d.route_prefix,
-        max_concurrent_queries=d.max_concurrent_queries,
-        user_config=d.user_config,
-        autoscaling_config=d._config.autoscaling_config,
-        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
-        health_check_period_s=d._config.health_check_period_s,
-        health_check_timeout_s=d._config.health_check_timeout_s,
-        ray_actor_options=ray_actor_options_schema,
-    )
+    deployment_options = {
+        "name": d.name,
+        "num_replicas": None if d._config.autoscaling_config else d.num_replicas,
+        "route_prefix": d.route_prefix,
+        "max_concurrent_queries": d.max_concurrent_queries,
+        "user_config": d.user_config,
+        "autoscaling_config": d._config.autoscaling_config,
+        "graceful_shutdown_wait_loop_s": d._config.graceful_shutdown_wait_loop_s,
+        "graceful_shutdown_timeout_s": d._config.graceful_shutdown_timeout_s,
+        "health_check_period_s": d._config.health_check_period_s,
+        "health_check_timeout_s": d._config.health_check_timeout_s,
+        "ray_actor_options": ray_actor_options_schema,
+        "is_driver_deployment": d._is_driver_deployment,
+    }
+
+    # Let non-user-configured options be set to defaults. If the schema
+    # is converted back to a deployment, this lets Serve continue tracking
+    # which options were set by the user. Name is a required field in the
+    # schema, so it should be passed in explicitly.
+    for option in list(deployment_options.keys()):
+        if option != "name" and option not in d._config.user_configured_option_names:
+            del deployment_options[option]
+
+    # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+    # because internally we use these two field for autoscale and deploy.
+    # We can improve the code after we separate the user faced deployment config and
+    # internal deployment config.
+    return DeploymentSchema(**deployment_options)
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
@@ -511,13 +560,12 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     before the deployment can be deployed.
     """
 
-    if s.ray_actor_options is None:
+    if s.ray_actor_options is DEFAULT.VALUE:
         ray_actor_options = None
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
     config = DeploymentConfig.from_default(
-        ignore_none=True,
         num_replicas=s.num_replicas,
         user_config=s.user_config,
         max_concurrent_queries=s.max_concurrent_queries,
@@ -527,6 +575,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
     )
+    config.user_configured_option_names = s.get_user_configured_option_names()
 
     return Deployment(
         func_or_class="",
@@ -537,4 +586,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         _internal=True,
+        is_driver_deployment=s.is_driver_deployment,
     )

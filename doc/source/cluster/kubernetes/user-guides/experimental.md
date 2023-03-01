@@ -24,7 +24,7 @@ You can set up an external Redis instance as a data store for the Ray head. If t
 a new head will be created without restarting the Ray cluster.
 The Ray head's GCS will recover its state from the external Redis instance.
 
-See the {ref}`Ray Serve documentation <serve-head-node-failure>` for more information and
+See the {ref}`Ray Serve documentation <serve-e2e-ft-guide-gcs>` for more information and
 the [KubeRay docs on GCS Fault Tolerance][KubeFT] for a detailed guide.
 
 ## RayJobs

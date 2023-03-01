@@ -19,6 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
+from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -60,7 +61,7 @@ KeyFn = Union[None, str, Callable[[T], Any]]
 def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
     try:
-        fmt = ds._dataset_format()
+        fmt = ds.dataset_format()
     except ValueError:
         # Dataset is empty/cleared, validation not possible.
         return
@@ -108,7 +109,7 @@ CallableClass = type
 
 
 class _CallableClassProtocol(Protocol[T, U]):
-    def __call__(self, __arg: T) -> U:
+    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
         ...
 
 
@@ -118,7 +119,8 @@ BatchUDF = Union[
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
-    _CallableClassProtocol,
+    Callable[[DataBatch], Iterator[DataBatch]],
+    "_CallableClassProtocol",
 ]
 
 # A UDF on data rows.
@@ -127,7 +129,13 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    _CallableClassProtocol[T, U],
+    "_CallableClassProtocol[T, U]",
+]
+
+
+FlatMapUDF = Union[
+    RowUDF,
+    Callable[[T], Iterator[U]],
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -136,13 +144,13 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 
 # The metadata that describes the output of a BlockPartition. This has the
 # same type as the metadata that describes each block in the partition.
-BlockPartitionMetadata = "BlockMetadata"
+BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl) replace this with just `BlockPartition` once block splitting is on
-# by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, BlockPartition]
+# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# is on by default. When block splitting is off, the type is a plain block.
+MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
-VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
+VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -158,7 +166,7 @@ class BlockExecStats:
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
-        self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+        self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
@@ -208,21 +216,18 @@ class _BlockExecStatsBuilder:
 @DeveloperAPI
 @dataclass
 class BlockMetadata:
-    """Metadata about the block.
+    """Metadata about the block."""
 
-    Attributes:
-        num_rows: The number of rows contained in this block, or None.
-        size_bytes: The approximate size in bytes of this block, or None.
-        schema: The pyarrow schema or types of the block elements, or None.
-        input_files: The list of file paths used to generate this block, or
-            the empty list if indeterminate.
-        exec_stats: Execution stats for this block.
-    """
-
+    #: The number of rows contained in this block, or None.
     num_rows: Optional[int]
+    #: The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
+    #: The pyarrow schema or types of the block elements, or None.
     schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    #: The list of file paths used to generate this block, or
+    #: the empty list if indeterminate.
     input_files: Optional[List[str]]
+    #: Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
 
     def __post_init__(self):
@@ -276,6 +281,10 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
+    def select(self, columns: List[KeyFn]) -> Block:
+        """Return a new block containing the provided columns."""
+        raise NotImplementedError
+
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
         """Randomly shuffle this block."""
         raise NotImplementedError
@@ -302,8 +311,8 @@ class BlockAccessor(Generic[T]):
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
 
-    def to_native(self) -> Block:
-        """Return the native data format for this accessor."""
+    def to_default(self) -> Block:
+        """Return the default data format for this accessor."""
         return self.to_block()
 
     def to_batch_format(self, batch_format: str) -> DataBatch:
@@ -315,8 +324,8 @@ class BlockAccessor(Generic[T]):
         Returns:
             This block formatted as the provided batch format.
         """
-        if batch_format == "native":
-            return self.to_native()
+        if batch_format == "default" or batch_format == "native":
+            return self.to_default()
         elif batch_format == "pandas":
             return self.to_pandas()
         elif batch_format == "pyarrow":

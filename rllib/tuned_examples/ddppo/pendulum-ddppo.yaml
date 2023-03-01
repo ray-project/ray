@@ -6,7 +6,7 @@ pendulum-ddppo:
         timesteps_total: 1500000
     config:
         framework: torch
-        rollout_fragment_length: 250
+        train_batch_size: 2500  # per worker
         num_gpus_per_worker: 0
         num_workers: 4
         num_envs_per_worker: 10

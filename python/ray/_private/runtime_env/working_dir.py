@@ -22,6 +22,8 @@ from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
+_WIN32 = os.name == "nt"
+
 
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
@@ -175,5 +177,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
                 "downloading or unpacking the working_dir."
             )
 
-        context.command_prefix += [f"cd {local_dir}"]
+        if not _WIN32:
+            context.command_prefix += ["cd", str(local_dir), "&&"]
+        else:
+            # Include '/d' incase temp folder is on different drive than Ray install.
+            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)

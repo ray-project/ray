@@ -28,21 +28,23 @@ class TestAPPO(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             print("w/o v-trace")
             config.vtrace = False
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
-                check_train_results(results)
                 print(results)
+                check_train_results(results)
+
             check_compute_single_action(algo)
             algo.stop()
 
             print("w/ v-trace")
             config.vtrace = True
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
-                check_train_results(results)
                 print(results)
+                check_train_results(results)
+
             check_compute_single_action(algo)
             algo.stop()
 
@@ -54,7 +56,7 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)
@@ -78,7 +80,7 @@ class TestAPPO(unittest.TestCase):
 
         # Only supported for tf so far.
         for _ in framework_iterator(config, frameworks=("tf2", "tf")):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)
@@ -129,7 +131,7 @@ class TestAPPO(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             coeff = _step_n_times(algo, 10)  # 200 timesteps
             # Should be close to the starting coeff of 0.01.
@@ -180,7 +182,7 @@ class TestAPPO(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             lr1 = _step_n_times(algo, 10)  # 200 timesteps
             lr2 = _step_n_times(algo, 10)  # 200 timesteps
@@ -209,7 +211,7 @@ class TestAPPO(unittest.TestCase):
         )
 
         for _ in framework_iterator(config, frameworks=["tf2", "torch"]):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             state = algo.get_policy(DEFAULT_POLICY_ID).get_state()
             # Weights and Biases for the single hidden layer, the output layer
             # of the policy and value networks. So 6 tensors in total.

@@ -42,6 +42,15 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
+/// Tasks stats, broken down by state.
+DECLARE_stats(tasks);
+
+/// Actor stats, broken down by state.
+DECLARE_stats(actors);
+
+/// Placement group stats, broken down by state.
+DECLARE_stats(placement_groups);
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);
@@ -78,6 +87,10 @@ DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
 
+/// Raylet Resource Manager
+DECLARE_stats(resources);
+
+/// TODO(rickyx): migrate legacy metrics
 /// Local Object Manager
 DECLARE_stats(spill_manager_objects);
 DECLARE_stats(spill_manager_objects_bytes);
@@ -87,6 +100,13 @@ DECLARE_stats(spill_manager_throughput_mb);
 /// GCS Storage
 DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
+DECLARE_stats(gcs_task_manager_task_events_dropped);
+DECLARE_stats(gcs_task_manager_task_events_stored);
+DECLARE_stats(gcs_task_manager_task_events_stored_bytes);
+DECLARE_stats(gcs_task_manager_task_events_reported);
+
+/// Object Store
+DECLARE_stats(object_store_memory);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
@@ -116,10 +136,10 @@ static Histogram GcsLatency("gcs_latency",
 ///
 
 /// Raylet Resource Manager
-static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.",
-                                    "",
-                                    {ResourceNameKey});
+static Gauge TestMetrics("local_available_resource",
+                         "The available resources on this node.",
+                         "",
+                         {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.",
@@ -182,15 +202,6 @@ static Gauge ObjectDirectoryRemovedLocations(
     "have been removed from this node.",
     "removals");
 
-/// Node Manager
-static Histogram HeartbeatReportMs(
-    "heartbeat_report_ms",
-    "Heartbeat report time in raylet. If this value is high, that means there's a high "
-    "system load. It is possible that this node will be killed because of missing "
-    "heartbeats.",
-    "ms",
-    {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
-
 /// Worker Pool
 static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.",
@@ -201,6 +212,26 @@ static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.",
     "processes");
+
+static Sum NumCachedWorkersSkippedJobMismatch(
+    "internal_num_processes_skipped_job_mismatch",
+    "The total number of cached workers skipped due to job mismatch.",
+    "workers");
+
+static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
+    "internal_num_processes_skipped_runtime_enviornment_mismatch",
+    "The total number of cached workers skipped due to runtime environment mismatch.",
+    "workers");
+
+static Sum NumCachedWorkersSkippedDynamicOptionsMismatch(
+    "internal_num_processes_skipped_job_mismatch",
+    "The total number of cached workers skipped due to dynamic options mismatch.",
+    "workers");
+
+static Sum NumWorkersStartedFromCache(
+    "internal_num_processes_started_from_cache",
+    "The total number of workers started from a cached worker process.",
+    "workers");
 
 static Gauge NumSpilledTasks("internal_num_spilled_tasks",
                              "The cumulative number of lease requeusts that this raylet "

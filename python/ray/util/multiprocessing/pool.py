@@ -7,12 +7,14 @@ import os
 import queue
 import sys
 import threading
+import warnings
 import time
 from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 import ray
 from ray.util import log_once
+from ray.util.annotations import RayDeprecationWarning
 
 try:
     from joblib._parallel_backends import SafeFunction
@@ -391,7 +393,16 @@ class IMapIterator:
         try:
             self._iterator = iter(iterable)
         except TypeError:
-            # for compatibility with prior releases, encapsulate non-iterable in a list
+            warnings.warn(
+                "Passing a non-iterable argument to the "
+                "ray.util.multiprocessing.Pool imap and imap_unordered "
+                "methods is deprecated as of Ray 2.3 and "
+                " will be removed in a future release. See "
+                "https://github.com/ray-project/ray/issues/24237 for more "
+                "information.",
+                category=RayDeprecationWarning,
+                stacklevel=3,
+            )
             iterable = [iterable]
             self._iterator = iter(iterable)
         if isinstance(iterable, collections.abc.Iterator):
@@ -576,6 +587,8 @@ class Pool:
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        ray._private.usage.usage_lib.record_library_usage("util.multiprocessing.Pool")
+
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs

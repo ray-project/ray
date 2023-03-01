@@ -114,6 +114,8 @@ message PutRequest {
   int32 total_chunks = 4;
   // Total size in bytes of the data being put
   int64 total_size = 5;
+  // The owner of the put
+  bytes owner_id = 6;
 }
 
 message PutResponse {
@@ -187,6 +189,7 @@ message ClusterInfoType {
     RUNTIME_CONTEXT = 4;
     TIMELINE = 5;
     PING = 6;
+    DASHBOARD_URL = 7;
   }
 }
 

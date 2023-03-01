@@ -6,3 +6,5 @@
 
 tensorflow
 torch
+# Need this library to unpickle errors
+tblib

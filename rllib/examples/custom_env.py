@@ -14,15 +14,14 @@ For CLI options:
 $ python custom_env.py --help
 """
 import argparse
-import gym
-from gym.spaces import Discrete, Box
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import os
 import random
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms import ppo
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -32,6 +31,7 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -42,7 +42,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -85,11 +85,12 @@ class SimpleCorridor(gym.Env):
         self.action_space = Discrete(2)
         self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
         # Set the seed. This is only used for the final (reach goal) reward.
-        self.seed(config.worker_index * config.num_workers)
+        self.reset(seed=config.worker_index * config.num_workers)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
+        random.seed(seed)
         self.cur_pos = 0
-        return [self.cur_pos]
+        return [self.cur_pos], {}
 
     def step(self, action):
         assert action in [0, 1], action
@@ -97,12 +98,15 @@ class SimpleCorridor(gym.Env):
             self.cur_pos -= 1
         elif action == 1:
             self.cur_pos += 1
-        done = self.cur_pos >= self.end_pos
+        done = truncated = self.cur_pos >= self.end_pos
         # Produce a random reward when we reach the goal.
-        return [self.cur_pos], random.random() * 2 if done else -0.1, done, {}
-
-    def seed(self, seed=None):
-        random.seed(seed)
+        return (
+            [self.cur_pos],
+            random.random() * 2 if done else -0.1,
+            done,
+            truncated,
+            {},
+        )
 
 
 class CustomModel(TFModelV2):
@@ -157,20 +161,22 @@ if __name__ == "__main__":
         "my_model", TorchCustomModel if args.framework == "torch" else CustomModel
     )
 
-    config = {
-        "env": SimpleCorridor,  # or "corridor" if registered above
-        "env_config": {
-            "corridor_length": 5,
-        },
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        # or "corridor" if registered above
+        .environment(SimpleCorridor, env_config={"corridor_length": 5})
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=1)
+        .training(
+            model={
+                "custom_model": "my_model",
+                "vf_share_layers": True,
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "custom_model": "my_model",
-            "vf_share_layers": True,
-        },
-        "num_workers": 1,  # parallelism
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -183,14 +189,12 @@ if __name__ == "__main__":
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
         print("Running manual train loop without Ray Tune.")
-        ppo_config = ppo.DEFAULT_CONFIG.copy()
-        ppo_config.update(config)
         # use fixed learning rate instead of grid search (needs tune)
-        ppo_config["lr"] = 1e-3
-        trainer = ppo.PPO(config=ppo_config, env=SimpleCorridor)
+        config.lr = 1e-3
+        algo = config.build()
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # stop training of the target train steps or reward are reached
             if (
@@ -198,11 +202,14 @@ if __name__ == "__main__":
                 or result["episode_reward_mean"] >= args.stop_reward
             ):
                 break
+        algo.stop()
     else:
         # automated run with Tune and grid search and TensorBoard
         print("Training automatically with Ray Tune")
         tuner = tune.Tuner(
-            args.run, param_space=config, run_config=air.RunConfig(stop=stop)
+            args.run,
+            param_space=config.to_dict(),
+            run_config=air.RunConfig(stop=stop),
         )
         results = tuner.fit()
 

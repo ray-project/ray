@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from typing import (
@@ -13,14 +13,22 @@ from typing import (
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.crr.torch import CRRModel
 from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
-from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+    get_torch_categorical_class_with_temperature,
+)
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.torch_utils import (
+    huber_loss,
+    l2_loss,
+)
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
     TensorType,
@@ -39,6 +47,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
 
         self.target_model = None  # assign it in self.make_model
         self._is_action_discrete = isinstance(action_space, gym.spaces.Discrete)
+
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -46,6 +55,15 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             config,
             max_seq_len=config["model"]["max_seq_len"],
         )
+
+        # For discreet action space, use a custom TorchCategorical distribution
+        # that supports temperature.
+        if self._is_action_discrete:
+            assert self.dist_class == TorchCategorical
+            self.dist_class = get_torch_categorical_class_with_temperature(
+                config["categorical_distribution_temperature"]
+            )
+
         """
         by here your model should include the following
         (We assume state s is already encoded and there is no need to use RNNs/other
@@ -374,7 +392,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             target = (
                 train_batch[SampleBatch.REWARDS]
                 + discount
-                * (1.0 - train_batch[SampleBatch.DONES].float())
+                * (1.0 - train_batch[SampleBatch.TERMINATEDS].float())
                 * target_q_next
             )
 
@@ -389,14 +407,15 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         ).squeeze(-1)
 
         # compute the MSE loss for all q-functions
-        loss_q1 = (target - q1) ** 2
-        loss_q2 = (target - q2) ** 2
-        loss = 0.5 * (loss_q1 + loss_q2)
-        loss = loss.mean(0)
+        td_error_q1 = q1 - target
+        td_error_q2 = q2 - target
+        loss_fn = l2_loss if self.config["td_error_loss_fn"] == "mse" else huber_loss
+        loss = torch.mean(loss_fn(torch.cat((td_error_q1, td_error_q2), dim=0)))
 
         # logging
-        self.log("loss_q1", loss_q1.mean())
-        self.log("loss_q2", loss_q2.mean())
+        self.log("td_error_q1", (td_error_q1**2).mean())
+        self.log("td_error_q2", (td_error_q2**2).mean())
+        self.log("td_error", loss)
         self.log("targets_avg", target.mean())
         self.log("targets_max", target.max())
         self.log("targets_min", target.min())

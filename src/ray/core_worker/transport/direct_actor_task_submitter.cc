@@ -146,8 +146,16 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-        task_id, error_type, &status, &error_info);
+    bool fail_immediatedly =
+        error_info.has_actor_died_error() &&
+        error_info.actor_died_error().has_oom_context() &&
+        error_info.actor_died_error().oom_context().fail_immediately();
+    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
+                                                      error_type,
+                                                      &status,
+                                                      &error_info,
+                                                      /*mark_task_object_failed*/ true,
+                                                      fail_immediatedly);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -306,15 +314,23 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
       resolver_.CancelDependencyResolution(task_id);
-      GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-          task_id, error_type, &status, &error_info);
+      bool fail_immediatedly =
+          error_info.has_actor_died_error() &&
+          error_info.actor_died_error().has_oom_context() &&
+          error_info.actor_died_error().oom_context().fail_immediately();
+      GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
+                                                        error_type,
+                                                        &status,
+                                                        &error_info,
+                                                        /*mark_task_object_failed*/ true,
+                                                        fail_immediatedly);
     }
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
       for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(
-            net_err_task.second, error_type, &error_info));
+        RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
+            net_err_task.second.TaskId(), error_type, nullptr, &error_info));
       }
     }
   }
@@ -338,11 +354,11 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     }
   }
 
-  // Do not hold mu_, because MarkTaskReturnObjectsFailed may call python from cpp,
+  // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_spec : task_specs) {
-    GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(task_spec,
-                                                           rpc::ErrorType::ACTOR_DIED);
+    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+                                               rpc::ErrorType::ACTOR_DIED);
   }
 }
 
@@ -468,7 +484,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         reply_callback(status, reply);
       };
 
-  task_finisher_.MarkTaskWaitingForExecution(task_id);
+  task_finisher_.MarkTaskWaitingForExecution(task_id,
+                                             NodeID::FromBinary(addr.raylet_id()),
+                                             WorkerID::FromBinary(addr.worker_id()));
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
@@ -490,9 +508,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
   } else if (status.ok()) {
-    task_finisher_.CompletePendingTask(task_id, reply, addr);
+    task_finisher_.CompletePendingTask(
+        task_id, reply, addr, reply.is_application_error());
   } else {
     bool is_actor_dead = false;
+    bool fail_immediatedly = false;
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     {
@@ -509,6 +529,9 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       const auto &death_cause = queue.death_cause;
       error_info = GetErrorInfoFromActorDeathCause(death_cause);
       error_type = GenErrorTypeFromDeathCause(death_cause);
+      fail_immediatedly = error_info.has_actor_died_error() &&
+                          error_info.actor_died_error().has_oom_context() &&
+                          error_info.actor_died_error().oom_context().fail_immediately();
     }
 
     // This task may have been waiting for dependency resolution, so cancel
@@ -520,7 +543,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         error_type,
         &status,
         &error_info,
-        /*mark_task_object_failed*/ is_actor_dead);
+        /*mark_task_object_failed*/ is_actor_dead,
+        fail_immediatedly);
 
     if (!is_actor_dead && !will_retry) {
       // No retry == actor is dead.
@@ -543,8 +567,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
         // If we don't need death info, just fail the request.
-        GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(
-            task_spec, rpc::ErrorType::ACTOR_DIED);
+        GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+                                                   rpc::ErrorType::ACTOR_DIED);
       }
     }
   }

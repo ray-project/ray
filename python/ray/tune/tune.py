@@ -1,3 +1,5 @@
+import abc
+import copy
 import datetime
 import logging
 import os
@@ -9,15 +11,19 @@ import warnings
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
+from ray.air import CheckpointConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
-    RemoteReporterMixin,
     _detect_reporter,
     _detect_progress_metrics,
+    _prepare_progress_reporter_for_ray_client,
+    _stream_client_output,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -46,16 +52,16 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
+from ray.tune.syncer import SyncConfig, SyncerCallback
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
-from ray.util.queue import Empty, Queue
+from ray.util.queue import Queue
+
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +101,17 @@ def _check_default_resources_override(
     )
 
 
+def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
+        # Default to True
+        return True
+
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
+    )
+
+
 def _check_gpus_in_resources(
     resources: Optional[Union[Dict, PlacementGroupFactory]]
 ) -> bool:
@@ -125,9 +142,49 @@ def _report_progress(
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
+def _setup_signal_catching() -> threading.Event:
+    original_handler = signal.getsignal(signal.SIGINT)
+    experiment_interrupted_event = threading.Event()
+
+    def signal_interrupt_tune_run(sig: int, frame):
+        logger.warning(
+            "Stop signal received (e.g. via SIGINT/Ctrl+C), ending Ray Tune run. "
+            "This will try to checkpoint the experiment state one last time. "
+            "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
+            "to skip. "
+        )
+        experiment_interrupted_event.set()
+        # Restore original signal handler to react to future SIGINT signals
+        signal.signal(signal.SIGINT, original_handler)
+
+    # We should only install the handler when it is safe to do so.
+    # When tune.run() is called from worker thread, signal.signal will
+    # fail.
+    allow_signal_catching = True
+    if threading.current_thread() != threading.main_thread():
+        allow_signal_catching = False
+
+    if allow_signal_catching:
+        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
+
+        # Always register SIGUSR1 if available (not available e.g. on Windows)
+        if hasattr(signal, "SIGUSR1"):
+            signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+
+    return experiment_interrupted_event
+
+
+class _Config(abc.ABC):
+    def to_dict(self) -> dict:
+        """Converts this configuration to a dict format."""
+        raise NotImplementedError
+
+
 @PublicAPI
 def run(
     run_or_experiment: Union[str, Callable, Type],
+    *,
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
@@ -150,6 +207,7 @@ def run(
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
+    chdir_to_trial_dir: bool = True,
     sync_config: Optional[SyncConfig] = None,
     export_formats: Optional[Sequence] = None,
     max_failures: int = 0,
@@ -158,13 +216,16 @@ def run(
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # Deprecated
+    trial_executor: Optional[RayTrialExecutor] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
+    # Passed by the Tuner.
+    _remote_string_queue: Optional[Queue] = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -284,12 +345,21 @@ def run(
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
-        trial_name_creator: Optional function
-            for generating the trial string representation.
-        trial_dirname_creator: Function
-            for generating the trial dirname. This function should take
-            in a Trial object and return a string representing the
-            name of the directory. The return value cannot be a path.
+        trial_name_creator: Optional function that takes in a Trial and returns
+            its name (i.e. its string representation). Be sure to include some unique
+            identifier (such as `Trial.trial_id`) in each trial's name.
+        trial_dirname_creator: Optional function that takes in a trial and
+            generates its trial directory name as a string. Be sure to include some
+            unique identifier (such as `Trial.trial_id`) is used in each trial's
+            directory name. Otherwise, trials could overwrite artifacts and checkpoints
+            of other trials. The return value cannot be a path.
+        chdir_to_trial_dir: Whether to change the working directory of each worker
+            to its corresponding trial directory. Defaults to `True` to prevent
+            contention between workers saving trial-level outputs.
+            If set to `False`, files are accessible with paths relative to the
+            original working directory. However, all workers on the same node now
+            share the same working directory, so be sure to use
+            `session.get_trial_dir()` as the path to save any outputs.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of
@@ -333,7 +403,6 @@ def run(
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables and ``False`` for
             class and registered trainables.
-        trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -369,6 +438,12 @@ def run(
 
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
+    elif trial_executor:
+        warnings.warn(
+            "Passing a custom `trial_executor` is deprecated and will be removed "
+            "in the future.",
+            DeprecationWarning,
+        )
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
@@ -379,54 +454,25 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = _force_on_current_node(remote_run)
 
-        set_verbosity(verbose)
-        progress_reporter = progress_reporter or _detect_reporter()
-
-        # JupyterNotebooks don't work with remote tune runs out of the box
-        # (e.g. via Ray client) as they don't have access to the main
-        # process stdout. So we introduce a queue here that accepts
-        # strings, which will then be displayed on the driver side.
-        if isinstance(progress_reporter, RemoteReporterMixin):
-            string_queue = Queue(
-                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
-            )
-            progress_reporter.output_queue = string_queue
-
-            def get_next_queue_item():
-                try:
-                    return string_queue.get(block=False)
-                except Empty:
-                    return None
-
-        else:
-            # If we don't need a queue, use this dummy get fn instead of
-            # scheduling an unneeded actor
-            def get_next_queue_item():
-                return None
-
-        def _handle_string_queue():
-            string_item = get_next_queue_item()
-            while string_item is not None:
-                # This happens on the driver side
-                progress_reporter.display(string_item)
-
-                string_item = get_next_queue_item()
+        progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(
+            progress_reporter, verbose, _remote_string_queue
+        )
 
         # Override with detected progress reporter
         remote_run_kwargs["progress_reporter"] = progress_reporter
+
         remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
 
-        # ray.wait(...)[1] returns futures that are not ready, yet
-        while ray.wait([remote_future], timeout=0.2)[1]:
-            # Check if we have items to execute
-            _handle_string_queue()
-
-        # Handle queue one last time
-        _handle_string_queue()
-
+        _stream_client_output(
+            remote_future,
+            progress_reporter,
+            string_queue,
+        )
         return ray.get(remote_future)
 
     del remote_run_kwargs
+
+    ray._private.usage.usage_lib.record_library_usage("tune")
 
     all_start = time.time()
 
@@ -439,8 +485,31 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
+    if isinstance(config, _Config):
+        config = config.to_dict()
+    if not isinstance(config, dict):
+        raise ValueError(
+            "The `config` passed to `tune.run()` must be a dict. "
+            f"Got '{type(config)}' instead."
+        )
+
     sync_config = sync_config or SyncConfig()
-    _validate_upload_dir(sync_config)
+    sync_config.validate_upload_dir()
+
+    checkpoint_score_attr = checkpoint_score_attr or ""
+    if checkpoint_score_attr.startswith("min-"):
+        checkpoint_score_attr = checkpoint_score_attr[4:]
+        checkpoint_score_order = "min"
+    else:
+        checkpoint_score_order = "max"
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=keep_checkpoints_num,
+        checkpoint_score_attribute=checkpoint_score_attr,
+        checkpoint_score_order=checkpoint_score_order,
+        checkpoint_frequency=checkpoint_freq,
+        checkpoint_at_end=checkpoint_at_end,
+    )
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -496,7 +565,13 @@ def run(
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
+            and not (
+                # Mixins do not work with reuse_actors as the mixin setup will only
+                # be invoked once
+                _check_mixin(trainable)
+            )
         )
+        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -507,9 +582,20 @@ def run(
             "well as implementing `reset_config` for Trainable."
         )
 
-    trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length
+    # Before experiments are created, we first clean up the passed in
+    # Config dictionary by replacing all the non-primitive config values
+    # with placeholders. This serves two purposes:
+    # 1. we can replace and "fix" these objects if a Trial is restored.
+    # 2. the config dictionary will then be compatible with all supported
+    #   search algorithms, since a lot of them do not support non-primitive
+    #   config values.
+    placeholder_resolvers = create_resolvers_map()
+    config = inject_placeholders(
+        # Make a deep copy here to avoid modifying the original config dict.
+        copy.deepcopy(config),
+        placeholder_resolvers,
     )
+
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -528,13 +614,10 @@ def run(
                 local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
+                checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
-                checkpoint_freq=checkpoint_freq,
-                checkpoint_at_end=checkpoint_at_end,
-                keep_checkpoints_num=keep_checkpoints_num,
-                checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
                 restore=restore,
@@ -628,42 +711,8 @@ def run(
         callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
     )
 
-    runner = TrialRunner(
-        search_alg=search_alg,
-        scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
-        sync_config=sync_config,
-        stopper=experiments[0].stopper,
-        resume=resume,
-        server_port=server_port,
-        fail_fast=fail_fast,
-        trial_executor=trial_executor,
-        callbacks=callbacks,
-        metric=metric,
-        # Driver should only sync trial checkpoints if
-        # checkpoints are not synced to cloud
-        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
-    )
-
-    if not runner.resumed:
-        for exp in experiments:
-            search_alg.add_configurations([exp])
-    else:
-        logger.info(
-            "TrialRunner resumed, ignoring new add_experiment but "
-            "updating trial resources."
-        )
-        if resources_per_trial:
-            runner.update_pending_trial_resources(resources_per_trial)
-
-    # Calls setup on callbacks
-    runner.setup_experiments(
-        experiments=experiments, total_num_samples=search_alg.total_samples
-    )
-
     # User Warning for GPUs
-    if trial_executor.has_gpus():
+    if ray.cluster_resources().get("GPU", 0):
         if _check_gpus_in_resources(resources=resources_per_trial):
             # "gpu" is manually set.
             pass
@@ -683,36 +732,47 @@ def run(
                 "Trainable API."
             )
 
-    original_handler = signal.getsignal(signal.SIGINT)
-    state = {"signal": None}
-
-    def signal_interrupt_tune_run(sig: int, frame):
-        logger.warning(
-            "Stop signal received (e.g. via SIGINT/Ctrl+C), ending Ray Tune run. "
-            "This will try to checkpoint the experiment state one last time. "
-            "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
-            "to skip. "
-        )
-        state["signal"] = sig
-        # Restore original signal handler to react to future SIGINT signals
-        signal.signal(signal.SIGINT, original_handler)
-
-    # We should only install the handler when it is safe to do so.
-    # When tune.run() is called from worker thread, signal.signal will
-    # fail.
-    allow_signal_catching = True
-    if threading.current_thread() != threading.main_thread():
-        allow_signal_catching = False
-
-    if allow_signal_catching:
-        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
-            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
-
-        # Always register SIGUSR1 if available (not available e.g. on Windows)
-        if hasattr(signal, "SIGUSR1"):
-            signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+    experiment_interrupted_event = _setup_signal_catching()
 
     progress_reporter = progress_reporter or _detect_reporter()
+
+    trial_executor = trial_executor or RayTrialExecutor(
+        reuse_actors=reuse_actors,
+        result_buffer_length=result_buffer_length,
+        chdir_to_trial_dir=chdir_to_trial_dir,
+    )
+    runner = TrialRunner(
+        search_alg=search_alg,
+        placeholder_resolvers=placeholder_resolvers,
+        scheduler=scheduler,
+        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        experiment_dir_name=experiments[0].dir_name,
+        sync_config=sync_config,
+        stopper=experiments[0].stopper,
+        resume=resume,
+        server_port=server_port,
+        fail_fast=fail_fast,
+        trial_executor=trial_executor,
+        callbacks=callbacks,
+        metric=metric,
+        trial_checkpoint_config=experiments[0].checkpoint_config,
+    )
+
+    if not runner.resumed:
+        for exp in experiments:
+            search_alg.add_configurations([exp])
+    else:
+        logger.info(
+            "TrialRunner resumed, ignoring new add_experiment but "
+            "updating trial resources."
+        )
+        if resources_per_trial:
+            runner.update_pending_trial_resources(resources_per_trial)
+
+    # Calls setup on callbacks
+    runner.setup_experiments(
+        experiments=experiments, total_num_samples=search_alg.total_samples
+    )
 
     tune_start = time.time()
 
@@ -722,19 +782,22 @@ def run(
         metric=metric,
         mode=mode,
     )
-    while not runner.is_finished() and not state["signal"]:
+    while not runner.is_finished() and not experiment_interrupted_event.is_set():
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
     tune_taken = time.time() - tune_start
 
     try:
-        runner.checkpoint(force=True)
+        runner.checkpoint(force=True, wait=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
+
+    all_trials = runner.get_trials()
+    experiment_checkpoint = runner.checkpoint_file
 
     # Wait for syncing to finish
     for callback in callbacks:
@@ -747,12 +810,12 @@ def run(
     runner.cleanup()
 
     incomplete_trials = []
-    for trial in runner.get_trials():
+    for trial in all_trials:
         if trial.status != Trial.TERMINATED:
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial and not state["signal"]:
+        if raise_on_failed_trial and not experiment_interrupted_event.is_set():
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -764,17 +827,16 @@ def run(
             f"({tune_taken:.2f} seconds for the tuning loop)."
         )
 
-    if state["signal"]:
+    if experiment_interrupted_event.is_set():
         logger.warning(
             "Experiment has been interrupted, but the most recent state was "
             "saved. You can continue running this experiment by passing "
             "`resume=True` to `tune.run()`"
         )
 
-    trials = runner.get_trials()
     return ExperimentAnalysis(
-        runner.checkpoint_file,
-        trials=trials,
+        experiment_checkpoint,
+        trials=all_trials,
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,

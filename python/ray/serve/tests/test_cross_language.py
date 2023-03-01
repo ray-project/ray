@@ -4,8 +4,7 @@ import ray
 from ray.job_config import JobConfig
 from ray import serve
 from ray.serve.config import ReplicaConfig, DeploymentConfig
-from ray.serve._private.utils import msgpack_serialize
-from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata, RequestWrapper
+from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata
 from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
 
 
@@ -38,7 +37,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
             deployment_config_proto_bytes=config.to_proto_bytes(),
             replica_config_proto_bytes=replica_config.to_proto_bytes(),
             route_prefix=None,
-            deployer_job_id=ray.get_runtime_context().job_id,
+            deployer_job_id=ray.get_runtime_context().get_job_id(),
         )
     )
     assert updating
@@ -53,7 +52,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
             endpoint="endpoint",
             call_method="call",
         ).SerializeToString(),
-        RequestWrapper(body=msgpack_serialize("hello")).SerializeToString(),
+        ["hello"],
     )
     assert ray.get(out) == "my_prefix hello"
 

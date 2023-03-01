@@ -1,1 +1,0 @@
-../ci/run/bazel-sharding.py

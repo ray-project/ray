@@ -64,9 +64,10 @@ Raylet::Raylet(instrumented_io_context &main_service,
                std::shared_ptr<gcs::GcsClient> gcs_client,
                int metrics_export_port)
     : main_service_(main_service),
-      self_node_id_(!RayConfig::instance().RAYLET_NODE_ID().empty()
-                        ? NodeID::FromHex(RayConfig::instance().RAYLET_NODE_ID())
-                        : NodeID::FromRandom()),
+      self_node_id_(
+          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
+              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
+              : NodeID::FromRandom()),
       gcs_client_(gcs_client),
       node_manager_(main_service,
                     self_node_id_,
@@ -90,6 +91,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
   auto resource_map = node_manager_config.resource_config.ToResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
+  self_node_info_.set_start_time_ms(current_sys_time_ms());
 }
 
 Raylet::~Raylet() {}

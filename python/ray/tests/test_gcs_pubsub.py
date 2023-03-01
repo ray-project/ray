@@ -1,5 +1,7 @@
+import asyncio
 import sys
 import threading
+import re
 
 from ray._private.gcs_pubsub import (
     GcsPublisher,
@@ -140,6 +142,26 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     await subscriber.close()
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 7, 0), reason="no asyncio.all_tasks in py3.6"
+)
+@pytest.mark.asyncio
+async def test_aio_poll_no_leaks(ray_start_regular):
+    """Test that polling doesn't leak memory."""
+    ctx = ray_start_regular
+    gcs_server_addr = ctx.address_info["gcs_address"]
+
+    subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
+    await subscriber.subscribe()
+
+    for _ in range(10000):
+        subscriber.poll()
+        # There should only be 1 task, but use 10 as a buffer.
+        assert len(asyncio.all_tasks()) < 10
+
+    await subscriber.close()
+
+
 def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
@@ -166,10 +188,13 @@ def test_two_subscribers(ray_start_regular):
     # Make sure subscription is registered before publishing starts.
     log_subscriber.subscribe()
 
+    log_str_pattern = re.compile("^log ([0-9]+)$")
+
     def receive_logs():
         while len(logs) < num_messages:
             log_batch = log_subscriber.poll()
-            logs.append(log_batch)
+            if log_str_pattern.match(log_batch["lines"][0]):
+                logs.append(log_batch)
 
     t2 = threading.Thread(target=receive_logs)
     t2.start()

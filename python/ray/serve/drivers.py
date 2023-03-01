@@ -1,87 +1,27 @@
 import functools
-import inspect
-from abc import abstractmethod
-from typing import Any, Callable, Optional, Type, Union, Dict
-from pydantic import BaseModel
+import logging
+from typing import Any, Callable, Optional, Union, Dict
+import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 
 import starlette
-from fastapi import Body, Depends, FastAPI
+from fastapi import Depends, FastAPI
 
-from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
 from ray import serve
+import sys
+import asyncio
+import grpc
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
+from ray.serve.drivers_utils import load_http_adapter
 
-DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
-HTTPAdapterFn = Callable[[Any], Any]
-
-
-def _load_http_adapter(
-    http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]]
-) -> HTTPAdapterFn:
-    if http_adapter is None:
-        http_adapter = DEFAULT_HTTP_ADAPTER
-
-    if isinstance(http_adapter, str):
-        http_adapter = import_attr(http_adapter)
-
-    if inspect.isclass(http_adapter) and issubclass(http_adapter, BaseModel):
-
-        def http_adapter(inp: http_adapter = Body(...)):
-            return inp
-
-    if not inspect.isfunction(http_adapter):
-        raise ValueError(
-            "input schema must be a callable function or pydantic model class."
-        )
-
-    if any(
-        param.annotation == inspect.Parameter.empty
-        for param in inspect.signature(http_adapter).parameters.values()
-    ):
-        raise ValueError("input schema function's signature should be type annotated.")
-    return http_adapter
-
-
-@DeveloperAPI
-class SimpleSchemaIngress:
-    def __init__(
-        self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
-    ):
-        """Create a FastAPI endpoint annotated with http_adapter dependency.
-
-        Args:
-            http_adapter(str, HTTPAdapterFn, None, Type[pydantic.BaseModel]):
-              The FastAPI input conversion function or a pydantic model class.
-              By default, Serve will directly pass in the request object
-              starlette.requests.Request. You can pass in any FastAPI dependency
-              resolver. When you pass in a string, Serve will import it.
-              Please refer to Serve HTTP adatper documentation to learn more.
-        """
-        install_serve_encoders_to_fastapi()
-        http_adapter = _load_http_adapter(http_adapter)
-        self.app = FastAPI()
-
-        @self.app.get("/")
-        @self.app.post("/")
-        async def handle_request(inp=Depends(http_adapter)):
-            resp = await self.predict(inp)
-            return resp
-
-    @abstractmethod
-    async def predict(self, inp):
-        raise NotImplementedError()
-
-    async def __call__(self, request: starlette.requests.Request):
-        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
-        # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = ASGIHTTPSender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="beta")
@@ -104,7 +44,7 @@ class DAGDriver:
                 HTTP requests to Ray Serve input.
         """
         install_serve_encoders_to_fastapi()
-        http_adapter = _load_http_adapter(http_adapter)
+        http_adapter = load_http_adapter(http_adapter)
         self.app = FastAPI()
 
         if isinstance(dags, dict):
@@ -174,3 +114,91 @@ class DAGDriver:
     async def get_dag_node_json(self) -> str:
         """Returns the json serialized root dag node"""
         return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json
+
+
+@PublicAPI(stability="alpha")
+class gRPCIngress:
+    """
+    gRPC Ingress that starts gRPC server based on the port
+    """
+
+    def __init__(self, port: int = DEFAULT_GRPC_PORT):
+        """Create a gRPC Ingress.
+
+        Args:
+            port: Set the port that the gRPC server will listen to.
+        """
+
+        self.server = grpc.aio.server()
+        self.port = port
+
+        self._attach_grpc_server_with_schema()
+
+        self.setup_complete = asyncio.Event()
+        self.running_task = get_or_create_event_loop().create_task(self.run())
+
+    async def run(self):
+        """Start gRPC Server"""
+
+        logger.info(
+            "Starting gRPC server with on node:{} "
+            "listening on port {}".format(ray.util.get_node_ip_address(), self.port)
+        )
+
+        self.server.add_insecure_port("[::]:{}".format(self.port))
+        self.setup_complete.set()
+        await self.server.start()
+        await self.server.wait_for_termination()
+
+    def _attach_grpc_server_with_schema(self):
+        """Attach the gRPC server with schema implementation
+
+        Protobuf Schema gRPC should generate bind function
+        (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
+        and schema interface
+        """
+        # protobuf Schema gRPC should generate bind function
+        # (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
+        # and schema interface
+        bind_function_name = "add_{}_to_server"
+        for index in range(len(self.__class__.__bases__)):
+            module_name = self.__class__.__bases__[index].__module__
+            servicer_name = self.__class__.__bases__[index].__name__
+            try:
+                getattr(
+                    sys.modules[module_name], bind_function_name.format(servicer_name)
+                )(self, self.server)
+                return
+            except AttributeError:
+                pass
+        raise RayServeException(
+            "Fail to attach the gRPC server with schema implementation"
+        )
+
+
+@serve.deployment(is_driver_deployment=True, ray_actor_options={"num_cpus": 0})
+class DefaultgRPCDriver(serve_pb2_grpc.PredictAPIsServiceServicer, gRPCIngress):
+    """
+    gRPC Driver that responsible for redirecting the gRPC requests
+    and hold dag handle
+    """
+
+    def __init__(self, dag: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
+        """Create a grpc driver based on the PredictAPIsService schema.
+
+        Args:
+            dags: a handle to a Ray Serve DAG.
+            port: Port to use to listen to receive the request
+        """
+        self.dag = dag
+        # TODO(Sihan) we will add a gRPCOption class
+        # once we have more options to use
+        super().__init__(port)
+
+    async def Predict(self, request, context):
+        """
+        gRPC Predict function implementation
+        """
+        res = await (await self.dag.remote(dict(request.input)))
+
+        return serve_pb2.PredictResponse(prediction=res)

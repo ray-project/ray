@@ -6,9 +6,9 @@
 set -euo pipefail
 
 FLAKE8_VERSION_REQUIRED="3.9.1"
-BLACK_VERSION_REQUIRED="21.12b0"
+BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
-MYPY_VERSION_REQUIRED="0.782"
+MYPY_VERSION_REQUIRED="0.982"
 ISORT_VERSION_REQUIRED="5.10.1"
 
 check_python_command_exist() {
@@ -65,12 +65,16 @@ builtin cd "$ROOT" || exit 1
 # NOTE(edoakes): black version differs based on installation method:
 #   Option 1) 'black, 21.12b0 (compiled: no)'
 #   Option 2) 'black, version 21.12b0'
+#   For newer versions (at least 22.10.0), a second line is printed which must be dropped:
+#
+#     black, 22.10.0 (compiled: yes)
+#     Python (CPython) 3.9.13
 BLACK_VERSION_STR=$(black --version)
 if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
 then
-    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $2}')
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $2}')
 else
-    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $3}')
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $3}')
 fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
@@ -134,17 +138,13 @@ MYPY_FLAGS=(
 )
 
 MYPY_FILES=(
-    # Relative to python/ray
-    'autoscaler/node_provider.py'
-    'autoscaler/sdk/__init__.py'
-    'autoscaler/sdk/sdk.py'
-    'autoscaler/_private/commands.py'
-    'autoscaler/_private/autoscaler.py'
-    # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
-    # in the CI. Type check once we get serious about type checking:
-    #'ray_operator/operator.py'
-    'ray_operator/operator_utils.py'
-    '_private/gcs_utils.py'
+    # Relative to ray/python
+    'ray/autoscaler/node_provider.py'
+    'ray/autoscaler/sdk/__init__.py'
+    'ray/autoscaler/sdk/sdk.py'
+    'ray/autoscaler/_private/commands.py'
+    'ray/autoscaler/_private/autoscaler.py'
+    'ray/_private/gcs_utils.py'
 )
 
 
@@ -186,12 +186,26 @@ shellcheck_scripts() {
 # Runs mypy on each argument in sequence. This is different than running mypy
 # once on the list of arguments.
 mypy_on_each() {
-    pushd python/ray
+    pushd python
     for file in "$@"; do
        echo "Running mypy on $file"
        mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
     done
     popd
+}
+
+format_frontend() {
+  (
+    echo "$(date)" "format frontend...."
+    local folder 
+    folder="$(pwd)/dashboard/client"
+    local filenames
+    # shellcheck disable=SC2207
+    filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
+    "${folder}/"node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    "${folder}/"node_modules/.bin/prettier -w "${filenames[@]}"
+    "${folder}/"node_modules/.bin/prettier --check "${folder}/"public/index.html
+  )
 }
 
 
@@ -355,6 +369,10 @@ format_changed() {
             shellcheck_scripts "${shell_files[@]}"
         fi
     fi
+
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.ts' '*.tsx' &>/dev/null; then
+        format_frontend
+    fi
 }
 
 # This flag formats individual files. --files *must* be the first command line
@@ -370,6 +388,8 @@ elif [ "${1-}" == '--all-scripts' ]; then
 elif [ "${1-}" == '--all' ]; then
     format_all "${@}"
     if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
+elif [ "${1-}" == '--frontend' ]; then
+    format_frontend
 else
     # Add the upstream remote if it doesn't exist
     if ! git remote -v | grep -q upstream; then

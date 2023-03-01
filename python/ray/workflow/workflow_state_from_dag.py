@@ -4,7 +4,6 @@ import unicodedata
 
 import ray
 from ray.workflow.common import WORKFLOW_OPTIONS
-
 from ray.dag import DAGNode, FunctionNode, InputNode
 from ray.dag.input_node import InputAttributeNode, DAGInputData
 from ray import cloudpickle
@@ -168,7 +167,9 @@ def workflow_state_from_dag(
                     flattened_args = _SerializationContextPreservingWrapper(
                         flattened_args
                     )
-                input_placeholder: ray.ObjectRef = ray.put(flattened_args)
+                # Set the owner of the objects to the actor so that even the driver
+                # exits, these objects are still available.
+                input_placeholder: ray.ObjectRef = ray.put(flattened_args, _owner=mgr)
 
             orig_task_id = workflow_options.get("task_id", None)
             if orig_task_id is None:

@@ -2,13 +2,12 @@ import copy
 import datetime
 import os
 import re
-from typing import Optional, Dict
+from typing import Optional, Dict, TYPE_CHECKING
 
 import jinja2
 import yaml
 
 from ray_release.config import (
-    Test,
     RELEASE_PACKAGE_DIR,
     parse_python_version,
     DEFAULT_PYTHON_VERSION,
@@ -17,19 +16,13 @@ from ray_release.config import (
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import python_version_str
 
+if TYPE_CHECKING:
+    from ray_release.config import Test
+
 
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
-    "EXPIRATION_1D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_2D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_3D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-    ),
 }
 
 
@@ -105,7 +98,7 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
+def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
     cluster_env_file = test["cluster"]["cluster_env"]
     cluster_env_path = os.path.join(
         RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
@@ -116,7 +109,7 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     return load_and_render_yaml_template(cluster_env_path, env=env)
 
 
-def populate_cluster_env_variables(test: Test, ray_wheels_url: str) -> Dict:
+def populate_cluster_env_variables(test: "Test", ray_wheels_url: str) -> Dict:
     env = get_test_environment()
 
     commit = env.get("RAY_COMMIT", None)
@@ -144,7 +137,7 @@ def populate_cluster_env_variables(test: Test, ray_wheels_url: str) -> Dict:
     return env
 
 
-def load_test_cluster_compute(test: Test) -> Optional[Dict]:
+def load_test_cluster_compute(test: "Test") -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
     cluster_compute_path = os.path.join(
         RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_compute_file
@@ -154,7 +147,7 @@ def load_test_cluster_compute(test: Test) -> Optional[Dict]:
     return load_and_render_yaml_template(cluster_compute_path, env=env)
 
 
-def populate_cluster_compute_variables(test: Test) -> Dict:
+def populate_cluster_compute_variables(test: "Test") -> Dict:
     env = get_test_environment()
 
     cloud_id = get_test_cloud_id(test)

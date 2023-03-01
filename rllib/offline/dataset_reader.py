@@ -2,7 +2,8 @@ import logging
 import math
 from pathlib import Path
 import re
-from typing import List, Tuple, Optional
+import numpy as np
+from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
 
 import ray.data
@@ -11,21 +12,14 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
+from ray.rllib.utils.typing import SampleBatchType
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
-
-# TODO: @avnishn what is the use of this function anymore?
-def _get_resource_bundles(config: AlgorithmConfigDict):
-    input_config = config.get("input_config", {})
-    parallelism = input_config.get("parallelism", config.get("num_workers", 1))
-    cpus_per_task = input_config.get(
-        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
-    )
-    return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
+logger = logging.getLogger(__name__)
 
 
 def _unzip_this_path(fpath: Path, extract_path: str):
@@ -74,7 +68,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, num_workers: int = 0
+    config: "AlgorithmConfig", num_workers: int = 0
 ) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
     """Returns a dataset and a list of shards.
 
@@ -105,16 +99,13 @@ def get_dataset_and_shards(
         shared would be a dummy None shard for local_worker.
     """
     # check input and input config keys
-    assert config["input"] == "dataset", (
-        f"Must specify input as dataset if"
-        f" calling `get_dataset_and_shards`. Got {config['input']}"
+    assert config.input_ == "dataset", (
+        f"Must specify config.input_ as 'dataset' if"
+        f" calling `get_dataset_and_shards`. Got {config.input_}"
     )
-    assert (
-        "input_config" in config
-    ), "Must specify input_config dict if using Dataset input."
 
     # check input config format
-    input_config = config["input_config"]
+    input_config = config.input_config
     format = input_config.get("format")
 
     supported_fmts = ["json", "parquet"]
@@ -134,9 +125,8 @@ def get_dataset_and_shards(
     # check if at least loader_fn or format + path is specified.
     if not (format and paths) and not loader_fn:
         raise ValueError(
-            f"If using a loader_fn: {loader_fn} that constructs a dataset, "
-            "neither format: {format} and paths: {paths} must not be specified. If "
-            "format and paths are specified, a loader_fn must not be specified."
+            "Must specify either a `loader_fn` or a `format` and `path` in "
+            "`input_config`."
         )
 
     # check paths to be a str or list[str] if not None
@@ -149,6 +139,8 @@ def get_dataset_and_shards(
             raise ValueError("Paths must be a path string or a list of path strings.")
         paths = _unzip_if_needed(paths, format)
 
+    # TODO (Kourosh): num_workers is not necessary since we can use parallelism for
+    # everything. Having two parameters is confusing here. Remove num_workers later.
     parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
@@ -213,6 +205,7 @@ class DatasetReader(InputReader):
         """
         self._ioctx = ioctx or IOContext()
         self._default_policy = self.policy_map = None
+        self.preprocessor = None
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
         # do this to disable the ray data stdout logging
@@ -230,6 +223,11 @@ class DatasetReader(InputReader):
             if self._ioctx.worker is not None:
                 self._policy_map = self._ioctx.worker.policy_map
                 self._default_policy = self._policy_map.get(DEFAULT_POLICY_ID)
+                self.preprocessor = (
+                    self._ioctx.worker.preprocessors.get(DEFAULT_POLICY_ID)
+                    if not self._ioctx.config.get("_disable_preprocessors", False)
+                    else None
+                )
             self._dataset.random_shuffle(seed=seed)
             print(
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
@@ -251,11 +249,23 @@ class DatasetReader(InputReader):
             d = next(self._iter).as_pydict()
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
-            d = postprocess_actions(d, self._ioctx)
             count += d.count
-            ret.append(self._postprocess_if_needed(d))
+            d = self._preprocess_if_needed(d)
+            d = postprocess_actions(d, self._ioctx)
+            d = self._postprocess_if_needed(d)
+            ret.append(d)
         ret = concat_samples(ret)
         return ret
+
+    def _preprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
+        # TODO: @kourosh, preprocessor is only supported for single agent case.
+        if self.preprocessor:
+            for key in (SampleBatch.CUR_OBS, SampleBatch.NEXT_OBS):
+                if key in batch:
+                    batch[key] = np.stack(
+                        [self.preprocessor.transform(s) for s in batch[key]]
+                    )
+        return batch
 
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         if not self._ioctx.config.get("postprocess_inputs"):

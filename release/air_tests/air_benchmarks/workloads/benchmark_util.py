@@ -4,16 +4,10 @@ import subprocess
 from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
+from ray.air.util.node import _force_on_node
 
 import ray
-from typing import List, Dict, Union, Callable
-
-
-def _schedule_remote_fn_on_node(node_ip: str, remote_fn, *args, **kwargs):
-    return remote_fn.options(resources={f"node:{node_ip}": 0.01}).remote(
-        *args,
-        **kwargs,
-    )
+from typing import Any, List, Dict, Union, Callable
 
 
 def schedule_remote_fn_on_all_nodes(
@@ -31,7 +25,12 @@ def schedule_remote_fn_on_all_nodes(
         if exclude_head and node_ip == head_ip:
             continue
 
-        future = _schedule_remote_fn_on_node(node_ip, remote_fn, *args, **kwargs)
+        node_id = node["NodeID"]
+
+        future = _force_on_node(node_id, remote_fn).remote(
+            *args,
+            **kwargs,
+        )
         futures.append(future)
     return futures
 
@@ -75,18 +74,20 @@ class CommandRunner:
         return fn(*args, **kwargs)
 
 
-def create_actors_with_resources(
-    num_actors: int, resources: Dict[str, Union[float, int]]
+def create_actors_with_options(
+    num_actors: int,
+    resources: Dict[str, Union[float, int]],
+    runtime_env: Dict[str, Any] = None,
 ) -> List[ray.actor.ActorHandle]:
     num_cpus = resources.pop("CPU", 1)
     num_gpus = resources.pop("GPU", 0)
 
-    return [
-        CommandRunner.options(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources
-        ).remote()
-        for _ in range(num_actors)
-    ]
+    options = {"num_cpus": num_cpus, "num_gpus": num_gpus, "resources": resources}
+
+    if runtime_env:
+        options["runtime_env"] = runtime_env
+
+    return [CommandRunner.options(**options).remote() for _ in range(num_actors)]
 
 
 def run_commands_on_actors(actors: List[ray.actor.ActorHandle], cmds: List[List[str]]):

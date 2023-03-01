@@ -1,13 +1,10 @@
 import logging
+import sys
 from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
-import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.services as services
-from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
@@ -60,6 +57,7 @@ class StateResource(Enum):
     TASKS = "tasks"
     OBJECTS = "objects"
     RUNTIME_ENVS = "runtime_envs"
+    CLUSTER_EVENTS = "cluster_events"
 
 
 @unique
@@ -91,6 +89,8 @@ class ListApiOptions:
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
         default_factory=list
     )
+    # [only tasks] If driver tasks should be excluded.
+    exclude_driver: bool = True
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -102,6 +102,13 @@ class ListApiOptions:
         assert isinstance(self.limit, int)
         assert isinstance(self.timeout, int)
         assert isinstance(self.detail, bool)
+        assert isinstance(self.exclude_driver, bool)
+        assert isinstance(self.filters, list) or self.filters is None, (
+            "filters must be a list type. Given filters: "
+            f"{self.filters} type: {type(self.filters)}. "
+            "Provide a list of tuples instead. "
+            "e.g., list_actors(filters=[('name', '=', 'ABC')])"
+        )
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
@@ -129,6 +136,21 @@ class GetApiOptions:
 class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
+
+    # Filters. Each tuple pair (key, predicate, value) means key predicate value.
+    # If there's more than 1 filter, it means AND.
+    # E.g., [(key, "=", val), (key2, "!=" val2)] means (key=val) AND (key2!=val2)
+    # For summary endpoints that call list under the hood, we'll pass
+    # these filters directly into the list call.
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
+
+    # Change out to summarize the output. There is a summary_by value for each entity.
+    # Tasks: by func_name
+    # Actors: by class
+    # Objects: by callsite
+    summary_by: Optional[str] = None
 
 
 def state_column(*, filterable: bool, detail: bool = False, **kwargs):
@@ -272,6 +294,8 @@ class GetLogOptions:
     # The interval where new logs are streamed to.
     # Should be used only when media_type == stream.
     interval: Optional[float] = None
+    # The suffix of the log file if file resolution not through filename directly.
+    suffix: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -289,8 +313,8 @@ class GetLogOptions:
             raise ValueError(f"Invalid media type: {self.media_type}")
         if not (self.node_id or self.node_ip) and not (self.actor_id or self.task_id):
             raise ValueError(
-                "node_id or node_ip should be provided."
-                "Please provide at least one of them."
+                "node_id or node_ip must be provided as constructor arguments when no "
+                "actor or task_id is supplied as arguments."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
@@ -302,8 +326,12 @@ class GetLogOptions:
                 "None of actor_id, task_id, pid, or filename is provided. "
                 "At least one of them is required to fetch logs."
             )
+        if self.filename and self.suffix:
+            raise ValueError("suffix should not be provided together with filename.")
 
 
+# See the ActorTableData message in gcs.proto for all potential options that
+# can be included in this class.
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
@@ -329,18 +357,29 @@ class ActorState(StateSchema):
     #:   but means the actor was dead more than once.
     #: - DEAD: The actor is permanatly dead.
     state: TypeActorStatus = state_column(filterable=True)
+    #: The job id of this actor.
+    job_id: str = state_column(filterable=True)
     #: The name of the actor given by the `name` argument.
     name: Optional[str] = state_column(filterable=True)
+    #: The node id of this actor.
+    #: If the actor is restarting, it could be the node id
+    #: of the dead actor (and it will be re-updated when
+    #: the actor is successfully restarted).
+    node_id: str = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
+    #: The namespace of the actor.
+    ray_namespace: str = state_column(filterable=True)
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
-    resource_mapping: dict = state_column(filterable=False, detail=True)
+    required_resources: dict = state_column(filterable=False, detail=True)
     #: Actor's death information in detail. None if the actor is not dead yet.
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.
     is_detached: bool = state_column(filterable=False, detail=True)
+    #: The placement group id that's associated with this actor.
+    placement_group_id: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)
@@ -351,6 +390,8 @@ class PlacementGroupState(StateSchema):
     placement_group_id: str = state_column(filterable=True)
     #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The job id of the placement group.
+    creator_job_id: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.
@@ -387,6 +428,12 @@ class NodeState(StateSchema):
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
     resources_total: dict = state_column(filterable=False)
+    #: The time when the node (raylet) starts.
+    start_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time when the node exits. The timestamp could be delayed
+    #: if the node is dead unexpectedly (could be delayed
+    # up to 30 seconds).
+    end_time_ms: int = state_column(filterable=False, detail=True)
 
 
 class JobState(JobInfo, StateSchema):
@@ -435,9 +482,24 @@ class WorkerState(StateSchema):
     #: The ip address of the worker.
     ip: str = state_column(filterable=True)
     #: The pid of the worker.
-    pid: str = state_column(filterable=True)
+    pid: int = state_column(filterable=True)
     #: The exit detail of the worker if the worker is dead.
     exit_detail: Optional[str] = state_column(detail=True, filterable=False)
+    #: The time when the worker is started and initialized.
+    start_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time when the worker exits. The timestamp could be delayed
+    #: if the worker is dead unexpectedly.
+    end_time_ms: int = state_column(filterable=False, detail=True)
+
+
+@dataclass(init=True)
+class ClusterEventState(StateSchema):
+    severity: str = state_column(filterable=True)
+    time: int = state_column(filterable=False)
+    source_type: str = state_column(filterable=True)
+    message: str = state_column(filterable=False)
+    event_id: int = state_column(filterable=True)
+    custom_fields: dict = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
@@ -446,25 +508,25 @@ class TaskState(StateSchema):
 
     #: The id of the task.
     task_id: str = state_column(filterable=True)
+    #: The attempt (retry) number of the task.
+    attempt_number: int = state_column(filterable=True)
     #: The name of the task if it is given by the name argument.
     name: str = state_column(filterable=True)
     #: The state of the task.
     #:
-    #: - NIL: We don't have a status for this task because we are not the owner or the
-    #:   task metadata has already been deleted.
-    #: - WAITING_FOR_DEPENDENCIES: The task is waiting for its dependencies
-    #:   to be created.
-    #: - SCHEDULED: All dependencies have been created and the task is
-    #:   scheduled to execute.
-    #:   It could be because the task is waiting for resources,
-    #:   runtime environmenet creation, fetching dependencies to the
-    #:   local node, and etc..
-    #: - FINISHED: The task finished successfully.
-    #: - WAITING_FOR_EXECUTION: The task is scheduled properly and
-    #:   waiting for execution. It includes time to deliver the task
-    #:   to the remote worker + queueing time from the execution side.
-    #: - RUNNING: The task that is running.
-    scheduling_state: TypeTaskStatus = state_column(filterable=True)
+    #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
+    #: breakdowns and typical state transition flow.
+    #:
+    state: TypeTaskStatus = state_column(filterable=True)
+    #: The job id of this task.
+    job_id: str = state_column(filterable=True)
+    #: Id of the node that runs the task. If the task is retried, it could
+    #: contain the node id of the previous executed task.
+    #: If empty, it means the task hasn't been scheduled yet.
+    node_id: str = state_column(filterable=True)
+    #: The actor id that's associated with this task.
+    #: It is empty if there's no relevant actors.
+    actor_id: str = state_column(filterable=True)
     #: The type of the task.
     #:
     #: - NORMAL_TASK: Tasks created by `func.remote()``
@@ -482,6 +544,26 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The parent task id. If the parent is a normal task, it will be the task's id.
+    #: If the parent runs in a concurrent actor (async actor or threaded actor),
+    #: it will be the actor's creation task id.
+    parent_task_id: str = state_column(filterable=True)
+    #: The placement group id that's associated with this task.
+    placement_group_id: str = state_column(detail=True, filterable=True)
+    #: The worker id that's associated with this task.
+    worker_id: str = state_column(filterable=True)
+    #: The list of events of the given task.
+    #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
+    #: breakdowns and typical state transition flow.
+    events: List[dict] = state_column(detail=True, filterable=False)
+    #: The list of profile events of the given task.
+    profiling_data: List[dict] = state_column(detail=True, filterable=False)
+    #: The time when the task is created. A Unix timestamp in ms.
+    creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The time when the task starts to run. A Unix timestamp in ms.
+    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The time when the task is finished or failed. A Unix timestamp in ms.
+    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -655,6 +737,8 @@ class ListApiResponse:
 Summary API schema
 """
 
+DRIVER_TASK_ID_PREFIX = "ffffffffffffffffffffffffffffffffffffffff"
+
 
 @dataclass(init=True)
 class TaskSummaryPerFuncOrClassName:
@@ -668,11 +752,39 @@ class TaskSummaryPerFuncOrClassName:
 
 
 @dataclass
+class Link:
+    #: The type of entity to link to
+    type: str
+    #: The id of the entity to link to
+    id: str
+
+
+@dataclass(init=True)
+class NestedTaskSummary:
+    #: The name of this task group
+    name: str
+    #: A unique identifier for this group
+    key: str
+    #: The type of the class. Equivalent to protobuf TaskType,
+    #: "ACTOR" if it represents an Actor, or "GROUP" if it's a grouping of tasks.
+    type: str
+    #: Unix timestamp to use to sort the task group.
+    timestamp: Optional[int] = None
+    #: State name to the count dict. State name is equivalent to
+    #: the protobuf TaskStatus.
+    state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
+    #: The child
+    children: List["NestedTaskSummary"] = field(default_factory=list)
+    #: A link to more details about this summary.
+    link: Optional[Link] = None
+
+
+@dataclass
 class TaskSummaries:
     #: Group key -> summary.
     #: Right now, we only have func_class_name as a key.
     # TODO(sang): Support the task group abstraction.
-    summary: Dict[str, TaskSummaryPerFuncOrClassName]
+    summary: Union[Dict[str, TaskSummaryPerFuncOrClassName], List[NestedTaskSummary]]
     #: Total Ray tasks.
     total_tasks: int
     #: Total actor tasks.
@@ -682,7 +794,7 @@ class TaskSummaries:
     summary_by: str = "func_name"
 
     @classmethod
-    def to_summary(cls, *, tasks: List[Dict]):
+    def to_summary_by_func_name(cls, *, tasks: List[Dict]) -> "TaskSummaries":
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as TaskState.
         summary = {}
@@ -699,7 +811,7 @@ class TaskSummaries:
                 )
             task_summary = summary[key]
 
-            state = task["scheduling_state"]
+            state = task["state"]
             if state not in task_summary.state_counts:
                 task_summary.state_counts[state] = 0
             task_summary.state_counts[state] += 1
@@ -717,6 +829,270 @@ class TaskSummaries:
             total_tasks=total_tasks,
             total_actor_tasks=total_actor_tasks,
             total_actor_scheduled=total_actor_scheduled,
+            summary_by="func_name",
+        )
+
+    @classmethod
+    def to_summary_by_lineage(cls, *, tasks: List[Dict]) -> "TaskSummaries":
+        """
+        This summarizes tasks by lineage.
+        i.e. A task will be grouped with another task if they have the
+        same parent.
+
+        This does things in 4 steps.
+        Step 1: Iterate through all tasks and keep track of them by id and ownership
+        Step 2: Put the tasks in a tree structure based on ownership
+        Step 3: Merge together siblings in the tree if there are more
+        than one with the same name.
+        Step 4: Total the children
+
+        This can probably be more efficient if we merge together some steps to
+        reduce the amount of iterations but this algorithm produces very easy to
+        understand code. We can optimize in the future.
+        """
+        # NOTE: The argument tasks contains a list of dictionary
+        # that have the same k/v as TaskState.
+
+        tasks_by_id = {}
+        task_group_by_id = {}
+        actor_creation_task_id_for_actor_id = {}
+        summary = []
+        total_tasks = 0
+        total_actor_tasks = 0
+        total_actor_scheduled = 0
+
+        # Step 1
+        # We cannot assume that a parent task always comes before the child task
+        # So we need to keep track of all tasks by ids so we can quickly find the
+        # parent.
+        # We also track the actor creation tasks so we can quickly figure out the
+        # ownership of actors.
+        for task in tasks:
+            tasks_by_id[task["task_id"]] = task
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+            if type_enum == TaskType.ACTOR_CREATION_TASK:
+                actor_creation_task_id_for_actor_id[task["actor_id"]] = task["task_id"]
+
+        def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
+            """
+            Gets an already created task_group
+            OR
+            Creates a task group and puts it in the right place under its parent.
+            For actor tasks, the parent is the Actor that owns it. For all other
+            tasks, the owner is the driver or task that created it.
+
+            Returns None if there is missing data about the task or one of its parents.
+
+            For task groups that represents actors, the id is in the
+            format actor:{actor_id}
+            """
+            if task_id in task_group_by_id:
+                return task_group_by_id[task_id]
+
+            task = tasks_by_id.get(task_id)
+            if not task:
+                logger.debug(f"We're missing data about {task_id}")
+                # We're missing data about this parent. So we're dropping the whole
+                # tree at that node.
+                return None
+
+            # Use name first which allows users to customize the name of
+            # their remote function call using the name option.
+            func_name = task["name"] or task["func_or_class_name"]
+            task_id = task["task_id"]
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+
+            task_group_by_id[task_id] = NestedTaskSummary(
+                name=func_name,
+                key=task_id,
+                type=task["type"],
+                timestamp=task["creation_time_ms"],
+                link=Link(type="task", id=task_id),
+            )
+
+            # Set summary in right place under parent
+            if (
+                type_enum == TaskType.ACTOR_TASK
+                or type_enum == TaskType.ACTOR_CREATION_TASK
+            ):
+                # For actor tasks, the parent is the actor and not the parent task.
+                parent_task_group = get_or_create_actor_task_group(task["actor_id"])
+                if parent_task_group:
+                    parent_task_group.children.append(task_group_by_id[task_id])
+            else:
+                parent_task_id = task["parent_task_id"]
+                if not parent_task_id or parent_task_id.startswith(
+                    DRIVER_TASK_ID_PREFIX
+                ):
+                    summary.append(task_group_by_id[task_id])
+                else:
+                    parent_task_group = get_or_create_task_group(parent_task_id)
+                    if parent_task_group:
+                        parent_task_group.children.append(task_group_by_id[task_id])
+
+            return task_group_by_id[task_id]
+
+        def get_or_create_actor_task_group(
+            actor_id: str,
+        ) -> Optional[NestedTaskSummary]:
+            """
+            Gets an existing task group that represents an actor.
+            OR
+            Creates a task group that represents an actor. The owner of the actor is
+            the parent of the creation_task that created that actor.
+
+            Returns None if there is missing data about the actor or one of its parents.
+            """
+            key = f"actor:{actor_id}"
+            if key not in task_group_by_id:
+                creation_task_id = actor_creation_task_id_for_actor_id.get(actor_id)
+                creation_task = tasks_by_id.get(creation_task_id)
+
+                if not creation_task:
+                    logger.debug(f"We're missing data about actor {actor_id}")
+                    # We're missing data about the parent. So we're dropping the whole
+                    # tree at that node.
+                    return None
+
+                # TODO(aguo): Get actor name from actors state-api.
+                [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
+
+                task_group_by_id[key] = NestedTaskSummary(
+                    name=actor_name,
+                    key=key,
+                    type="ACTOR",
+                    timestamp=task["creation_time_ms"],
+                    link=Link(type="actor", id=actor_id),
+                )
+
+                parent_task_id = creation_task["parent_task_id"]
+                if not parent_task_id or parent_task_id.startswith(
+                    DRIVER_TASK_ID_PREFIX
+                ):
+                    summary.append(task_group_by_id[key])
+                else:
+                    parent_task_group = get_or_create_task_group(parent_task_id)
+                    if parent_task_group:
+                        parent_task_group.children.append(task_group_by_id[key])
+
+            return task_group_by_id[key]
+
+        # Step 2: Create the tree structure based on ownership
+        for task in tasks:
+            task_id = task["task_id"]
+
+            task_group = get_or_create_task_group(task_id)
+
+            if not task_group:
+                # We are probably missing data about this task or one of its parents.
+                continue
+
+            state = task["state"]
+            if state not in task_group.state_counts:
+                task_group.state_counts[state] = 0
+            task_group.state_counts[state] += 1
+
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+            if type_enum == TaskType.NORMAL_TASK:
+                total_tasks += 1
+            elif type_enum == TaskType.ACTOR_CREATION_TASK:
+                total_actor_scheduled += 1
+            elif type_enum == TaskType.ACTOR_TASK:
+                total_actor_tasks += 1
+
+        def merge_sibings_for_task_group(
+            siblings: List[NestedTaskSummary],
+        ) -> Tuple[List[NestedTaskSummary], Optional[int]]:
+            """
+            Merges task summaries with the same name into a group if there are more than
+            one child with that name.
+
+            Args:
+                siblings: A list of NestedTaskSummary's to merge together
+
+            Returns
+                Index 0: A list of NestedTaskSummary's which have been merged
+                Index 1: The smallest timestamp amongst the siblings
+            """
+            if not len(siblings):
+                return siblings, None
+
+            # Group by name
+            groups = {}
+            min_timestamp = None
+
+            for child in siblings:
+                child.children, child_min_timestamp = merge_sibings_for_task_group(
+                    child.children
+                )
+                if child_min_timestamp and child_min_timestamp < (
+                    child.timestamp or sys.maxsize
+                ):
+                    child.timestamp = child_min_timestamp
+
+                if child.name not in groups:
+                    groups[child.name] = NestedTaskSummary(
+                        name=child.name,
+                        key=child.name,
+                        type="GROUP",
+                    )
+                groups[child.name].children.append(child)
+                if child.timestamp and child.timestamp < (
+                    groups[child.name].timestamp or sys.maxsize
+                ):
+                    groups[child.name].timestamp = child.timestamp
+                    if child.timestamp < (min_timestamp or sys.maxsize):
+                        min_timestamp = child.timestamp
+
+            # Take the groups that have more than one children and return it.
+            # For groups with just one child, return the child itself instead of
+            # creating a group.
+            return [
+                group if len(group.children) > 1 else group.children[0]
+                for group in groups.values()
+            ], min_timestamp
+
+        # Step 3
+        summary, _ = merge_sibings_for_task_group(summary)
+
+        def sort_task_groups(task_groups: List[NestedTaskSummary]) -> None:
+            # Sort by timestamp
+            # Put actor creation tasks above other tasks with the same timestamp
+            task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
+            task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
+
+        def calc_total_for_task_group(
+            task_group: NestedTaskSummary,
+        ) -> NestedTaskSummary:
+            """
+            Calculates the total of a group as the sum of all children.
+            Sorts children by timestamp
+            """
+            if not len(task_group.children):
+                return task_group
+
+            for child in task_group.children:
+                totaled = calc_total_for_task_group(child)
+
+                for state, count in totaled.state_counts.items():
+                    task_group.state_counts[state] = (
+                        task_group.state_counts.get(state, 0) + count
+                    )
+
+            sort_task_groups(task_group.children)
+
+            return task_group
+
+        # Step 4
+        summary = [calc_total_for_task_group(task_group) for task_group in summary]
+        sort_task_groups(summary)
+
+        return TaskSummaries(
+            summary=summary,
+            total_tasks=total_tasks,
+            total_actor_tasks=total_actor_tasks,
+            total_actor_scheduled=total_actor_scheduled,
+            summary_by="lineage",
         )
 
 
@@ -838,8 +1214,8 @@ class ObjectSummaries:
             # object_size's unit is byte by default. It is -1, if the size is
             # unknown.
             if size_bytes != -1:
-                object_summary.total_size_mb += size_bytes / 1024 ** 2
-                total_size_mb += size_bytes / 1024 ** 2
+                object_summary.total_size_mb += size_bytes / 1024**2
+                total_size_mb += size_bytes / 1024**2
 
             key_to_workers[key].add(object["pid"])
             key_to_nodes[key].add(object["ip"])
@@ -899,42 +1275,7 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return TaskState
     elif resource == StateResource.WORKERS:
         return WorkerState
+    elif resource == StateResource.CLUSTER_EVENTS:
+        return ClusterEventState
     else:
         assert False, "Unreachable"
-
-
-def ray_address_to_api_server_url(address: Optional[str]) -> str:
-    """Parse a ray cluster bootstrap address into API server URL.
-
-    When an address is provided, it will be used to query GCS for
-    API server address from GCS.
-
-    When an address is not provided, it will first try to auto-detect
-    a running ray instance, or look for local GCS process.
-
-    Args:
-        address: Ray cluster bootstrap address. Could also be `auto`.
-
-    Return:
-        API server HTTP URL.
-    """
-    address = services.canonicalize_bootstrap_address_or_die(address)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
-    api_server_url = f"http://{api_server_url.decode()}"
-    return api_server_url

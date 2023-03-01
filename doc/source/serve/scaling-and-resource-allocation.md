@@ -36,7 +36,7 @@ To configure it, you can set the `autoscaling_config` field in deployment option
 ```
 
 The `min_replicas` and `max_replicas` fields configure the range of replicas which the
-Serve autoscaler chooses from.  Deployments will start with `min_replicas` initially.
+Serve autoscaler chooses from.  Deployments will start with `initial_replicas`. `initial_replicas` is optional; it's set to `min_replicas` by default.
 
 The `target_num_ongoing_requests_per_replica` configuration specifies how aggressively the
 autoscaler should react to traffic. Serve will try to make sure that each replica has roughly that number
@@ -82,7 +82,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 
 **smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each autoscaling step. For example, when the application has high traffic volume in short period of time, you can increase `smoothing_factor` to scale up the resource quickly.  You can think of this as a "gain" factor to amplify the response of the autoscaling algorithm.
 
-**metrics_interval_s[default_value=10]**: This is control how often each replica sends metrics to the autoscaler. (Normally you don't need to change this config.)
+**metrics_interval_s[default_value=10]**: This controls how often each replica sends metrics to the autoscaler. (Normally you don't need to change this config.)
 
 (serve-cpus-gpus)=
 
@@ -123,14 +123,37 @@ def func_2(*args):
 
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
+### Custom Resources, Accelerator types, and more
+
+You can also specify {ref}`custom resources <cluster-resources>` in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node.
+For example, if you have a deployment that requires 2 units of the `"custom_resource"` resource, you can specify it like this:
+
+```python
+@serve.deployment(ray_actor_options={"resources": {"custom_resource": 2}})
+def func(*args):
+    return do_something_with_my_custom_resource()
+```
+
+You can also specify {ref}`accelerator types <accelerator-types>` via the `accelerator_type` parameter in `ray_actor_options`.
+
+Below is the full list of supported options in `ray_actor_options`; please see the relevant Ray Core documentation for more details about each option:
+
+- `accelerator_type`
+- `memory`
+- `num_cpus`
+- `num_gpus`
+- `object_store_memory`
+- `resources`
+- `runtime_env`
+
 (serve-omp-num-threads)=
 
 ## Configuring Parallelism with OMP_NUM_THREADS
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the `OMP_NUM_THREADS` environment variable.
-To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray tasks and actors use a single CPU by default.
-If you *do* want to enable this parallelism in your Serve deployment, just set `OMP_NUM_THREADS` to the desired value either when starting Ray or in your function/class definition:
+Ray sets `OMP_NUM_THREADS=<num_cpus>` by default. To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` if `num_cpus` is not specified on the tasks/actors, to reduce contention between actors/tasks which run in a single thread.
+If you *do* want to enable this parallelism in your Serve deployment, just set `num_cpus` (recommended) to the desired value, or manually set the `OMP_NUM_THREADS` environment variable when starting Ray or in your function/class definition.
 
 ```bash
 OMP_NUM_THREADS=12 ray start --head

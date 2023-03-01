@@ -1,7 +1,7 @@
 import unittest
 from typing import Dict
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 import ray
@@ -39,6 +39,7 @@ def _default_config():
         "loss_coef_returns_to_go": 0,
         "num_gpus": 0,
         "_fake_gpus": None,
+        "_enable_rl_module_api": False,
     }
 
 
@@ -83,15 +84,20 @@ class TestDTPolicy(unittest.TestCase):
             }
         )
 
-        # Do postprocess trajectory to calculate rtg
+        # Do postprocess trajectory to calculate rtg.
         sample_batch = policy.postprocess_trajectory(sample_batch)
 
-        # Assert that dones is correctly set
-        assert SampleBatch.DONES in sample_batch, "`dones` isn't part of the batch."
+        # Assert that terminateds and truncateds are correctly set.
+        assert (
+            SampleBatch.TERMINATEDS in sample_batch
+        ), "`terminateds` isn't part of the batch."
+        assert (
+            SampleBatch.TRUNCATEDS not in sample_batch
+        ), "`truncateds` shouldn't be part of the batch (in this particular test case)."
         assert np.allclose(
-            sample_batch[SampleBatch.DONES],
+            sample_batch[SampleBatch.TERMINATEDS],
             np.array([False, False, False, True]),
-        ), "`dones` isn't set correctly."
+        ), "`terminateds` isn't set correctly."
 
     def test_torch_input_dict(self):
         """Test inference input_dict methods
@@ -484,14 +490,13 @@ class TestDTPolicy(unittest.TestCase):
                 config2 = config.copy()
                 config2[f"loss_coef_{key}"] = 10.0
                 policy2 = DTTorchPolicy(observation_space, action_space, config2)
-                # copy the weights over so they output the same loss without scaling
-                policy2.set_state(policy1.get_state())
+                # Copy the weights over so they output the same loss without scaling.
                 policy2.set_weights(policy1.get_weights())
 
                 loss2 = policy2.loss(policy2.model, policy2.dist_class, batch)
                 loss2 = loss2.detach().cpu().item()
 
-                # compare loss, should be factor of 10 difference
+                # Compare loss, should be factor of 10 difference.
                 self.assertAlmostEqual(
                     loss2 / loss1,
                     10.0,

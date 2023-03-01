@@ -11,7 +11,6 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.exception.RayServeException;
-import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -153,12 +152,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   @Override
   public Object handleRequest(Object requestMetadata, Object requestArgs) {
-    boolean isCrossLanguage = requestMetadata instanceof byte[];
     return replica.handleRequest(
-        isCrossLanguage
-            ? ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata)
-            : (RequestMetadata) requestMetadata,
-        isCrossLanguage ? ServeProtoUtil.parseRequestWrapper((byte[]) requestArgs) : requestArgs);
+        ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata), requestArgs);
   }
 
   /**
@@ -178,6 +173,17 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   public boolean isAllocated() {
     return true;
+  }
+
+  /**
+   * Tell the caller this replica is successfully initialized.
+   *
+   * @return
+   */
+  public Object isInitialized(Object userConfig) {
+    Object deploymentVersion = reconfigure(userConfig);
+    checkHealth();
+    return deploymentVersion;
   }
 
   /**

@@ -23,15 +23,15 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               CompletePendingTask,
               (const TaskID &task_id,
                const rpc::PushTaskReply &reply,
-               const rpc::Address &actor_addr),
+               const rpc::Address &actor_addr,
+               bool is_application_error),
               (override));
   MOCK_METHOD(void,
               FailPendingTask,
               (const TaskID &task_id,
                rpc::ErrorType error_type,
                const Status *status,
-               const rpc::RayErrorInfo *ray_error_info,
-               bool mark_task_object_failed),
+               const rpc::RayErrorInfo *ray_error_info),
               (override));
   MOCK_METHOD(bool,
               FailOrRetryPendingTask,
@@ -39,7 +39,8 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                rpc::ErrorType error_type,
                const Status *status,
                const rpc::RayErrorInfo *ray_error_info,
-               bool mark_task_object_failed),
+               bool mark_task_object_failed,
+               bool fail_immediately),
               (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
@@ -47,19 +48,19 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                const std::vector<ObjectID> &contained_ids),
               (override));
   MOCK_METHOD(bool, MarkTaskCanceled, (const TaskID &task_id), (override));
-  MOCK_METHOD(void,
-              MarkTaskReturnObjectsFailed,
-              (const TaskSpecification &spec,
-               rpc::ErrorType error_type,
-               const rpc::RayErrorInfo *ray_error_info),
-              (override));
   MOCK_METHOD(absl::optional<TaskSpecification>,
               GetTaskSpec,
               (const TaskID &task_id),
               (const, override));
-  MOCK_METHOD(bool, RetryTaskIfPossible, (const TaskID &task_id), (override));
+  MOCK_METHOD(bool,
+              RetryTaskIfPossible,
+              (const TaskID &task_id, bool task_failed_due_to_oom),
+              (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
-  MOCK_METHOD(void, MarkTaskWaitingForExecution, (const TaskID &task_id), (override));
+  MOCK_METHOD(void,
+              MarkTaskWaitingForExecution,
+              (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
+              (override));
 };
 
 }  // namespace core

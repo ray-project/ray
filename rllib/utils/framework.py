@@ -59,6 +59,7 @@ def try_import_tf(error: bool = False):
     Raises:
         ImportError: If error=True and tf is not installed.
     """
+    tf_stub = _TFStub()
     # Make sure, these are reset after each test case
     # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
@@ -86,7 +87,7 @@ def try_import_tf(error: bool = False):
                     "install at least one deep-learning framework: "
                     "`pip install [torch|tensorflow|jax]`."
                 )
-            return None, None, None
+            return None, tf_stub, None
 
     # Try "reducing" tf to tf.compat.v1.
     try:
@@ -106,6 +107,28 @@ def try_import_tf(error: bool = False):
         version = 2 if "2." in tf_module.__version__[:2] else 1
 
     return tf1_module, tf_module, version
+
+
+# Fake module for tf.
+class _TFStub:
+    def __init__(self) -> None:
+        self.keras = _KerasStub()
+
+    def __bool__(self):
+        # if tf should return False
+        return False
+
+
+# Fake module for tf.keras.
+class _KerasStub:
+    def __init__(self) -> None:
+        self.Model = _FakeTfClassStub
+
+
+# Fake classes under keras (e.g for tf.keras.Model)
+class _FakeTfClassStub:
+    def __init__(self, *a, **kw):
+        raise ImportError("Could not import `tensorflow`. Try pip install tensorflow.")
 
 
 @DeveloperAPI
@@ -157,13 +180,20 @@ class _NNStub:
     def __init__(self, *a, **kw):
         # Fake nn.functional module within torch.nn.
         self.functional = None
-        self.Module = _ModuleStub
+        self.Module = _FakeTorchClassStub
+        self.parallel = _ParallelStub()
 
 
-# Fake class for torch.nn.Module to allow it to be inherited from.
-class _ModuleStub:
+# Fake class for e.g. torch.nn.Module to allow it to be inherited from.
+class _FakeTorchClassStub:
     def __init__(self, *a, **kw):
-        raise ImportError("Could not import `torch`.")
+        raise ImportError("Could not import `torch`. Try pip install torch.")
+
+
+class _ParallelStub:
+    def __init__(self, *a, **kw):
+        self.DataParallel = _FakeTorchClassStub
+        self.DistributedDataParallel = _FakeTorchClassStub
 
 
 @PublicAPI
@@ -239,7 +269,7 @@ def get_variable(
         A framework-specific variable (tf.Variable, torch.tensor, or
         python primitive).
     """
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         import tensorflow as tf
 
         dtype = dtype or getattr(
@@ -279,55 +309,7 @@ def get_variable(
 @Deprecated(
     old="rllib/utils/framework.py::get_activation_fn",
     new="rllib/models/utils.py::get_activation_fn",
-    error=False,
+    error=True,
 )
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
-    """Returns a framework specific activation function, given a name string.
-
-    Args:
-        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
-            "linear" or None.
-        framework: One of "tf" or "torch".
-
-    Returns:
-        A framework-specific activtion function. e.g. tf.nn.tanh or
-            torch.nn.ReLU. None if name in ["linear", None].
-
-    Raises:
-        ValueError: If name is an unknown activation function.
-    """
-    if framework == "torch":
-        if name in ["linear", None]:
-            return None
-        if name in ["swish", "silu"]:
-            from ray.rllib.utils.torch_utils import Swish
-
-            return Swish
-        _, nn = try_import_torch()
-        if name == "relu":
-            return nn.ReLU
-        elif name == "tanh":
-            return nn.Tanh
-    elif framework == "jax":
-        if name in ["linear", None]:
-            return None
-        jax, flax = try_import_jax()
-        if name == "swish":
-            return jax.nn.swish
-        if name == "relu":
-            return jax.nn.relu
-        elif name == "tanh":
-            return jax.nn.hard_tanh
-    else:
-        if name in ["linear", None]:
-            return None
-        if name == "swish":
-            name = "silu"
-        tf1, tf, tfv = try_import_tf()
-        fn = getattr(tf.nn, name, None)
-        if fn is not None:
-            return fn
-
-    raise ValueError(
-        "Unknown activation ({}) for framework={}!".format(name, framework)
-    )
+    pass

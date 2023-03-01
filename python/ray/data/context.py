@@ -1,10 +1,12 @@
 import os
 import threading
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-import ray
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import ExecutionOptions
 
 # The context singleton on this process.
 _default_context: "Optional[DatasetContext]" = None
@@ -27,8 +29,9 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
-# Whether block splitting is on by default
-DEFAULT_BLOCK_SPLITTING_ENABLED = False
+# Whether dynamic block splitting is enabled.
+# NOTE: disable dynamic block splitting when using Ray client.
+DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
@@ -65,6 +68,26 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
+# Whether to use the new executor backend.
+DEFAULT_NEW_EXECUTION_BACKEND = bool(
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+)
+
+# Whether to use the streaming executor. This only has an effect if the new execution
+# backend is enabled.
+DEFAULT_USE_STREAMING_EXECUTOR = bool(
+    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "0"))
+)
+
+# Whether to eagerly free memory (new backend only).
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATASET_EAGER_FREE", "1")))
+
+# Whether to trace allocations / eager free (new backend only). This adds significant
+# performance overheads and should only be used for debugging.
+DEFAULT_TRACE_ALLOCATIONS = bool(
+    int(os.environ.get("RAY_DATASET_TRACE_ALLOCATIONS", "0"))
+)
+
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -72,11 +95,23 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 # extension columns.
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
+# Whether to automatically print Dataset stats after execution.
+# If disabled, users can still manually print stats with Dataset.stats().
+DEFAULT_AUTO_LOG_STATS = False
+
+# Whether to enable optimizer.
+DEFAULT_OPTIMIZER_ENABLED = bool(
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
+)
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
+
+# Default batch size for batch transformations.
+DEFAULT_BATCH_SIZE = 4096
 
 
 @DeveloperAPI
@@ -89,7 +124,6 @@ class DatasetContext:
 
     def __init__(
         self,
-        block_owner: ray.actor.ActorHandle,
         block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
@@ -104,12 +138,18 @@ class DatasetContext:
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
         use_polars: bool,
+        new_execution_backend: bool,
+        use_streaming_executor: bool,
+        eager_free: bool,
         decoding_size_estimation: bool,
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
+        enable_auto_log_stats: bool,
+        trace_allocations: bool,
+        optimizer_enabled: bool,
+        execution_options: "ExecutionOptions",
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_owner = block_owner
         self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
@@ -126,9 +166,17 @@ class DatasetContext:
         )
         self.scheduling_strategy = scheduling_strategy
         self.use_polars = use_polars
+        self.new_execution_backend = new_execution_backend
+        self.use_streaming_executor = use_streaming_executor
+        self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
+        self.enable_auto_log_stats = enable_auto_log_stats
+        self.trace_allocations = trace_allocations
+        self.optimizer_enabled = optimizer_enabled
+        # TODO: expose execution options in Dataset public APIs.
+        self.execution_options = execution_options
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -137,13 +185,14 @@ class DatasetContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
+        from ray.data._internal.execution.interfaces import ExecutionOptions
+
         global _default_context
 
         with _context_lock:
 
             if _default_context is None:
                 _default_context = DatasetContext(
-                    block_owner=None,
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
@@ -161,30 +210,19 @@ class DatasetContext:
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                     use_polars=DEFAULT_USE_POLARS,
+                    new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
+                    use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
+                    eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,
                     enable_tensor_extension_casting=(
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
+                    enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
+                    trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
+                    optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
+                    execution_options=ExecutionOptions(),
                 )
-
-            if (
-                _default_context.block_splitting_enabled
-                and _default_context.block_owner is None
-            ):
-                owner = _DesignatedBlockOwner.options(
-                    scheduling_strategy=_default_context.scheduling_strategy
-                ).remote()
-                ray.get(owner.ping.remote())
-
-                # Clear the actor handle after Ray reinits since it's no longer
-                # valid.
-                def clear_owner():
-                    if _default_context:
-                        _default_context.block_owner = None
-
-                ray._private.worker._post_init_hooks.append(clear_owner)
-                _default_context.block_owner = owner
 
             return _default_context
 
@@ -197,9 +235,3 @@ class DatasetContext:
         """
         global _default_context
         _default_context = context
-
-
-@ray.remote(num_cpus=0)
-class _DesignatedBlockOwner:
-    def ping(self):
-        return "ok"

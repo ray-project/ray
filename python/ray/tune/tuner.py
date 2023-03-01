@@ -1,19 +1,26 @@
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+import warnings
 
 import ray
 
 from ray.air.config import RunConfig
+from ray.air._internal.remote_storage import list_at_uri
+from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.impl.tuner_internal import TunerInternal
+from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
 from ray.tune.tune_config import TuneConfig
-from ray.tune.utils.node import _force_on_current_node
+from ray.tune.progress_reporter import (
+    _prepare_progress_reporter_for_ray_client,
+    _stream_client_output,
+)
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.trainer import BaseTrainer
+    from ray.train.base_trainer import BaseTrainer
 
 ClientActorHandle = Any
 
@@ -26,6 +33,14 @@ ClientActorHandle = Any
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
+
+
+_TUNER_FAILED_MSG = (
+    "The Ray Tune run failed. Please inspect the previous error messages for a "
+    "cause. After fixing the issue, you can restart the run from scratch or "
+    "continue this run. To continue this run, you can use "
+    '`tuner = Tuner.restore("{path}")`.'
+)
 
 
 @PublicAPI(stability="beta")
@@ -111,12 +126,7 @@ class Tuner:
     def __init__(
         self,
         trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
         ] = None,
         *,
         param_space: Optional[Dict[str, Any]] = None,
@@ -132,6 +142,7 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
+
         if _tuner_internal:
             if not self._is_ray_client:
                 self._local_tuner = kwargs[_TUNER_INTERNAL]
@@ -151,9 +162,17 @@ class Tuner:
     def restore(
         cls,
         path: str,
+        trainable: Optional[
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
+        ] = None,
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
+        # Deprecated
+        overwrite_trainable: Optional[
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
+        ] = None,
+        param_space: Optional[Dict[str, Any]] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -180,17 +199,47 @@ class Tuner:
                 console output of previous run.
                 Note: depending on whether ray client mode is used or not,
                 this path may or may not exist on your local machine.
+            trainable: The trainable to use upon resuming the experiment.
+                This should be the same trainable that was used to initialize
+                the original Tuner.
+                NOTE: Starting in 2.5, this will be a required parameter.
+            param_space: The same `param_space` that was passed to
+                the original Tuner. This can be optionally re-specified due
+                to the `param_space` potentially containing Ray object
+                references (tuning over Ray Datasets or tuning over
+                several `ray.put` object references). **Tune expects the
+                `param_space` to be unmodified**, and the only part that
+                will be used during restore are the updated object references.
+                Changing the hyperparameter search space then resuming is NOT
+                supported by this API.
             resume_unfinished: If True, will continue to run unfinished trials.
             resume_errored: If True, will re-schedule errored trials and try to
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-
+            overwrite_trainable: Deprecated. Use the `trainable` argument instead.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
+
+        if overwrite_trainable:
+            if not trainable:
+                trainable = overwrite_trainable
+            warning_message = (
+                "`overwrite_trainable` has been renamed to `trainable`. "
+                "The old argument will be removed starting from version 2.5."
+            )
+            warnings.warn(warning_message, DeprecationWarning)
+
+        if not trainable:
+            warning_message = (
+                "Passing in the experiment's `trainable` will be a required argument "
+                "to `Tuner.restore` starting from version 2.5. "
+                "Please specify the trainable to avoid this warning."
+            )
+            warnings.warn(warning_message)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
@@ -200,14 +249,80 @@ class Tuner:
 
         if not ray.util.client.ray.is_connected():
             tuner_internal = TunerInternal(
-                restore_path=path, resume_config=resume_config
+                restore_path=path,
+                resume_config=resume_config,
+                trainable=trainable,
+                param_space=param_space,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
             tuner_internal = _force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
-            ).remote(restore_path=path, resume_config=resume_config)
+            ).remote(
+                restore_path=path,
+                resume_config=resume_config,
+                trainable=trainable,
+                param_space=param_space,
+            )
             return Tuner(_tuner_internal=tuner_internal)
+
+    @classmethod
+    def can_restore(cls, path: Union[str, Path]) -> bool:
+        """Checks whether a given directory contains a restorable Tune experiment.
+
+        Usage Pattern:
+
+        Use this utility to switch between starting a new Tune experiment
+        and restoring when possible. This is useful for experiment fault-tolerance
+        when re-running a failed tuning script.
+
+        .. code-block:: python
+
+            import os
+            from ray.tune import Tuner
+            from ray.air import RunConfig
+
+            def train_fn(config):
+                # Make sure to implement checkpointing so that progress gets
+                # saved on restore.
+                pass
+
+            name = "exp_name"
+            local_dir = "~/ray_results"
+            exp_dir = os.path.join(local_dir, name)
+
+            if Tuner.can_restore(exp_dir):
+                tuner = Tuner.restore(exp_dir, resume_errored=True)
+            else:
+                tuner = Tuner(
+                    train_fn,
+                    run_config=RunConfig(name=name, local_dir=local_dir),
+                )
+            tuner.fit()
+
+        Args:
+            path: The path to the experiment directory of the Tune experiment.
+                This can be either a local directory (e.g. ~/ray_results/exp_name)
+                or a remote URI (e.g. s3://bucket/exp_name).
+
+        Returns:
+            bool: True if this path exists and contains the Tuner state to resume from
+        """
+        return _TUNER_PKL in list_at_uri(str(path))
+
+    def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
+        run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
+        progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(
+            run_config.progress_reporter, run_config.verbose
+        )
+        run_config.progress_reporter = progress_reporter
+        ray.get(
+            self._remote_tuner.set_run_config_and_remote_string_queue.remote(
+                run_config, string_queue
+            )
+        )
+
+        return progress_reporter, string_queue
 
     def fit(self) -> ResultGrid:
         """Executes hyperparameter tuning job as configured and returns result.
@@ -233,21 +348,64 @@ class Tuner:
         if not self._is_ray_client:
             try:
                 return self._local_tuner.fit()
-            except Exception as e:
+            except TuneError as e:
                 raise TuneError(
-                    f"Tune run failed. "
-                    f'Please use tuner = Tuner.restore("'
-                    f'{self._local_tuner.get_experiment_checkpoint_dir()}") to resume.'
+                    _TUNER_FAILED_MSG.format(
+                        path=self._local_tuner.get_experiment_checkpoint_dir()
+                    )
                 ) from e
         else:
             experiment_checkpoint_dir = ray.get(
                 self._remote_tuner.get_experiment_checkpoint_dir.remote()
             )
+            (
+                progress_reporter,
+                string_queue,
+            ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
             try:
-                return ray.get(self._remote_tuner.fit.remote())
-            except Exception as e:
+                fit_future = self._remote_tuner.fit.remote()
+                _stream_client_output(
+                    fit_future,
+                    progress_reporter,
+                    string_queue,
+                )
+                return ray.get(fit_future)
+            except TuneError as e:
                 raise TuneError(
-                    f"Tune run failed. "
-                    f'Please use tuner = Tuner.restore("'
-                    f'{experiment_checkpoint_dir}") to resume.'
+                    _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
                 ) from e
+
+    def get_results(self) -> ResultGrid:
+        """Get results of a hyperparameter tuning run.
+
+        This method returns the same results as :meth:`fit() <ray.tune.tuner.Tuner.fit>`
+        and can be used to retrieve the results after restoring a tuner without
+        calling ``fit()`` again.
+
+        If the tuner has not been fit before, an error will be raised.
+
+        .. code-block:: python
+
+            from ray.tune import Tuner
+
+            tuner = Tuner.restore("/path/to/experiment')
+            results = tuner.get_results()
+
+        Returns:
+            Result grid of a previously fitted tuning run.
+
+        """
+        if not self._is_ray_client:
+            return self._local_tuner.get_results()
+        else:
+            (
+                progress_reporter,
+                string_queue,
+            ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
+            fit_future = self._remote_tuner.fit.remote()
+            _stream_client_output(
+                fit_future,
+                progress_reporter,
+                string_queue,
+            )
+            return ray.get(fit_future)

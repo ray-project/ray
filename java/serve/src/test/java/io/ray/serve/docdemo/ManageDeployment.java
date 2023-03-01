@@ -13,8 +13,8 @@ public class ManageDeployment {
 
     private AtomicInteger value;
 
-    public Counter(Integer value) {
-      this.value = new AtomicInteger(value);
+    public Counter(String value) {
+      this.value = new AtomicInteger(Integer.valueOf(value));
     }
 
     public String call(String delta) {
@@ -26,16 +26,17 @@ public class ManageDeployment {
     Serve.deployment()
         .setName("counter")
         .setDeploymentDef(Counter.class.getName())
-        .setInitArgs(new Object[] {1})
-        .setNumReplicas(2)
+        .setInitArgs(new Object[] {"1"})
+        .setNumReplicas(1)
         .create()
         .deploy(true);
   }
   // docs-create-end
 
   // docs-query-start
-  public void query() {
+  public Deployment query() {
     Deployment deployment = Serve.getDeployment("counter");
+    return deployment;
   }
   // docs-query-end
 
@@ -44,8 +45,8 @@ public class ManageDeployment {
     Serve.deployment()
         .setName("counter")
         .setDeploymentDef(Counter.class.getName())
-        .setInitArgs(new Object[] {2})
-        .setNumReplicas(2)
+        .setInitArgs(new Object[] {"2"})
+        .setNumReplicas(1)
         .create()
         .deploy(true);
   }
@@ -55,8 +56,8 @@ public class ManageDeployment {
   public void scaleOut() {
     Deployment deployment = Serve.getDeployment("counter");
 
-    // Scale up to 10 replicas.
-    deployment.options().setNumReplicas(10).create().deploy(true);
+    // Scale up to 2 replicas.
+    deployment.options().setNumReplicas(2).create().deploy(true);
 
     // Scale down to 1 replica.
     deployment.options().setNumReplicas(1).create().deploy(true);

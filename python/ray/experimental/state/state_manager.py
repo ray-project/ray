@@ -11,6 +11,8 @@ import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.utils import hex_to_binary
+from ray._raylet import JobID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
@@ -21,6 +23,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllPlacementGroupRequest,
     GetAllWorkerInfoReply,
     GetAllWorkerInfoRequest,
+    GetTaskEventsReply,
+    GetTaskEventsRequest,
 )
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
@@ -40,7 +44,9 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
+from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.dashboard.utils import Dict as Dictionary
 from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
 from ray.experimental.state.exception import DataSourceUnavailable
 
@@ -160,6 +166,9 @@ class StateDataSourceClient:
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
             gcs_channel
         )
+        self._gcs_task_info_stub = gcs_service_pb2_grpc.TaskInfoGcsServiceStub(
+            gcs_channel
+        )
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
@@ -224,6 +233,24 @@ class StateDataSourceClient:
         return reply
 
     @handle_grpc_network_errors
+    async def get_all_task_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        job_id: Optional[str] = None,
+        exclude_driver: bool = True,
+    ) -> Optional[GetTaskEventsReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if job_id:
+            job_id = JobID(hex_to_binary(job_id)).binary()
+        request = GetTaskEventsRequest(
+            limit=limit, exclude_driver=exclude_driver, job_id=job_id
+        )
+        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
+        return reply
+
+    @handle_grpc_network_errors
     async def get_all_placement_group_info(
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllPlacementGroupReply]:
@@ -274,6 +301,9 @@ class StateDataSourceClient:
             else:
                 logger.exception(e)
                 raise e
+
+    async def get_all_cluster_events(self) -> Dictionary:
+        return DataSource.events
 
     @handle_grpc_network_errors
     async def get_task_info(

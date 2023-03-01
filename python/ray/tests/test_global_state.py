@@ -124,11 +124,12 @@ def test_global_state_actor_table(ray_start_regular):
 
 
 def test_global_state_worker_table(ray_start_regular):
+    def worker_initialized():
+        # Get worker table from gcs.
+        workers_data = ray._private.state.workers()
+        return len(workers_data) == 1
 
-    # Get worker table from gcs.
-    workers_data = ray._private.state.workers()
-
-    assert len(workers_data) == 1
+    wait_for_condition(worker_initialized)
 
 
 def test_global_state_actor_entry(ray_start_regular):

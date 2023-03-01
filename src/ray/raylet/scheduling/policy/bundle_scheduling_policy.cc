@@ -424,7 +424,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
           const auto &entry) {
         const auto &node_resources = entry.second->GetLocalView();
         auto allocatable =
-            (node_resources.IsAvailable(
+            (node_resources.IsFeasible(
                  aggregated_resource_request)         // If the resource is available
              && !AllocationWillExceedMaxCpuFraction(  // and allocating resources won't
                                                       // exceed max cpu fraction.

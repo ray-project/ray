@@ -18,16 +18,23 @@ class TestTimeSteps(unittest.TestCase):
 
     def test_timesteps(self):
         """Test whether PG can be built with both frameworks."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        config["model"]["fcnet_hiddens"] = [1]
-        config["model"]["fcnet_activation"] = None
+        config = (
+            pg.PGConfig()
+            .environment(RandomEnv)
+            .rollouts(num_rollout_workers=0)
+            .training(
+                model={
+                    "fcnet_hiddens": [1],
+                    "fcnet_activation": None,
+                }
+            )
+        )
 
         obs = np.array(1)
         obs_batch = np.array([1])
 
         for _ in framework_iterator(config):
-            algo = pg.PG(config=config, env=RandomEnv)
+            algo = config.build()
             policy = algo.get_policy()
 
             for i in range(1, 21):

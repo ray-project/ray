@@ -9,6 +9,8 @@ from ray.rllib.offline.json_writer import JsonWriter
 from ray.rllib.offline.output_writer import OutputWriter, NoopOutput
 from ray.rllib.offline.resource import get_offline_io_resource_bundles
 from ray.rllib.offline.shuffled_input import ShuffledInput
+from ray.rllib.offline.feature_importance import FeatureImportance
+
 
 __all__ = [
     "IOContext",
@@ -24,4 +26,5 @@ __all__ = [
     "DatasetWriter",
     "get_dataset_and_shards",
     "get_offline_io_resource_bundles",
+    "FeatureImportance",
 ]

@@ -49,11 +49,11 @@ def update_global_seed_if_necessary(
                 torch.set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
-    elif framework == "tf2" or framework == "tfe":
-        tf1, tf, _ = try_import_tf()
+    elif framework == "tf2":
+        tf1, tf, tfv = try_import_tf()
         # Tf2.x.
-        if framework == "tf2":
+        if tfv == 2:
             tf.random.set_seed(seed)
-        # Tf-eager.
-        elif framework == "tfe":
+        # Tf1.x.
+        else:
             tf1.set_random_seed(seed)

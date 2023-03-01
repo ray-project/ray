@@ -29,7 +29,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
 
     for i in range(node_count):
         cluster.add_node(
-            memory=1024 ** 2,
+            memory=1024**2,
             _system_config={"gcs_actor_scheduling_enabled": gcs_sched}
             if i == 0
             else {},
@@ -39,7 +39,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
 
     # Driver will create all UpperActors, and then each UpperActor will
     # create BottomActors independently.
-    @ray.remote(memory=1024 ** 2)
+    @ray.remote(memory=1024**2)
     class UpperActor:
         def __init__(self):
             self.start = time.time()
@@ -54,7 +54,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
                 ret_list.append([start_time, BottomActor.remote()])
             return ret_list
 
-    @ray.remote(memory=1024 ** 2)
+    @ray.remote(memory=1024**2)
     class BottomActor:
         def __init__(self):
             self.start = time.time()

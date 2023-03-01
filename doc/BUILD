@@ -56,6 +56,36 @@ py_test(
 )
 
 py_test(
+    name = "automl_for_time_series",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml", "timeseries_libs"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/automl_for_time_series.ipynb"]
+)
+
+py_test(
+    name = "batch_prediction",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/batch_prediction.ipynb"]
+)
+
+py_test(
+    name = "batch_training",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/batch_training.ipynb"]
+)
+
+py_test(
     name = "plot_parameter_server",
     size = "medium",
     main = "test_myst_doc.py",
@@ -114,7 +144,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/serve/doc_code/*.py"],
+    include = ["source/serve/doc_code/**/*.py"],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -153,7 +183,10 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
-    exclude = ["source/ray-air/doc_code/hf_trainer.py"],  # Too large
+    exclude = [
+        "source/ray-air/doc_code/hf_trainer.py",  # Too large
+        "source/ray-air/doc_code/predictors.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -180,4 +213,17 @@ py_test_run_all_subdirectory(
     exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
+)
+
+
+# --------------
+# Run GPU tests
+# --------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/predictors.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )

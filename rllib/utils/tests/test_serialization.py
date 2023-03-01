@@ -1,6 +1,6 @@
 import unittest
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.utils.serialization import (
@@ -21,7 +21,7 @@ def _assert_array_equal(eq, a1, a2, margin=None):
 
 class TestGymCheckEnv(unittest.TestCase):
     def test_box_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         d = gym_space_to_dict(env.observation_space)
         sp = gym_space_from_dict(d)
 
@@ -36,7 +36,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.dtype, obs_space.dtype)
 
     def test_discrete_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         d = gym_space_to_dict(env.action_space)
         sp = gym_space_from_dict(d)
 
@@ -52,7 +52,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(md_space.dtype, sp.dtype)
 
     def test_tuple_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         space = gym.spaces.Tuple(spaces=[env.observation_space, env.action_space])
         d = gym_space_to_dict(space)
         sp = gym_space_from_dict(d)
@@ -77,7 +77,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertEqual(sp.spaces[1].n, space.spaces[1].n)
 
     def test_dict_space(self):
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         space = gym.spaces.Dict(
             spaces={"obs": env.observation_space, "action": env.action_space}
         )
@@ -139,6 +139,25 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp["box"], gym.spaces.Box))
         self.assertTrue(isinstance(sp["discrete"], gym.spaces.Discrete))
         self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
+
+    def test_text(self):
+        expected_space = gym.spaces.Text(min_length=3, max_length=10, charset="abc")
+        d = gym_space_to_dict(expected_space)
+        sp = gym_space_from_dict(d)
+
+        self.assertEqual(expected_space.max_length, sp.max_length)
+        self.assertEqual(expected_space.min_length, sp.min_length)
+
+        charset = getattr(expected_space, "character_set", None)
+        if charset is not None:
+            self.assertEqual(expected_space.character_set, sp.character_set)
+        else:
+            charset = getattr(expected_space, "charset", None)
+            if charset is None:
+                raise ValueError(
+                    "Text space does not have charset or character_set attribute."
+                )
+            self.assertEqual(expected_space.charset, sp.charset)
 
     def test_original_space(self):
         space = gym.spaces.Box(low=0.0, high=1.0, shape=(10,))

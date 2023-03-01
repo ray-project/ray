@@ -35,5 +35,17 @@ const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
 
 const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
+
+const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
+
+const TagKeyType JobIdKey = TagKeyType::Register("JobId");
+
+const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
+
+const TagKeyType NameKey = TagKeyType::Register("Name");
+
+const TagKeyType LocationKey = TagKeyType::Register("Location");
+
+const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
 }  // namespace stats
 }  // namespace ray

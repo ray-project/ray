@@ -46,8 +46,8 @@ class Summarizer:
         english_text: str = await http_request.json()
         summary = self.summarize(english_text)
 
-        translation_ref = self.translator.translate.remote(summary)
-        translation = ray.get(translation_ref)
+        translation_ref = await self.translator.translate.remote(summary)
+        translation = await translation_ref
 
         return translation
 

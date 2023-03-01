@@ -266,22 +266,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         ray.init(num_cpus=2)
-    elif args.server_address:
-        ray.init(f"ray://{args.server_address}")
 
+    perturbation_interval = 2
     pbt = PopulationBasedTraining(
-        perturbation_interval=2,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
             "lr": lambda: 10 ** np.random.randint(-10, 0),
@@ -294,6 +286,11 @@ if __name__ == "__main__":
         run_config=air.RunConfig(
             name="pbt_babi_memnn",
             stop={"training_iteration": 4 if args.smoke_test else 100},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=perturbation_interval,
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=2,
+            ),
         ),
         tune_config=tune.TuneConfig(
             scheduler=pbt,

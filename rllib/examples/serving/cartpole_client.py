@@ -38,7 +38,7 @@ In either case, the user of PolicyClient must:
 """
 
 import argparse
-import gym
+import gymnasium as gym
 
 from ray.rllib.env.policy_client import PolicyClient
 
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # unnecessary env objects within the PolicyClient/Server objects, but
     # that only this following env and the loop below runs the entire
     # training process.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
 
     # If server has n workers, all ports between 9900 and 990[n-1] should
     # be listened on. E.g. if server has num_workers=2, try 9900 or 9901.
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     # on this client side), and send back observations and rewards.
 
     # Start a new episode.
-    obs = env.reset()
+    obs, info = env.reset()
     eid = client.start_episode(training_enabled=not args.no_train)
 
     rewards = 0.0
@@ -105,14 +105,14 @@ if __name__ == "__main__":
             action = client.get_action(eid, obs)
 
         # Perform a step in the external simulator (env).
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         rewards += reward
 
         # Log next-obs, rewards, and infos.
         client.log_returns(eid, reward, info=info)
 
         # Reset the episode if done.
-        if done:
+        if terminated or truncated:
             print("Total reward:", rewards)
             if rewards >= args.stop_reward:
                 print("Target reward achieved, exiting")
@@ -124,5 +124,5 @@ if __name__ == "__main__":
             client.end_episode(eid, obs)
 
             # Start a new episode.
-            obs = env.reset()
+            obs, info = env.reset()
             eid = client.start_episode(training_enabled=not args.no_train)

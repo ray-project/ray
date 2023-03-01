@@ -19,11 +19,9 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
-    msgpack_serialize,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
-    RequestWrapper as RequestWrapperProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

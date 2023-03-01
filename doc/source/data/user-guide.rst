@@ -15,6 +15,7 @@ This user guide will help you navigate the Ray Datasets project and show you how
     consuming-datasets
     dataset-ml-preprocessing
     dataset-tensor-support
+    custom-datasource
     pipelining-compute
     dataset-internals
     performance-tips

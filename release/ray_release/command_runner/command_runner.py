@@ -3,6 +3,8 @@ from typing import Dict, Any, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
+from ray_release.util import exponential_backoff_retry
+from click.exceptions import ClickException
 
 
 class CommandRunner(abc.ABC):
@@ -17,10 +19,14 @@ class CommandRunner(abc.ABC):
         self.working_dir = working_dir
 
         self.result_output_json = "/tmp/release_test_out.json"
+        self.metrics_output_json = "/tmp/metrics_test_out.json"
 
     @property
     def command_env(self):
-        return {"TEST_OUTPUT_JSON": self.result_output_json}
+        return {
+            "TEST_OUTPUT_JSON": self.result_output_json,
+            "METRICS_OUTPUT_JSON": self.metrics_output_json,
+        }
 
     def get_full_command_env(self, env: Optional[Dict] = None):
         full_env = self.command_env.copy()
@@ -54,8 +60,25 @@ class CommandRunner(abc.ABC):
         """
         raise NotImplementedError
 
+    def save_metrics(self, start_time: float, timeout: float = 900.0):
+        """Obtains Prometheus metrics from head node and saves them
+        to ``self.metrics_output_json``.
+
+        Args:
+            start_time: From which UNIX timestamp to start the query.
+            timeout: Timeout in seconds.
+
+        Returns:
+            None
+        """
+        raise NotImplementedError
+
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         """Run command."""
         raise NotImplementedError
@@ -68,10 +91,18 @@ class CommandRunner(abc.ABC):
         Command runners may choose to run this differently than the
         test command.
         """
-        return self.run_command(command, env, timeout)
+        return exponential_backoff_retry(
+            lambda: self.run_command(command, env, timeout),
+            ClickException,
+            initial_retry_delay_s=5,
+            max_retries=3,
+        )
 
     def get_last_logs(self):
         raise NotImplementedError
 
     def fetch_results(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def fetch_metrics(self) -> Dict[str, Any]:
         raise NotImplementedError

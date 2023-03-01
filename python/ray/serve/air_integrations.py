@@ -2,16 +2,22 @@ from collections import defaultdict
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-
+from pydantic import BaseModel
 import numpy as np
+from abc import abstractmethod
+import starlette
+from fastapi import Depends, FastAPI
 
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve._private.utils import require_packages
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
+from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray.serve._private.http_util import ASGIHTTPSender
+
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
@@ -51,20 +57,30 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame":
-    """Unpack predictor's return value with TensorArray into numpy.
+def _unpack_dataframe_to_serializable(output_df: "pd.DataFrame") -> "pd.DataFrame":
+    """Unpack predictor's pandas return value to JSON serializable format.
 
     In dl_predictor.py we return a pd.DataFrame that could have multiple
     columns but value of each column is a TensorArray. Flatten the
     TensorArray to list to ensure output is json serializable as http
     response.
+
+    In numpy predictor path, we might return collection of np.ndarrays that also
+    requires flattening to list to ensure output is json serializable as http
+    response.
     """
     from ray.data.extensions import TensorDtype
 
     for col in output_df.columns:
+        # TensorArray requires special handling to numpy array.
         if isinstance(output_df.dtypes[col], TensorDtype):
-            output_df[col] = output_df[col].to_numpy()
-
+            output_df.loc[:, col] = list(output_df[col].to_numpy())
+        # # DL predictor outputs raw ndarray outputs as opaque numpy object.
+        # # ex: output_df = pd.DataFrame({"predictions": [np.array(1)]})
+        elif output_df.dtypes[col] == np.dtype(object) and all(
+            isinstance(v, np.ndarray) for v in output_df[col]
+        ):
+            output_df.loc[:, col] = [v.tolist() for v in output_df[col]]
     return output_df
 
 
@@ -115,7 +131,7 @@ class _BatchingManager:
                 f"but Serve got length {len(output_df)}."
             )
 
-        output_df = _unpack_tensorarray_from_pandas(output_df)
+        output_df = _unpack_dataframe_to_serializable(output_df)
 
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
@@ -168,6 +184,43 @@ class _BatchingManager:
                 item[key] = arr
 
         return split_list_of_dict
+
+
+@DeveloperAPI
+class SimpleSchemaIngress:
+    def __init__(
+        self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
+    ):
+        """Create a FastAPI endpoint annotated with http_adapter dependency.
+
+        Args:
+            http_adapter(str, HTTPAdapterFn, None, Type[pydantic.BaseModel]):
+              The FastAPI input conversion function or a pydantic model class.
+              By default, Serve will directly pass in the request object
+              starlette.requests.Request. You can pass in any FastAPI dependency
+              resolver. When you pass in a string, Serve will import it.
+              Please refer to Serve HTTP adatper documentation to learn more.
+        """
+        install_serve_encoders_to_fastapi()
+        http_adapter = load_http_adapter(http_adapter)
+        self.app = FastAPI()
+
+        @self.app.get("/")
+        @self.app.post("/")
+        async def handle_request(inp=Depends(http_adapter)):
+            resp = await self.predict(inp)
+            return resp
+
+    @abstractmethod
+    async def predict(self, inp):
+        raise NotImplementedError()
+
+    async def __call__(self, request: starlette.requests.Request):
+        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
+        # generate FastAPI on the fly, we should find a way to unify the two.
+        sender = ASGIHTTPSender()
+        await self.app(request.scope, receive=request.receive, send=sender)
+        return sender.build_asgi_response()
 
 
 @PublicAPI(stability="alpha")
@@ -242,7 +295,7 @@ class PredictorWrapper(SimpleSchemaIngress):
                 if isinstance(out, ray.ObjectRef):
                     out = await out
                 elif pd is not None and isinstance(out, pd.DataFrame):
-                    out = _unpack_tensorarray_from_pandas(out)
+                    out = _unpack_dataframe_to_serializable(out)
                 return out
 
         else:

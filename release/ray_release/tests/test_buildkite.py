@@ -22,7 +22,12 @@ from ray_release.buildkite.settings import (
     Priority,
     get_test_attr_regex_filters,
 )
-from ray_release.buildkite.step import get_step
+from ray_release.buildkite.step import (
+    get_step,
+    RELEASE_QUEUE_DEFAULT,
+    RELEASE_QUEUE_CLIENT,
+    DOCKER_PLUGIN_KEY,
+)
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.tests.test_glue import MockReturn
@@ -366,6 +371,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "nightly"},
                     "team": "team_1",
+                    "run": {"type": "job"},
                 }
             ),
             Test(
@@ -374,6 +380,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "weekly",
                     "smoke_test": {"frequency": "nightly"},
                     "team": "team_2",
+                    "run": {"type": "client"},
                 }
             ),
             Test({"name": "other_1", "frequency": "weekly", "team": "team_2"}),
@@ -383,6 +390,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "multi"},
                     "team": "team_2",
+                    "run": {"type": "job"},
                 }
             ),
             Test({"name": "other_3", "frequency": "disabled", "team": "team_2"}),
@@ -486,6 +494,28 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
         self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
 
+        # Filter by nested properties
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/type": "job"},
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False), ("other_2", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/type": "client"},
+        )
+        self.assertSequenceEqual(filtered, [("test_2", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/invalid": "xxx"},
+        )
+        self.assertSequenceEqual(filtered, [])
+
     def testGroupTests(self):
         tests = [
             (Test(name="x1", group="x"), False),
@@ -514,10 +544,12 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         step = get_step(test, smoke_test=False)
-        self.assertNotIn("--smoke-test", step["command"])
+        self.assertNotIn(
+            "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
+        )
 
         step = get_step(test, smoke_test=True)
-        self.assertIn("--smoke-test", step["command"])
+        self.assertIn("--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"])
 
         step = get_step(test, priority_val=20)
         self.assertEqual(step["priority"], 20)
@@ -646,6 +678,28 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
             step = get_step(test, smoke_test=True)
             self.assertEquals(step["concurrency_group"], "small")
+
+    def testStepQueueClient(self):
+        test_regular = Test(
+            {
+                "name": "test",
+                "frequency": "nightly",
+                "run": {"script": "test_script.py"},
+            }
+        )
+        test_client = Test(
+            {
+                "name": "test",
+                "frequency": "nightly",
+                "run": {"script": "test_script.py", "type": "client"},
+            }
+        )
+
+        step = get_step(test_regular)
+        self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_DEFAULT))
+
+        step = get_step(test_client)
+        self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_CLIENT))
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import os
 import resource
 import time
 from typing import List
+import traceback
 
 import numpy as np
 import psutil
@@ -112,11 +113,14 @@ if __name__ == "__main__":
         num_columns=1,
     )
     exc = None
+    ds_stats = None
     try:
         if args.shuffle:
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
+        ds.fully_executed()
+        ds_stats = ds.stats()
     except Exception as e:
         exc = e
         pass
@@ -134,10 +138,15 @@ if __name__ == "__main__":
     rss = int(process.memory_info().rss)
     print(f"rss: {rss / 1e9}/GB")
 
-    print(memory_summary(stats_only=True))
+    try:
+        print(memory_summary(stats_only=True))
+    except Exception:
+        print("Failed to retrieve memory summary")
+        print(traceback.format_exc())
     print("")
 
-    print(ds.stats())
+    if ds_stats is not None:
+        print(ds_stats)
 
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")

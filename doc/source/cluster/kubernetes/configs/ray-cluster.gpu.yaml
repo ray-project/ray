@@ -1,0 +1,82 @@
+# This is a RayCluster configuration for PyTorch image training benchmark with a 1Gi training set. 
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+    # A unique identifier for the head node and workers of this cluster.
+  name: raycluster
+spec:
+  # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
+  rayVersion: '2.0.0'
+  ######################headGroupSpec#################################
+  # head group template and specs, (perhaps 'group' is not needed in the name)
+  headGroupSpec:
+    # Kubernetes Service Type, valid values are 'ClusterIP', 'NodePort' and 'LoadBalancer'
+    serviceType: ClusterIP
+    # logical group name, for this called head-group, also can be functional
+    # pod type head or worker
+    # rayNodeType: head # Not needed since it is under the headgroup
+    # the following params are used to complete the ray start: ray start --head --block ...
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      block: 'true'
+    #pod template
+    template:
+      spec:
+        containers:
+        # The Ray head pod
+        - name: ray-head
+          image: rayproject/ray-ml:2.0.0-gpu
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: "4"
+              memory: "24G"
+            requests:
+              cpu: "4"
+              memory: "12G"
+  workerGroupSpecs:
+  # the pod replicas in this group typed worker
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 300
+    # logical group name, for this called small-group, also can be functional
+    groupName: small-group
+    rayStartParams:
+      block: 'true'
+      num-gpus: "1"
+    #pod template
+    template:
+      metadata:
+        labels:
+          key: value
+        # annotations for pod
+        annotations:
+          key: value
+      spec:
+        initContainers:
+        # the env var $RAY_IP is set by the operator if missing, with the value of the head service name
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+        containers:
+        - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
+          image: rayproject/ray-ml:2.0.0-gpu
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: "8"
+              memory: "24G"
+              nvidia.com/gpu: 1
+            requests:
+              cpu: "4"
+              memory: "12G"
+              nvidia.com/gpu: 1

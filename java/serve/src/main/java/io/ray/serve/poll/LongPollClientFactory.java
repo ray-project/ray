@@ -168,11 +168,11 @@ public class LongPollClientFactory {
       longPollResult = LongPollResult.parseFrom((byte[]) data);
     } else {
       // Poll from java controller.
-      ObjectRef<LongPollResult> currentRef =
+      ObjectRef<byte[]> currentRef =
           ((ActorHandle<ServeController>) hostActor)
               .task(ServeController::listenForChange, longPollRequest)
               .remote();
-      longPollResult = Ray.get(currentRef, longPollTimoutS * 1000);
+      longPollResult = LongPollResult.parseFrom(currentRef.get(longPollTimoutS * 1000));
     }
     processUpdate(longPollResult == null ? null : longPollResult.getUpdatedObjects());
   }
@@ -209,12 +209,6 @@ public class LongPollClientFactory {
     }
   }
 
-  public static void clearAllCache() {
-    KEY_LISTENERS.clear();
-    OBJECT_SNAPSHOTS.clear();
-    SNAPSHOT_IDS.clear();
-  }
-
   public static void unregister(Set<KeyType> keys) {
     if (CollectionUtil.isEmpty(keys)) {
       return;
@@ -239,6 +233,9 @@ public class LongPollClientFactory {
         LOGGER.error("awaitTermination error, the exception is ", e);
       }
     }
+    KEY_LISTENERS.clear();
+    OBJECT_SNAPSHOTS.clear();
+    SNAPSHOT_IDS.clear();
     inited = false;
     LOGGER.info("LongPollClient was stopped.");
   }
