@@ -15,7 +15,7 @@
 syntax = "proto3";
 option cc_enable_arenas = true;
 
-package ray.rpc;
+package ray.autoscaler.rpc;
 
 // NodeProvider represents a service which provisions and manages nodes.
 service NodeProvider {

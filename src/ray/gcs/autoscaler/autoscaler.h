@@ -16,15 +16,22 @@
 #include <gtest/gtest_prod.h>
 
 #include "ray/gcs/autoscaler/node_provider.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 namespace ray {
-namespace gcs {
+namespace autoscaler {
 
-class IAutoscaler {
+class Autoscaler {
  public:
-  virtual ~IAutoscaler() = default;
+  Autoscaler(INodeProvider &node_provider, gcs::GcsResourceManager &resource_manager);
+  void RunOnce();
 
  private:
+  void GetNodesToLaunch();
+
+ private:
+  INodeProvider &node_provider_;
+  gcs::GcsResourceManager &resource_manager_;
 };
-}  // namespace gcs
+}  // namespace autoscaler
 }  // namespace ray

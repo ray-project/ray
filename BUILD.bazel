@@ -120,13 +120,16 @@ cc_library(
 cc_library(
     name = "autoscaler_lib",
     srcs = [
+        "src/ray/gcs/autoscaler/autoscaler.cc",
     ],
     hdrs = [
         "src/ray/gcs/autoscaler/node_provider.h",
+        "src/ray/gcs/autoscaler/autoscaler.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":gcs_server_lib",
         "//src/ray/protobuf:node_provider_cc_proto",
     ],
 )

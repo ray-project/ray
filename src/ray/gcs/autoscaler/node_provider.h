@@ -16,7 +16,7 @@
 #include "src/ray/protobuf/node_provider.pb.h"
 
 namespace ray {
-namespace gcs {
+namespace autoscaler {
 
 /**
  * Interface for node provider that autoscaler interacts with.
@@ -26,7 +26,7 @@ class INodeProvider {
   virtual ~INodeProvider() = default;
 
   // Query the available node types.
-  virtual AvailableNodeTypesResponse GetAvailableNodeTypes() const = 0;
+  virtual rpc::AvailableNodeTypesResponse GetAvailableNodeTypes() const = 0;
 
   // Create new nodes.
   virtual std::vector<rpc::CreationStatus> CreateNodes(const std::string &node_type_id,
@@ -42,5 +42,5 @@ class INodeProvider {
 
   virtual std::vector<rpc::Node> GetNodesStatus(rpc::NodeStatus node_status) const = 0;
 };
-}  // namespace gcs
+}  // namespace autoscaler
 }  // namespace ray
