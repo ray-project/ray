@@ -9,10 +9,9 @@ from ray import air, tune
 
 
 class EnvCreatorOnGRPC:
-
     def __init__(self, start_port) -> None:
         self._port = start_port
-    
+
     def __call__(self, env_config=None):
         # Start the server
 
@@ -28,7 +27,7 @@ class EnvCreatorOnGRPC:
             {"ip": "localhost", "port": port, "server_process": server_process}
         )
         return env
-        
+
 
 if __name__ == "__main__":
 
@@ -44,7 +43,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=air.RunConfig(stop={"training_iteration": 10})
+        run_config=air.RunConfig(stop={"training_iteration": 10}),
     ).fit()
 
     breakpoint()

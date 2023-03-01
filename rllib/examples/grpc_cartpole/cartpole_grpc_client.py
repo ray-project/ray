@@ -5,6 +5,7 @@ import numpy as np
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2 as cartpole_pb2
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2_grpc as cartpole_pb2_grpc
 
+
 class CartPoleEnv(gym.Env):
     def __init__(self, env_config=None):
         ip = env_config.get("ip", "localhost")
@@ -27,22 +28,28 @@ class CartPoleEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         state = self.client.reset(cartpole_pb2.Empty())
-        self.state = np.array([
-            state.cart_position,
-            state.cart_velocity,
-            state.pole_angle,
-            state.pole_velocity,
-        ], dtype=np.float32)
+        self.state = np.array(
+            [
+                state.cart_position,
+                state.cart_velocity,
+                state.pole_angle,
+                state.pole_velocity,
+            ],
+            dtype=np.float32,
+        )
         return self.state, {}
 
     def step(self, action):
         step_result = self.client.step(cartpole_pb2.Action(action=int(action)))
-        next_state = np.array([
-            step_result.state.cart_position,
-            step_result.state.cart_velocity,
-            step_result.state.pole_angle,
-            step_result.state.pole_velocity,
-        ], dtype=np.float32)
+        next_state = np.array(
+            [
+                step_result.state.cart_position,
+                step_result.state.cart_velocity,
+                step_result.state.pole_angle,
+                step_result.state.pole_velocity,
+            ],
+            dtype=np.float32,
+        )
         reward = step_result.reward
         terminated = step_result.terminated
         truncated = step_result.truncated
@@ -50,7 +57,7 @@ class CartPoleEnv(gym.Env):
         self.state = next_state
         return next_state, reward, terminated, truncated, info
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         pass
 
     def close(self):
@@ -64,7 +71,7 @@ class CartPoleEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    
+
     env = CartPoleEnv()
     obs = env.reset()
     print(f"obs: {obs}")

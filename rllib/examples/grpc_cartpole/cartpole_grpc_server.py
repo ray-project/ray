@@ -6,16 +6,19 @@ import argparse
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2 as cartpole_pb2
 import ray.rllib.examples.grpc_cartpole.cartpole_pb2_grpc as cartpole_pb2_grpc
 
+
 def _parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ip", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=50051)
     return parser.parse_args()
 
+
 class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
     """This uses the old API of gym. but with the new underlying env."""
+
     def __init__(self):
-        self.env = gym.make('CartPole-v1')
+        self.env = gym.make("CartPole-v1")
 
     def reset(self, request, context):
         state, _ = self.env.reset()
@@ -41,6 +44,7 @@ class CartPoleEnv(cartpole_pb2_grpc.CartPoleServicer):
             truncated=truncated,
         )
 
+
 def serve(pargs):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
     cartpole_pb2_grpc.add_CartPoleServicer_to_server(CartPoleEnv(), server)
@@ -48,5 +52,6 @@ def serve(pargs):
     server.start()
     server.wait_for_termination()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     serve(_parse_args())
