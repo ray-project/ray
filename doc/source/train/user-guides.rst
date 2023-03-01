@@ -1,3 +1,5 @@
+.. _train-userguides:
+
 Ray Train User Guides
 =====================
 
