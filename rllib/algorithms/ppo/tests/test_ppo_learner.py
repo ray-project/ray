@@ -10,6 +10,7 @@ import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.metrics import ALL_MODULES
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -110,7 +111,7 @@ class TestPPO(unittest.TestCase):
             learner_group.set_weights(trainer.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
 
-            learner_group_loss = results["loss"]["total_loss"]
+            learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
 

@@ -11,6 +11,7 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
@@ -53,7 +54,7 @@ class TestLearner(unittest.TestCase):
             batch = reader.next()
             results = learner.update(batch.as_multi_agent())
 
-            loss = results["loss"]["total_loss"]
+            loss = results[ALL_MODULES]["total_loss"]
             min_loss = min(loss, min_loss)
             print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
             # The loss is initially around 0.69 (ln2). When it gets to around

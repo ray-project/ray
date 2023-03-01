@@ -1,5 +1,5 @@
 import abc
-
+from collections import defaultdict
 from dataclasses import dataclass, field
 import logging
 import numpy as np
@@ -29,6 +29,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -389,15 +390,25 @@ class Learner:
             A dictionary of results.
         """
         loss_numpy = convert_to_numpy(postprocessed_loss)
+
+        # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
+        # This matches what the legacy RLlib policies used to return.
+        module_learner_stats = defaultdict(dict)
+        for module_id in self.module.keys():
+            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
+
+        # We put the stats for all modules under the ALL_MODULES key. e.g. average of
+        # the gradients across all modules will go here.
         mean_grads = [
             np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
         ]
-        ret = {
-            "loss": loss_numpy,
+
+        module_learner_stats[ALL_MODULES] = {
             "mean_gradient": np.mean(mean_grads),
+            self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
         }
 
-        return ret
+        return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
@@ -738,6 +749,38 @@ class Learner:
         module = module.as_multi_agent()
         return module
 
+    def _check_result(self, result: Mapping[str, Any]) -> None:
+        """Checks whether the result has the correct format.
+
+        All the keys should be referencing the module ids that got updated. There is a
+        special key `__all__` that hold any extra information that is not specific to a
+        module.
+
+        Args:
+            results: The result of the update.
+
+        Raises:
+            ValueError: If the result are not in the correct format.
+        """
+        if not isinstance(result, dict):
+            raise ValueError(
+                f"The result of the update must be a dictionary. Got: {type(result)}"
+            )
+
+        if ALL_MODULES not in result:
+            raise ValueError(
+                f"The result of the update must have a key {ALL_MODULES} "
+                "that holds any extra information that is not specific to a module."
+            )
+
+        for key in result:
+            if key != ALL_MODULES:
+                if key not in self.module.keys():
+                    raise ValueError(
+                        f"The key {key} in the result of the update is not a valid "
+                        f"module id. Valid module ids are: {self.module.keys()}"
+                    )
+
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update(
         self,
@@ -754,6 +797,7 @@ class Learner:
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
         result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        self._check_result(result)
         return convert_to_numpy(result)
 
     def __check_if_build_called(self):
