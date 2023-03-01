@@ -185,14 +185,13 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs a Serve app (specified in config_or_import_path) on a cluster as a Ray "
-        "Job. config_or_import_path is either a filepath to a YAML config file on the "
-        "Ray Cluster, or an import path on the Ray Cluster for a deployment node of "
-        "the pattern containing_module:deployment_node.\n\n"
+        "Runs the Serve app from the specified import path (e.g. my_script:"
+        "my_bound_deployment) or YAML config. If an address to a Ray Cluster is "
+        "specified, the app will be run on the remote cluster as a Ray Job.\n\n"
         "If using a YAML config, existing deployments with no code changes "
-        "will not be redeployed.\n\n"
-        "Any import path, whether directly specified as the command argument or "
-        "inside a config file, must lead to a FunctionNode or ClassNode object.\n\n"
+        "will not be redeployed. Any import path, whether directly specified as the "
+        "command argument or inside a config file, must lead to a FunctionNode or "
+        "ClassNode object.\n\n"
         "By default, this command will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
@@ -204,7 +203,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="Path to a local YAML file containing a runtime_env definition. "
-    "This will be passed to Ray Jobs as the default for deployments.",
+    "This will be passed to ray.init() as the default for deployments.",
 )
 @click.option(
     "--runtime-env-json",
@@ -212,7 +211,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="JSON-serialized runtime_env dictionary. This will be passed to "
-    "Ray Jobs as the default for deployments.",
+    "ray.init() as the default for deployments.",
 )
 @click.option(
     "--working-dir",
@@ -233,9 +232,11 @@ def deploy(config_file_name: str, address: str):
     default=".",
     type=str,
     help=(
-        "Directory on the Ray Cluster in which to look for the IMPORT_PATH (will be "
-        "inserted into PYTHONPATH). Defaults to '.', i.e. a deployment node `app_node` "
-        "in working_directory/main.py on the Ray Cluster can be run using "
+        "Directory in which to look for the IMPORT_PATH, which will be inserted into "
+        "PYTHONPATH. If connecting to a local cluster, this should be a local "
+        "directory. If connecting to a remote cluster, this should be the path to the "
+        "remote directory on that cluster. Defaults to '.', e.g. a deployment node "
+        "`app_node` in working_directory/main.py on the Ray Cluster can be run using "
         "`main:app_node`. Not relevant if you're importing from an installed module."
     ),
 )
@@ -245,7 +246,15 @@ def deploy(config_file_name: str, address: str):
     default=os.environ.get("RAY_ADDRESS", None),
     required=False,
     type=str,
-    help=RAY_INIT_ADDRESS_HELP_STR,
+    help=(
+        "Address pointing to the Ray Cluster to run the Serve app on. This can either "
+        "be the HTTP address of the dashboard server on the head node (by default, "
+        "http://<head-node-ip>:8265) or a Ray Client address, but an HTTP dashboard "
+        'address is recommended. The address can also be "auto" or unspecified; if '
+        '"auto", will try to connect to an existing cluster. If unspecified, will '
+        "try to connect to an existing cluster or start one. This argument overrides "
+        "the RAY_ADDRESS environment variable."
+    ),
 )
 @click.option(
     "--host",
