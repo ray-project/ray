@@ -29,7 +29,7 @@ using namespace testing;
 
 namespace ray {
 
-NodeResources constructNodeResources(
+NodeResources ConstructNodeResources(
     absl::flat_hash_map<ResourceID, FixedPoint> available,
     absl::flat_hash_map<ResourceID, FixedPoint> total) {
   NodeResources resources;
@@ -38,7 +38,7 @@ NodeResources constructNodeResources(
   return resources;
 }
 
-rpc::ResourceDemand constructResourceDemand(
+rpc::ResourceDemand ConstructResourceDemand(
     absl::flat_hash_map<std::string, double> shape,
     int num_ready_requests_queued,
     int num_infeasible_requests_queued,
@@ -52,7 +52,7 @@ rpc::ResourceDemand constructResourceDemand(
   return demand;
 }
 
-std::shared_ptr<gcs::GcsPlacementGroup> constructPlacementGroupDemand(
+std::shared_ptr<gcs::GcsPlacementGroup> ConstructPlacementGroupDemand(
     std::vector<absl::flat_hash_map<std::string, double>> bundles,
     rpc::PlacementStrategy strategy
 
@@ -159,7 +159,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     // Setup resource demand mocks.
     rpc::ResourcesData data;
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
+        ConstructResourceDemand(
             {
                 {"CPU", 0.75},
             },
@@ -167,7 +167,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             2,
             3));
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
+        ConstructResourceDemand(
             {
                 {"custom", 0.25},
             },
@@ -176,7 +176,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             1));
 
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
+        ConstructResourceDemand(
             {
                 {"CPU", 0.75},
                 {"custom", 0.25},
@@ -193,13 +193,13 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
       pending_pgs.insert(
           {0,
            {{},
-            constructPlacementGroupDemand({{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
+            ConstructPlacementGroupDemand({{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
                                           rpc::PlacementStrategy::STRICT_SPREAD)}});
     }
 
     auto &infeasible_pgs = InfeasiblePlacementGroups();
     for (int i = 0; i < 3; i++) {
-      infeasible_pgs.push_back(constructPlacementGroupDemand(
+      infeasible_pgs.push_back(ConstructPlacementGroupDemand(
           {{{"GPU", 1}}, {{"GPU", 1}}}, rpc::PlacementStrategy::STRICT_PACK));
     }
   }
@@ -207,14 +207,14 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     // Setup the node management mocks.
     cluster_resource_manager_.AddOrUpdateNode(
         scheduling::NodeID(id_1.Binary()),
-        constructNodeResources(
+        ConstructNodeResources(
             {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
             {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
     AliveNodes()[id_1] = Mocker::GenNodeInfo(0, "1.1.1.1", "Node1");
 
     cluster_resource_manager_.AddOrUpdateNode(
         scheduling::NodeID(id_2.Binary()),
-        constructNodeResources(
+        ConstructNodeResources(
             {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
             {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
 
@@ -309,7 +309,7 @@ TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
   };
 
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::STRICT_PACK);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
@@ -320,7 +320,7 @@ TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
     check_bundles(request);
   }
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::STRICT_SPREAD);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
@@ -331,7 +331,7 @@ TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
     check_bundles(request);
   }
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::PACK);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
@@ -342,7 +342,7 @@ TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
     check_bundles(request);
   }
   {
-    auto gcs_pg = constructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
                                                 rpc::PlacementStrategy::SPREAD);
     rpc::ResourceRequest request;
     GcsPlacementGroupToResourceRequest(*gcs_pg, request);
