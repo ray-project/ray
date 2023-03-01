@@ -596,6 +596,33 @@ def test_actor_constructor_borrow_cancellation(ray_start_regular):
     print(exc_info._excinfo[1])
 
 
+def test_actor_constructor_borrow_objs(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, obj_containing_ref):
+            pass
+
+        def never_ready(self):
+            raise ValueError(
+                "this should never be invoked since actor should have been killed."
+            )
+
+    ref = ray.put(1)
+    a = Actor.remote({"foo": ref})
+    ray.kill(a)
+    del ref
+
+    with pytest.raises(
+        ray.exceptions.RayActorError, match="it was killed by `ray.kill"
+    ) as e:
+        ray.get(a.never_ready.remote())
+        print(e)
+
+    wait_for_condition(_all_actors_dead, timeout=10)
+
+    check_refcounts({})
+
+
 if __name__ == "__main__":
     import sys
 
