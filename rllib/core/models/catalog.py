@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Optional, Mapping, Any
 
 import gymnasium as gym
