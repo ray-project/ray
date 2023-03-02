@@ -3,14 +3,12 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import Mapping, Any
 
 import gymnasium as gym
 
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.core.models.base import ActorCriticEncoder
 
@@ -20,10 +18,14 @@ class PPORLModuleBase(RLModule, abc.ABC):
     framework = None
     default_catalog_class = PPOCatalog
 
-    def __init__(self, config: RLModuleConfig):
-        super().__init__()
-        self.config = config
-        catalog = config.catalog
+    def __init__(self, spec: SingleAgentRLModuleSpec):
+        super().__init__(spec=spec)
+        self.spec = spec
+        catalog = spec.catalog_class(
+            observation_space=spec.observation_space,
+            action_space=spec.action_space,
+            model_config_dict=spec.model_config_dict,
+        )
 
         assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
 
@@ -35,30 +37,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
         self._is_discrete = isinstance(
-            convert_old_gym_space_to_gymnasium_space(self.config.action_space),
+            convert_old_gym_space_to_gymnasium_space(self.spec.action_space),
             gym.spaces.Discrete,
         )
         assert isinstance(self.encoder, ActorCriticEncoder)
-
-    @classmethod
-    @override(RLModule)
-    def from_model_config(
-        cls,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        *,
-        model_config_dict: Mapping[str, Any],
-    ) -> "PPORLModuleBase":
-        catalog = PPOCatalog(
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config_dict=model_config_dict,
-        )
-
-        config = PPOModuleConfig(
-            observation_space=observation_space,
-            action_space=action_space,
-            catalog=catalog,
-        )
-
-        return config.build(framework=cls.framework)

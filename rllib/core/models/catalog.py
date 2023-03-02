@@ -27,17 +27,14 @@ from ray.rllib.utils.typing import ModelConfigDict
 
 
 class Catalog:
-    """Describes the sub-modules architectures to be used in RLModules.
+    """Provides models and distributions to RLModules.
 
-    RLlib's native RLModules get their Models from a Catalog object.
-    By default, that Catalog builds the configs it has as attributes.
-    You can modify a Catalog so that it builds different Models by subclassing and
-    overriding the build_* methods. Alternatively, you can customize the configs
-    inside RLlib's Catalogs to customize what is being built by RLlib.
+    RLlib's native RLModules get their Models from a Catalog object. By default,
+    that Catalog builds the configs it has as attributes. You can modify a Catalog so
+    that it builds different Models by subclassing it and overriding the build_*
+    methods.
 
     Usage example:
-
-    # Define a custom catalog
 
     .. testcode::
 
@@ -73,8 +70,6 @@ class Catalog:
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        # TODO (Artur): Turn model_config into model_config_dict to distinguish
-        #  between ModelConfig and a model_config_dict dict library-wide.
         model_config_dict: dict,
         view_requirements: dict = None,
     ):

@@ -30,18 +30,31 @@ ModuleID = str
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
+    """A utility spec class to make constructing RLModules (single-agent case) easier.
 
     Args:
         module_class: ...
         observation_space: ...
         action_space: ...
-        model_config_dict: ...
+        catalog_class: The catalog class used by the RLModule to construct models and
+            distributions. The default behaviour is to use the default catalog of the
+            provided `module_class`, if any. For example, for
+            `module_class=TorchPPORLModule` we default to the PPOCatalog. Changing
+            `catalog_class` can be used to directly alter the models and
+            distributions used by the RLModules. Depending on the altercations,
+            this may override behaviour that would be deduced from `model_config`
+            otherwise.
+        model_config_dict: The model config dict to use for the RLModule. The default
+            behaviour is to use MODEL_DEFAULTS. Changing `model_config_dict` can be
+            used to alter the behaviour of Catalogs instantiated from
+            `catalog_class`.
     """
 
-    module_class: Optional[Type["RLModule"]] = None
-    observation_space: Optional["gym.Space"] = None
-    action_space: Optional["gym.Space"] = None
+    module_class: Type["RLModule"] = None
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    # TODO(Artur_: Avoid circular import when importing Catalog here for typing.
+    catalog_class: Optional[Type] = None
     model_config_dict: Optional[Dict[str, Any]] = None
 
     def build(self) -> "RLModule":
@@ -53,11 +66,16 @@ class SingleAgentRLModuleSpec:
         if self.model_config_dict is None:
             raise ValueError("Model config must be specified.")
 
-        return self.module_class.from_model_config(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            model_config_dict=self.model_config_dict,
-        )
+        if self.catalog_class is None:
+            # Attempt to use the default catalog of the provided module class.
+            self.catalog_class = self.module_class.get("default_catalog_class")
+            if self.catalog_class is None:
+                raise ValueError(
+                    f"Catalog class must be specified for `module_class` "
+                    f"`{self.module_class}`."
+                )
+
+        return self.module_class(self)
 
 
 @ExperimentalAPI
@@ -186,58 +204,6 @@ class RLModule(abc.ABC):
         self._output_specs_inference = convert_to_canonical_format(
             self.output_specs_inference()
         )
-
-    @classmethod
-    def from_model_config(
-        cls,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        *,
-        model_config_dict: Mapping[str, Any],
-    ) -> "RLModule":
-        """Creates a RLModule instance from a model config dict and spaces.
-
-        The model config dict is the same as the one passed to the AlgorithmConfig
-        object that contains global model configurations parameters.
-
-        This method can also be used to create a config dict for the module constructor
-        so it can be re-used to create multiple instances of the module.
-
-        Example:
-
-        .. code-block:: python
-
-            class MyModule(RLModule):
-                def __init__(self, input_dim, output_dim):
-                    self.input_dim, self.output_dim = input_dim, output_dim
-
-                @classmethod
-                def from_model_config(
-                    cls,
-                    observation_space: gym.Space,
-                    action_space: gym.Space,
-                    model_config_dict: Mapping[str, Any],
-                ):
-                    return cls(
-                        input_dim=observation_space.shape[0],
-                        output_dim=action_space.n
-                    )
-
-            module = MyModule.from_model_config(
-                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
-                action_space=gym.spaces.Discrete(2),
-                model_config_dict={},
-            )
-
-
-        Args:
-            observation_space: The observation space of the env.
-            action_space: The action space of the env.
-            model_config_dict: The model config dict.
-        """
-        raise NotImplementedError
-
-    # TODO: (Artur) Add a method `from_catalog` that creates RLModule from Catalog
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
