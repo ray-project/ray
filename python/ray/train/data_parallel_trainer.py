@@ -21,7 +21,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -447,6 +447,7 @@ class DataParallelTrainer(BaseTrainer):
         ["tabulate", None],
         ["ipywidgets", "8"],
     )
+    @fallback_if_colab
     def _ipython_display_(self):
         from ipywidgets import HTML, VBox, Tab, Layout
         from IPython.display import display

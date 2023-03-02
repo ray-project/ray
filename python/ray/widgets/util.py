@@ -167,3 +167,22 @@ def _has_outdated(
         logger.warning(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
 
     return outdated
+
+
+@DeveloperAPI
+def fallback_if_colab(func: F) -> Callable[[F], F]:
+    try:
+        ipython = get_ipython()
+    except NameError:
+        ipython = None
+
+    @wraps(func)
+    def wrapped(self, *args, **kwargs):
+        if ipython and "google.colab" not in str(ipython):
+            return func(self, *args, **kwargs)
+        elif hasattr(self, "__repr__"):
+            return print(self.__repr__(*args, **kwargs))
+        else:
+            return None
+
+    return wrapped

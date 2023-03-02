@@ -128,7 +128,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -4321,6 +4321,7 @@ class Dataset(Generic[T]):
     @ensure_notebook_deps(
         ["ipywidgets", "8"],
     )
+    @fallback_if_colab
     def _ipython_display_(self):
         from ipywidgets import HTML, VBox, Layout
         from IPython.display import display
