@@ -6,7 +6,6 @@ from ray_release.result import Result
 from ray_release.alerts import (
     default,
     long_running_tests,
-    rllib_tests,
     tune_tests,
     xgboost_tests,
 )
@@ -21,7 +20,6 @@ result_to_handle_map = {
         long_running_tests.handle_result,
         True,
     ),
-    "rllib_tests": (rllib_tests.handle_result, False),
     "tune_tests": (tune_tests.handle_result, True),
     "xgboost_tests": (xgboost_tests.handle_result, True),
 }
