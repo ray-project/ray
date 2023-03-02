@@ -974,6 +974,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       RAY_LOG(FATAL) << "Worker not returned to the idle pool after being used. This may "
                         "cause a worker leak, worker id:"
                      << worker->WorkerId();
+    } else {
+      RAY_LOG(INFO) << "Worker not returned to the idle pool after being used. This may "
+                       "cause a worker leak, worker id:"
+                    << worker->WorkerId();
     }
   }
 
