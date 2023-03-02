@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+import traceback
 import re
 
 import ray
@@ -342,7 +343,7 @@ def run(
 
     try:
         if is_config:
-            client.deploy_app(config, _blocking=gradio)
+            client.deploy_apps(config, _blocking=gradio)
             cli_logger.success("Submitted deploy config successfully.")
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
@@ -363,6 +364,15 @@ def run(
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
+        serve.shutdown()
+        sys.exit()
+
+    except Exception:
+        traceback.print_exc()
+        cli_logger.error(
+            "Received unexpected error, see console logs for more details. Shutting "
+            "down..."
+        )
         serve.shutdown()
         sys.exit()
 
