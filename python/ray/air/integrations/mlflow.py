@@ -36,6 +36,7 @@ def setup_mlflow(
     registry_uri: Optional[str] = None,
     experiment_id: Optional[str] = None,
     experiment_name: Optional[str] = None,
+    run_name: Optional[str] = None,
     tracking_token: Optional[str] = None,
     create_experiment_if_not_exists: bool = False,
     tags: Optional[Dict] = None,
@@ -166,7 +167,7 @@ def setup_mlflow(
         )
 
     experiment_id = experiment_id
-    experiment_name = experiment_name or default_trial_name
+    run_name = run_name or default_trial_name
 
     # Setup mlflow
     mlflow_util = _MLflowLoggerUtil()
@@ -180,7 +181,7 @@ def setup_mlflow(
     )
 
     mlflow_util.start_run(
-        run_name=experiment_name,
+        run_name=run_name,
         tags=tags or mlflow_config.get("tags", None),
         set_active=True,
     )
