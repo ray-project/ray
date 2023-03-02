@@ -25,12 +25,14 @@ Text/NLP
 --------
 
 - :doc:`/ray-air/examples/huggingface_text_classification`: How to use Ray AIR to run Hugging Face Transformers fine-tuning on a text classification task.
+- :doc:`/ray-air/examples/gptj_batch_prediction`: How to use Ray AIR to do batch prediction with the Hugging Face Transformers GPT-J model.
 
 Image/CV
 --------
 
 - :doc:`/ray-air/examples/torch_image_example`
 - :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
+- :doc:`/ray-air/examples/stablediffusion_batch_prediction`: How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model.
 
 Logging & Observability
 -----------------------
