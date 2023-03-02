@@ -1,6 +1,7 @@
 let panels = [];
 let tags = [];
 
+
 window.addEventListener('load', () => {
 
     $("div.tag").css("margin-bottom", "10px");
@@ -53,20 +54,22 @@ window.addEventListener('load', () => {
           });
 
           // If the "all" button is clicked
-          allButton.addEventListener('click', () => {
+          if (allButton) {
+              allButton.addEventListener('click', () => {
 
-              // Activate the "all" button
-              allButton.classList.replace('btn-outline-primary', 'btn-primary');
+                  // Activate the "all" button
+                  allButton.classList.replace('btn-outline-primary', 'btn-primary');
 
-              // Deactivate all other buttons
-              for (const tag of tags) {
-                  tag.classList.replace('btn-primary', 'btn-outline-primary');
-              }
-              // And show all panels
-              for (const panel of panels) {
-                  panel.style.cssText = 'display: flex !important';
-              }
-          });
+                  // Deactivate all other buttons
+                  for (const tag of tags) {
+                      tag.classList.replace('btn-primary', 'btn-outline-primary');
+                  }
+                  // And show all panels
+                  for (const panel of panels) {
+                      panel.style.cssText = 'display: flex !important';
+                  }
+              });
+          }
 
           tags.forEach(tag => {
               tag.addEventListener('click', () => {
@@ -97,5 +100,37 @@ window.addEventListener('load', () => {
               });
           });
       });
+
+    const searchInput = document.getElementById("searchInput");
+    const filterButton = document.getElementById("filterButton");
+
+    if (filterButton) {
+        filterButton.addEventListener('click', function (event) {
+            const query = searchInput.value.toLowerCase();
+            const panels = document.querySelectorAll('.d-flex.docutils');
+
+            panels.forEach(item => {
+                let context = item.textContent + item.dataset.tags;
+                context = context.toLowerCase();
+                if (context.includes(query)) {
+                    item.style.cssText = 'display: flex !important';
+                } else {
+                    item.style.cssText = 'display: none !important'
+                }
+            });
+        });
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener("keyup", function (event) {
+            event.preventDefault();
+            if (event.keyCode === 13) {
+                filterButton.click();
+            }
+        });
+    }
+
 });
+
+
 

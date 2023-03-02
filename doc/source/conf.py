@@ -332,7 +332,7 @@ nb_render_priority = {
 }
 
 tag_mapping = {
-    # Tags for use-cases gallery
+    # Tags for global examples gallery
     "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
     "batchActorPool": "Prediction",
     "batchCore": "Prediction",
@@ -445,6 +445,9 @@ def setup(app):
 
     # tag filtering system
     app.add_js_file("js/tags.js")
+
+    # example wizard
+    app.add_js_file("js/wizard.js")
 
 
 redoc = [
