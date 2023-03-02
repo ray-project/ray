@@ -694,6 +694,7 @@ class Algorithm(Trainable):
             # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_spec = local_worker.marl_module_spec
+            breakpoint()
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 

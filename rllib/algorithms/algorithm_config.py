@@ -2794,6 +2794,8 @@ class AlgorithmConfig(_Config):
         # this function to map policy_dict to marl_module_specs anymore. The module
         # spec will be directly given by the user or inferred from env and spaces.
 
+        # TODO (Kourosh): Raise an error if the config is not frozen (validated)
+
         # If the module is single-agent convert it to multi-agent spec
         if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
             marl_module_spec = MultiAgentRLModuleSpec(
@@ -2825,10 +2827,13 @@ class AlgorithmConfig(_Config):
             raise ValueError("Policy dict and module spec have different keys!")
 
         # fill in the missing values from the module spec
+        default_spec = self.get_default_rl_module_spec()
         for module_id in policy_dict:
             policy_spec = policy_dict[module_id]
             module_spec = marl_module_spec.module_specs[module_id]
 
+            if module_spec.module_class is None:
+                module_spec.module_class = default_spec.module_class
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:

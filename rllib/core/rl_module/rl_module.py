@@ -396,13 +396,14 @@ class RLModule(abc.ABC):
         module.set_state(state["state"])
         return module
 
-    @abc.abstractmethod
+
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Reserved API, Makes the module distributed."""
+        raise NotImplementedError
 
-    @abc.abstractmethod
     def is_distributed(self) -> bool:
         """Reserved API, Returns True if the module is distributed."""
+        raise NotImplementedError
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""

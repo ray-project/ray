@@ -35,6 +35,11 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
 from ray.rllib.utils.test_utils import check_learning_achieved
 
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
@@ -176,7 +181,8 @@ class SelfPlayCallback(DefaultCallbacks):
                         np.random.choice(list(range(1, self.current_opponent + 1)))
                     )
                 )
-
+            
+            breakpoint()
             new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
                 policy_cls=type(algorithm.get_policy("main")),
@@ -201,7 +207,7 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
@@ -239,6 +245,15 @@ if __name__ == "__main__":
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(
+            rl_module_spec = MultiAgentRLModuleSpec(
+                module_specs = {
+                    # This will grab the default from the PPOConfig (it's empty)
+                    "main": SingleAgentRLModuleSpec(), 
+                    "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                }
+            )
+        )
     )
 
     stop = {
