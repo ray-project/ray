@@ -143,7 +143,7 @@ class PPOCatalog(Catalog):
         action_distribution_cls = self.action_dist_cls_dict[framework]
         self.pi_head_config.output_dim = (
             action_distribution_cls.required_model_output_shape(
-                action=self.action_space, config=self.model_config_dict
+                space=self.action_space, config=self.model_config_dict
             )[0]
         )
         return self.pi_head_config.build(framework=framework)
