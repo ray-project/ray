@@ -23,7 +23,7 @@ class Result:
 
     The constructor is a private API.
 
-    Args:
+    Attributes:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.

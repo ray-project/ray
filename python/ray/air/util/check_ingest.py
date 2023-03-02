@@ -24,6 +24,19 @@ class DummyTrainer(DataParallelTrainer):
 
     This is useful for debugging data ingest problem. This trainer supports normal
     scaling options same as any other Trainer (e.g., num_workers, use_gpu).
+
+    Args:
+        scaling_config: Configuration for how to scale training. This is the same
+            as for :class:`~ray.train.base_trainer.BaseTrainer`.
+        num_epochs: How many many times to iterate through the datasets for.
+        prefetch_blocks: The number of blocks to prefetch ahead of the
+            current block during the scan. This is the same as
+            :meth:`~ray.data.dataset.Dataset.iter_batches`
+        time_preprocessing_separately: Whether to time the preprocessing separately
+            from actual iteration during training. If set to True, preprocessing
+            execution is fully executed before training begins and the preprocessing
+            time is printed out. Defaults to False, which mimics the actual behavior of
+            Trainers.
     """
 
     def __init__(
@@ -33,7 +46,8 @@ class DummyTrainer(DataParallelTrainer):
         num_epochs: int = 1,
         prefetch_blocks: int = 1,
         batch_size: Optional[int] = 4096,
-        **kwargs
+        time_preprocessing_separately: bool = False,
+        **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
@@ -43,21 +57,27 @@ class DummyTrainer(DataParallelTrainer):
             ),
             *args,
             scaling_config=scaling_config,
-            **kwargs
+            **kwargs,
         )
+        self.time_preprocessing_separately = time_preprocessing_separately
 
     def preprocess_datasets(self):
         print("Starting dataset preprocessing")
-        start = time.perf_counter()
         super().preprocess_datasets()
-        print("Preprocessed datasets in", time.perf_counter() - start, "seconds")
-        if self.preprocessor:
-            print("Preprocessor", self.preprocessor)
-            print(
-                "Preprocessor transform stats:\n\n{}".format(
-                    self.preprocessor.transform_stats()
+        if self.time_preprocessing_separately:
+            for dataset_name, ds in self.datasets.items():
+                start = time.perf_counter()
+                # Force execution to time preprocessing since Datasets are lazy by
+                # default.
+                ds.fully_executed()
+                print(
+                    f"Preprocessed {dataset_name} in",
+                    time.perf_counter() - start,
+                    "seconds",
                 )
-            )
+                if self.preprocessor:
+                    print("Preprocessor", self.preprocessor)
+                    print("Preprocessor transform stats:\n\n{}".format(ds.stats()))
 
     @staticmethod
     def make_train_loop(
