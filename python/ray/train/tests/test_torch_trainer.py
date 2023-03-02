@@ -248,7 +248,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 
 
 @pytest.mark.parametrize(
-    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
+    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [[0, 1]])]
 )
 def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
