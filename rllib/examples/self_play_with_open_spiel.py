@@ -182,12 +182,12 @@ class SelfPlayCallback(DefaultCallbacks):
                     )
                 )
 
-            breakpoint()
             new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
                 policy_cls=type(algorithm.get_policy("main")),
                 policy_mapping_fn=policy_mapping_fn,
             )
+            breakpoint()
 
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will

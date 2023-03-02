@@ -71,7 +71,7 @@ class TorchLearner(Learner):
                 self.get_parameters(self._module[key]),
                 torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
             )
-            for key in self._module.keys()
+            for key in self._module.keys() if isinstance(self._module[key], nn.Module)
         ]
 
     @override(Learner)
@@ -157,11 +157,13 @@ class TorchLearner(Learner):
         )
 
         # we need to ddpify the module that was just added to the pool
-        self._module[module_id].to(self._device)
-        if self.distributed:
-            self._module.add_module(
-                module_id, TorchDDPRLModule(self._module[module_id]), override=True
-            )
+        module = self._module[module_id]
+        if isinstance(module, torch.nn.Module):
+            self._module[module_id].to(self._device)
+            if self.distributed:
+                self._module.add_module(
+                    module_id, TorchDDPRLModule(module), override=True
+                )
 
     @override(Learner)
     def build(self) -> None:
@@ -208,9 +210,13 @@ class TorchLearner(Learner):
                 self._module = TorchDDPRLModule(self._module)
             else:
                 for key in self._module.keys():
-                    self._module.add_module(
-                        key, TorchDDPRLModule(self._module[key]), override=True
-                    )
+                    if isinstance(self._module[key], torch.nn.Module):
+                        self._module.add_module(
+                            key, TorchDDPRLModule(self._module[key]), override=True
+                        )
+
+    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+        return isinstance(module, nn.Module)
 
     @override(Learner)
     def _make_module(self) -> MultiAgentRLModule:
@@ -224,4 +230,5 @@ class TorchLearner(Learner):
             module.to(self._device)
         else:
             for key in module.keys():
-                module[key].to(self._device)
+                if isinstance(module[key], torch.nn.Module):
+                    module[key].to(self._device)

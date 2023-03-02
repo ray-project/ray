@@ -85,7 +85,6 @@ class LearnerHPs:
 
     pass
 
-
 class Learner:
     """Base class for learners.
 
@@ -251,7 +250,7 @@ class Learner:
     def hps(self) -> LearnerHPs:
         """The hyper-parameters for the learner."""
         return self._hps
-
+    
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
@@ -394,8 +393,17 @@ class Learner:
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
         module_learner_stats = defaultdict(dict)
-        for module_id in self.module.keys():
-            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
+        # batch.shallow_keys() should contain the module ids that were suppose to be 
+        # trained in this iteration. Make sure the keys exist in the module.
+        for module_id in batch.shallow_keys():
+            if module_id not in self._module.keys():
+                raise ValueError(
+                    f"Module id {module_id} not found in the module. "
+                    f"Available module ids: {self._module.keys()}"
+                )
+            module_learner_stats[module_id] = {
+                LEARNER_STATS_KEY: loss_numpy[module_id]
+            }
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
@@ -443,9 +451,12 @@ class Learner:
                 )
 
             def set_optimizer_fn(module):
-                optimizer = self.get_optimizer_obj(module, optimizer_cls)
-                parameters = self.get_parameters(module)
-                return [(parameters, optimizer)]
+                param_optims = []
+                if self._is_module_compatible_with_learner(module):
+                    optimizer = self.get_optimizer_obj(module, optimizer_cls)
+                    parameters = self.get_parameters(module)
+                    param_optims = [(parameters, optimizer)]
+                return param_optims
 
         for param_seq, optimizer in set_optimizer_fn(module):
             self._optim_to_param[optimizer] = []
@@ -467,16 +478,17 @@ class Learner:
         self.__check_if_build_called()
         module = self._module[module_id]
 
-        parameters = self.get_parameters(module)
-        for param in parameters:
-            param_ref = self.get_param_ref(param)
-            if param_ref in self._params:
-                del self._params[param_ref]
-            if param_ref in self._param_to_optim:
-                optimizer = self._param_to_optim[param_ref]
-                if optimizer in self._optim_to_param:
-                    del self._optim_to_param[optimizer]
-                del self._param_to_optim[param_ref]
+        if self._is_module_compatible_with_learner(module):
+            parameters = self.get_parameters(module)
+            for param in parameters:
+                param_ref = self.get_param_ref(param)
+                if param_ref in self._params:
+                    del self._params[param_ref]
+                if param_ref in self._param_to_optim:
+                    optimizer = self._param_to_optim[param_ref]
+                    if optimizer in self._optim_to_param:
+                        del self._optim_to_param[optimizer]
+                    del self._param_to_optim[param_ref]
 
         self._module.remove_module(module_id)
 
@@ -569,7 +581,11 @@ class Learner:
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
+    def additional_update(
+        self, 
+        module_ids_to_update: Sequence[ModuleID] = None,
+        **kwargs
+    ) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates to this Trainer.
 
         For example, this could be used to do a polyak averaging update
@@ -603,16 +619,18 @@ class Learner:
                     self.learner.additional_update(tau=0.01)
 
         Args:
-            *args: Arguments to use for the update.
+            module_ids_to_update: The ids of the modules to update. If None, all
+                modules will be updated.
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        for module_id in self._module.keys():
+        module_ids = module_ids_to_update or self._module.keys()
+        for module_id in module_ids:
             module_results = self.additional_update_per_module(
-                module_id, *args, **kwargs
+                module_id, **kwargs
             )
             results_all_modules[module_id] = module_results
 
@@ -620,7 +638,7 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     def additional_update_per_module(
-        self, module_id: str, *args, **kwargs
+        self, module_id: str, **kwargs
     ) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -628,7 +646,6 @@ class Learner:
 
         Args:
             module_id: The id of the module to update.
-            *args: Arguments to use for the update.
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
@@ -729,6 +746,19 @@ class Learner:
         self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
+
+    @abc.abstractmethod
+    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+        """Check whether the module is compatible with the learner. 
+        
+        Are they both torch or tf? If there is a random RLModule for example, it will not be a torch or tf module. Therefore we should not consider it during gradient based optimization. 
+
+        Args:
+            module: The module to check.
+
+        Returns:
+            True if the module is compatible with the learner.
+        """
 
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the learner.
