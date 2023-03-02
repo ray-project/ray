@@ -226,12 +226,12 @@ class GBDTTrainer(BaseTrainer):
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
 
-    def preprocess_datasets(self) -> None:
-        super().preprocess_datasets()
-
+    def _repartition_datasets_to_match_num_actors(self):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
-        # TODO: Move this logic to the respective libraries
+        # This is only applicable for xgboost-ray<0.1.14. The version check
+        # is done in subclasses to ensure that xgboost-ray doesn't need to be
+        # imported here.
         for dataset_key, dataset in self.datasets.items():
             if dataset.num_blocks() < self._ray_params.num_actors:
                 if dataset.size_bytes() > _WARN_REPARTITION_THRESHOLD:
