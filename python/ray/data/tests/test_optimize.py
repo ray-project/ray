@@ -508,7 +508,9 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
             )
 
 
-def test_optimize_incompatible_stages(ray_start_regular_shared):
+def test_optimize_incompatible_stages(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
@@ -548,7 +550,9 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
     )
 
 
-def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
+def test_optimize_callable_classes(shutdown_only, tmp_path):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
@@ -704,6 +708,15 @@ def test_optimize_lazy_reuse_base_data(
     ds.take()
     num_reads = ray.get(counter.get.remote())
     assert num_reads == num_blocks, num_reads
+
+
+def test_require_preserve_order(ray_start_regular_shared):
+    ds = ray.data.range(100).map_batches(lambda x: x).sort()
+    assert ds._plan.require_preserve_order()
+    ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
+    assert ds2._plan.require_preserve_order()
+    ds3 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
+    assert not ds3._plan.require_preserve_order()
 
 
 if __name__ == "__main__":

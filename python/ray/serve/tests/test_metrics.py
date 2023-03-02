@@ -56,9 +56,9 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
             "serve_deployment_request_counter",
             "serve_deployment_replica_starts",
             # histogram
-            "deployment_processing_latency_ms_bucket",
-            "deployment_processing_latency_ms_count",
-            "deployment_processing_latency_ms_sum",
+            "serve_deployment_processing_latency_ms_bucket",
+            "serve_deployment_processing_latency_ms_count",
+            "serve_deployment_processing_latency_ms_sum",
             "serve_deployment_processing_latency_ms",
             # gauge
             "serve_replica_processing_queries",
@@ -120,6 +120,7 @@ def test_http_metrics(serve_start_shutdown):
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
     expected_metrics.append("serve_num_deployment_http_error_requests")
+    expected_metrics.append("serve_http_request_latency_ms")
 
     @serve.deployment(name="A")
     class A:

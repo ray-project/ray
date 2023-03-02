@@ -4,6 +4,7 @@ import numpy as np
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY
 
 
 class BaseTestingLearner(Learner):
@@ -24,6 +25,6 @@ class BaseTestingLearner(Learner):
             m = self._module[module_id]
             parameters = convert_to_numpy(self.get_parameters(m))
             mean_ws[module_id] = np.mean([w.mean() for w in parameters])
-        results["mean_weight"] = mean_ws
+            results[module_id][LEARNER_STATS_KEY]["mean_weight"] = mean_ws[module_id]
 
         return results

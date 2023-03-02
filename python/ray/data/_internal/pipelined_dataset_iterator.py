@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Dict, Optional, Union, Iterator
+import numpy as np
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, Iterator
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
@@ -56,27 +57,24 @@ class PipelinedDatasetIterator(DatasetIterator):
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         drop_last: bool = False,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator["TorchTensorBatchType"]:
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
 
         ds = self._get_next_dataset()
-        for batch in ds.iter_batches(
+        return ds.iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
             drop_last=drop_last,
+            collate_fn=collate_fn,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_torch_tensor_batch(
-                batch,
-                dtypes=dtypes,
-                device=device,
-            )
+        )
 
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()

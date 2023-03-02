@@ -236,19 +236,20 @@ def check_input_specs(
                 spec = getattr(self, input_spec, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
                     raise ValueError(f"object {self} has no attribute {input_spec}.")
-                spec = convert_to_canonical_format(spec)
-                checked_data = _validate(
-                    cls_instance=self,
-                    method=func,
-                    data=input_data,
-                    spec=spec,
-                    filter=filter,
-                    tag="input",
-                )
+                if spec is not None:
+                    spec = convert_to_canonical_format(spec)
+                    checked_data = _validate(
+                        cls_instance=self,
+                        method=func,
+                        data=input_data,
+                        spec=spec,
+                        filter=filter,
+                        tag="input",
+                    )
 
-                if filter and isinstance(checked_data, NestedDict):
-                    # filtering should happen regardless of cache
-                    checked_data = checked_data.filter(spec)
+                    if filter and isinstance(checked_data, NestedDict):
+                        # filtering should happen regardless of cache
+                        checked_data = checked_data.filter(spec)
 
             output_data = func(self, checked_data, **kwargs)
 
@@ -322,14 +323,15 @@ def check_output_specs(
                 spec = getattr(self, output_spec, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
                     raise ValueError(f"object {self} has no attribute {output_spec}.")
-                spec = convert_to_canonical_format(spec)
-                _validate(
-                    cls_instance=self,
-                    method=func,
-                    data=output_data,
-                    spec=spec,
-                    tag="output",
-                )
+                if spec is not None:
+                    spec = convert_to_canonical_format(spec)
+                    _validate(
+                        cls_instance=self,
+                        method=func,
+                        data=output_data,
+                        spec=spec,
+                        tag="output",
+                    )
 
             if cache and func.__name__ not in self.__checked_output_specs_cache__:
                 self.__checked_output_specs_cache__[func.__name__] = True
