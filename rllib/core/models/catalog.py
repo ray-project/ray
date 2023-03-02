@@ -1,5 +1,6 @@
 from typing import Optional, Mapping, Any
 
+import numpy as np
 import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
@@ -23,7 +24,6 @@ from ray.rllib.models.torch.torch_distributions import (
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.typing import ModelConfigDict
 
 
 class Catalog:
@@ -104,6 +104,12 @@ class Catalog:
             model_config_dict=model_config_dict,
             view_requirements=view_requirements,
         )
+
+        # Get a mapping from framework to action distribution class
+        self.action_dist_cls_dict = self.get_action_dist_cls_dict(
+            action_space=action_space,
+        )
+
         # The dimensions of the latent vector that is output by the encoder and fed
         # to the heads.
         self.latent_dim = self.encoder_config.output_dim
@@ -245,7 +251,6 @@ class Catalog:
     def get_action_dist_cls_dict(
         cls,
         action_space: gym.Space,
-        model_config_dict: ModelConfigDict,
         deterministic: Optional[bool] = False,
     ) -> Mapping[str, Any]:
         """Returns a mapping from framework to distribution class.
@@ -258,25 +263,27 @@ class Catalog:
 
         Args:
             action_space: Action space of the target gym env.
-            model_config_dict: Optional model config.
-            deterministic: Whether to return a Deterministic distribution instead of
-                a diagonal Gaussian one for Box spaces.
+            deterministic: Whether to return a Deterministic distribution on input
+                logits instead of a stochastic distributions. For example for Discrete
+                spaces, the stochastic is a Categorical distribution with output logits,
+                while the deterministic distribution will be to output the argmax of
+                logits directly.
 
         Returns:
                 Mapping from framework to distribution class.
         """
-        assert not model_config_dict.get("custom_action_dist"), (
-            "Specify a custom action "
-            "distribution by overwriting "
-            "Catalog.get_action_distribution."
-        )
+        distribution_dicts = {
+            "deterministic": {"torch": TorchDeterministic, "tf": TfDeterministic},
+            "gaussian": {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
+            "categorical": {"torch": TorchCategorical, "tf": TfCategorical},
+        }
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
-            if action_space.dtype.name.startswith("int"):
-                # TODO(Artur): Support multi-discrete.
-                raise NotImplementedError(
-                    "MultiDiscrete/integer Box spaces not yet " "supported."
+            if action_space.dtype.char in np.typecodes["AllInteger"]:
+                raise ValueError(
+                    "Box(..., `int`) action spaces are not supported. "
+                    "Use MultiDiscrete  or Box(..., `float`)."
                 )
             else:
                 if len(action_space.shape) > 1:
@@ -288,16 +295,13 @@ class Catalog:
                         "using a Tuple action space, or the multi-agent API."
                     )
                 if deterministic:
-                    return {"torch": TorchDeterministic, "tf": TfDeterministic}
+                    return distribution_dicts["deterministic"]
                 else:
-                    return {
-                        "torch": TorchDiagGaussian,
-                        "tf": TfDiagGaussian,
-                    }
+                    return distribution_dicts["gaussian"]
 
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            return {"torch": TorchCategorical, "tf": TfCategorical}
+            return distribution_dicts["categorical"]
 
         # Tuple/Dict Spaces -> MultiAction.
         elif isinstance(action_space, (Tuple, Dict)):
@@ -317,3 +321,19 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
+
+    def get_action_dist_cls(self, framework: str):
+        """Get the action distribution class.
+
+        The default behavior is to get the action distribution from the
+        action_dist_cls_dict. This can be overridden to build a custom action
+        distribution as a means of configuring the behavior of a PPORLModuleBase
+        implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf".
+
+        Returns:
+            The action distribution.
+        """
+        return self.action_dist_cls_dict[framework]

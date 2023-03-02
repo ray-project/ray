@@ -66,12 +66,6 @@ class PPOCatalog(Catalog):
             shared=self.model_config_dict["vf_share_layers"],
         )
 
-        # Get a mapping from framework to action distribution class
-        self.action_dist_cls_dict = self.get_action_dist_cls_dict(
-            action_space=action_space,
-            model_config_dict=self.model_config_dict,
-        )
-
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
@@ -162,19 +156,3 @@ class PPOCatalog(Catalog):
             The value function head.
         """
         return self.vf_head_config.build(framework=framework)
-
-    def get_action_dist_cls(self, framework: str):
-        """Get the action distribution class.
-
-        The default behavior is to get the action distribution from the
-        action_dist_cls_dict. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
-        implementation.
-
-        Args:
-            framework: The framework to use. Either "torch" or "tf".
-
-        Returns:
-            The action distribution.
-        """
-        return self.action_dist_cls_dict[framework]
