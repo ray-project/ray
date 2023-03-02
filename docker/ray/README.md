@@ -46,7 +46,7 @@ Examples tags:
 
 Ray 2.3 will be the first release for which arm64 images are released. These images will have the `-aarch64` suffix.
 
-There won't be a `:latest-aarch64` image, instead `:2.3.0-aarch64` should be used explicitly. This is because
+There won't be a `:latest-aarch64` image, instead `:2.3.1-aarch64` should be used explicitly. This is because
 we may remove suffixes in the next release.
 
 For Ray 2.4, we aim to have support for multiplatform images. This means that specifying the suffix
