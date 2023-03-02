@@ -396,7 +396,6 @@ class RLModule(abc.ABC):
         module.set_state(state["state"])
         return module
 
-
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Reserved API, Makes the module distributed."""
         raise NotImplementedError

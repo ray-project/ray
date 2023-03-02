@@ -181,7 +181,7 @@ class SelfPlayCallback(DefaultCallbacks):
                         np.random.choice(list(range(1, self.current_opponent + 1)))
                     )
                 )
-            
+
             breakpoint()
             new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
@@ -246,10 +246,10 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .rl_module(
-            rl_module_spec = MultiAgentRLModuleSpec(
-                module_specs = {
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs={
                     # This will grab the default from the PPOConfig (it's empty)
-                    "main": SingleAgentRLModuleSpec(), 
+                    "main": SingleAgentRLModuleSpec(),
                     "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
                 }
             )
