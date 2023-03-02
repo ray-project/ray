@@ -18,15 +18,17 @@ class LightningCheckpoint(Checkpoint):
     The users will have no access to model in LightningTrainer. We only support file-based checkpoint.
     """
 
-    @classmethod
-    def from_bytes(cls, data: bytes) -> "Checkpoint":
-        raise NotImplementedError(
-            "LightningCheckpoint doesn't support loading from_bytes()! Please use from_directory() or from_uri() instead.")
+    # TODO(yunxuanx): We cannot directly disable from_bytes() and from_dict(), the base Checkpoint class still needs them.
+    #                 How to warn users not to use LightningCheckpoint.from_dict()?
+    # @classmethod
+    # def from_bytes(cls, data: bytes) -> "Checkpoint":
+    #     raise NotImplementedError(
+    #         "LightningCheckpoint doesn't support loading from_bytes()! Please use from_directory() or from_uri() instead.")
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "Checkpoint":
-        raise NotImplementedError(
-            "LightningCheckpoint doesn't support loading from_dict()! Please use from_directory() or from_uri() instead.")
+    # @classmethod
+    # def from_dict(cls, data: dict) -> "Checkpoint":
+    #     raise NotImplementedError(
+    #         "LightningCheckpoint doesn't support loading from_dict()! Please use from_directory() or from_uri() instead.")
 
     def get_model(self, model_class: pl.LightningModule, model_init_config: Dict["str", Any] = {}) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
