@@ -247,7 +247,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 #     assert "You have reported a checkpoint" in output
 
 
-@pytest.mark.parametrize("num_gpus_per_worker,expected_devices", [0.5, 1, 2])
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
@@ -278,7 +278,7 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
             # index should be either 0 or 1. It doesn't matter which.
             devices = train.torch.get_device()
             if isinstance(devices, list):
-                assert [device.index for device in devices] == [0, 1]
+                assert sorted([device.index for device in devices]) == [0, 1]
             else:
                 assert train.torch.get_device().index == 0
 
