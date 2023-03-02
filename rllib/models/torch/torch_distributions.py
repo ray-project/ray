@@ -123,7 +123,7 @@ class TorchCategorical(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TorchCategorical":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
         return TorchCategorical(logits=logits)
 
 
@@ -190,7 +190,7 @@ class TorchDiagGaussian(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TorchDiagGaussian":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
         loc, log_std = logits.chunk(2, dim=-1)
         scale = log_std.exp()
         return TorchDiagGaussian(loc=loc, scale=scale)
@@ -270,5 +270,5 @@ class TorchDeterministic(Distribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TorchDeterministic":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
         return TorchDeterministic(loc=logits)
