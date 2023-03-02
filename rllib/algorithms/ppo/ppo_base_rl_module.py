@@ -18,6 +18,7 @@ from ray.rllib.core.models.base import ActorCriticEncoder
 @ExperimentalAPI
 class PPORLModuleBase(RLModule, abc.ABC):
     framework = None
+    default_catalog_class = PPOCatalog
 
     def __init__(self, config: RLModuleConfig):
         super().__init__()

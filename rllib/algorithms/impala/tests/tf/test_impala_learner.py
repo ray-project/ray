@@ -89,7 +89,7 @@ class TestImpalaTfLearner(unittest.TestCase):
                     module_class=algo_config.rl_module_spec.module_class,
                     observation_space=policy.observation_space,
                     action_space=policy.action_space,
-                    model_config=policy.config["model"],
+                    model_config_dict=policy.config["model"],
                 )
             )
             learner_group_config.num_learner_workers = 0

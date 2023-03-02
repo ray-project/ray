@@ -83,7 +83,7 @@ class MultiAgentRLModule(RLModule):
                         module_class="RLModule1",
                         observation_space=gym.spaces.Box(...),
                         action_space=gym.spaces.Discrete(...),
-                        model_config={hidden_dim: 256}
+                        model_config_dict={hidden_dim: 256}
                     )
                     "module_2": SingleAgentRLModuleSpec(
                         module_class="RLModule2",
@@ -102,13 +102,13 @@ class MultiAgentRLModule(RLModule):
                         module_class="RLModule1",
                         observation_space=gym.spaces.Box(...),
                         action_space=gym.spaces.Discrete(...),
-                        model_config={hidden_dim: 256}
+                        model_config_dict={hidden_dim: 256}
                     )
                     "module_2": SingleAgentRLModuleSpec(
                         module_class="RLModule2",
                         observation_space=gym.spaces.Box(...),
                         action_space=gym.spaces.Box(...), # Inherited
-                        model_config={hidden_dim: 32} # Inherited
+                        model_config_dict={hidden_dim: 32} # Inherited
                     }
                 },
             }

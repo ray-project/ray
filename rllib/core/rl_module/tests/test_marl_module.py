@@ -43,11 +43,11 @@ class TestMARLModule(unittest.TestCase):
             "modules": {
                 "module1": SingleAgentRLModuleSpec(
                     module_class=DiscreteBCTorchModule,
-                    model_config={"fcnet_hiddens": [64]},
+                    model_config_dict={"fcnet_hiddens": [64]},
                 ),
                 "module2": SingleAgentRLModuleSpec(
                     module_class=DiscreteBCTorchModule,
-                    model_config={"fcnet_hiddens": [32]},
+                    model_config_dict={"fcnet_hiddens": [32]},
                 ),
             },
             "observation_space": env.observation_space,  # this is common
@@ -163,10 +163,10 @@ class TestMARLModule(unittest.TestCase):
         config = {
             "modules": {
                 "1": SingleAgentRLModuleSpec(
-                    **{"module_class": "foo", "model_config": "bar"}
+                    **{"module_class": "foo", "model_config_dict": "bar"}
                 ),
                 "2": SingleAgentRLModuleSpec(
-                    **{"module_class": "foo2", "model_config": "bar2"}
+                    **{"module_class": "foo2", "model_config_dict": "bar2"}
                 ),
             },
             "observation_space": "obs_space",
@@ -177,7 +177,7 @@ class TestMARLModule(unittest.TestCase):
             "1": SingleAgentRLModuleSpec(
                 **{
                     "module_class": "foo",
-                    "model_config": "bar",
+                    "model_config_dict": "bar",
                     "observation_space": "obs_space",
                     "action_space": "action_space",
                 }
@@ -185,7 +185,7 @@ class TestMARLModule(unittest.TestCase):
             "2": SingleAgentRLModuleSpec(
                 **{
                     "module_class": "foo2",
-                    "model_config": "bar2",
+                    "model_config_dict": "bar2",
                     "observation_space": "obs_space",
                     "action_space": "action_space",
                 }
@@ -199,13 +199,13 @@ class TestMARLModule(unittest.TestCase):
                 "1": SingleAgentRLModuleSpec(
                     **{
                         "module_class": "foo",
-                        "model_config": "bar",
+                        "model_config_dict": "bar",
                         "observation_space": "obs_space1",  # won't get overwritten
                         "action_space": "action_space1",  # won't get overwritten
                     }
                 ),
                 "2": SingleAgentRLModuleSpec(
-                    **{"module_class": "foo2", "model_config": "bar2"}
+                    **{"module_class": "foo2", "model_config_dict": "bar2"}
                 ),
             },
             "observation_space": "obs_space",
@@ -216,7 +216,7 @@ class TestMARLModule(unittest.TestCase):
             "1": SingleAgentRLModuleSpec(
                 **{
                     "module_class": "foo",
-                    "model_config": "bar",
+                    "model_config_dict": "bar",
                     "observation_space": "obs_space1",
                     "action_space": "action_space1",
                 }
@@ -224,7 +224,7 @@ class TestMARLModule(unittest.TestCase):
             "2": SingleAgentRLModuleSpec(
                 **{
                     "module_class": "foo2",
-                    "model_config": "bar2",
+                    "model_config_dict": "bar2",
                     "observation_space": "obs_space",
                     "action_space": "action_space",
                 }

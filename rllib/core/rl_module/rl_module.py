@@ -36,13 +36,13 @@ class SingleAgentRLModuleSpec:
         module_class: ...
         observation_space: ...
         action_space: ...
-        model_config: ...
+        model_config_dict: ...
     """
 
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional["gym.Space"] = None
     action_space: Optional["gym.Space"] = None
-    model_config: Optional[Dict[str, Any]] = None
+    model_config_dict: Optional[Dict[str, Any]] = None
 
     def build(self) -> "RLModule":
 
@@ -50,13 +50,13 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Observation space must be specified.")
         if self.action_space is None:
             raise ValueError("Action space must be specified.")
-        if self.model_config is None:
+        if self.model_config_dict is None:
             raise ValueError("Model config must be specified.")
 
         return self.module_class.from_model_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            model_config_dict=self.model_config,
+            model_config_dict=self.model_config_dict,
         )
 
 
@@ -193,7 +193,7 @@ class RLModule(abc.ABC):
         observation_space: gym.Space,
         action_space: gym.Space,
         *,
-        model_config: Mapping[str, Any],
+        model_config_dict: Mapping[str, Any],
     ) -> "RLModule":
         """Creates a RLModule instance from a model config dict and spaces.
 
@@ -216,7 +216,7 @@ class RLModule(abc.ABC):
                     cls,
                     observation_space: gym.Space,
                     action_space: gym.Space,
-                    model_config: Mapping[str, Any],
+                    model_config_dict: Mapping[str, Any],
                 ):
                     return cls(
                         input_dim=observation_space.shape[0],
@@ -226,14 +226,14 @@ class RLModule(abc.ABC):
             module = MyModule.from_model_config(
                 observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
                 action_space=gym.spaces.Discrete(2),
-                model_config={},
+                model_config_dict={},
             )
 
 
         Args:
             observation_space: The observation space of the env.
             action_space: The action space of the env.
-            model_config: The model config dict.
+            model_config_dict: The model config dict.
         """
         raise NotImplementedError
 
