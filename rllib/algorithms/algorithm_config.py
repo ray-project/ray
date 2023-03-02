@@ -130,9 +130,11 @@ class AlgorithmConfig(_Config):
         ...     ).fit()
     """
 
-    # The default policy mapping function to use if None provided.
-    # Map any agent ID to "default_policy".
-    DEFAULT_POLICY_MAPPING_FN = lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
+    @staticmethod
+    def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
+        # The default policy mapping function to use if None provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_POLICY_ID
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":

@@ -273,7 +273,7 @@ class Algorithm(Trainable):
             # User did not provide unserializable functions with this call.
             if policy_mapping_fn is None:
                 # Only DEFAULT_POLICY_ID present in this algorithm, provide default
-                # implementations of these two functions. 
+                # implementations of these two functions.
                 if checkpoint_info["policy_ids"] == {DEFAULT_POLICY_ID}:
                     policy_mapping_fn = AlgorithmConfig.DEFAULT_POLICY_MAPPING_FN
                 # Provide meaningful error message.
@@ -2659,10 +2659,9 @@ class Algorithm(Trainable):
             if isinstance(state["algorithm_class"], str):
                 # Try deserializing from a full classpath.
                 # Or as a last resort: Tune registered algorithm name.
-                state["algorithm_class"] = (
-                    deserialize_type(state["algorithm_class"])
-                    or get_trainable_cls(state["algorithm_class"])
-                )
+                state["algorithm_class"] = deserialize_type(
+                    state["algorithm_class"]
+                ) or get_trainable_cls(state["algorithm_class"])
             # Compile actual config object.
             default_config = state["algorithm_class"].get_default_config()
             if isinstance(default_config, AlgorithmConfig):
@@ -2685,8 +2684,9 @@ class Algorithm(Trainable):
                 policies_to_train=policies_to_train,
                 **(
                     {"policy_mapping_fn": policy_mapping_fn}
-                    if policy_mapping_fn is not None else {}
-                )
+                    if policy_mapping_fn is not None
+                    else {}
+                ),
             )
             state["config"] = new_config
 
@@ -2698,9 +2698,8 @@ class Algorithm(Trainable):
                     checkpoint_info["checkpoint_dir"],
                     "policies",
                     pid,
-                    "policy_state." + (
-                        "msgpck" if checkpoint_info["format"] == "msgpack" else "pkl"
-                    ),
+                    "policy_state."
+                    + ("msgpck" if checkpoint_info["format"] == "msgpack" else "pkl"),
                 )
                 if not os.path.isfile(policy_state_file):
                     raise ValueError(

@@ -1,3 +1,4 @@
+import logging
 import json
 import os
 from packaging import version
@@ -7,8 +8,11 @@ from typing import Any, Dict, Union
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.util.annotations import PublicAPI
 from ray.rllib.utils.serialization import serialize_type
+from ray.util import log_once
+from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 # The current checkpoint version used by RLlib for Algorithm and Policy checkpoints.
 # History:
@@ -93,8 +97,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
             with open(os.path.join(checkpoint, "rllib_checkpoint.json")) as f:
                 rllib_checkpoint_info = json.load(fp=f)
             if "checkpoint_version" in rllib_checkpoint_info:
-                rllib_checkpoint_info["checkpoint_version"] = (
-                    version.Version(rllib_checkpoint_info["checkpoint_version"])
+                rllib_checkpoint_info["checkpoint_version"] = version.Version(
+                    rllib_checkpoint_info["checkpoint_version"]
                 )
             info.update(rllib_checkpoint_info)
             return info
@@ -194,7 +198,7 @@ def convert_to_msgpack_checkpoint(
     from ray.rllib.algorithms import Algorithm
     from ray.rllib.utils.policy import validate_policy_id
 
-    # Try to import msgpack and msgpack_numpy.    
+    # Try to import msgpack and msgpack_numpy.
     msgpack = try_import_msgpack(error=True)
 
     # Restore the Algorithm using the python version dependent checkpoint.
@@ -279,6 +283,7 @@ def try_import_msgpack(error: bool = False):
     try:
         import msgpack
         import msgpack_numpy
+
         # Make msgpack_numpy look like msgpack.
         msgpack_numpy.patch()
 

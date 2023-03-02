@@ -112,9 +112,14 @@ class TestCheckpointUtils(unittest.TestCase):
             pickle_state["algorithm_class"] == msgpack_state["algorithm_class"]
         )
         check(pickle_state["counters"], msgpack_state["counters"])
-        check(pickle_state["worker"]["policy_ids"], msgpack_state["worker"]["policy_ids"])
+        check(
+            pickle_state["worker"]["policy_ids"], msgpack_state["worker"]["policy_ids"]
+        )
         check(pickle_state["worker"]["filters"], msgpack_state["worker"]["filters"])
-        check(pickle_state["worker"]["policy_states"], msgpack_state["worker"]["policy_states"])
+        check(
+            pickle_state["worker"]["policy_states"],
+            msgpack_state["worker"]["policy_states"],
+        )
         # Make sure the (serialized) configs match 100%. Our `check` utility cannot
         # handle comparing types/classes.
         check(pickle_state["config"].serialize(), msgpack_state["config"].serialize())
