@@ -386,7 +386,7 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     """Split the list into `num_splits` lists.
 
     The splits will be even if the `num_splits` divides the length of list, otherwise
-    the remainder (supppose it's R) will be allocated to the first R splits (one for
+    the remainder (suppose it's R) will be allocated to the first R splits (one for
     each).
     This is the same as numpy.array_split(). The reason we make this a separate
     implementation is to allow the heterogeneity in the elements in the list.
