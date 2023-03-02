@@ -51,6 +51,7 @@ class ApplicationState:
         self.deploy_obj_ref = deploy_obj_ref
         self.app_msg = ""
         self.route_prefix = None
+        self.docs_path = None
 
         # This set tracks old deployments that are being deleted
         self.deployments_to_delete = set()
@@ -81,18 +82,30 @@ class ApplicationState:
 
         # Update route prefix for application
         num_route_prefixes = 0
+        num_docs_paths = 0
         for deploy_param in deployment_params:
-            if (
-                "route_prefix" in deploy_param
-                and deploy_param["route_prefix"] is not None
-            ):
+            if deploy_param.get("route_prefix") is not None:
                 self.route_prefix = deploy_param["route_prefix"]
                 num_route_prefixes += 1
-        assert num_route_prefixes <= 1, (
-            f"Found multiple route prefix from application {self.name},"
-            " Please specify only one route prefix for the application "
-            "to avoid this issue."
-        )
+
+            if deploy_param.get("docs_path") is not None:
+                self.docs_path = deploy_param["docs_path"]
+                num_docs_paths += 1
+        if num_route_prefixes > 1:
+            raise RayServeException(
+                f'Found multiple route prefix from application "{self.name}",'
+                " Please specify only one route prefix for the application "
+                "to avoid this issue."
+            )
+        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
+        # if user sets the docs path to None in their FastAPI app.
+        if num_docs_paths > 1:
+            raise RayServeException(
+                f'Found multiple deployments in application "{self.name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
+            )
 
         self.status = ApplicationStatus.DEPLOYING
         return cur_deployments_to_delete
@@ -265,6 +278,9 @@ class ApplicationStateManager:
                 deployment_timestamp=0,
             )
         return self._application_states[name].get_application_status_info()
+
+    def get_docs_path(self, app_name: str):
+        return self._application_states[app_name].docs_path
 
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
