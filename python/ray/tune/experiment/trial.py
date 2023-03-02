@@ -641,7 +641,7 @@ class Trial:
             )
         assert self.logdir
         logdir_path = Path(self.logdir)
-        if self._is_path_too_long(logdir_path):
+        if Trial._is_path_too_long(logdir_path):
             logger.warning(
                 "The path to the trial log directory is too long. "
                 "Consider using trial_dirname_creator to shorten the path. Path: "
