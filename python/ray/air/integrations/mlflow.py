@@ -165,7 +165,7 @@ def setup_mlflow(
             DeprecationWarning,
         )
 
-    experiment_id = experiment_id or default_trial_id
+    experiment_id = experiment_id
     experiment_name = experiment_name or default_trial_name
 
     # Setup mlflow
