@@ -59,6 +59,9 @@ class BulkDatasetIterator(DatasetIterator):
         return self._base_dataset.schema()
 
     def __getattr__(self, name):
+        if name == "_base_dataset":
+            return None
+
         # Warning for backwards compatibility. TODO: remove this method in 2.5.
         warnings.warn(
             "session.get_dataset_shard returns a ray.data.DatasetIterator "

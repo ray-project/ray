@@ -56,6 +56,9 @@ class PipelinedDatasetIterator(DatasetIterator):
         return self._base_dataset_pipeline.schema()
 
     def __getattr__(self, name):
+        if name == "_base_dataset_pipeline":
+            return None
+
         # Warning for backwards compatibility. TODO: remove this method in 2.5.
         warnings.warn(
             "session.get_dataset_shard returns a ray.data.DatasetIterator "
