@@ -1,7 +1,6 @@
 import os
 import numpy as np
 
-from torch.nn.modules import transformer
 os.environ['RAY_ML_DEV'] = "1"
 
 import ray
@@ -18,7 +17,7 @@ checkpoint_local = LightningCheckpoint.from_directory(ckpt_path)
 checkpoint_uri = "s3://anyscale-yunxuanx-demo/checkpoint_000008/"
 checkpoint_s3 = LightningCheckpoint.from_uri(checkpoint_uri)
 
-def predict_one(checkpoint, dataloader, use_gpu=False):
+def test_predictor(checkpoint, dataloader, use_gpu=False):
     model_init_config = {"config": LightningMNISTModelConfig}
     predictor = LightningPredictor.from_checkpoint(
         checkpoint=checkpoint, model=LightningMNISTClassifier, model_init_config=model_init_config, use_gpu=use_gpu)
@@ -26,7 +25,7 @@ def predict_one(checkpoint, dataloader, use_gpu=False):
     input_batch = batch[0].numpy()
     print(predictor.predict(input_batch))
 
-def batch_prediction(checkpoint):
+def test_batch_predictor(checkpoint):
     model_init_config = {"config": LightningMNISTModelConfig}
     batch_predictor = BatchPredictor(checkpoint, LightningPredictor, use_gpu=True, model=LightningMNISTClassifier, model_init_config=model_init_config)
 
@@ -70,12 +69,13 @@ if __name__ == "__main__":
     datamodule.setup()
     dataloader = datamodule.val_dataloader()
 
-    batch_prediction(checkpoint_local)
+    test_predictor(checkpoint_local, dataloader, use_gpu=False)
+    test_predictor(checkpoint_s3, dataloader, use_gpu=False)
 
-    # predict_one(checkpoint_local, dataloader, use_gpu=False)
-    # predict_one(checkpoint_s3, dataloader, use_gpu=False)
+    test_predictor(checkpoint_local, dataloader, use_gpu=True)
+    test_predictor(checkpoint_s3, dataloader, use_gpu=True)
 
-    # predict_one(checkpoint_local, dataloader, use_gpu=True)
-    # predict_one(checkpoint_s3, dataloader, use_gpu=True)
+    test_batch_predictor(checkpoint_local)
+
 
     
