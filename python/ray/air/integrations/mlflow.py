@@ -171,11 +171,11 @@ def setup_mlflow(
     # Setup mlflow
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
-        tracking_uri=tracking_uri or mlflow_config.get("tracking_uri", None),
-        registry_uri=registry_uri or mlflow_config.get("registry_uri", None),
-        experiment_id=experiment_id or mlflow_config.get("experiment_id", None),
-        experiment_name=experiment_name or mlflow_config.get("experiment_name", None),
-        tracking_token=tracking_token or mlflow_config.get("tracking_token", None),
+        tracking_uri= mlflow_config.get("tracking_uri", None) or tracking_uri, 
+        registry_uri= mlflow_config.get("registry_uri", None) or registry_uri,
+        experiment_id= mlflow_config.get("experiment_id", None)or experiment_id,
+        experiment_name=mlflow_config.get("experiment_name", None) or experiment_name,
+        tracking_token=mlflow_config.get("tracking_token", None) or tracking_token,
         create_experiment_if_not_exists=create_experiment_if_not_exists,
     )
 
