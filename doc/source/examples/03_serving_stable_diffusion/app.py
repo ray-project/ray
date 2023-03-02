@@ -3,8 +3,7 @@ from io import BytesIO
 from ray import serve
 from fastapi import FastAPI
 from fastapi.responses import Response
-import torch
-from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+
 
 app = FastAPI()
 
@@ -30,12 +29,34 @@ class APIIngress:
         return Response(content=file_stream.getvalue(), media_type="image/png")
 
 
+runtime_env = {
+    "pip": [
+        "accelerate==0.14.0",
+        (
+            "diffusers @ git+https://github.com/huggingface/diffusers.git"
+            "@25f11424f62d8d9bef8a721b806926399a1557f2"
+        ),
+        "numpy==1.23.4",
+        "Pillow==9.3.0",
+        "scipy==1.9.3",
+        "tensorboard==2.12.0",
+        "torch==1.13.0",
+        "torchvision==0.14.0",
+        "transformers==4.24.0",
+    ]
+}
+
+
 @serve.deployment(
-    ray_actor_options={"num_gpus": 1},
+    ray_actor_options={"num_gpus": 1, "runtime_env": runtime_env},
     autoscaling_config={"min_replicas": 0, "max_replicas": 2},
 )
 class StableDiffusionV2:
     def __init__(self):
+        # Delay imports, since packages will only be installed on the replicas
+        import torch
+        from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+
         model_id = "stabilityai/stable-diffusion-2"
 
         scheduler = EulerDiscreteScheduler.from_pretrained(
@@ -54,22 +75,6 @@ class StableDiffusionV2:
         return image
 
 
-runtime_env = {
-    "pip": [
-        "accelerate==0.14.0",
-        "diffusers @ git+https://github.com/huggingface/diffusers.git@25f11424f62d8d9bef8a721b806926399a1557f2",
-        "numpy==1.23.4",
-        "Pillow==9.3.0",
-        "scipy==1.9.3",
-        "tensorboard==2.12.0",
-        "torch==1.13.0",
-        "torchvision==0.14.0",
-        "transformers==4.24.0",
-    ]
-}
-
-entrypoint = APIIngress.bind(
-    StableDiffusionV2.options(ray_actor_options={"runtime_env": runtime_env}).bind()
-)
+entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # Run the script with `serve run app:entrypoint` to start the serve application
