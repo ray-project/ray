@@ -9,16 +9,16 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
+    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
-    _lazy_import_pyarrow_dataset,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -33,13 +33,13 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
-    MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    MongoDatasource,
     ReadTask,
     TextDatasource,
     TFRecordDatasource,
@@ -61,8 +61,8 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
-    import pymongoarrow.api
     import pyspark
+    import pymongoarrow.api
     import tensorflow as tf
     import torch
 
@@ -341,23 +341,6 @@ def read_datasource(
             "of available CPU slots in the cluster. Use `.repartition(n)` to "
             "increase the number of "
             "dataset blocks."
-        )
-
-    available_cpu_slots = ray.available_resources().get("CPU", 1)
-    if (
-        requested_parallelism
-        and len(read_tasks) > available_cpu_slots * 4
-        and len(read_tasks) >= 5000
-    ):
-        logger.warn(
-            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
-            "is more than 4x the number of available CPU slots in the cluster of "
-            f"{available_cpu_slots}. This can "
-            "lead to slowdowns during the data reading phase due to excessive "
-            "task creation. Reduce the parallelism to match with the available "
-            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
-            "to automatically determine the parallelism. "
-            "You can ignore this message if the cluster is expected to autoscale."
         )
 
     block_list = LazyBlockList(
