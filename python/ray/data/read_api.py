@@ -130,26 +130,14 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             )
         )
 
-    # read_tasks = [ReadTask(..., ...)]
-
-    # return Dataset(
-    #     plan=ExecutionPlan(
-    #         BlockList(blocks, metadata, owned_by_consumer=False),
-    #         DatasetStats(stages={"from_items": metadata}, parent=None),
-    #         run_by_consumer=False,
-    #     ),
-    #     epoch=0,
-    #     lazy=True,
-    #     logical_plan=logical_plan
-    # )
-    # block_list = LazyBlockList(
-    #     read_tasks, owned_by_consumer=False
-    # )
-
     from_items_op = FromItems(items, detected_parallelism)
     logical_plan = LogicalPlan(from_items_op)
     return Dataset(
-        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        ExecutionPlan(
+            BlockList(blocks, metadata, owned_by_consumer=False),
+            DatasetStats(stages={"from_items": metadata}, parent=None),
+            run_by_consumer=False,
+        ),
         epoch=0,
         lazy=True,
         logical_plan=logical_plan,

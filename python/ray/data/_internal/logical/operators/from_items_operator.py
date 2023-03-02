@@ -1,7 +1,6 @@
-from typing import Any, Dict, List
+from typing import Any, List
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.datasource.datasource import Datasource
 
 
 class FromItems(AbstractMap):
