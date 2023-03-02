@@ -555,7 +555,7 @@ span.rst-current-version > span.fa.fa-book {
     position: relative;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -30%);
+    transform: translate(-50%, -10%);
     text-align: center;
 }
 

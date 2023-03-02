@@ -25,6 +25,8 @@ function toggleVisibility(section) {
     const generateButton = document.getElementById('generateButton');
     const instructions = document.getElementById('instructions');
     const airSelection = document.getElementById('airSelection');
+    const airInstructions = document.getElementById('airInstructions');
+
     anyChecked = useTrain || useTune || usePredict || useData;
     multipleComponents = useTrain + useTune + usePredict + useData > 1;
 
@@ -38,8 +40,11 @@ function toggleVisibility(section) {
 
     if (multipleComponents) {
         airSelection.style.cssText = 'display: flex !important'
+        airInstructions.style.cssText = 'display: flex !important'
+
     } else {
         airSelection.style.cssText = 'display: none !important'
+        airInstructions.style.cssText = 'display: none !important'
     }
 }
 

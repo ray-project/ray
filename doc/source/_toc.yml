@@ -13,9 +13,6 @@ parts:
         title: "Use Cases"
       - file: ray-overview/examples
         title: "Example Gallery"
-        sections:
-          - file: ray-overview/example-wizard
-            title: "Example Wizard"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
