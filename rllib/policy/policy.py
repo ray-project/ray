@@ -1140,14 +1140,17 @@ class Policy(metaclass=ABCMeta):
 
         # Write main policy state file.
         os.makedirs(export_dir, exist_ok=True)
+        state_file = None
         if checkpoint_format == "cloudpickle":
             policy_state["checkpoint_version"] = CHECKPOINT_VERSION
-            with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
+            state_file = "policy_state.pkl"
+            with open(os.path.join(export_dir, state_file), "w+b") as f:
                 pickle.dump(policy_state, f)
         else:
             msgpack = try_import_msgpack(error=True)
             policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
-            with open(os.path.join(export_dir, "policy_state.msgpck"), "w+b") as f:
+            state_file = "policy_state.msgpck"
+            with open(os.path.join(export_dir, state_file), "w+b") as f:
                 msgpack.dump(policy_state, f)
 
         # Write RLlib checkpoint json.
@@ -1157,6 +1160,7 @@ class Policy(metaclass=ABCMeta):
                     "type": "Policy",
                     "checkpoint_version": str(policy_state["checkpoint_version"]),
                     "format": checkpoint_format,
+                    "state_file": state_file,
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },

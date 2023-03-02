@@ -8,6 +8,7 @@ from typing import Any, Dict, Union
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
+from ray.rllib.utils.serialization import serialize_type
 
 # The current checkpoint version used by RLlib for Algorithm and Policy checkpoints.
 # History:
@@ -21,12 +22,18 @@ from ray.util.annotations import PublicAPI
 #  individual policy states).
 #  One sub-dir inside the "policies" sub-dir for each policy with a
 #  dedicated policy_state.pkl in it for the policy state.
-CHECKPOINT_VERSION = version.Version("1.0")
+
+# 1.1: Same as 1.0, but has a new "format" field in the rllib_checkpoint.json file
+# indicating, whether the checkpoint is `cloudpickle` (default) or `msgpack`.
+CHECKPOINT_VERSION = version.Version("1.1")
 
 
 @PublicAPI(stability="alpha")
 def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     """Returns a dict with information about a Algorithm/Policy checkpoint.
+
+    If the given checkpoint is a >=v1.0 checkpoint directory, try reading all
+    information from the contained `rllib_checkpoint.json` file.
 
     Args:
         checkpoint: The checkpoint directory (str) or an AIR Checkpoint object.
@@ -48,7 +55,7 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     info = {
         "type": "Algorithm",
         "format": "cloudpickle",
-        "checkpoint_version": version.Version("1.0"),
+        "checkpoint_version": CHECKPOINT_VERSION,
         "checkpoint_dir": None,
         "state_file": None,
         "policy_ids": None,
@@ -62,6 +69,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
     # Checkpoint is dir.
     if os.path.isdir(checkpoint):
+        info.update({"checkpoint_dir": checkpoint})
+
         # Figure out whether this is an older checkpoint format
         # (with a `checkpoint-\d+` file in it).
         for file in os.listdir(checkpoint):
@@ -71,7 +80,6 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
                     info.update(
                         {
                             "checkpoint_version": version.Version("0.1"),
-                            "checkpoint_dir": checkpoint,
                             "state_file": path_file,
                         }
                     )
@@ -79,15 +87,35 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # No old checkpoint file found.
 
+        # If rllib_checkpoint.json file present, simply read from it, override
+        # information in `info` and return.
+        if os.path.isfile(os.path.join(checkpoint, "rllib_checkpoint.json")):
+            with open(os.path.join(checkpoint, "rllib_checkpoint.json")) as f:
+                rllib_checkpoint_info = json.load(fp=f)
+            if "checkpoint_version" in rllib_checkpoint_info:
+                rllib_checkpoint_info["checkpoint_version"] = (
+                    version.Version(rllib_checkpoint_info["checkpoint_version"])
+                )
+            info.update(rllib_checkpoint_info)
+            return info
+
+        # No rllib_checkpoint.json file present: Warn and continue trying to figure out
+        # checkpoint info ourselves.
+        if log_once("no_rllib_checkpoint_json_file"):
+            logger.warning(
+                "No `rllib_checkpoint.json` file found in checkpoint directory "
+                f"{checkpoint}! Trying to extract checkpoint info from other files "
+                f"found in that dir."
+            )
+
         # Policy checkpoint file found.
         for extension in ["pkl", "msgpck"]:
-            if os.path.isfile(os.path.join(checkpoint, "policy_state.pkl")):
+            if os.path.isfile(os.path.join(checkpoint, "policy_state." + extension)):
                 info.update(
                     {
                         "type": "Policy",
                         "format": "cloudpickle" if extension == "pkl" else "msgpack",
-                        "checkpoint_version": version.Version("1.0"),
-                        "checkpoint_dir": checkpoint,
+                        "checkpoint_version": CHECKPOINT_VERSION,
                         "state_file": os.path.join(
                             checkpoint, f"policy_state.{extension}"
                         ),
@@ -112,7 +140,6 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         info.update(
             {
                 "format": format,
-                "checkpoint_dir": checkpoint,
                 "state_file": state_file,
             }
         )
@@ -146,10 +173,24 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
 
 @PublicAPI(stability="beta")
-def create_msgpack_checkpoint(
+def convert_to_msgpack_checkpoint(
     checkpoint: Union[str, Checkpoint],
     msgpack_checkpoint_dir: str,
-) -> None:
+) -> str:
+    """Converts an Algorithm checkpoint (pickle based) to a msgpack based one.
+
+    Msgpack has the advantage of being python version independent.
+
+    Args:
+        checkpoint: The directory, in which to find the Algorithm checkpoint (pickle
+            based).
+        msgpack_checkpoint_dir: The directory, in which to create the new msgpack
+            based checkpoint.
+
+    Returns:
+        The directory in which the msgpack checkpoint has been created. Note that
+        this is the same as `msgpack_checkpoint_dir`.
+    """
     from ray.rllib.algorithms import Algorithm
     from ray.rllib.utils.policy import validate_policy_id
 
@@ -162,9 +203,7 @@ def create_msgpack_checkpoint(
 
     # Convert all code in state into serializable data.
     # Serialize the algorithm class.
-    algo_class = state["algorithm_class"]
-    algo_class = algo_class.__module__ + "." + algo_class.__name__
-    state["algorithm_class"] = algo_class
+    state["algorithm_class"] = serialize_type(state["algorithm_class"])
     # Serialize the algorithm's config object.
     state["config"] = state["config"].serialize()
 
@@ -194,6 +233,8 @@ def create_msgpack_checkpoint(
                 "type": "Algorithm",
                 "checkpoint_version": state["checkpoint_version"],
                 "format": "msgpack",
+                "state_file": state_file,
+                "policy_ids": list(policy_states.keys()),
                 "ray_version": ray.__version__,
                 "ray_commit": ray.__commit__,
             },
@@ -212,6 +253,11 @@ def create_msgpack_checkpoint(
             policy_state=policy_state,
             checkpoint_format="msgpack",
         )
+
+    # Release all resources used by the Algorithm.
+    algo.stop()
+
+    return msgpack_checkpoint_dir
 
 
 @PublicAPI

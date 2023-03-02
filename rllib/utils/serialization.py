@@ -347,14 +347,44 @@ def serialize_type(type_: Union[Type, str]) -> str:
 
 
 @DeveloperAPI
-def deserialize_type(type_str: str) -> Optional[type]:
-    """TODO: docstr"""
-    if type_str.find(".") != -1:
-        module_name, function_name = type_str.rsplit(".", 1)
+def deserialize_type(
+    module: Union[str, Type], error: bool = False
+) -> Optional[Union[str, Type]]:
+    """Resolves a class path to a class.
+
+    If the given module is already a class, it is returned as is.
+    If the given module is a string, it is imported and the class is returned.
+
+    Args:
+        module: The classpath (str) or type to resolve.
+        error: Whether to throw a ValueError if `module` could not be resolved into
+            a class. If False and `module` is not resolvable, returns None.
+
+    Returns:
+        The resolved class or `module` (if `error` is False and no resolution possible).
+
+    Raises:
+        ValueError: If `error` is True and `module` cannot be resolved.
+    """
+    if isinstance(module, type):
+        return module
+
+    elif isinstance(module, str):
+        # Try interpreting (as classpath) and importing the given module.
         try:
-            module = importlib.import_module(module_name)
-            constructor = getattr(module, function_name)
-            return constructor
+            module_path, class_name = module.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)
         # Module not found.
-        except (ModuleNotFoundError, ImportError, AttributeError):
-            pass
+        except (ModuleNotFoundError, ImportError, AttributeError, ValueError) as e:
+            if error:
+                raise ValueError(
+                    f"Could not deserialize the given classpath `module={module}` into "
+                    "a valid python class! Make sure you have all necessary pip "
+                    "packages installed and all custom modules are in your "
+                    "`PYTHONPATH` env variable."
+                ) from e
+    else:
+        raise ValueError(f"`module` ({module} must be type or string (classpath)!")
+
+    return module

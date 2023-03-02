@@ -138,12 +138,10 @@ logger = logging.getLogger(__name__)
 @Deprecated(
     new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
     "print(config.lr) -> 0.001; if config.a > 0: [do something];",
-    error=False,
+    error=True,
 )
-def with_common_config(extra_config):
-    return Algorithm.merge_trainer_configs(
-        AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
-    )
+def with_common_config(*args, **kwargs):
+    pass
 
 
 @PublicAPI
@@ -270,21 +268,24 @@ class Algorithm(Trainable):
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
 
+        # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
-            if policy_mapping_fn is None or policies_to_train is None:
+            # User did not provide unserializable functions with this call.
+            if policy_mapping_fn is None:
                 # Only DEFAULT_POLICY_ID present in this algorithm, provide default
                 # implementations of these two functions. 
-                if checkpoint_info["policy_ids"] == [DEFAULT_POLICY_ID]:
-                    
+                if checkpoint_info["policy_ids"] == {DEFAULT_POLICY_ID}:
+                    policy_mapping_fn = AlgorithmConfig.DEFAULT_POLICY_MAPPING_FN
+                # Provide meaningful error message.
                 else:
                     raise ValueError(
                         "You are trying to restore a multi-agent algorithm from a "
-                        "`msgpack` formatted checkpoint, which do NOT store multi "
-                        "agent related `policy_mapping_fn` or `policies_to_train` "
-                        "information! Make sure that when using the "
+                        "`msgpack` formatted checkpoint, which do NOT store the "
+                        "`policy_mapping_fn` or `policies_to_train` "
+                        "functions! Make sure that when using the "
                         "`Algorithm.from_checkpoint()` utility, you also pass the "
-                        "args: `policy_mapping_fn` AND `policies_to_train` these two "
-                        "properties via [algorithm]."
+                        "args: `policy_mapping_fn` AND `policies_to_train` with your "
+                        "call."
                     )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
@@ -2070,6 +2071,8 @@ class Algorithm(Trainable):
                     "type": "Algorithm",
                     "checkpoint_version": str(state["checkpoint_version"]),
                     "format": "cloudpickle",
+                    "state_file": state_file,
+                    "policy_ids": list(policy_states.keys()),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -2653,13 +2656,15 @@ class Algorithm(Trainable):
             }
 
             # Get Algorithm class.
-            algo_cls = state["algorithm_class"]
-            if isinstance(algo_cls, str):
+            if isinstance(state["algorithm_class"], str):
                 # Try deserializing from a full classpath.
                 # Or as a last resort: Tune registered algorithm name.
-                algo_cls = deserialize_type(algo_cls) or get_trainable_cls(algo_cls)
+                state["algorithm_class"] = (
+                    deserialize_type(state["algorithm_class"])
+                    or get_trainable_cls(state["algorithm_class"])
+                )
             # Compile actual config object.
-            default_config = algo_cls.get_default_config()
+            default_config = state["algorithm_class"].get_default_config()
             if isinstance(default_config, AlgorithmConfig):
                 new_config = default_config.update_from_dict(state["config"])
             else:
@@ -2678,8 +2683,12 @@ class Algorithm(Trainable):
             new_config.multi_agent(
                 policies=new_policies,
                 policies_to_train=policies_to_train,
+                **(
+                    {"policy_mapping_fn": policy_mapping_fn}
+                    if policy_mapping_fn is not None else {}
+                )
             )
-            state["config"] = new_config.to_dict()
+            state["config"] = new_config
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.
@@ -2689,7 +2698,9 @@ class Algorithm(Trainable):
                     checkpoint_info["checkpoint_dir"],
                     "policies",
                     pid,
-                    "policy_state.pkl",
+                    "policy_state." + (
+                        "msgpck" if checkpoint_info["format"] == "msgpack" else "pkl"
+                    ),
                 )
                 if not os.path.isfile(policy_state_file):
                     raise ValueError(
@@ -2706,7 +2717,10 @@ class Algorithm(Trainable):
 
             if policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn
-            if policies_to_train is not None:
+            if (
+                policies_to_train is not None
+                or worker_state["is_policy_to_train"] == "__not_serializable__"
+            ):
                 worker_state["is_policy_to_train"] = policies_to_train
 
         return state

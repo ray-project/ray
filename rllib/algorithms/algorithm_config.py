@@ -52,7 +52,7 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.serialization import serialize_type
+from ray.rllib.utils.serialization import deserialize_type, serialize_type
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -101,24 +101,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO (Kourosh): Move this to rllib.utils.importlib
-def _resolve_class_path(module) -> Type:
-    """Resolves a class path to a class.
-
-    If the given module is already a class, it is returned as is.
-    If the given module is a string, it is imported and the class is returned
-    """
-    if isinstance(module, Type):
-        return module
-
-    if isinstance(module, str):
-        import importlib
-
-        module_path, class_name = module.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)
-
-
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
@@ -147,6 +129,10 @@ class AlgorithmConfig(_Config):
         ...     "[registered trainer class]", param_space=config.to_dict()
         ...     ).fit()
     """
+
+    # The default policy mapping function to use if None provided.
+    # Map any agent ID to "default_policy".
+    DEFAULT_POLICY_MAPPING_FN = lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
@@ -344,9 +330,7 @@ class AlgorithmConfig(_Config):
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_mapping_fn = (
-            lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
-        )
+        self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
@@ -598,25 +582,38 @@ class AlgorithmConfig(_Config):
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
             elif key == "callbacks_class":
-                # Resolve classpath.
-                if isinstance(value, str):
-                    value = deserialize_type(value)
-                    if not value:
-                        raise ValueError(
-                            f"Your `callbacks_class` ({config_dict['callbacks_class']})"
-                            " could not be deserialized into a class! Make sure you "
-                            "have all necessary pip packages installed and all custom "
-                            "modules are in your `PYTHONPATH` env variable."
-                        )
+                # Resolve possible classpath.
+                value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
+            elif key == "env":
+                # Resolve possible classpath.
+                value = deserialize_type(value)
+                self.environment(env=value)
             elif key == "env_config":
                 self.environment(env_config=value)
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
+                if isinstance(value, dict) and "type" in value:
+                    value["type"] = deserialize_type(value["type"])
                 self.exploration(exploration_config=value)
-            elif key in ["model", "optimizer", "replay_buffer_config"]:
+            elif key == "model":
+                # Resolve custom_model possible classpath.
+                if isinstance(value, dict) and value.get("custom_model"):
+                    value["custom_model"] = deserialize_type(
+                        value["custom_model"], error=True
+                    )
                 self.training(**{key: value})
+            elif key == "optimizer":
+                self.training(**{key: value})
+            elif key == "replay_buffer_config":
+                if isinstance(value, dict) and "type" in value:
+                    value["type"] = deserialize_type(value["type"])
+                self.training(**{key: value})
+            elif key == "sample_collector":
+                # Resolve possible classpath.
+                value = deserialize_type(value)
+                self.rollouts(sample_collector=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -953,7 +950,7 @@ class AlgorithmConfig(_Config):
         # resolve learner class
         if self._enable_learner_api and self.learner_class is None:
             learner_class_path = self.get_default_learner_class()
-            self.learner_class = _resolve_class_path(learner_class_path)
+            self.learner_class = deserialize_type(learner_class_path)
 
     def build(
         self,
@@ -2064,7 +2061,8 @@ class AlgorithmConfig(_Config):
             ), (
                 "ERROR: `policies_to_train` must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
-                "True|False (trainable or not?)."
+                "True|False (trainable or not?) or None (for always training all "
+                "policies)."
             )
             # Check `policies_to_train` for invalid entries.
             if isinstance(policies_to_train, (list, set, tuple)):
@@ -3007,7 +3005,10 @@ class AlgorithmConfig(_Config):
         if isinstance(config["_learner_hps"], LearnerHPs):
             config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
 
-        # Serialize functions/lambdas.
+        # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
+        if isinstance(config["multiagent"]["policies"], (set, tuple)):
+            config["multiagent"]["policies"] = list(config["multiagent"]["policies"])
+        # Do NOT serialize functions/lambdas.
         if config["multiagent"]["policy_mapping_fn"]:
             config["multiagent"]["policy_mapping_fn"] = "__not_serializable__"
         if config["multiagent"]["policies_to_train"]:
