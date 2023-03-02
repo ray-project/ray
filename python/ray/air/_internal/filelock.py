@@ -12,6 +12,9 @@ RAY_LOCKFILE_DIR = "_ray_lockfiles"
 class TempFileLock:
     """FileLock wrapper that uses temporary file locks.
 
+    The temporary directory that these locks are saved to can be configured via
+    the `RAY_TMPDIR` environment variable.
+
     Args:
         path: The file path that this temporary file lock is used for.
             This will be used to generate the lockfile filename.
