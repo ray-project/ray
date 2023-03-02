@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from ray.tune.syncer import SyncConfig
 from ray.air.config import CheckpointConfig, ScalingConfig, RunConfig
 import ray.train as train
-from ptl_tests.utils import LitAutoEncoder, LightningMNISTClassifier, MNISTDataModule
+from ray.train.tests.lightning_test_utils import LitAutoEncoder, LightningMNISTClassifier, MNISTDataModule
 from torchmetrics import Accuracy
 
 LightningMNISTModelConfig = {

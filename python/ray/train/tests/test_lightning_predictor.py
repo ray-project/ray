@@ -5,7 +5,7 @@ os.environ['RAY_ML_DEV'] = "1"
 
 import ray
 from ray.train.lightning import LightningPredictor, LightningCheckpoint
-from ptl_tests.utils import LightningMNISTClassifier, MNISTDataModule, LightningMNISTModelConfig
+from ray.train.tests.lightning_test_utils import LightningMNISTClassifier, MNISTDataModule, LightningMNISTModelConfig
 from ray.air import Checkpoint
 from ray.train.batch_predictor import BatchPredictor
 from torchvision.datasets import MNIST
