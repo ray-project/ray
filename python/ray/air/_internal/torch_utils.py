@@ -138,10 +138,10 @@ def convert_ndarray_to_torch_tensor(
     # Object dtype cannot be converted into PyTorch Tensor.
     if ndarray.dtype.type is np.object_:
         raise RuntimeError(
-            "Numpy array of object dtype cannot be converted to a Torch Tensor. This"
-            "may because the numpy array is a ragged tensor- it contains items of"
-            "different sizes. If using `iter_torch_batches()` API, you can pass in a"
-            "`collate_fn` argument to specify custom logic to convert the Numpy array"
+            "Numpy array of object dtype cannot be converted to a Torch Tensor. This "
+            "may because the numpy array is a ragged tensor--it contains items of "
+            "different sizes. If using `iter_torch_batches()` API, you can pass in a "
+            "`collate_fn` argument to specify custom logic to convert the Numpy array "
             "batch to a Torch tensor batch."
         )
 
