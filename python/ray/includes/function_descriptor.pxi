@@ -195,19 +195,23 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         return cls(module_name, function_name, class_name, function_uuid.hex)
 
     @classmethod
-    def from_class(cls, target_class):
+    def from_class(cls, target_class, repr_name):
         """Create a FunctionDescriptor from a class.
 
         Args:
             cls: Current class which is required argument for classmethod.
             target_class: the python class used to create the function
                 descriptor.
+            repr_name: If the class has its own __repr__, use that for the class name.
 
         Returns:
             The FunctionDescriptor instance created according to the class.
         """
         module_name = cls._get_module_name(target_class)
-        class_name = target_class.__qualname__
+        if target_class.__repr__ != object.__repr__:
+            class_name = repr_name
+        else:
+            class_name = target_class.__qualname__
         # Use a random uuid as function hash to solve actor name conflict.
         return cls(module_name, "__init__", class_name, uuid.uuid4().hex)
 

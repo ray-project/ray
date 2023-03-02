@@ -478,7 +478,7 @@ class ActorClass:
         self = DerivedActorClass.__new__(DerivedActorClass)
         # Actor creation function descriptor.
         actor_creation_function_descriptor = PythonFunctionDescriptor.from_class(
-            modified_class.__ray_actor_class__
+            modified_class.__ray_actor_class__, repr(self)
         )
 
         self.__ray_metadata__ = _ActorClassMetadata(
