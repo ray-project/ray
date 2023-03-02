@@ -547,12 +547,14 @@ def test_run_teardown(ray_start_stop):
     """Consecutive serve runs should tear down controller so logs can always be seen."""
     logs = subprocess.check_output(
         ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        stderr=subprocess.STDOUT,
         timeout=30,
     ).decode()
     assert "Intentionally failing." in logs
 
     logs = subprocess.check_output(
         ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        stderr=subprocess.STDOUT,
         timeout=30,
     ).decode()
     assert "Intentionally failing." in logs
