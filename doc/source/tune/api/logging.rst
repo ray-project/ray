@@ -83,7 +83,7 @@ See the :doc:`tutorial here </tune/examples/tune-aim>`
 .. autosummary::
     :toctree: doc/
 
-    ~tune.logger.AimLoggerCallback
+    ~tune.logger.aim.AimLoggerCallback
 
 
 Other Integrations
