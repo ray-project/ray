@@ -53,14 +53,14 @@ public class DefaultCallable implements ServeCallableProvider {
     Class deploymentClass = callable.getClass();
     Map<String, Pair<Method, Object>> signatures = Maps.newHashMap();
     List<Method> methods = Lists.newArrayList();
-    methods.addAll(Arrays.asList(deploymentClass.getDeclaredMethods()));
+    methods.addAll(Arrays.asList(deploymentClass.getMethods()));
     Class clz = deploymentClass.getSuperclass();
     while (clz != null && clz != Object.class) {
-      methods.addAll(Arrays.asList(clz.getDeclaredMethods()));
+      methods.addAll(Arrays.asList(clz.getMethods()));
       clz = clz.getSuperclass();
     }
     for (Class baseInterface : deploymentClass.getInterfaces()) {
-      for (Method method : baseInterface.getDeclaredMethods()) {
+      for (Method method : baseInterface.getMethods()) {
         if (method.isDefault()) {
           methods.add(method);
         }

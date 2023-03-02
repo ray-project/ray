@@ -3,7 +3,7 @@ package io.ray.serve.replica;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import io.ray.serve.generated.RequestWrapper;
-import io.ray.serve.util.ExampleJaxrsDeployment;
+import io.ray.serve.deployment.ExampleJaxrsDeployment;
 import java.nio.charset.StandardCharsets;
 import org.testng.Assert;
 import org.testng.annotations.Test;

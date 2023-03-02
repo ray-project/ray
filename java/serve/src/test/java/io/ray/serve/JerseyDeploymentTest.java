@@ -4,7 +4,7 @@ import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.deployment.Deployment;
-import io.ray.serve.util.ExampleJaxrsDeployment;
+import io.ray.serve.deployment.ExampleJaxrsDeployment;
 import java.io.IOException;
 import org.apache.hc.client5.http.fluent.Request;
 import org.apache.hc.core5.http.ContentType;

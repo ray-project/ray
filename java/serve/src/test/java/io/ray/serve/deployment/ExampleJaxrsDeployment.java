@@ -1,4 +1,4 @@
-package io.ray.serve.util;
+package io.ray.serve.deployment;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;

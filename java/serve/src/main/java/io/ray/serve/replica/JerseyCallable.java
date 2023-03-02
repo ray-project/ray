@@ -28,7 +28,7 @@ public class JerseyCallable extends DefaultCallable {
               jaxrsIngressInst.getClass().getDeclaredMethod("call", RequestWrapper.class),
               jaxrsIngressInst));
     } catch (NoSuchMethodException e) {
-      LOGGER.error("call method in JaxrsIngressInst has not found.", e);
+      LOGGER.info("call method in JaxrsIngressInst has not found.", e);
     }
     return signatures;
   }

@@ -2,20 +2,22 @@ package io.ray.serve.replica;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
-import com.google.gson.Gson;
 import io.ray.api.BaseActorHandle;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.Metrics;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Query;
+import io.ray.serve.util.GsonUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;
@@ -236,7 +238,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     // Compatible with some http calls without http ingress
     if (StringUtils.equals(
         requestItem.getMetadata().getCallMethodSignature(), Constants.HTTP_PROXY_SIGNATURE)) {
-      LOGGER.info(
+      LOGGER.debug(
           "body is {}, scope is {}",
           requestWrapper.getBody().toStringUtf8(),
           requestWrapper.getScopeMap().toString());
@@ -255,9 +257,9 @@ public class RayServeReplicaImpl implements RayServeReplica {
       } else if (!requestWrapper.getBody().isEmpty()
           && StringUtils.contains(
               requestWrapper.getScopeMap().get("headers"), "application/json")) {
-        Gson gson = new Gson();
-        Object temp = gson.fromJson(requestWrapper.getBody().toStringUtf8(), Object.class);
-        return new Object[] {temp};
+        return new Object[] {
+          GsonUtil.fromJson(requestWrapper.getBody().toStringUtf8(), Object.class)
+        };
       }
     }
     if (requestWrapper.getBody().isEmpty()) {
