@@ -18,8 +18,8 @@ from ray.tune.logger import (
     CSVLogger,
     TBXLoggerCallback,
     TBXLogger,
-    AimLoggerCallback,
 )
+from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.result import (
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
