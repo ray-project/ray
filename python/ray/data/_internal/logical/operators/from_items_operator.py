@@ -1,9 +1,9 @@
 from typing import Any, List
 
-from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data._internal.logical.interfaces import LogicalOperator
 
 
-class FromItems(AbstractMap):
+class FromItems(LogicalOperator):
     """Logical operator for from_items."""
 
     def __init__(
@@ -11,6 +11,6 @@ class FromItems(AbstractMap):
         items: List[Any],
         parallelism: int = -1,
     ):
-        super().__init__("FromItems", None, None)
+        super().__init__("FromItems", [])
         self._items = items
         self._parallelism = parallelism
