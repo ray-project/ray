@@ -4580,7 +4580,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
         try:
             ds = ray.data.range(10)
             ds = ds.map_batches(lambda x: x)
-            ds.take()
+            ds._plan.execute()
         except LoggerWarningCalled:
             logger_args, logger_kwargs = mock_logger.call_args
             assert "Warning: The Ray cluster currently does not have " in logger_args[0]
