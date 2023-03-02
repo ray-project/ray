@@ -143,7 +143,7 @@ class PPOCatalog(Catalog):
         action_distribution_cls = self.action_dist_cls_dict[framework]
         self.pi_head_config.output_dim = (
             action_distribution_cls.required_model_output_shape(
-                action_space=self.action_space, config=self.model_config_dict
+                action=self.action_space, config=self.model_config_dict
             )[0]
         )
         return self.pi_head_config.build(framework=framework)
@@ -162,21 +162,3 @@ class PPOCatalog(Catalog):
             The value function head.
         """
         return self.vf_head_config.build(framework=framework)
-
-    def build_action_dist(self, framework: str):
-        """Builds the action distribution.
-
-        The default behavior is to build the action distribution from the
-        action_dist_cls_dict. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
-        implementation.
-
-        Args:
-            framework: The framework to use. Either "torch" or "tf".
-
-        Returns:
-            The action distribution.
-        """
-        return self.action_dist_cls_dict[framework](
-            action_space=self.action_space, config=self.model_config_dict
-        )
