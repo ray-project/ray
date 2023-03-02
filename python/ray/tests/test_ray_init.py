@@ -98,16 +98,20 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
                 if ray.cluster_resources().get("CPU", 0) == 1999:
                     return True
                 else:
-                    ray.shutdown()
                     return False
             except Exception:
                 return False
+            finally:
+                ray.shutdown()
 
     try:
-        wait_for_condition(_connect_to_existing_instance)
+        wait_for_condition(
+            _connect_to_existing_instance, timeout=30, retry_interval_ms=1000
+        )
     finally:
         blocked.terminate()
         blocked.wait()
+        subprocess.check_output("ray stop --force", shell=True)
 
 
 @pytest.mark.skipif(
