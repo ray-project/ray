@@ -91,8 +91,9 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # No old checkpoint file found.
 
-        # If rllib_checkpoint.json file present, simply read from it, override
-        # information in `info` and return.
+        # If rllib_checkpoint.json file present, read available information from it
+        # and then continue with the checkpoint analysis (possibly overriding further
+        # information).
         if os.path.isfile(os.path.join(checkpoint, "rllib_checkpoint.json")):
             with open(os.path.join(checkpoint, "rllib_checkpoint.json")) as f:
                 rllib_checkpoint_info = json.load(fp=f)
@@ -101,7 +102,6 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
                     rllib_checkpoint_info["checkpoint_version"]
                 )
             info.update(rllib_checkpoint_info)
-            return info
 
         # No rllib_checkpoint.json file present: Warn and continue trying to figure out
         # checkpoint info ourselves.
@@ -129,7 +129,6 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # Valid Algorithm checkpoint >v0 file found?
         format = None
-        state_file = None
         for extension in ["pkl", "msgpck"]:
             state_file = os.path.join(checkpoint, f"algorithm_state.{extension}")
             if os.path.isfile(state_file):
