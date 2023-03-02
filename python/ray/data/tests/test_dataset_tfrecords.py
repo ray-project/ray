@@ -244,13 +244,29 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
         # for type inference involving partially missing columns.
         parallelism=1,
     )
-
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path)
-
     # Read the TFRecords.
     readback_ds = ray.data.read_tfrecords(tmp_path)
-    assert ds.take() == readback_ds.take()
+    if not ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        assert ds.take() == readback_ds.take()
+    else:
+        # In streaming, we set batch_format to "default" (because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that). As a result, it's receiving PandasRow (the defaut
+        # batch format), which doesn't have the same ordering of columns as
+        # the ArrowRow.
+        from ray.data.block import BlockAccessor
+
+        def get_rows(ds):
+            rows = []
+            for batch in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
+                batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+                for row in batch.iter_rows():
+                    rows.append(row)
+            return rows
+
+        assert get_rows(ds) == get_rows(readback_ds)
 
 
 def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):

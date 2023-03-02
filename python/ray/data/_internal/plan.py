@@ -170,7 +170,6 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
-
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -610,6 +609,10 @@ class ExecutionPlan:
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
         self._in_blocks.clear()
+        self._clear_snapshot()
+
+    def _clear_snapshot(self) -> None:
+        """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
@@ -691,7 +694,7 @@ class ExecutionPlan:
                 stats = self._snapshot_stats
                 # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
                 # snapshot block memory after the first stage is done executing.
-                self._snapshot_blocks = None
+                self._clear_snapshot()
             else:
                 # Snapshot exists but has been cleared, so we need to recompute from the
                 # source (input blocks).
@@ -771,6 +774,17 @@ class ExecutionPlan:
                 )
             )
         )
+
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
 
 
 def _pack_args(

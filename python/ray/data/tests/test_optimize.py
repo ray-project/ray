@@ -710,6 +710,15 @@ def test_optimize_lazy_reuse_base_data(
     assert num_reads == num_blocks, num_reads
 
 
+def test_require_preserve_order(ray_start_regular_shared):
+    ds = ray.data.range(100).map_batches(lambda x: x).sort()
+    assert ds._plan.require_preserve_order()
+    ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
+    assert ds2._plan.require_preserve_order()
+    ds3 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
+    assert not ds3._plan.require_preserve_order()
+
+
 if __name__ == "__main__":
     import sys
 
