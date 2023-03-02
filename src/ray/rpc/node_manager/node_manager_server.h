@@ -47,6 +47,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)         \
+  RPC_SERVICE_HANDLER(NodeManagerService, UpdateTotalCPU, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTaskFailureCause, -1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
@@ -158,6 +159,10 @@ class NodeManagerServiceHandler {
   virtual void HandleGetTaskFailureCause(GetTaskFailureCauseRequest request,
                                          GetTaskFailureCauseReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateTotalCPU(UpdateTotalCPURequest request,
+                                    UpdateTotalCPUReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

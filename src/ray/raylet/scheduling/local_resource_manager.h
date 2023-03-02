@@ -153,6 +153,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Record the metrics.
   void RecordMetrics() const;
 
+  void UpdateTotalCPU(uint64_t total);
+
  private:
   struct ResourceUsage {
     double avail;

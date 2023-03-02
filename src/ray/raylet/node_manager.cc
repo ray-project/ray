@@ -673,6 +673,20 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
+void NodeManager::HandleUpdateTotalCPU(rpc::UpdateTotalCPURequest request,
+                                       rpc::UpdateTotalCPUReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "[HandleUpdateTotalCPU Before] " << request.total() << " "
+                << cluster_resource_scheduler_->GetLocalResourceManager().DebugString();
+
+  cluster_resource_scheduler_->GetLocalResourceManager().UpdateTotalCPU(request.total());
+
+  RAY_LOG(INFO) << "[HandleUpdateTotalCPU After] " << request.total() << " "
+                << cluster_resource_scheduler_->GetLocalResourceManager().DebugString();
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                              rpc::ReleaseUnusedBundlesReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {

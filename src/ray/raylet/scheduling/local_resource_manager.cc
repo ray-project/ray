@@ -36,6 +36,23 @@ LocalResourceManager::LocalResourceManager(
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
 
+void LocalResourceManager::UpdateTotalCPU(uint64_t total) {
+  uint64_t current_total = GetNumCpus();
+  uint64_t current_avail =
+      static_cast<uint64_t>(local_resources_.available.Sum(ResourceID::CPU()).Double());
+  if (total > current_total) {
+    AddLocalResourceInstances(
+        ResourceID::CPU(),
+        std::vector<FixedPoint>{static_cast<double>(total - current_total)});
+  } else {
+    uint64_t diff = std::min(current_avail, current_total - total);
+    local_resources_.available.GetMutable(ResourceID::CPU())[0] -=
+        static_cast<double>(diff);
+    local_resources_.total.GetMutable(ResourceID::CPU())[0] -= static_cast<double>(diff);
+    OnResourceChanged();
+  }
+}
+
 void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
   local_resources_.available.Add(resource_id, instances);
@@ -340,6 +357,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
       (*resources_data.mutable_resources_available())[label] = available.Double();
     }
     if (total != last_total) {
+      resources_data.set_resources_available_changed(true);
       (*resources_data.mutable_resources_total())[label] = total.Double();
     }
   }
