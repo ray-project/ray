@@ -1,6 +1,8 @@
 import importlib.util
+import json
 import logging
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -286,6 +288,11 @@ def _autodetect_num_gpus():
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
         result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
+    elif sys.platform == "darwin" and platform.processor() == "arm":
+        cmdargs = ["system_profiler", "SPDisplaysDataType", "-json"]
+        output = json.loads(subprocess.check_output(cmdargs))
+        gpus = [d for d in output["SPDisplaysDataType"] if "spdisplays_metalfamily" in d]
+        return len(gpus)
     return result
 
 
