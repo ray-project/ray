@@ -122,6 +122,10 @@ class PPOConfig(PGConfig):
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
 
+        # enable the rl module api by default
+        self._enable_rl_module_api = True
+        self._enable_learner_api = True
+
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
@@ -264,11 +268,9 @@ class PPOConfig(PGConfig):
     @override(AlgorithmConfig)
     def validate(self) -> None:
         # Turn RLModule and Learner API on by default (only for torch and tf2)
-        if self.framework_str in ["torch", "tf2"]:
-            # only for this class and not it subclasses
-            if self.__class__.__name__ == PPOConfig.__name__:
-                self._enable_rl_module_api = True
-                self._enable_learner_api = True
+        if self.framework_str == "tf":
+            self._enable_rl_module_api = False
+            self._enable_learner_api = False
 
         # Call super's validation method.
         super().validate()
