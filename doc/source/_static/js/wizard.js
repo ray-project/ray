@@ -94,28 +94,28 @@ window.addEventListener("load", () => {
     const submitButton = document.getElementById('generateButton');
     submitButton.addEventListener('click', function (event) {
           const pageUrl = window.location.href
-    const res = pageUrl.split("/");
+        const res = pageUrl.split("/");
 
-    let baseUrl = "";
-    if (res[2] === "docs.ray.io") {
-        baseUrl = "https://docs.ray.io/en/" +  res[4];
-    }
+        let baseUrl = "";
+        if (res[2] === "docs.ray.io") {
+            baseUrl = "https://docs.ray.io/en/" +  res[4];
+        }
 
-    // TODO Select the right example here:
-    let example = baseUrl + "/wizard/tune_test.html";
+        // TODO Select the right example here:
+        let example = baseUrl + "/wizard/tune_test.html";
 
-    fetch(example)
-      .then(response => response.text())
-      .then(html => {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const code = doc.getElementsByClassName("highlight-default")[0];
+        fetch(example)
+          .then(response => response.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const code = doc.getElementsByClassName("highlight-default")[0];
 
-        const wizardCode = document.getElementById("wizardCode");
-        wizardCode.innerHTML = code.innerHTML;
-      })
-      .catch(error => console.log(error));
-    });
+            const wizardCode = document.getElementById("wizardCode");
+            wizardCode.innerHTML = code.innerHTML;
+          })
+          .catch(error => console.log(error));
+        });
 
 
 
