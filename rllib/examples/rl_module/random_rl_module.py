@@ -10,7 +10,7 @@ class RandomRLModule(RLModule):
     def _forward_inference(self, batch, **kwargs):
         # TODO (Kourosh): Implement this when we completely replace RandomPolicy.
         raise NotImplementedError
-    
+
     def _forward_exploration(self, batch, **kwargs):
         # TODO (Kourosh): Implement this when we completely replace RandomPolicy.
         raise NotImplementedError

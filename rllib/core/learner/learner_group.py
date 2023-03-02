@@ -43,6 +43,7 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
 def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
     return True
 
+
 class LearnerGroup:
     """Coordinator of Learners.
     Public API:
@@ -402,7 +403,9 @@ class LearnerGroup:
         else:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
 
-    def set_is_module_trainable(self, is_module_trainable:  Callable[[ModuleID, MultiAgentBatch], bool]) -> None:
+    def set_is_module_trainable(
+        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool]
+    ) -> None:
         """Sets the function that determines whether a module is trainable.
 
         Args:

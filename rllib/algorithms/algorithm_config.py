@@ -2803,7 +2803,7 @@ class AlgorithmConfig(_Config):
                 },
             )
         elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
-            marl_module_spec = self.rl_module_spec
+            marl_module_spec = copy.deepcopy(self.rl_module_spec)
 
             if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
                 # the individual module specs are not given, it is given as one

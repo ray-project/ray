@@ -1851,7 +1851,7 @@ class Algorithm(Trainable):
             policies_to_train=policies_to_train,
         )
 
-        # If learner API is enabled, we need to also add the underlying module 
+        # If learner API is enabled, we need to also add the underlying module
         # to the learner group.
         if self.config._enable_learner_api:
             policy = self.get_policy(policy_id)
@@ -1859,14 +1859,14 @@ class Algorithm(Trainable):
             self.learner_group.add_module(
                 module_id=policy_id,
                 module_spec=SingleAgentRLModuleSpec(
-                    module_class=type(module), 
+                    module_class=type(module),
                     observation_space=policy.observation_space,
                     action_space=policy.action_space,
                     model_config=policy.config["model"],
-                )
+                ),
             )
 
-            # TODO (Kourosh): Only allow users to set weights of a particular module 
+            # TODO (Kourosh): Only allow users to set weights of a particular module
             weights = self.learner_group.get_weights()
             self.learner_group.set_weights(weights)
 

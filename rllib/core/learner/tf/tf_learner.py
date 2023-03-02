@@ -136,7 +136,7 @@ class TfLearner(Learner):
     ) -> Optimizer:
         lr = self._optimizer_config["lr"]
         return optimizer_cls(learning_rate=lr)
-    
+
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, tf.keras.Model)
 

@@ -85,6 +85,7 @@ class LearnerHPs:
 
     pass
 
+
 class Learner:
     """Base class for learners.
 
@@ -250,7 +251,7 @@ class Learner:
     def hps(self) -> LearnerHPs:
         """The hyper-parameters for the learner."""
         return self._hps
-    
+
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
@@ -393,7 +394,7 @@ class Learner:
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
         module_learner_stats = defaultdict(dict)
-        # batch.shallow_keys() should contain the module ids that were suppose to be 
+        # batch.shallow_keys() should contain the module ids that were suppose to be
         # trained in this iteration. Make sure the keys exist in the module.
         for module_id in batch.shallow_keys():
             if module_id not in self._module.keys():
@@ -401,9 +402,7 @@ class Learner:
                     f"Module id {module_id} not found in the module. "
                     f"Available module ids: {self._module.keys()}"
                 )
-            module_learner_stats[module_id] = {
-                LEARNER_STATS_KEY: loss_numpy[module_id]
-            }
+            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
@@ -582,9 +581,7 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     def additional_update(
-        self, 
-        module_ids_to_update: Sequence[ModuleID] = None,
-        **kwargs
+        self, module_ids_to_update: Sequence[ModuleID] = None, **kwargs
     ) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates to this Trainer.
 
@@ -629,9 +626,7 @@ class Learner:
         results_all_modules = {}
         module_ids = module_ids_to_update or self._module.keys()
         for module_id in module_ids:
-            module_results = self.additional_update_per_module(
-                module_id, **kwargs
-            )
+            module_results = self.additional_update_per_module(module_id, **kwargs)
             results_all_modules[module_id] = module_results
 
         return results_all_modules
@@ -749,9 +744,11 @@ class Learner:
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
-        """Check whether the module is compatible with the learner. 
-        
-        Are they both torch or tf? If there is a random RLModule for example, it will not be a torch or tf module. Therefore we should not consider it during gradient based optimization. 
+        """Check whether the module is compatible with the learner.
+
+        Are they both torch or tf? If there is a random RLModule for example, it will
+        not be a torch or tf module. Therefore we should not consider it during
+        gradient based optimization.
 
         Args:
             module: The module to check.
