@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Optional, Mapping, Any
 
 import gymnasium as gym
@@ -25,22 +24,6 @@ from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import ModelConfigDict
-
-
-def _pass_through_required_model_output_shape_method(_partial):
-    """Adds the required_model_output_shape method to the given class or partial.
-
-    This requires _partial to be a partial of a class that has a
-    required_model_output_shape method.
-
-    Args:
-        partial: The partial to add the required_model_output_shape method to.
-    """
-    if isinstance(_partial, partial):
-        _partial.required_model_output_shape = _partial.func.required_model_output_shape
-        return _partial
-    else:
-        raise ValueError(f"Expected a partial function, got {partial} instead.")
 
 
 class Catalog:
