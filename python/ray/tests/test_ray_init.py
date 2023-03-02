@@ -13,6 +13,7 @@ from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(
@@ -78,6 +79,35 @@ def test_ray_init_existing_instance(call_ray_start, address):
     finally:
         ray.shutdown()
         subprocess.check_output("ray stop --force", shell=True)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+def test_ray_init_existing_instance_via_blocked_ray_start():
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--num-cpus", "1999"]
+    )
+
+    def _connect_to_existing_instance():
+        while True:
+            try:
+                # Make sure ray.init can connect to the existing cluster.
+                ray.init()
+                if ray.cluster_resources().get("CPU", 0) == 1999:
+                    return True
+                else:
+                    ray.shutdown()
+                    return False
+            except Exception:
+                return False
+
+    try:
+        wait_for_condition(_connect_to_existing_instance)
+    finally:
+        blocked.terminate()
+        blocked.wait()
 
 
 @pytest.mark.skipif(
