@@ -8,8 +8,9 @@ import tempfile
 from typing import Optional
 import shutil
 import numpy as np
-from ray.cloudpickle import cloudpickle
 
+import ray
+from ray.cloudpickle import cloudpickle
 from ray.tune.logger import (
     CSVLoggerCallback,
     JsonLoggerCallback,
@@ -35,6 +36,7 @@ class Trial:
     logdir: str
     local_dir: Optional[str] = None
     experiment_dir_name: Optional[str] = None
+    remote_checkpoint_dir: Optional[str] = None
 
     @property
     def config(self):
@@ -45,6 +47,9 @@ class Trial:
 
     def __hash__(self):
         return hash(self.trial_id)
+
+    def get_runner_ip(self) -> str:
+        return ray.util.get_node_ip_address()
 
 
 def result(t, rew, **kwargs):
@@ -304,8 +309,6 @@ class AimLoggerSuite(unittest.TestCase):
             "float64": np.float64(4),
             "bad": Dummy(),
         }
-        # Test that aim repo is saved to the experiment directory
-        # (one up from the trial directory) as the default
         trial_logdir = os.path.join(self.test_dir, "trial_logdir")
         trials = [
             Trial(
@@ -314,6 +317,7 @@ class AimLoggerSuite(unittest.TestCase):
                 local_dir=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
+                remote_checkpoint_dir="s3://bucket/aim_test/trial_0_logdir",
             ),
             Trial(
                 evaluated_params=self.config,
@@ -321,9 +325,13 @@ class AimLoggerSuite(unittest.TestCase):
                 local_dir=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
+                remote_checkpoint_dir="s3://bucket/aim_test/trial_1_logdir",
             ),
         ]
 
+        # Test that aim repo is saved to the experiment directory
+        # (one up from the trial directory) as the default.
+        # In this example, this is `self.test_dir`.
         repo = repo or self.test_dir
         logger = AimLoggerCallback(
             repo=repo, experiment_name=experiment_name, metrics=metrics
@@ -353,6 +361,8 @@ class AimLoggerSuite(unittest.TestCase):
 
         for i, run in enumerate(runs):
             assert set(run["hparams"]) == expected_logged_hparams
+            assert run.get("trial_remote_log_dir")
+            assert run.get("trial_ip")
 
             results = None
             all_tune_metrics = set()
@@ -375,16 +385,24 @@ class AimLoggerSuite(unittest.TestCase):
                 self.assertSequenceEqual(results, [4, 5, 6])
 
     def testDefault(self):
+        """Test AimLoggerCallback with default settings.
+        - Req: a repo gets created at the experiment-level directory.
+        - Req: the experiment param passed into each aim Run is the Tune experiment name
+        """
         runs = self.initialize_logger()
         self.validateLogs(runs)
-        assert all([run.experiment == "aim_test" for run in runs])
+        for run in runs:
+            assert run.repo.path == os.path.join(self.test_dir, ".aim")
+            assert run.experiment == "aim_test"
 
     def testFilteredMetrics(self):
+        """Test AimLoggerCallback, logging only a subset of metrics."""
         metrics_to_log = ("episode_reward_mean",)
         runs = self.initialize_logger(metrics=metrics_to_log)
         self.validateLogs(runs=runs, metrics=metrics_to_log)
 
     def testCustomConfigurations(self):
+        """Test AimLoggerCallback, setting a custom repo and experiment name."""
         custom_repo = os.path.join(self.test_dir, "custom_repo")
         runs = self.initialize_logger(repo=custom_repo, experiment_name="custom")
         self.validateLogs(runs)
