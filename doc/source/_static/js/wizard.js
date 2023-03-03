@@ -31,10 +31,15 @@ function unsetExample() {
 window.addEventListener("load", () => {
 
     const basicSelection = document.getElementById("wizardMain");
+    const doMoreSelection = document.getElementById("doMoreSelection");
 
     if (basicSelection) {
 
-        basicSelection.reset();
+        const wizardMainForm = document.getElementById("wizardMainForm");
+        const wizardDoMoreForm = document.getElementById("wizardDoMoreForm");
+
+        wizardMainForm.reset();
+        wizardDoMoreForm.reset();
 
         const trainRadios = document.getElementsByName("trainGroup");
         const dataSelection = document.getElementById("dataSelection");
@@ -49,6 +54,8 @@ window.addEventListener("load", () => {
                     trainTag = this.value;
                 }
                 unsetExample();
+                wizardDoMoreForm.reset();
+                doMoreSelection.style.cssText = 'display: none !important'
             });
         });
 
@@ -66,6 +73,8 @@ window.addEventListener("load", () => {
                     dataTag = this.value;
                 }
                 unsetExample();
+                wizardDoMoreForm.reset();
+                doMoreSelection.style.cssText = 'display: none !important'
             });
         });
 
@@ -77,15 +86,18 @@ window.addEventListener("load", () => {
         dataTypeRadios.forEach(radio => {
             radio.addEventListener("change", function () {
                 if (this.checked) {
-                    generateButton.style.cssText = 'display: flex !important'
+                    // generateButton.style.cssText = 'display: flex !important'
                     dataTypeDesc.innerText = dataTypeDescriptions[this.value];
                     dataTypeTag = this.value;
                 }
                 unsetExample();
+                wizardDoMoreForm.reset();
+                doMoreSelection.style.cssText = 'display: none !important'
+                loadExample();
             });
         });
 
-        submitButton.addEventListener('click', function (event) {
+        function loadExample() {
             const pageUrl = window.location.href
             const res = pageUrl.split("/");
 
@@ -110,6 +122,8 @@ window.addEventListener("load", () => {
 
                     const wizardCode = document.getElementById("wizardCode");
                     wizardCode.innerHTML = code.innerHTML;
+
+                    doMoreSelection.style.cssText = 'display: normal !important'
                 })
                 .catch(error => {
                     console.log(error);
@@ -120,10 +134,61 @@ window.addEventListener("load", () => {
                     const wizardCode = document.getElementById("wizardCode");
                     wizardCode.innerHTML = "";
                 });
+        };
+
+//        submitButton.addEventListener('click', function (event) {
+//
+//        });
+
+        function loadDoMore() {
+            const pageUrl = window.location.href
+            const res = pageUrl.split("/");
+
+            let baseUrl = "";
+            if (res[2] === "docs.ray.io") {
+                baseUrl = "https://docs.ray.io/en/" + res[4];
+            }
+
+            const example = baseUrl + "/wizard/" + trainTag + "_"
+                + moreTag + "_" + dataTypeTag + ".html";
+
+           console.log("LOADING DO MORE");
+           console.log(example);
+
+            fetch(example)
+                .then(response => response.text())
+                .then(html => {
+                    console.log("GOT IT");
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const code = doc.getElementsByClassName("highlight-default")[0];
+                    const header = doc.getElementsByTagName("h1")[1];
+
+                    const doMoreDesc = document.getElementById("doMoreDesc");
+                    exampleSelectionDesc.innerText = header.innerText;
+
+                    const doMoreCode = document.getElementById("doMoreCode");
+                    doMoreCode.innerHTML = code.innerHTML;
+                })
+                .catch(error => {
+                    console.log(error);
+                });
+        };
+
+
+        const doMoreRadios = document.getElementsByName("doMoreGroup");
+        let moreTag = "";
+        doMoreRadios.forEach(radio => {
+            radio.addEventListener("change", function () {
+                console.log("CHANGING YEAR");
+                if (this.checked) {
+                    moreTag = this.value;
+                    loadDoMore();
+                }
+            });
         });
 
     }
 
 
 });
-

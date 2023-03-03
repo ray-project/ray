@@ -10,7 +10,8 @@ Ray Example Gallery
 
     .. raw:: html
 
-        <form id="wizardMain">
+        <div id="wizardMain">
+            <form id="wizardMainForm">
 
             <div id="trainSelection">
                 <p class="text-justify">What training framework do you want to use?</p>
@@ -80,7 +81,31 @@ Ray Example Gallery
                 </div>
             </div>
 
-        </form>
+            </form>
+            <form id="wizardDoMoreForm">
+
+            <div id="doMoreSelection" style="display:none;">
+                <p class="text-justify">After training...</p>
+                <div class="radio-button-group" role="group">
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="doMoreGroup" id="batchInference" value="batch_inference">
+                      <label for="batchInference">Run offline batch inference</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="doMoreGroup" id="onlineServing" value="serve">
+                      <label for="onlineServing">Serve model using Ray Serve</label>
+                    </div>
+                </div>
+                <p id="doMoreDesc"></p>
+            </div>
+
+            <div>
+                <div id="doMoreCode">
+                </div>
+            </div>
+
+            </form>
+        </div>
 
 .. raw:: html
 
