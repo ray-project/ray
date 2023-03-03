@@ -1,0 +1,4 @@
+ray[air]
+tensorflow==2.11.0
+transformers==4.19.1
+datasets==2.0.0
