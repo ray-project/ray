@@ -1,14 +1,14 @@
-import numpy as np
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, Iterator
+from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
+import time
+import warnings
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
+from ray.data._internal.block_batching import batch_block_refs
 
 if TYPE_CHECKING:
-    import torch
+    import pyarrow
     from ray.data import Dataset
-    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.train._internal.dataset_iterator import TrainDatasetIterator
 
 
 class BulkDatasetIterator(DatasetIterator):
@@ -30,51 +30,46 @@ class BulkDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
-        # TODO(swang): Delegate Dataset.iter_batches to
-        # DatasetIterator.iter_batches instead of the other way around.
-        return self._base_dataset.iter_batches(
+
+        ds = self._base_dataset
+        block_iterator, stats, executor = ds._plan.execute_to_iterator()
+        ds._current_executor = executor
+        time_start = time.perf_counter()
+
+        yield from batch_block_refs(
+            block_iterator,
+            stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
+            collate_fn=_collate_fn,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
 
-    def iter_torch_batches(
-        self,
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-        drop_last: bool = False,
-        collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
-        ] = None,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator["TorchTensorBatchType"]:
-        return self._base_dataset.iter_torch_batches(
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            dtypes=dtypes,
-            device=device,
-            collate_fn=collate_fn,
-            drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
-        )
+        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def stats(self) -> str:
         return self._base_dataset.stats()
 
-    @property
-    def _base_dataset_or_pipeline(self) -> "Dataset":
-        return self._base_dataset
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        return self._base_dataset.schema()
 
-    def _to_train_iterator(self) -> "TrainDatasetIterator":
-        from ray.train._internal.dataset_iterator import TrainDatasetIterator
+    def __getattr__(self, name):
+        if name == "_base_dataset":
+            return None
 
-        return TrainDatasetIterator(self)
+        # Warning for backwards compatibility. TODO: remove this method in 2.5.
+        warnings.warn(
+            "session.get_dataset_shard returns a ray.data.DatasetIterator "
+            "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
+            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
+            "iterate over one epoch. See "
+            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
+            "for full DatasetIterator docs."
+        )
+
+        return getattr(self._base_dataset, name)
