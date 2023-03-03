@@ -6,14 +6,16 @@ from torch import nn
 
 # checkpoint = result.checkpoint
 checkpoint = TorchCheckpoint.from_directory(
-    "/Users/kai/ray_results/resnet-hackathon/TorchTrainer_28e60_00000_0_2023-03-03_11-18-21/checkpoint_000000"
+    "/tmp/pytorch-image.checkpoint"
 )
 
+# Read some
 inference_data = ray.data.read_images(
     f"s3://anonymous@air-example-data/food-101-tiny/valid", size=(256, 256), mode="RGB"
 )
 
 
+# We have to specify our model definition again
 def initialize_model():
     # Load pretrained model params
     model = models.efficientnet_b0(pretrained=True)
@@ -22,14 +24,18 @@ def initialize_model():
     num_features = model.classifier[1].in_features
     model.classifier[1] = nn.Linear(num_features, 10)
 
-    for param in model.parameters():
-        param.requires_grad = True
     return model
 
 
+# Create a batch predictor from the checkpointed model state dict,
+# providing the model class as an input.
 predictor = BatchPredictor.from_checkpoint(
     checkpoint, TorchPredictor, model=initialize_model()
 )
+
+# Actually run predictions
 predictions = predictor.predict(inference_data)
+
+# We can now process the results, e.g. inspect the dataframe
 df = predictions.to_pandas()
 print(df)

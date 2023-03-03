@@ -138,3 +138,6 @@ trainer = TensorflowTrainer(
 )
 
 result = trainer.fit()
+
+# Save checkpoint to a well-known location
+result.checkpoint.to_directory("/tmp/tensorflow-text.checkpoint")

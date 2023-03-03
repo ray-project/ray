@@ -187,3 +187,6 @@ result = trainer.fit()
 metrics = result.metrics or {}
 for name, val in metrics.items():
     print(name, ":", val)
+
+# Save checkpoint to a well-known location
+result.checkpoint.to_directory("/tmp/tensorflow-image.checkpoint")
