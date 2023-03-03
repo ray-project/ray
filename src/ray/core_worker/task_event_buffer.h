@@ -94,7 +94,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
-      std::unique_ptr<const TaskStateUpdate> state_update = nullptr);
+      absl::optional<const TaskStateUpdate> &state_update = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -108,7 +108,7 @@ class TaskStatusEvent : public TaskEvent {
   /// Pointer to the task spec.
   const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Pointer to the task state update
-  std::unique_ptr<const TaskStateUpdate> state_update_ = nullptr;
+  absl::optional<const TaskStateUpdate> state_update_ = absl::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.

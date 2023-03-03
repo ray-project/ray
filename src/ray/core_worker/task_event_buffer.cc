@@ -31,12 +31,12 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     const std::shared_ptr<const TaskSpecification> &task_spec,
-    std::unique_ptr<const TaskStatusEvent::TaskStateUpdate> state_update)
+    absl::optional<const TaskStatusEvent::TaskStateUpdate> &state_update)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
       task_spec_(task_spec),
-      state_update_(std::move(state_update)) {}
+      state_update_(state_update) {}
 
 TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    JobID job_id,
@@ -68,7 +68,7 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   auto dst_state_update = rpc_task_events->mutable_state_updates();
   gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, dst_state_update);
 
-  if (state_update_ == nullptr) {
+  if (!state_update_.has_value()) {
     return;
   }
 
