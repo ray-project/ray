@@ -568,7 +568,7 @@ span.rst-current-version > span.fa.fa-book {
     height: 100%;
 }
 
-.wizardCode {
+#wizardCode, #doMoreCode {
     max-height: 300pt;
     overflow-y: auto;
 }
