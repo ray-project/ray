@@ -65,6 +65,13 @@ from ray.util.queue import Queue
 
 logger = logging.getLogger(__name__)
 
+import json
+
+from rich.json import JSON
+from rich.live import Live
+from rich.table import Table
+from rich import box
+
 
 def _get_trainable(
     run_identifier: Union[Experiment, str, Type, Callable]
@@ -126,7 +133,10 @@ def _check_gpus_in_resources(
 
 
 def _report_progress(
-    runner: TrialRunner, reporter: ProgressReporter, done: bool = False
+    runner: TrialRunner,
+    reporter: ProgressReporter,
+    done: bool = False,
+    rich_live=None,
 ):
     """Reports experiment progress.
 
@@ -137,9 +147,12 @@ def _report_progress(
     """
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
-        sched_debug_str = runner.scheduler_alg.debug_string()
-        executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+        if rich_live:
+            rich_live.update(generate_table(trials, is_done=done))
+        else:
+            sched_debug_str = runner.scheduler_alg.debug_string()
+            executor_debug_str = runner.trial_executor.debug_string()
+            reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -179,6 +192,47 @@ class _Config(abc.ABC):
     def to_dict(self) -> dict:
         """Converts this configuration to a dict format."""
         raise NotImplementedError
+
+
+def generate_table(trials, is_done=False):
+    # TODO: Make this more efficient by detecting if trials are changed and cache
+    #  the generated table.
+    table = Table(
+        box=box.SQUARE,
+        expand=True,
+        style="white on blue",
+        show_header=False,
+        title="[white on blue]:glowing_star: Ray Tune Trial Status Table :glowing_star:",
+    )
+    table.add_column(overflow="fold")
+    table.add_column(overflow="fold")
+    if is_done:
+        table.add_column(overflow="fold")
+        table.add_row("Trial name", "status", "iterations", "result")
+    else:
+        table.add_row("Trial name", "status", "iterations")
+    for t in trials:
+        if is_done:
+            table.add_row(
+                str(t),
+                t.status,
+                str(t.last_result["training_iteration"]),
+                JSON(json.dumps(t.last_result)),
+            )
+        else:
+            table.add_row(
+                str(t),
+                t.status,
+                str(t.last_result["training_iteration"])
+                if "training_iteration" in t.last_result
+                else "",
+            )
+    return table
+
+
+def run_with_rich_live(*args, **kwargs):
+    with Live(refresh_per_second=4) as live:
+        return run(*args, **kwargs, rich_live=live)
 
 
 @PublicAPI
@@ -226,6 +280,7 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    rich_live=None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -785,7 +840,7 @@ def run(
     while not runner.is_finished() and not experiment_interrupted_event.is_set():
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
+            _report_progress(runner, progress_reporter, rich_live=rich_live)
     tune_taken = time.time() - tune_start
 
     try:
@@ -794,7 +849,7 @@ def run(
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
-        _report_progress(runner, progress_reporter, done=True)
+        _report_progress(runner, progress_reporter, done=True, rich_live=rich_live)
 
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.checkpoint_file

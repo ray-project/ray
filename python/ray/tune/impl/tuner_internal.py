@@ -20,7 +20,7 @@ from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.tune import run
+from ray.tune.tune import run, run_with_rich_live
 from ray.tune.tune_config import TuneConfig
 
 if TYPE_CHECKING:
@@ -589,7 +589,8 @@ class TunerInternal:
             ),
             **self._tuner_kwargs,
         }
-        analysis = run(
+        analysis = run_with_rich_live(
+            # analysis = run(
             **args,
         )
         self.clear_remote_string_queue()
