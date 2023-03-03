@@ -144,11 +144,13 @@ def setup_mlflow(
     try:
         # Do a try-catch here if we are not in a train session
         _session = session._get_session(warn=False)
+        default_trial_id = session.get_trial_id()
+        default_trial_name = session.get_trial_name()
+        
         if _session and rank_zero_only and session.get_world_rank() != 0:
             return _NoopModule()
 
-        default_trial_id = session.get_trial_id()
-        default_trial_name = session.get_trial_name()
+
 
     except RuntimeError:
         default_trial_id = None
