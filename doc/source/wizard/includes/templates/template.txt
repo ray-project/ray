@@ -1,0 +1,51 @@
+{{ imports }}
+{# Methods to download data and create train/valid datasets. #}
+{{ data_loading_helpers }}
+
+{# Methods to build the model and do training. #}
+{{ train_loop_helpers }}
+
+{# Any setup that needs to be done at the start of training. #}
+{# Output: Any variables defined in the prologue should be tied to the corresponding train_loop_body #}
+
+{% if custom_train_loop %}
+def train_loop_per_worker(config: dict):
+{% filter indent(width=4) %}
+{{ train_loop_prologue }}
+{%- endfilter %}
+
+{% if use_ray_data -%}
+{% filter indent(width=4) %}
+{{ data_loading }}
+{%- endfilter %}
+{% else %}
+{% filter indent(width=4) %}
+batch_size_per_worker = 32
+global_batch_size = batch_size_per_worker * session.get_world_size()
+datasets = get_datasets(global_batch_size, batch_size_per_worker)
+{%- endfilter %}
+{%- endif %}
+
+{% filter indent(width=4) %}
+{{ train_loop_body }}
+{% endfilter %}
+{% endif %}
+
+{#- This is where the training gets configured and run. #}
+num_workers = 1
+use_gpu = True
+
+trainer = {{ trainer_cls }}(
+    {% if custom_train_loop %}train_loop_per_worker=train_loop_per_worker,{% endif %}
+    {% if use_ray_data -%}datasets=get_datasets(),{%- endif %}
+    scaling_config=air.ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        trainer_resources={"CPU": 0},
+        resources_per_worker={"CPU": 5.0, "GPU": 1.0},
+    ),
+)
+result = trainer.fit()
+
+print(result.metrics)
+print(result.checkpoint.uri)
