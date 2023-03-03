@@ -883,6 +883,9 @@ def start(
         cli_logger.print(cf.bold("  ray stop"))
         cli_logger.flush()
 
+    assert ray_params.gcs_address is not None
+    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+
     if block:
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
@@ -936,9 +939,6 @@ def start(
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
                 os._exit(1)
         # not-reachable
-
-    assert ray_params.gcs_address is not None
-    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
 
 @cli.command()

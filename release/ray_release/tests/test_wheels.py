@@ -51,20 +51,20 @@ def test_get_ray_wheels_url(remove_buildkite_env):
         repo_url="https://github.com/ray-project/ray.git",
         branch="master",
         commit="1234",
-        ray_version="2.3.0",
+        ray_version="2.3.1",
     )
     assert (
         url == "https://s3-us-west-2.amazonaws.com/ray-wheels/master/1234/"
-        "ray-2.3.0-cp37-cp37m-manylinux2014_x86_64.whl"
+        "ray-2.3.1-cp37-cp37m-manylinux2014_x86_64.whl"
     )
 
 
-@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.0")
+@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.1")
 def test_find_ray_wheels_buildkite(remove_buildkite_env):
     repo = DEFAULT_REPO
     branch = "master"
     commit = "1234" * 10
-    version = "2.3.0"
+    version = "2.3.1"
 
     os.environ["BUILDKITE_COMMIT"] = commit
 
@@ -80,12 +80,12 @@ def test_find_ray_wheels_buildkite(remove_buildkite_env):
     assert url == get_ray_wheels_url(repo, branch, commit, version)
 
 
-@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.0")
+@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.1")
 def test_find_ray_wheels_commit_only(remove_buildkite_env):
     repo = DEFAULT_REPO
     branch = "master"
     commit = "1234" * 10
-    version = "2.3.0"
+    version = "2.3.1"
 
     search_str = commit
 
@@ -114,36 +114,36 @@ def _test_find_ray_wheels_checkout(
         assert url == get_ray_wheels_url(repo, branch, commit, version)
 
 
-@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.0")
+@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.1")
 def test_find_ray_wheels_branch(remove_buildkite_env):
     repo = DEFAULT_REPO
     branch = "master"
     commit = "1234" * 10
-    version = "2.3.0"
+    version = "2.3.1"
 
     search_str = "master"
 
     _test_find_ray_wheels_checkout(repo, branch, commit, version, search_str)
 
 
-@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.0")
+@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.1")
 def test_find_ray_wheels_repo_branch(remove_buildkite_env):
     repo = DEFAULT_REPO
     branch = "master"
     commit = "1234" * 10
-    version = "2.3.0"
+    version = "2.3.1"
 
     search_str = "ray-project:master"
 
     _test_find_ray_wheels_checkout(repo, branch, commit, version, search_str)
 
 
-@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.0")
+@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.1")
 def test_find_ray_wheels_pr_repo_branch(remove_buildkite_env):
     repo = "user"
     branch = "dev-branch"
     commit = "1234" * 10
-    version = "2.3.0"
+    version = "2.3.1"
 
     search_str = "user:dev-branch"
     _test_find_ray_wheels_checkout(repo, branch, commit, version, search_str)
@@ -155,12 +155,12 @@ def test_find_ray_wheels_pr_repo_branch(remove_buildkite_env):
 
 
 @patch("time.sleep", lambda *a, **kw: None)
-@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.0")
+@patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.3.1")
 def test_find_and_wait_wheels(remove_buildkite_env):
     repo = DEFAULT_REPO
     branch = "master"
     commit = "1234" * 10
-    version = "2.3.0"
+    version = "2.3.1"
 
     class TrueAfter:
         def __init__(self, after: float):
