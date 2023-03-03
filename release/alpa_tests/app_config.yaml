@@ -9,7 +9,7 @@ python:
     - awscli
     - alpa
     - cupy-cuda113
-    - numpy==1.23
+    - numpy==1.21.0
     - protobuf==3.20.0
   conda_packages: []
 
