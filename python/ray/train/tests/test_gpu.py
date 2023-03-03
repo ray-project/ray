@@ -68,7 +68,11 @@ def test_torch_get_device(
             assert sorted_devices == "1,2"
         if num_gpus_per_worker > 1:
             session.report(
-                dict(devices=[device.index for device in train.torch.get_device()])
+                dict(
+                    devices=sorted(
+                        [device.index for device in train.torch.get_device()]
+                    )
+                )
             )
         else:
             session.report(dict(devices=train.torch.get_device().index))
@@ -103,7 +107,11 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     def train_fn():
         if num_gpus_per_worker > 1:
             session.report(
-                dict(devices=[device.index for device in train.torch.get_device()])
+                dict(
+                    devices=sorted(
+                        [device.index for device in train.torch.get_device()]
+                    )
+                )
             )
         else:
             session.report(dict(devices=train.torch.get_device().index))
