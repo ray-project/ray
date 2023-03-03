@@ -1157,7 +1157,9 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = "read"
+    name = in_blocks._read_stage_name or "Read"
+    if isinstance(name, list):
+        name = "->".join(name)
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.
