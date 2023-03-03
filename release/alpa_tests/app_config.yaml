@@ -1,0 +1,23 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py39-gpu") }}
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - awscli
+    - alpa
+    - cupy-cuda113
+    - numpy==1.23
+    - protobuf==3.20.0
+  conda_packages: []
+
+post_build_cmds:
+  - pip3 install --upgrade pip
+  - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install jaxlib==0.3.22+cuda113.cudnn820 -f https://alpa-projects.github.io/wheels.html
+  - pip3 install --no-cache-dir nvidia-pyindex
+  - pip3 install --no-cache-dir nvidia-tensorrt==7.2.3.4
+  - pip3 install -U transformers
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
