@@ -5,6 +5,7 @@ let useData= false;
 let anyChecked = false;
 let multipleComponents = false;
 
+//import wizard_flow from './wizard_flow.json';
 
 function toggleCheck(button) {
 
@@ -90,6 +91,8 @@ window.addEventListener("load", () => {
         });
 
     }
+
+    // Render first step
 
     const submitButton = document.getElementById('generateButton');
     submitButton.addEventListener('click', function (event) {
