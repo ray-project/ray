@@ -1,5 +1,6 @@
 -r requirements_dl.txt
 
+aim==3.16.1
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.2.4; python_version >= '3.7'
 bayesian-optimization==1.2.0
