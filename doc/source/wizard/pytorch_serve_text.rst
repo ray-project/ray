@@ -3,4 +3,4 @@
 Serving model for Text Data using PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ./includes/pytorch_batch_inference_image.py
+.. literalinclude:: ./includes/pytorch_serve_text.py

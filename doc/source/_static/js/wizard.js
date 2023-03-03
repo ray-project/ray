@@ -25,6 +25,12 @@ function unsetExample() {
 
     const wizardCode = document.getElementById("wizardCode");
     wizardCode.innerHTML = "";
+
+    const doMoreDesc = document.getElementById("doMoreDesc");
+    doMoreDesc.innerText = "";
+
+    const doMoreCode = document.getElementById("doMoreCode");
+    doMoreCode.innerHTML = "";
 }
 
 
