@@ -2,15 +2,16 @@ import tensorflow as tf
 
 import boto3
 from pathlib import Path
-import os 
+import os
 
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
+
 def download_dataset_from_s3(destination_dir: str):
     destination_path = Path(destination_dir).resolve()
-    s3_resource = boto3.resource('s3')
-    bucket = s3_resource.Bucket("air-example-data") 
+    s3_resource = boto3.resource("s3")
+    bucket = s3_resource.Bucket("air-example-data")
     for obj in bucket.objects.filter(Prefix="food-101-tiny"):
         os.makedirs(os.path.dirname(obj.key), exist_ok=True)
         bucket.download_file(obj.key, str(destination_path / obj.key))
@@ -21,10 +22,24 @@ def get_train_test_datasets(img_size, global_batch_size):
         download_dataset_from_s3(destination_dir=".")
 
     builder = tfds.ImageFolder("./food-101-tiny")
-    train_ds = builder.as_dataset(split="train", shuffle_files=False, batch_size=global_batch_size)
-    train_ds = train_ds.map(lambda data: (tf.image.resize(data["image"], (img_size, img_size)), data["label"]))
-    valid_ds = builder.as_dataset(split="valid", shuffle_files=True, batch_size=global_batch_size)
-    valid_ds = valid_ds.map(lambda data: (tf.image.resize(data["image"], (img_size, img_size)), data["label"]))
+    train_ds = builder.as_dataset(
+        split="train", shuffle_files=False, batch_size=global_batch_size
+    )
+    train_ds = train_ds.map(
+        lambda data: (
+            tf.image.resize(data["image"], (img_size, img_size)),
+            data["label"],
+        )
+    )
+    valid_ds = builder.as_dataset(
+        split="valid", shuffle_files=True, batch_size=global_batch_size
+    )
+    valid_ds = valid_ds.map(
+        lambda data: (
+            tf.image.resize(data["image"], (img_size, img_size)),
+            data["label"],
+        )
+    )
     return train_ds, valid_ds
 
 
@@ -37,7 +52,9 @@ NUM_CLASSES = 10
 
 train_ds, valid_ds = get_train_test_datasets(IMG_SIZE, 64)
 
-import ipdb; ipdb.set_trace()
+import ipdb
+
+ipdb.set_trace()
 
 
 from tensorflow.keras import layers
@@ -73,16 +90,14 @@ from ray.air.integrations.keras import ReportCheckpointCallback
 def train_func(config: dict):
     epochs = config.get("epochs", 5)
     batch_size_per_worker = config.get("batch_size", 64)
-    
+
     # 2. Synchronized model setup
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
-    with strategy.scope(): 
+    with strategy.scope():
         loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         optimizer = tf.keras.optimizers.Adam()
         model = build_model()
-        model.compile(
-            optimizer=optimizer, loss=loss_object, metrics=["accuracy"]
-        )
+        model.compile(optimizer=optimizer, loss=loss_object, metrics=["accuracy"])
 
     # 3. Shard the dataset across `session.get_world_size()` workers
     global_batch_size = batch_size_per_worker * session.get_world_size()
@@ -101,11 +116,10 @@ def train_func(config: dict):
             f"# test batches per worker = {len(test_ds)} "
             f"(~{len(test_ds) * batch_size_per_worker} samples)"
         )
-  
+
     # 4. Report metrics and checkpoint the model
     report_metrics_and_checkpoint_callback = ReportCheckpointCallback(
-        report_metrics_on="epoch_end",
-        checkpoint_on="epoch_end"
+        report_metrics_on="epoch_end", checkpoint_on="epoch_end"
     )
     model.fit(
         train_ds,
@@ -122,6 +136,7 @@ def train_func(config: dict):
             f"Final Test Loss: {test_loss:.4f}, "
             f"Final Test Accuracy: {test_accuracy:.4f}"
         )
+
 
 from ray import air
 from ray.train.tensorflow import TensorflowTrainer

@@ -10,7 +10,7 @@ Ray Example Gallery
 
     .. raw:: html
 
-        <div id="wizardMain">
+        <form id="wizardMain">
 
             <div id="trainSelection">
                 <p class="text-justify">What training framework do you want to use?</p>
@@ -23,10 +23,10 @@ Ray Example Gallery
                       <input class="radio-button" type="radio" name="trainGroup" id="tfTrain" value="tensorflow">
                       <label for="tfTrain">TensorFlow</label>
                     </div>
-                    <div class="item">
+                    <!-- <div class="item">
                       <input class="radio-button" type="radio" name="trainGroup" id="xgbTrain" value="xgboost">
                       <label for="xgbTrain">XGBoost</label>
-                    </div>
+                    </div> -->
                 </div>
                 <p id="trainDesc"></p>
             </div>
@@ -49,10 +49,10 @@ Ray Example Gallery
             <div id="dataTypeSelection" style="display:none;">
                 <p class="text-justify">What kind of data are you using?</p>
                 <div class="radio-button-group" role="group">
-                    <div class="item">
+                    <!-- <div class="item">
                       <input class="radio-button" type="radio" name="dataTypeGroup" id="anyData" value="any">
                       <label for="anyData">Any Data</label>
-                    </div>
+                    </div> -->
                     <div class="item">
                       <input class="radio-button" type="radio" name="dataTypeGroup" id="imageData" value="image">
                       <label for="imageData">Image Data</label>
@@ -80,7 +80,7 @@ Ray Example Gallery
                 </div>
             </div>
 
-        </div>
+        </form>
 
 .. raw:: html
 
