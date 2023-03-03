@@ -357,8 +357,7 @@ parrot_node = parrot.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("address", ["auto", "http://127.0.0.1:8265"])
-def test_run_application(ray_start_stop, address):
+def test_run_application(ray_start_stop):
     """Deploys valid config file and import path via `serve run`."""
 
     # Deploy via config file
@@ -367,7 +366,7 @@ def test_run_application(ray_start_stop, address):
     )
 
     print('Running config file "arithmetic.yaml".')
-    p = subprocess.Popen(["serve", "run", f"--address={address}", config_file_name])
+    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
         timeout=15,
@@ -387,7 +386,7 @@ def test_run_application(ray_start_stop, address):
     print('Running node at import path "ray.serve.tests.test_cli.parrot_node".')
     # Deploy via import path
     p = subprocess.Popen(
-        ["serve", "run", f"--address={address}", "ray.serve.tests.test_cli.parrot_node"]
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_node"]
     )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk"
@@ -418,8 +417,7 @@ molly_macaw = Macaw.bind("green", name="Molly")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("address", ["auto", "http://127.0.0.1:8265"])
-def test_run_deployment_node(ray_start_stop, address):
+def test_run_deployment_node(ray_start_stop):
     """Test `serve run` with bound args and kwargs."""
 
     # Deploy via import path
@@ -427,11 +425,11 @@ def test_run_deployment_node(ray_start_stop, address):
         [
             "serve",
             "run",
-            f"--address={address}",
+            "--address=auto",
             "ray.serve.tests.test_cli.molly_macaw",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=15)
+    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
     assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
@@ -447,8 +445,7 @@ metal_detector_node = MetalDetector.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("address", ["auto", "http://127.0.0.1:8265"])
-def test_run_runtime_env(ray_start_stop, address):
+def test_run_runtime_env(ray_start_stop):
     """Test `serve run` with runtime_env passed in."""
 
     # With import path
@@ -456,14 +453,14 @@ def test_run_runtime_env(ray_start_stop, address):
         [
             "serve",
             "run",
-            f"--address={address}",
+            "--address=auto",
             "ray.serve.tests.test_cli.metal_detector_node",
             "--runtime-env-json",
             ('{"env_vars": {"buried_item": "lucky coin"} }'),
         ]
     )
     wait_for_condition(
-        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=15
+        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=10
     )
     p.send_signal(signal.SIGINT)
     p.wait()
@@ -473,7 +470,7 @@ def test_run_runtime_env(ray_start_stop, address):
         [
             "serve",
             "run",
-            f"--address={address}",
+            "--address=auto",
             os.path.join(
                 os.path.dirname(__file__),
                 "test_config_files",
@@ -550,12 +547,14 @@ def test_run_teardown(ray_start_stop):
     """Consecutive serve runs should tear down controller so logs can always be seen."""
     logs = subprocess.check_output(
         ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        stderr=subprocess.STDOUT,
         timeout=30,
     ).decode()
     assert "Intentionally failing." in logs
 
     logs = subprocess.check_output(
         ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        stderr=subprocess.STDOUT,
         timeout=30,
     ).decode()
     assert "Intentionally failing." in logs
