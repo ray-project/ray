@@ -446,6 +446,9 @@ RAY_CONFIG(bool, use_ray_syncer, false)
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
 RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
+RAY_CONFIG(size_t, gcs_actor_sharding_num, 8)
+RAY_CONFIG(size_t, gcs_actor_threading_num, 4)
+
 /// The queuing buffer of ray syncer. This indicates how many concurrent
 /// requests can run in flight for syncing.
 RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
