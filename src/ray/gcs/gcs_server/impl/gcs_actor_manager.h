@@ -306,7 +306,7 @@ class GcsActorManagerImpl {
         function_manager_(function_manager),
         run_delayed_(run_delayed),
         actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
-        executor_(boost::asio::make_strand(std::forward<Executor>(exec))) {
+        executor_(boost::asio::make_strand(exec)) {
     RAY_CHECK(worker_client_factory_);
     RAY_CHECK(destroy_owned_placement_group_if_needed_);
     actor_state_counter_.reset(
@@ -433,9 +433,12 @@ class GcsActorManagerImpl {
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
   void CreateActor(const rpc::CreateActorRequest &request, CreateActorCallback callback);
-  void GetActorInfo(const rpc::GetActorInfoRequest &request,
-                    std::function<void(GcsActor)> cb) {
-    executor_.dispatch([=] {
+
+  void KillActorViaGcs(ActorID actor_id, bool force_kill, bool no_restart, std::function<void()> cb);
+
+  void GetActorInfo(ActorID actor_id,
+                    std::function<void(GcsActor*)> cb) {
+    boost::asio::dispatch(executor_, [=] {
       const auto &registered_actor_iter = registered_actors_.find(actor_id);
       GcsActor *ptr = nullptr;
       if (registered_actor_iter != registered_actors_.end()) {
@@ -446,8 +449,10 @@ class GcsActorManagerImpl {
           ptr = destroyed_actor_iter->second.get();
         }
       }
+      cb(ptr);
     });
   }
+
 
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
@@ -676,19 +681,6 @@ class GcsActorManagerImpl {
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
-
-  // Debug info.
-  enum CountType {
-    REGISTER_ACTOR_REQUEST = 0,
-    CREATE_ACTOR_REQUEST = 1,
-    GET_ACTOR_INFO_REQUEST = 2,
-    GET_NAMED_ACTOR_INFO_REQUEST = 3,
-    GET_ALL_ACTOR_INFO_REQUEST = 4,
-    KILL_ACTOR_REQUEST = 5,
-    LIST_NAMED_ACTORS_REQUEST = 6,
-    CountType_MAX = 7,
-  };
-  uint64_t counts_[CountType::CountType_MAX] = {0};
 
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
   boost::asio::strand<boost::asio::executor> executor_;
