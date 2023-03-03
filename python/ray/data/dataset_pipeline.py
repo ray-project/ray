@@ -31,7 +31,6 @@ from ray.data._internal.pipeline_executor import (
 from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data._internal.util import _is_tensor_schema
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U
@@ -1107,13 +1106,6 @@ class DatasetPipeline(Generic[T]):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )
-
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this dataset is a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
 
     def to_tf(
         self,
