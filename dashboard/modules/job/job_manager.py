@@ -194,6 +194,11 @@ class JobSupervisor:
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
         curr_runtime_env["env_vars"] = env_vars
+        # Remove env_vars from the runtime_env if it's empty. Without this, the driver's
+        # runtime_env might be {"env_vars": {}}, which doesn't trigger the optimized
+        # Ray Core codepath for empty runtime_envs; see #32750.
+        if not curr_runtime_env["env_vars"]:
+            del curr_runtime_env["env_vars"]
         return curr_runtime_env
 
     def ping(self):
