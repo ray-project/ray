@@ -50,7 +50,8 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.bulk_dataset_iterator import DatasetIterator
+from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
+from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -1142,11 +1143,13 @@ class Dataset(Generic[T]):
 
     @ConsumptionAPI
     def streaming_split(
-        self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
+        self,
+        n: int,
+        *,
+        equal: bool = False,
+        locality_hints: Optional[List[ray.actor.ActorHandle]] = None,
     ) -> List[DatasetIterator]:
-        # Launch streaming driver in an async coordinator actor.
-        # Return iterators that reference that actor.
-        pass
+        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
     def split(
@@ -2815,7 +2818,7 @@ class Dataset(Generic[T]):
             It is recommended to use ``DatasetIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return DatasetIterator(self)
+        return DatasetIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
