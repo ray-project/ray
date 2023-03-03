@@ -2264,7 +2264,7 @@
 
   run:
     timeout: 3600
-    script: python run_clm_flax.py
+    script: run.sh
 
     wait_for_nodes:
       num_nodes: 4
