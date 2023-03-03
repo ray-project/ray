@@ -15,7 +15,7 @@ python:
   pip_packages:
   ## These dependencies should be handled by requirements_rllib.txt and
   ## requirements_ml_docker.txt and removed here
-  - gymnasium[atari,mujoco]==0.26.3
+  - gymnasium[atari,mujoco]==0.27.1
   - ale-py==0.8.0
   - gym==0.26.2
   - mujoco-py<2.2,>=2.1

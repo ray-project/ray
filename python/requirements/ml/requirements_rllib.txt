@@ -5,7 +5,7 @@
 # Atari
 # TODO(sven): Still needed for Atari (need to be wrapped by gymnasium as it does NOT support Atari yet)
 gym==0.26.2
-gymnasium[atari,mujoco]==0.26.3
+gymnasium[atari,mujoco]==0.27.1
 # For testing MuJoCo envs with gymnasium.
 mujoco-py<2.2,>=2.1
 # Kaggle envs.

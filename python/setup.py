@@ -264,7 +264,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==0.26.3",
+        "gymnasium==0.27.1",
         "lz4",
         "scikit-image",
         "pyyaml",
