@@ -234,9 +234,7 @@ class TestCatalog(unittest.TestCase):
                 deterministic=deterministic,
             )
 
-            for framework in framework_iterator(
-                frameworks=["tf2", "torch"], session=False
-            ):
+            for framework in framework_iterator(frameworks=["tf2", "torch"]):
                 if framework == "tf2":
                     framework = "tf"
                 dist_cls = dist_dict[framework]
