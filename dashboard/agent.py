@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # We would want to suppress deprecating warnings from aiogrpc library
 # with the usage of asyncio.get_event_loop() in python version >=3.10
-if False and sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
     import warnings
 
     with warnings.catch_warnings():
