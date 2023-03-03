@@ -434,10 +434,12 @@ class GcsActorManagerImpl {
   /// name already exists. The callback will not be called in this case.
   void CreateActor(const rpc::CreateActorRequest &request, CreateActorCallback callback);
 
-  void KillActorViaGcs(ActorID actor_id, bool force_kill, bool no_restart, std::function<void()> cb);
+  void KillActorViaGcs(ActorID actor_id,
+                       bool force_kill,
+                       bool no_restart,
+                       std::function<void()> cb);
 
-  void GetActorInfo(ActorID actor_id,
-                    std::function<void(GcsActor*)> cb) {
+  void GetActorInfo(ActorID actor_id, std::function<void(GcsActor *)> cb) {
     boost::asio::dispatch(executor_, [=] {
       const auto &registered_actor_iter = registered_actors_.find(actor_id);
       GcsActor *ptr = nullptr;
@@ -452,7 +454,6 @@ class GcsActorManagerImpl {
       cb(ptr);
     });
   }
-
 
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
