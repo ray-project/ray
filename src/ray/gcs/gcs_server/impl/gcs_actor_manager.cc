@@ -360,7 +360,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
         RAY_LOG(DEBUG) << "Finished getting all actor info.";
-      });
+      }, executor_);
   if (!status.ok()) {
     // Send the response to unblock the sender and free the request.
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -521,7 +521,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
-      actor_id, request.task_spec(), [](const Status &status) {}));
+      actor_id, request.task_spec(), [](const Status &status) {}, executor_));
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor->GetMutableActorTableData(),
@@ -552,7 +552,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      }));
+      }, executor_));
   return Status::OK();
 }
 
@@ -823,7 +823,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
-      }));
+      }, executor_));
 
   // Inform all creation callbacks that the actor was cancelled, not created.
   for (auto &callback : creation_callbacks) {
@@ -1080,7 +1080,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
         [this, actor_id, mutable_actor_table_data](Status status) {
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
-        }));
+        }, executor_));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     RemoveActorNameFromRegistry(actor);
@@ -1105,7 +1105,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           RAY_CHECK_OK(
               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
-        }));
+        }, executor_));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
     // once the owner fails or notifies us that the actor's handle has gone out
@@ -1206,7 +1206,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
           }
           actor_to_create_callbacks_.erase(iter);
         }
-      }));
+      }, executor_));
 }
 
 void GcsActorManager::SchedulePendingActors() {

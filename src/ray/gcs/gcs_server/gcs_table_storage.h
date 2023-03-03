@@ -60,27 +60,29 @@ class GcsTable {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
+  virtual Status Put(const Key &key, const Data &value,
+                     const StatusCallback &callback,
+                     boost::asio::executor ex = boost::asio::executor());
 
   /// Get data from the table asynchronously.
   ///
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
+  Status Get(const Key &key, const OptionalItemCallback<Data> &callback, boost::asio::executor ex = boost::asio::executor());
 
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
   /// \return Status
-  Status GetAll(const MapCallback<Key, Data> &callback);
+  Status GetAll(const MapCallback<Key, Data> &callback, boost::asio::executor ex = boost::asio::executor());
 
   /// Delete data from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status Delete(const Key &key, const StatusCallback &callback);
+  virtual Status Delete(const Key &key, const StatusCallback &callback, boost::asio::executor ex = boost::asio::executor());
 
   /// Delete a batch of data from the table asynchronously.
   ///
@@ -88,10 +90,9 @@ class GcsTable {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   virtual Status BatchDelete(const std::vector<Key> &keys,
-                             const StatusCallback &callback);
+                             const StatusCallback &callback, boost::asio::executor ex = boost::asio::executor());
 
  protected:
-  boost::asio::executor executor_;
   std::string table_name_;
   std::shared_ptr<StoreClient> store_client_;
 };
@@ -118,28 +119,28 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
+  Status Put(const Key &key, const Data &value, const StatusCallback &callback, boost::asio::executor ex = boost::asio::executor()) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
   ///
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status GetByJobId(const JobID &job_id, const MapCallback<Key, Data> &callback);
+  Status GetByJobId(const JobID &job_id, const MapCallback<Key, Data> &callback, boost::asio::executor ex = boost::asio::executor());
 
   /// Delete all the data of the specified job id from the table asynchronously.
   ///
   /// \param job_id The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
+  Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback, boost::asio::executor ex = boost::asio::executor());
 
   /// Delete data and index from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status Delete(const Key &key, const StatusCallback &callback) override;
+  Status Delete(const Key &key, const StatusCallback &callback, boost::asio::executor ex = boost::asio::executor()) override;
 
   /// Delete a batch of data and index from the table asynchronously.
   ///
@@ -147,10 +148,10 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   Status BatchDelete(const std::vector<Key> &keys,
-                     const StatusCallback &callback) override;
+                     const StatusCallback &callback, boost::asio::executor ex = boost::asio::executor()) override;
 
   /// Rebuild the index during startup.
-  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback);
+  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback, boost::asio::executor ex = boost::asio::executor());
 
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
