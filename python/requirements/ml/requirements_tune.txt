@@ -16,7 +16,7 @@ h5py==3.7.0
 hpbandster==0.7.4
 HEBO==0.3.2
 hyperopt==0.2.5
-jupyter==1.0.0
+jupyterlab==3.6.1
 lightgbm==3.2.1
 matplotlib!=3.4.3
 mlflow==1.30.0
