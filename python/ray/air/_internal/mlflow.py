@@ -221,6 +221,15 @@ class _MLflowLoggerUtil:
         active_run = self._mlflow.active_run()
         if active_run:
             return active_run
+        
+        
+        if os.environ.get("MLFLOW_RUN_ID", None) != None: 
+            parent = os.environ["MLFLOW_RUN_ID"]
+            os.environ["MLFLOW_RUN_ID"] = ""
+            run = self._mlflow.start_run(run_name=run_name, experiment_id=self.experiment_id, tags=tags
+                )
+            self._mlflow.set_tag("mlflow.parentRunId", parent)
+            return run
 
         return self._mlflow.start_run(
             run_name=run_name, experiment_id=self.experiment_id, tags=tags
