@@ -17,6 +17,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         locality_hints: Optional[List[ray.actor.ActorHandle]],
     ) -> List["StreamSplitDatasetIterator"]:
         coord_actor = SplitCoordinator.remote(base, n, equal, locality_hints)
+        coord_actor.start_processing.remote()
         return [StreamSplitDatasetIterator(coord_actor, i) for i in range(n)]
 
     def __init__(
@@ -25,7 +26,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         output_split_idx: int,
     ):
         self._coord_actor = coord_actor
-        self.output_split_idx = output_split_idx
+        self._output_split_idx = output_split_idx
 
     def iter_batches(
         self,
@@ -54,16 +55,49 @@ class StreamSplitDatasetIterator(DatasetIterator):
         )
 
     def _gen_blocks(self) -> Iterator[ObjectRef[Block]]:
-        raise NotImplementedError
+        while True:
+            blocks = ray.get(self._coord_actor.get(self._output_split_idx))
+            if not blocks:
+                break
+            else:
+                yield from blocks
 
 
 @ray.remote(num_cpus=0)
 class SplitCoordinator:
     def __init__(
         self,
-        base: Dataset,
+        dataset: Dataset,
         n: int,
         equal: bool,
         locality_hints: Optional[List[ray.actor.ActorHandle]],
     ):
-        pass
+        self._base_dataset = dataset
+        self._n = n
+        self._equal = equal
+        self._locality_hints = locality_hints
+        self._outboxes = [[] for _ in range(n)]
+        self._finished = False
+
+    async def start_processing(self) -> None:
+        try:
+            print("START PROCESSING LOOP")
+            ds = self._base_dataset
+            block_iterator, stats, executor = ds._plan.execute_to_iterator()
+            # TODO: backpressure???
+            for block in block_iterator:
+                self._outboxes[block.output_split_idx].append(block)
+            print("END PROCESSING LOOP")
+        finally:
+            self._finished = True
+
+    async def get(output_split_idx: int) -> List[ObjectRef[Block]]:
+        result = []
+        outbox = self._outboxes[split_idx]
+        while not self._finished:
+            while outbox:
+                result.append(outbox.pop(0))
+            if result:
+                return result
+            time.sleep(0.1)  # Polling loop.
+        return []  # End of stream.
