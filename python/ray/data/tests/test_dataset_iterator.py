@@ -129,7 +129,7 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
         assert batch["value"].tolist() == list(range(5))
 
     # Fails on third iteration.
-    with pytest.raises(StopIteration):
+    with pytest.raises(Exception, match=r"generator raised StopIteration"):
         for batch in it.iter_torch_batches():
             pass
 

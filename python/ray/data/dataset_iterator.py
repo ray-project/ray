@@ -3,17 +3,16 @@ import numpy as np
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.block import DataBatch
 from ray.util.annotations import PublicAPI
+from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
+    import pyarrow
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.data.dataset import Dataset
-    from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.train._internal.dataset_iterator import TrainDatasetIterator
+    from ray.data.dataset import TensorFlowTensorBatchType
 
 
 if sys.version_info >= (3, 8):
@@ -65,6 +64,7 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -104,6 +104,15 @@ class DatasetIterator(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def stats(self) -> str:
+        """Returns a string containing execution timing information."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        """Return the schema of the dataset iterated over."""
+        raise NotImplementedError
+
     def iter_torch_batches(
         self,
         *,
@@ -169,7 +178,300 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over Torch Tensor batches.
         """
-        raise NotImplementedError
+
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+            get_device,
+        )
+
+        # Automatically move torch tensors to the appropriate device.
+        if device is None:
+            default_device = get_device()
+            if default_device.type != "cpu":
+                device = default_device
+
+        if collate_fn is not None and (dtypes is not None or device is not None):
+            raise ValueError(
+                "collate_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `collate_fn` will move the output Torch tensors to the"
+                "appropriate dtype and device."
+            )
+
+        if collate_fn is None:
+
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+                return convert_ndarray_batch_to_torch_tensor_batch(
+                    batch, dtypes=dtypes, device=device
+                )
+
+        yield from self.iter_batches(
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=collate_fn,
+        )
+
+    def iter_tf_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = 256,
+        dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator["TensorFlowTensorBatchType"]:
+        """Return a local batched iterator of TensorFlow Tensors over the dataset.
+
+        This iterator will yield single-tensor batches of the underlying dataset
+        consists of a single column; otherwise, it will yield a dictionary of
+        column-tensors.
+
+        .. tip::
+            If you don't need the additional flexibility provided by this method,
+            consider using :meth:`~ray.data.Dataset.to_tf` instead. It's easier
+            to use.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range( # doctest: +SKIP
+            ...     12,
+            ... ).iter_tf_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            (4, 1)
+            (4, 1)
+            (4, 1)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
+            dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
+                dtype will be inferred from the tensor data.
+            drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+
+        Returns:
+            An iterator over TensorFlow Tensor batches.
+        """
+        from ray.air._internal.tensorflow_utils import (
+            convert_ndarray_batch_to_tf_tensor_batch,
+        )
+
+        for batch in self.iter_batches(
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        ):
+            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
+
+    def to_torch(
+        self,
+        *,
+        label_column: Optional[str] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
+        label_column_dtype: Optional["torch.dtype"] = None,
+        feature_column_dtypes: Optional[
+            Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
+        ] = None,
+        batch_size: int = 1,
+        prefetch_blocks: int = 0,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        unsqueeze_label_tensor: bool = True,
+        unsqueeze_feature_tensors: bool = True,
+    ) -> "torch.utils.data.IterableDataset":
+        """Return a Torch IterableDataset over this dataset.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        It is recommended to use the returned ``IterableDataset`` directly
+        instead of passing it into a torch ``DataLoader``.
+
+        Each element in IterableDataset will be a tuple consisting of 2
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
+
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple Torch workers consuming the data.
+
+        Time complexity: O(1)
+
+        Args:
+            label_column: The name of the column used as the
+                label (second element of the output list). Can be None for
+                prediction, in which case the second element of returned
+                tuple will also be None.
+            feature_columns: The names of the columns
+                to use as the features. Can be a list of lists or
+                a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label column as
+                the features.
+            label_column_dtype: The torch dtype to
+                use for the label column. If None, then automatically infer
+                the dtype.
+            feature_column_dtypes: The dtypes to use for the feature
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it will be applied to
+                all tensors. If None, then automatically infer the dtype.
+            batch_size: How many samples per batch to yield at a time.
+                Defaults to 1.
+            prefetch_blocks: The number of blocks to prefetch ahead of
+                the current block during the scan.
+            drop_last: Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
+                False and the size of dataset is not divisible by the batch
+                size, then the last batch will be smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+            unsqueeze_label_tensor: If set to True, the label tensor
+                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
+            unsqueeze_feature_tensors: If set to True, the features tensors
+                will be unsqueezed (reshaped to (N, 1)) before being concatenated into
+                the final features tensor. Otherwise, they will be left as is, that is
+                (N, ). Defaults to True.
+
+        Returns:
+            A torch IterableDataset.
+        """
+        import torch
+
+        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
+        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
+
+        # If an empty collection is passed in, treat it the same as None
+        if not feature_columns:
+            feature_columns = None
+
+        if feature_column_dtypes and not isinstance(feature_column_dtypes, torch.dtype):
+            if isinstance(feature_columns, dict):
+                if not isinstance(feature_column_dtypes, dict):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or dict, got {type(feature_column_dtypes)}."
+                    )
+                if set(feature_columns) != set(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same keys."
+                    )
+                if any(not subcolumns for subcolumns in feature_columns.values()):
+                    raise ValueError("column list may not be empty")
+            elif isinstance(feature_columns[0], (list, tuple)):
+                if not isinstance(feature_column_dtypes, (list, tuple)):
+                    raise TypeError(
+                        "If `feature_columns` is a list of lists, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or a sequence, got {type(feature_column_dtypes)}."
+                    )
+                if len(feature_columns) != len(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same length."
+                    )
+                if any(not subcolumns for subcolumns in feature_columns):
+                    raise ValueError("column list may not be empty")
+
+        def make_generator():
+            for batch in self.iter_batches(
+                batch_size=batch_size,
+                batch_format="pandas",
+                prefetch_blocks=prefetch_blocks,
+                drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
+            ):
+                if label_column:
+                    label_tensor = convert_pandas_to_torch_tensor(
+                        batch,
+                        [label_column],
+                        label_column_dtype,
+                        unsqueeze=unsqueeze_label_tensor,
+                    )
+                    batch.pop(label_column)
+                else:
+                    label_tensor = None
+
+                if isinstance(feature_columns, dict):
+                    features_tensor = {
+                        key: convert_pandas_to_torch_tensor(
+                            batch,
+                            feature_columns[key],
+                            feature_column_dtypes[key]
+                            if isinstance(feature_column_dtypes, dict)
+                            else feature_column_dtypes,
+                            unsqueeze=unsqueeze_feature_tensors,
+                        )
+                        for key in feature_columns
+                    }
+                else:
+                    features_tensor = convert_pandas_to_torch_tensor(
+                        batch,
+                        columns=feature_columns,
+                        column_dtypes=feature_column_dtypes,
+                        unsqueeze=unsqueeze_feature_tensors,
+                    )
+
+                yield (features_tensor, label_tensor)
+
+        return TorchIterableDataset(make_generator)
 
     def to_tf(
         self,
@@ -258,22 +560,20 @@ class DatasetIterator(abc.ABC):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        base_dataset = self._base_dataset_or_pipeline
+        if self._is_tensor_dataset():
+            raise NotImplementedError(
+                "`to_tf` doesn't support single-column tensor datasets. Call the "
+                "more-flexible `iter_batches` instead."
+            )
 
-        if base_dataset.dataset_format() == BlockFormat.SIMPLE:
+        schema = self.schema()
+        if isinstance(schema, type):
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
                 "flexible `iter_batches` in place of `to_tf`."
             )
 
-        if base_dataset._is_tensor_dataset():
-            raise NotImplementedError(
-                "`to_tf` doesn't support single-column tensor datasets. Call the "
-                "more-flexible `iter_batches` instead."
-            )
-
-        schema = base_dataset.schema()
         valid_columns = schema.names
 
         def validate_column(column: str) -> None:
@@ -341,17 +641,6 @@ class DatasetIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
-    @abc.abstractmethod
-    def stats(self) -> str:
-        """Returns a string containing execution timing information."""
-        raise NotImplementedError
-
-    @property
-    def _base_dataset_or_pipeline(self) -> Union["Dataset", "DatasetPipeline"]:
-        """The :class:`~ray.data.dataset.Dataset` or
-        :class:`~ray.data.dataset.DatasetPipeline` that this object iterates over."""
-        raise NotImplementedError
-
     def iter_epochs(self, max_epoch: int = -1) -> None:
         raise DeprecationWarning(
             "If you are using AIR, note that session.get_dataset_shard() "
@@ -361,13 +650,9 @@ class DatasetIterator(abc.ABC):
             "iter_torch_batches(), or to_tf()."
         )
 
-    def _to_train_iterator(self) -> "TrainDatasetIterator":
-        """
-        Convert this DatasetIterator to one that is specific
-        to Ray Train Trainers.
-
-        The Train-specific iterator has training specific logic,
-        for example, automatically moving batches to GPU when GPU training
-        is enabled.
-        """
-        raise NotImplementedError
+    def _is_tensor_dataset(self) -> bool:
+        """Return ``True`` if this is an iterator over a tensor dataset."""
+        schema = self.schema()
+        if schema is None or isinstance(schema, type):
+            return False
+        return _is_tensor_schema(schema.names)
