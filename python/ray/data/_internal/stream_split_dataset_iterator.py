@@ -1,4 +1,5 @@
 from typing import List, Literal, Optional, Iterator, Callable, Any
+import time
 
 import ray
 from ray.data import Dataset, DatasetIterator
@@ -91,9 +92,9 @@ class SplitCoordinator:
         finally:
             self._finished = True
 
-    async def get(output_split_idx: int) -> List[ObjectRef[Block]]:
+    async def get(self, output_split_idx: int) -> List[ObjectRef[Block]]:
         result = []
-        outbox = self._outboxes[split_idx]
+        outbox = self._outboxes[output_split_idx]
         while not self._finished:
             while outbox:
                 result.append(outbox.pop(0))
