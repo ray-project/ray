@@ -139,7 +139,7 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
         # module
         module_spec = next(iter(self.module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
+        hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
         shared_encoder = nn.Sequential(
             nn.Linear(global_dim, hidden_dim),
             nn.ReLU(),

@@ -33,7 +33,7 @@ class BCRLModuleSpecCustom(SingleAgentRLModuleSpec):
         # this handles all implementation details
         config = {
             "input_dim": self.observation_space.shape[0],
-            "hidden_dim": self.model_config["fcnet_hiddens"][0],
+            "hidden_dim": self.model_config_dict["fcnet_hiddens"][0],
             "output_dim": self.action_space.n,
         }
         return self.module_class(**config)
@@ -48,7 +48,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": [64]},
+                model_config_dict={"fcnet_hiddens": [64]},
             )
 
             module = spec.build()
@@ -63,7 +63,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                 module_class=module_class,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": [64]},
+                model_config_dict={"fcnet_hiddens": [64]},
             )
             module = spec.build()
             self.assertIsInstance(module, module_class)
@@ -81,7 +81,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                     module_class=module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config={"fcnet_hiddens": [32 * (i + 1)]},
+                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                 )
 
             spec = MultiAgentRLModuleSpec(module_specs=module_specs)
@@ -116,7 +116,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                             }
                         ),
                         action_space=gym.spaces.Discrete(action_dims[0]),
-                        model_config={"fcnet_hiddens": [128]},
+                        model_config_dict={"fcnet_hiddens": [128]},
                     ),
                     "agent_2": SingleAgentRLModuleSpec(
                         module_class=module_cls,
@@ -131,7 +131,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                             }
                         ),
                         action_space=gym.spaces.Discrete(action_dims[1]),
-                        model_config={"fcnet_hiddens": [128]},
+                        model_config_dict={"fcnet_hiddens": [128]},
                     ),
                 },
             )
