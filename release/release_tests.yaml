@@ -2264,7 +2264,7 @@
 
   run:
     timeout: 3600
-    script: run.sh
+    script: bash run.sh
 
     wait_for_nodes:
       num_nodes: 4
