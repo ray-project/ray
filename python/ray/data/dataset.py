@@ -49,7 +49,6 @@ from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 from ray.data._internal.compute import (
@@ -64,7 +63,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
-    _is_tensor_schema,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -2912,23 +2910,15 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator, stats, executor = self._plan.execute_to_iterator()
-        self._current_executor = executor
-        time_start = time.perf_counter()
-
-        yield from batch_block_refs(
-            block_iterator,
-            stats=stats,
+        return self.iterator().iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            collate_fn=_collate_fn,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=_collate_fn,
         )
-
-        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     @ConsumptionAPI
     def iter_torch_batches(
@@ -2997,32 +2987,15 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over Torch Tensor batches.
         """
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        if collate_fn is not None and (dtypes is not None or device is not None):
-            raise ValueError(
-                "collate_fn cannot be used with dtypes and device. It is expected that"
-                "the provided `collate_fn` will move the output Torch tensors to the"
-                "appropriate dtype and device."
-            )
-
-        if collate_fn is None:
-
-            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-                return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch, dtypes=dtypes, device=device
-                )
-
-        yield from self.iter_batches(
+        return self.iterator().iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-            _collate_fn=collate_fn,
         )
 
     @ConsumptionAPI
@@ -3082,19 +3055,14 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
-            convert_ndarray_batch_to_tf_tensor_batch,
-        )
-
-        for batch in self.iter_batches(
+        return self.iterator().iter_tf_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
+        )
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_torch(
@@ -3203,88 +3171,20 @@ class Dataset(Generic[T]):
         Returns:
             A torch IterableDataset.
         """
-        import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
-        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-
-        # If an empty collection is passed in, treat it the same as None
-        if not feature_columns:
-            feature_columns = None
-
-        if feature_column_dtypes and not isinstance(feature_column_dtypes, torch.dtype):
-            if isinstance(feature_columns, dict):
-                if not isinstance(feature_column_dtypes, dict):
-                    raise TypeError(
-                        "If `feature_columns` is a dict, "
-                        "`feature_column_dtypes` must be None, `torch.dtype`,"
-                        f" or dict, got {type(feature_column_dtypes)}."
-                    )
-                if set(feature_columns) != set(feature_column_dtypes):
-                    raise ValueError(
-                        "`feature_columns` and `feature_column_dtypes` "
-                        "must have the same keys."
-                    )
-                if any(not subcolumns for subcolumns in feature_columns.values()):
-                    raise ValueError("column list may not be empty")
-            elif isinstance(feature_columns[0], (list, tuple)):
-                if not isinstance(feature_column_dtypes, (list, tuple)):
-                    raise TypeError(
-                        "If `feature_columns` is a list of lists, "
-                        "`feature_column_dtypes` must be None, `torch.dtype`,"
-                        f" or a sequence, got {type(feature_column_dtypes)}."
-                    )
-                if len(feature_columns) != len(feature_column_dtypes):
-                    raise ValueError(
-                        "`feature_columns` and `feature_column_dtypes` "
-                        "must have the same length."
-                    )
-                if any(not subcolumns for subcolumns in feature_columns):
-                    raise ValueError("column list may not be empty")
-
-        def make_generator():
-            for batch in self.iter_batches(
-                batch_size=batch_size,
-                batch_format="pandas",
-                prefetch_blocks=prefetch_blocks,
-                drop_last=drop_last,
-                local_shuffle_buffer_size=local_shuffle_buffer_size,
-                local_shuffle_seed=local_shuffle_seed,
-            ):
-                if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
-                        batch,
-                        [label_column],
-                        label_column_dtype,
-                        unsqueeze=unsqueeze_label_tensor,
-                    )
-                    batch.pop(label_column)
-                else:
-                    label_tensor = None
-
-                if isinstance(feature_columns, dict):
-                    features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
-                            feature_columns[key],
-                            feature_column_dtypes[key]
-                            if isinstance(feature_column_dtypes, dict)
-                            else feature_column_dtypes,
-                            unsqueeze=unsqueeze_feature_tensors,
-                        )
-                        for key in feature_columns
-                    }
-                else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
-                        columns=feature_columns,
-                        column_dtypes=feature_column_dtypes,
-                        unsqueeze=unsqueeze_feature_tensors,
-                    )
-
-                yield (features_tensor, label_tensor)
-
-        return TorchIterableDataset(make_generator)
+        return self.iterator().to_torch(
+            label_column=label_column,
+            feature_columns=feature_columns,
+            label_column_dtype=label_column_dtype,
+            feature_column_dtypes=feature_column_dtypes,
+            batch_size=batch_size,
+            prefetch_blocks=prefetch_blocks,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            unsqueeze_feature_tensors=unsqueeze_feature_tensors,
+        )
 
     @ConsumptionAPI
     def to_tf(
@@ -4217,13 +4117,6 @@ class Dataset(Generic[T]):
             if schema.names == [TENSOR_COLUMN_NAME]:
                 return np.ndarray
             return pd.DataFrame
-
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this dataset is a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
 
     @ConsumptionAPI(
         if_more_than_read=True,
