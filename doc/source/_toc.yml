@@ -202,12 +202,14 @@ parts:
                     title: "Huggingface Example"
               - file: tune/examples/experiment-tracking
                 sections:
-                  - file: tune/examples/tune-comet
-                    title: "Comet Example"
                   - file: tune/examples/tune-wandb
                     title: "Weights & Biases Example"
                   - file: tune/examples/tune-mlflow
                     title: "MLflow Example"
+                  - file: tune/examples/tune-aim
+                    title: "Aim Example"
+                  - file: tune/examples/tune-comet
+                    title: "Comet Example"
               - file: tune/examples/hpo-frameworks
                 sections:
                   - file: tune/examples/ax_example
