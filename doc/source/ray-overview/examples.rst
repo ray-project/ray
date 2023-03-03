@@ -3,7 +3,7 @@
 Ray Example Gallery
 ===================
 
-.. dropdown:: Click here to use our Wizard to generate your custom example
+.. dropdown:: Click here to generate your custom ML example with using our wizard
 
     You can use this wizard to create a Ray example that suits your needs.
     Simply start picking options from the list below and we'll guide you to your example.
