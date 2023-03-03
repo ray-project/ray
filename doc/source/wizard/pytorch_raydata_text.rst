@@ -3,4 +3,4 @@
 PyTorch Training Example on Text Data (NLP) using Ray Data for Data Loading
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ./includes/pytorch_raydata_nlp.py
+.. literalinclude:: ./includes/pytorch_raydata_text.py
