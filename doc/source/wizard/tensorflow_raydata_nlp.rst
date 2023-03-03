@@ -3,4 +3,4 @@
 TensorFlow Training Example on Text Data (NLP) using Ray Data for Data Loading
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ./includes/tensorflow_raydata_image.py
+.. literalinclude:: ./includes/tensorflow_raydata_nlp.py
