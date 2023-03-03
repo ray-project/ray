@@ -34,6 +34,7 @@ class LazyBlockList(BlockList):
     def __init__(
         self,
         tasks: List[ReadTask],
+        read_stage_name: Optional[str] = None,
         block_partition_refs: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
         block_partition_meta_refs: Optional[List[ObjectRef[BlockMetadata]]] = None,
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
@@ -46,6 +47,8 @@ class LazyBlockList(BlockList):
 
         Args:
             tasks: The read tasks that will produce the blocks of this lazy block list.
+            read_stage_name: An optional name for the read stage, derived from the
+                underlying Datasource
             block_partition_refs: An optional list of already submitted read task
                 futures (i.e. block partition refs). This should be the same length as
                 the tasks argument.
@@ -60,6 +63,7 @@ class LazyBlockList(BlockList):
                 stats. If not provided, a new UUID will be created.
         """
         self._tasks = tasks
+        self._read_stage_name = read_stage_name
         self._num_blocks = len(self._tasks)
         if stats_uuid is None:
             stats_uuid = uuid.uuid4()
@@ -129,6 +133,7 @@ class LazyBlockList(BlockList):
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(
             self._tasks.copy(),
+            read_stage_name=self._read_stage_name,
             block_partition_refs=self._block_partition_refs.copy(),
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),
             cached_metadata=self._cached_metadata,

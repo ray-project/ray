@@ -343,6 +343,7 @@ def read_datasource(
             "dataset blocks."
         )
 
+    read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
     if (
         requested_parallelism
@@ -361,7 +362,10 @@ def read_datasource(
         )
 
     block_list = LazyBlockList(
-        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+        read_tasks,
+        read_stage_name=read_stage_name,
+        ray_remote_args=ray_remote_args,
+        owned_by_consumer=False,
     )
 
     # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing

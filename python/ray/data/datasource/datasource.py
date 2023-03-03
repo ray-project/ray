@@ -118,6 +118,16 @@ class Datasource(Generic[T]):
         """
         pass
 
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        """
+        name = type(self).__name__
+        datasource_suffix = "Datasource"
+        if name.endswith(datasource_suffix):
+            name = name[: -len(datasource_suffix)]
+        return name
+
 
 @PublicAPI
 class Reader(Generic[T]):
@@ -387,6 +397,13 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `Datasource` method.
+        """
+        return "RandomInt"
 
     def create_reader(
         self,
