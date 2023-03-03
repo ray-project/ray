@@ -213,7 +213,16 @@ def _convert_ray_node_option_key(key):
 
 
 def _convert_ray_node_options(options):
-    return [f"{_convert_ray_node_option_key(k)}={str(v)}" for k, v in options.items()]
+    if isinstance(options, dict):
+        return [
+            f"{_convert_ray_node_option_key(k)}" if v is None
+            else f"{_convert_ray_node_option_key(k)}={str(v)}"
+            for k, v in options.items()
+        ]
+    elif isinstance(options, list):
+        return options
+    else:
+        raise ValueError("Ray on spark additional options must be a dict, or a list of option strings")
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
