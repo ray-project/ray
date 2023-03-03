@@ -123,8 +123,10 @@ class TorchCategorical(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
-        return TorchCategorical(logits=logits)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI

@@ -138,8 +138,10 @@ class TfCategorical(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TfCategorical":
-        return TfCategorical(logits=logits)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TfCategorical":
+        return TfCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
