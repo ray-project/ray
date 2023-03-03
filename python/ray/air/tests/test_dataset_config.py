@@ -252,7 +252,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         # applying the preprocessor on each epoch.
         assert results[0] == results[1], results
         stats = shard.stats()
-        assert "Stage 1 read->BatchMapper: 1/1 blocks executed " in stats, stats
+        assert "Stage 1 ReadRange->BatchMapper: 1/1 blocks executed " in stats, stats
 
     def rand(x):
         x["value"] = [random.random() for _ in range(len(x))]
@@ -285,7 +285,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert (
-            "Stage 1 read->randomize_block_order->"
+            "Stage 1 ReadRange->randomize_block_order->"
             "BatchMapper: 1/1 blocks executed " in stats
         ), stats
 
@@ -339,7 +339,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "Stage 1 read->random_shuffle" in stats, stats
+        assert "Stage 1 ReadRange->random_shuffle" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestBatch(
