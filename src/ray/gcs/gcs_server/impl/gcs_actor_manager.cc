@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/impl/gcs_actor_manager.h"
 
 #include <boost/regex.hpp>
 #include <utility>
@@ -211,41 +211,6 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-GcsActorManager::GcsActorManager(
-    std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-    std::shared_ptr<GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<GcsPublisher> gcs_publisher,
-    RuntimeEnvManager &runtime_env_manager,
-    GcsFunctionManager &function_manager,
-    std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-        run_delayed,
-    const rpc::ClientFactoryFn &worker_client_factory)
-    : gcs_actor_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_publisher_(std::move(gcs_publisher)),
-      worker_client_factory_(worker_client_factory),
-      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
-      runtime_env_manager_(runtime_env_manager),
-      function_manager_(function_manager),
-      run_delayed_(run_delayed),
-      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
-  RAY_CHECK(worker_client_factory_);
-  RAY_CHECK(destroy_owned_placement_group_if_needed_);
-  actor_state_counter_.reset(
-      new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
-  actor_state_counter_->SetOnChangeCallback(
-      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
-        int64_t num_actors = actor_state_counter_->Get(key);
-        ray::stats::STATS_actors.Record(
-            num_actors,
-            {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
-             {"Name", key.second},
-             {"Source", "gcs"},
-             {"JobId", ""}});
-      });
-}
-
 void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
                                           rpc::RegisterActorReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -1572,7 +1537,7 @@ std::string GcsActorManager::DebugString() const {
   }
 
   std::ostringstream stream;
-  stream << "GcsActorManager: "
+  stream << "GcsActorManagerImpl: "
          << "\n- RegisterActor request count: "
          << counts_[CountType::REGISTER_ACTOR_REQUEST]
          << "\n- CreateActor request count: " << counts_[CountType::CREATE_ACTOR_REQUEST]

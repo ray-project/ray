@@ -22,7 +22,8 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key,
                                      const std::string &data,
                                      bool overwrite,
-                                     std::function<void(bool)> callback) {
+                                     std::function<void(bool)> callback,
+                                     ray::execution::Executor ex) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto it = table->records_.find(key);
@@ -36,15 +37,19 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
     inserted = true;
   }
   if (callback != nullptr) {
-    main_io_service_.post([callback, inserted]() { callback(inserted); },
-                          "GcsInMemoryStore.Put");
+    if (!ex) {
+      ex = main_io_service_.get_executor();
+    }
   }
+
+  boost::asio::post(ex, boost::asio::append(std::move(callback), inserted));
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
                                      const std::string &key,
-                                     const OptionalItemCallback<std::string> &callback) {
+                                     const OptionalItemCallback<std::string> &callback,
+                                     ray::execution::Executor ex) {
   RAY_CHECK(callback != nullptr);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
@@ -53,32 +58,35 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
   if (iter != table->records_.end()) {
     data = iter->second;
   }
-
-  main_io_service_.post(
-      [callback, data = std::move(data)]() { callback(Status::OK(), data); },
-      "GcsInMemoryStore.Get");
-
+  if (!ex) {
+    ex = main_io_service_.get_executor();
+  }
+  boost::asio::post(
+      ex, boost::asio::append(std::move(callback), Status::OK(), std::move(data)));
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const MapCallback<std::string, std::string> &callback) {
+    const MapCallback<std::string, std::string> &callback,
+    ray::execution::Executor ex) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  auto result = absl::flat_hash_map<std::string, std::string>();
+  absl::flat_hash_map<std::string, std::string> result;
   result.insert(table->records_.begin(), table->records_.end());
-  main_io_service_.post(
-      [result = std::move(result), callback]() mutable { callback(std::move(result)); },
-      "GcsInMemoryStore.GetAll");
+  if (!ex) {
+    ex = main_io_service_.get_executor();
+  }
+  boost::asio::post(ex, boost::asio::append(std::move(callback), std::move(result)));
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) {
+    const MapCallback<std::string, std::string> &callback,
+    ray::execution::Executor ex) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
@@ -90,28 +98,33 @@ Status InMemoryStoreClient::AsyncMultiGet(
     }
     result[key] = it->second;
   }
-  main_io_service_.post(
-      [result = std::move(result), callback]() mutable { callback(std::move(result)); },
-      "GcsInMemoryStore.GetAll");
+  if (!ex) {
+    ex = main_io_service_.get_executor();
+  }
+  boost::asio::post(ex, boost::asio::append(std::move(callback), std::move(result)));
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
                                         const std::string &key,
-                                        std::function<void(bool)> callback) {
+                                        std::function<void(bool)> callback,
+                                        ray::execution::Executor ex) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto num = table->records_.erase(key);
   if (callback != nullptr) {
-    main_io_service_.post([callback, num]() { callback(num > 0); },
-                          "GcsInMemoryStore.Delete");
+    if (!ex) {
+      ex = main_io_service_.get_executor();
+    }
+    boost::asio::post(ex, boost::asio::append(std::move(callback), num > 0));
   }
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              const std::vector<std::string> &keys,
-                                             std::function<void(int64_t)> callback) {
+                                             std::function<void(int64_t)> callback,
+                                             ray::execution::Executor ex) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   int64_t num = 0;
@@ -119,8 +132,10 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
     num += table->records_.erase(key);
   }
   if (callback != nullptr) {
-    main_io_service_.post([callback, num]() { callback(num); },
-                          "GcsInMemoryStore.BatchDelete");
+    if (!ex) {
+      ex = main_io_service_.get_executor();
+    }
+    boost::asio::post(ex, boost::asio::append(std::move(callback), num));
   }
   return Status::OK();
 }
@@ -147,7 +162,8 @@ std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCr
 Status InMemoryStoreClient::AsyncGetKeys(
     const std::string &table_name,
     const std::string &prefix,
-    std::function<void(std::vector<std::string>)> callback) {
+    std::function<void(std::vector<std::string>)> callback,
+    ray::execution::Executor ex) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   std::vector<std::string> result;
@@ -157,21 +173,25 @@ Status InMemoryStoreClient::AsyncGetKeys(
       result.push_back(pair.first);
     }
   }
-  main_io_service_.post(
-      [result = std::move(result), callback]() mutable { callback(std::move(result)); },
-      "GcsInMemoryStore.Keys");
+  if (!ex) {
+    ex = main_io_service_.get_executor();
+  }
+  boost::asio::post(ex, boost::asio::append(std::move(callback), std::move(result)));
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
                                         const std::string &key,
-                                        std::function<void(bool)> callback) {
+                                        std::function<void(bool)> callback,
+                                        ray::execution::Executor ex) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   bool result = table->records_.contains(key);
-  main_io_service_.post([result, callback]() mutable { callback(result); },
-                        "GcsInMemoryStore.Exists");
+  if (!ex) {
+    ex = main_io_service_.get_executor();
+  }
+  boost::asio::post(ex, boost::asio::append(std::move(callback), result));
   return Status::OK();
 }
 

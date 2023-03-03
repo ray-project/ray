@@ -21,16 +21,16 @@
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_server/impl/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
-#include "ray/gcs/store_client/observable_store_client.h"
+// #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -398,6 +398,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
+      main_service_.get_executor(),
       std::move(scheduler),
       gcs_table_storage_,
       gcs_publisher_,
@@ -519,9 +520,8 @@ void GcsServer::InitKVManager() {
     instance = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
   } else if (storage_type_ == "memory") {
-    instance =
-        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(main_service_)));
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<InMemoryStoreClient>(main_service_));
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));

@@ -30,36 +30,44 @@ class ObservableStoreClient : public StoreClient {
                   const std::string &key,
                   const std::string &data,
                   bool overwrite,
-                  std::function<void(bool)> callback) override;
+                  std::function<void(bool)> callback,
+                  ray::execution::Executor ex) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+                  const OptionalItemCallback<std::string> &callback,
+                  ray::execution::Executor ex) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+                     const MapCallback<std::string, std::string> &callback,
+                     ray::execution::Executor ex) override;
 
   Status AsyncMultiGet(const std::string &table_name,
                        const std::vector<std::string> &keys,
-                       const MapCallback<std::string, std::string> &callback) override;
+                       const MapCallback<std::string, std::string> &callback,
+                       ray::execution::Executor ex) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
-                     std::function<void(bool)> callback) override;
+                     std::function<void(bool)> callback,
+                     ray::execution::Executor ex) override;
 
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
-                          std::function<void(int64_t)> callback) override;
+                          std::function<void(int64_t)> callback,
+                          ray::execution::Executor ex) override;
 
   int GetNextJobID() override;
 
   Status AsyncGetKeys(const std::string &table_name,
                       const std::string &prefix,
-                      std::function<void(std::vector<std::string>)> callback) override;
+                      std::function<void(std::vector<std::string>)> callback,
+                      ray::execution::Executor ex) override;
 
   Status AsyncExists(const std::string &table_name,
                      const std::string &key,
-                     std::function<void(bool)> callback) override;
+                     std::function<void(bool)> callback,
+                     ray::execution::Executor ex) override;
 
  private:
   std::unique_ptr<StoreClient> delegate_;

@@ -166,7 +166,8 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
                                   const std::string &data,
                                   bool overwrite,
-                                  std::function<void(bool)> callback) {
+                                  std::function<void(bool)> callback,
+                                  ray::execution::Executor ex) {
   return DoPut(GenRedisKey(external_storage_namespace_, table_name, key),
                data,
                overwrite,
@@ -175,7 +176,8 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
 
 Status RedisStoreClient::AsyncGet(const std::string &table_name,
                                   const std::string &key,
-                                  const OptionalItemCallback<std::string> &callback) {
+                                  const OptionalItemCallback<std::string> &callback,
+                                  ray::execution::Executor ex) {
   RAY_CHECK(callback != nullptr);
 
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
@@ -195,7 +197,8 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
 
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const MapCallback<std::string, std::string> &callback) {
+    const MapCallback<std::string, std::string> &callback,
+    ray::execution::Executor ex) {
   RAY_CHECK(callback);
   std::string match_pattern =
       GenKeyRedisMatchPattern(external_storage_namespace_, table_name);
@@ -210,7 +213,8 @@ Status RedisStoreClient::AsyncGetAll(
 
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,
-                                     std::function<void(bool)> callback) {
+                                     std::function<void(bool)> callback,
+                                     ray::execution::Executor ex) {
   RedisCallback delete_callback = nullptr;
   if (callback) {
     delete_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
@@ -228,7 +232,8 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
 
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
-                                          std::function<void(int64_t)> callback) {
+                                          std::function<void(int64_t)> callback,
+                                          ray::execution::Executor ex) {
   std::vector<std::string> redis_keys;
   redis_keys.reserve(keys.size());
   for (auto &key : keys) {
@@ -240,7 +245,8 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
 Status RedisStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) {
+    const MapCallback<std::string, std::string> &callback,
+    ray::execution::Executor ex) {
   RAY_CHECK(callback);
   if (keys.empty()) {
     callback({});
@@ -402,7 +408,8 @@ int RedisStoreClient::GetNextJobID() { return redis_client_->GetNextJobID(); }
 Status RedisStoreClient::AsyncGetKeys(
     const std::string &table_name,
     const std::string &prefix,
-    std::function<void(std::vector<std::string>)> callback) {
+    std::function<void(std::vector<std::string>)> callback,
+    ray::execution::Executor ex) {
   std::string match_pattern =
       GenKeyRedisMatchPattern(external_storage_namespace_, table_name, prefix);
   auto scanner = std::make_shared<RedisScanner>(
@@ -421,7 +428,8 @@ Status RedisStoreClient::AsyncGetKeys(
 
 Status RedisStoreClient::AsyncExists(const std::string &table_name,
                                      const std::string &key,
-                                     std::function<void(bool)> callback) {
+                                     std::function<void(bool)> callback,
+                                     ray::execution::Executor ex) {
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
   std::vector<std::string> args = {"HEXISTS", external_storage_namespace_, redis_key};
 

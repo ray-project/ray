@@ -538,6 +538,7 @@ cc_library(
     srcs = glob(
         [
             "src/ray/gcs/gcs_server/*.cc",
+            "src/ray/gcs/gcs_server/impl/*.cc",
         ],
         exclude = [
             "src/ray/gcs/gcs_server/gcs_server_main.cc",
@@ -547,6 +548,7 @@ cc_library(
     hdrs = glob(
         [
             "src/ray/gcs/gcs_server/*.h",
+            "src/ray/gcs/gcs_server/impl/*.h",
         ],
     ),
     copts = COPTS,
@@ -560,7 +562,6 @@ cc_library(
         ":gcs_table_storage_lib",
         ":monitor_rpc",
         ":node_manager_rpc",
-        ":observable_store_client",
         ":pubsub_lib",
         ":raylet_client_lib",
         ":scheduler",
@@ -2090,7 +2091,7 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
-        ":observable_store_client",
+        # ":observable_store_client",
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
@@ -2690,6 +2691,18 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+cc_test(
+    name = "ray_executor_test",
+    srcs = ["src/ray/common/test/executor_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "@boost//:asio",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 
 cc_test(
     name = "task_spec_test",
