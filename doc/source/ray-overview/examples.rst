@@ -5,112 +5,82 @@ Ray Example Gallery
 
 .. dropdown:: Click here to generate your custom ML example with using our wizard
 
-    You can use this wizard to create a Ray example that suits your needs.
-    Simply start picking options from the list below and we'll guide you to your example.
-    First, pick one or multiple parts of an ML workload:
+    At the core of every ML project sits model training, for which you need to use a framework.
+    Start by picking one now, and we'll guide you through the next steps:
 
     .. raw:: html
 
+        <div id="wizardMain">
 
-        <div id="basicSelection">
-            <div type="button" id="dataWizard" class="btn btn-outline-primary">Data Preprocessing</div>
-            <div type="button" id="trainWizard" class=" btn btn-outline-primary">Model Training</div>
-            <div type="button" id="tuneWizard" class="btn btn-outline-primary">Hyperparameter Tuning</div>
-            <div type="button" id="predWizard" class="btn btn-outline-primary">Getting Predictions</div>
-        </div>
-
-        <p id="instructions" style="display:none;">
-            Next, select what you want to do with each part of the workload:
-        </p>
-
-        <div class="wizardContainer">
-            <div id="dataSelection" class="btn-group" role="group" style="display:none;">
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="dataGroup" id="basicData" value="basicData">
-                  <label class="form-check-label" for="basicData">Basic</label>
+            <div id="trainSelection">
+                <p class="text-justify">What training framework do you want to use?</p>
+                <div class="radio-button-group" role="group">
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="trainGroup" id="pytorchTrain" value="pytorch">
+                      <label for="pytorchTrain">PyTorch</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="trainGroup" id="tfTrain" value="tensorflow">
+                      <label for="tfTrain">TensorFlow</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="trainGroup" id="xgbTrain" value="xgboost">
+                      <label for="xgbTrain">XGBoost</label>
+                    </div>
                 </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="dataGroup" id="pytorchData" value="pytorchData">
-                  <label class="form-check-label" for="pytorchData">PyTorch</label>
+                <p id="trainDesc"></p>
+            </div>
+
+            <div id="dataSelection" style="display:none;">
+                <p class="text-justify">How do you load your data?</p>
+                <div class="radio-button-group" role="group">
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="dataGroup" id="nativeData" value="nativedata">
+                      <label for="nativeData">I already have a way to load data, e.g. PyTorch Dataloader.</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="dataGroup" id="rayData" value="raydata">
+                      <label for="rayData">I still need to implement data loading. Let's use Ray Data for it.</label>
+                    </div>
                 </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="dataGroup" id="tfData" value="tfData">
-                  <label class="form-check-label" for="tfData">TensorFlow</label>
+                <p id="dataDesc"></p>
+            </div>
+
+            <div id="dataTypeSelection" style="display:none;">
+                <p class="text-justify">What kind of data are you using?</p>
+                <div class="radio-button-group" role="group">
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="dataTypeGroup" id="anyData" value="any">
+                      <label for="anyData">Any Data</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="dataTypeGroup" id="imageData" value="image">
+                      <label for="imageData">Image Data</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="dataTypeGroup" id="textData" value="text">
+                      <label for="textData">Text Data</label>
+                    </div>
+                </div>
+                <p id="dataTypeDesc"></p>
+            </div>
+
+            <div>
+                <p id="exampleSelectionDesc"></p>
+            </div>
+
+            <div>
+                <div id="generateButton" type="button" class="btn btn-primary" style="display:none;">
+                    Generate Example
                 </div>
             </div>
-        </div>
 
-        <div class="wizardContainer">
-            <div id="trainSelection" class="btn-group" role="group" style="display:none;">
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="trainGroup" id="pytorchTrain" value="pytorchTrain">
-                  <label class="form-check-label" for="pytorchTrain">PyTorch</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="trainGroup" id="tfTrain" value="tfTrain">
-                  <label class="form-check-label" for="tfTrain">TensorFlow</label>
+            <div>
+                <div id="wizardCode">
                 </div>
             </div>
-        </div>
 
-        <div class="wizardContainer">
-            <div id="tuneSelection" class="btn-group" role="group" style="display:none;">
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="tuneGroup" id="randomSearch" value="randomSearch">
-                  <label class="form-check-label" for="randomSearch">Random Search</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="tuneGroup" id="optunaSearch" value="optunaSearch">
-                  <label class="form-check-label" for="optunaSearch">Optuna</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="tuneGroup" id="hyperoptSearch" value="hyperoptSearch">
-                  <label class="form-check-label" for="hyperoptSearch">Hyperopt</label>
-                </div>
-            </div>
         </div>
-
-        <div class="wizardContainer">
-            <div id="predSelection" class="btn-group" role="group" style="display:none;">
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="predGroup" id="batchPrediction" value="batchPrediction">
-                  <label class="form-check-label" for="batchPrediction">Batch Prediction</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="predGroup" id="modelServing" value="modelServing">
-                  <label class="form-check-label" for="modelServing">Model Serving</label>
-                </div>
-            </div>
-        </div>
-
-        <div id="airInstructions" class="wizardContainer">
-            <p>We detected that you want to use multiple components. Do you want to use the Ray AI Runtime (AIR) as umbrella for other Ray libraries?
-            </p>
-        </div>
-        <div class="wizardContainer">
-            <div id="airSelection" class="btn-group" role="group" style="display:none;">
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="airGroup" id="useAir" value="useAir">
-                  <label class="form-check-label" for="useAir">Use Ray AIR</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="airGroup" id="noAir" value="noAir">
-                  <label class="form-check-label" for="noAir">Use Ray Libraries in Isolation</label>
-                </div>
-            </div>
-        </div>
-
-        <div class="wizardContainer">
-        <div id="generateButton" type="button" class="btn btn-primary" style="display:none;">
-            Generate Example
-        </div>
-        </div>
-
-        <div class="wizardContainer">
-            <div id="wizardCode">
-            </div>
-        </div>
-
 
 .. raw:: html
 

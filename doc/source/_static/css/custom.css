@@ -567,3 +567,41 @@ span.rst-current-version > span.fa.fa-book {
     justify-content: center;
     height: 100%;
 }
+
+
+.radio-button-group {
+  display: flex;
+}
+.radio-button-group .item {
+  width: 100%;
+}
+.radio-button-group .radio-button {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.radio-button-group .radio-button + label {
+    padding: 16px 10px;
+    cursor: pointer;
+    border: 1px solid #CCC;
+    margin-right: -2px;
+    color: #555;
+    background-color: #ffffff;
+    display: block;
+    text-align: center;
+}
+.radio-button-group .item:first-of-type .radio-button + label{
+  border-top-left-radius: 5px;
+    border-bottom-left-radius: 5px;
+}
+.radio-button-group .item:last-of-type .radio-button + label {
+  border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.radio-button-group .radio-button:checked + label {
+    background-color: var(--blue);
+    color: #FFF;
+}
