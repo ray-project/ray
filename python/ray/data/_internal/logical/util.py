@@ -33,11 +33,9 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
 
     op_name = op.name
     if isinstance(op, Read):
-        ds_name = type(op._datasource).__name__
-        op_name = f"Read{ds_name}"
+        op_name = f"Read{op._datasource.get_name()}"
     elif isinstance(op, Write):
-        ds_name = type(op._datasource).__name__
-        op_name = f"Write{ds_name}"
+        op_name = f"Write{op._datasource.get_name()}"
 
     ops_dict.setdefault(op_name, 0)
     ops_dict[op_name] += 1
