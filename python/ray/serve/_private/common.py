@@ -311,7 +311,22 @@ class RunningReplicaInfo:
                 ]
             )
         )
+
+        # RunningReplicaInfo class set frozen=True, this is the hacky way to set
+        # new attribute for the class.
         object.__setattr__(self, "_hash", hash_val)
 
     def __hash__(self):
         return self._hash
+
+    def __eq__(self, other):
+        return all(
+            [
+                isinstance(other, RunningReplicaInfo),
+                self.deployment_name == other.deployment_name,
+                self.replica_tag == other.replica_tag,
+                self.actor_handle._actor_id == other.actor_handle._actor_id,
+                self.max_concurrent_queries == other.max_concurrent_queries,
+                self.is_cross_language == other.is_cross_language,
+            ]
+        )

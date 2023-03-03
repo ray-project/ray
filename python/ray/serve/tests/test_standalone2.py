@@ -1,3 +1,4 @@
+import functools
 import os
 import subprocess
 import sys
@@ -1202,6 +1203,56 @@ class TestServeRequestProcessingTimeoutS:
         assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
         serve.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+        },
+    ],
+    indirect=True,
+)
+def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
+    """Test max_concurrent_queries can be honorded with long poll timeout
+
+    issue: https://github.com/ray-project/ray/issues/32652
+    """
+
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    async def f():
+        await signal_actor.wait.remote()
+        return "hello"
+
+    handle = serve.run(f.bind())
+    first_ref = handle.remote()
+
+    # Second request should be hanging.
+    with ThreadPoolExecutor() as pool:
+        # Send the first request, it should block for the result
+        second_request_fut = pool.submit(
+            functools.partial(requests.get, "http://127.0.0.1:8000", timeout=100)
+        )
+        # Let the long poll timeout happens.
+        time.sleep(20)
+        assert not second_request_fut.done()
+        # Make sure the first request is being run.
+        replicas = list(handle.router._replica_set.in_flight_queries.keys())
+        assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
+        # First ref should be still ongoing
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(first_ref, timeout=1)
+        # Unblock the first request.
+        signal_actor.send.remote()
+        assert ray.get(first_ref) == "hello"
+        # Second request should be sent and processed.
+        wait_for_condition(lambda: second_request_fut.done())
+        second_request_fut.result().text == "hello"
+    serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
