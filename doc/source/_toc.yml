@@ -2,7 +2,7 @@ format: jb-book
 root: index
 parts:
   - caption: Ray
-    chapters: 
+    chapters:
       - file: ray-overview/index
         title: "Overview"
       - file: ray-overview/getting-started
@@ -48,6 +48,7 @@ parts:
               - file: ray-air/check-ingest
               - file: ray-air/tuner
               - file: ray-air/predictors
+              - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
           - file: ray-air/examples/index
