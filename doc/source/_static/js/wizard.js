@@ -124,7 +124,7 @@ window.addEventListener("load", () => {
                     const header = doc.getElementsByTagName("h1")[1];
 
                     const exampleSelectionDesc = document.getElementById("exampleSelectionDesc");
-                    exampleSelectionDesc.innerText = "Check out our example: " + header.innerText;
+                    exampleSelectionDesc.innerText = "Check out our example: " + header.innerText.trim();
 
                     const wizardCode = document.getElementById("wizardCode");
                     wizardCode.innerHTML = code.innerHTML;
@@ -158,20 +158,16 @@ window.addEventListener("load", () => {
             const example = baseUrl + "/wizard/" + trainTag + "_"
                 + moreTag + "_" + dataTypeTag + ".html";
 
-           console.log("LOADING DO MORE");
-           console.log(example);
-
             fetch(example)
                 .then(response => response.text())
                 .then(html => {
-                    console.log("GOT IT");
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
                     const code = doc.getElementsByClassName("highlight-default")[0];
                     const header = doc.getElementsByTagName("h1")[1];
 
                     const doMoreDesc = document.getElementById("doMoreDesc");
-                    exampleSelectionDesc.innerText = header.innerText;
+                    doMoreDesc.innerText = header.innerText.trim();
 
                     const doMoreCode = document.getElementById("doMoreCode");
                     doMoreCode.innerHTML = code.innerHTML;
@@ -186,7 +182,6 @@ window.addEventListener("load", () => {
         let moreTag = "";
         doMoreRadios.forEach(radio => {
             radio.addEventListener("change", function () {
-                console.log("CHANGING YEAR");
                 if (this.checked) {
                     moreTag = this.value;
                     loadDoMore();

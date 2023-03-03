@@ -14,7 +14,7 @@ Ray Example Gallery
             <form id="wizardMainForm">
 
             <div id="trainSelection">
-                <p class="text-justify">What training framework do you want to use?</p>
+                <h3 class="text-justify">What training framework do you want to use?</h3>
                 <div class="radio-button-group" role="group">
                     <div class="item">
                       <input class="radio-button" type="radio" name="trainGroup" id="pytorchTrain" value="pytorch">
@@ -33,7 +33,7 @@ Ray Example Gallery
             </div>
 
             <div id="dataSelection" style="display:none;">
-                <p class="text-justify">How do you load your data?</p>
+                <h3 class="text-justify">How do you load your data?</h3>
                 <div class="radio-button-group" role="group">
                     <div class="item">
                       <input class="radio-button" type="radio" name="dataGroup" id="nativeData" value="nativedata">
@@ -48,7 +48,7 @@ Ray Example Gallery
             </div>
 
             <div id="dataTypeSelection" style="display:none;">
-                <p class="text-justify">What kind of data are you using?</p>
+                <h3 class="text-justify">What kind of data are you using?</h3>
                 <div class="radio-button-group" role="group">
                     <!-- <div class="item">
                       <input class="radio-button" type="radio" name="dataTypeGroup" id="anyData" value="any">
@@ -85,7 +85,7 @@ Ray Example Gallery
             <form id="wizardDoMoreForm">
 
             <div id="doMoreSelection" style="display:none;">
-                <p class="text-justify">After training...</p>
+                <h3 class="text-justify">After training...</h3>
                 <div class="radio-button-group" role="group">
                     <div class="item">
                       <input class="radio-button" type="radio" name="doMoreGroup" id="batchInference" value="batch_inference">
