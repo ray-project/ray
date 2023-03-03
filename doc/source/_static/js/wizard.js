@@ -19,10 +19,22 @@ const dataTypeDescriptions = {
     text: "Use text data for the example, for instance for a NLP task.",
 }
 
+function unsetExample() {
+    const exampleSelectionDesc = document.getElementById("exampleSelectionDesc");
+    exampleSelectionDesc.innerText = "";
+
+    const wizardCode = document.getElementById("wizardCode");
+    wizardCode.innerHTML = "";
+}
+
+
 window.addEventListener("load", () => {
 
     const basicSelection = document.getElementById("wizardMain");
+
     if (basicSelection) {
+
+        basicSelection.reset();
 
         const trainRadios = document.getElementsByName("trainGroup");
         const dataSelection = document.getElementById("dataSelection");
@@ -36,6 +48,7 @@ window.addEventListener("load", () => {
                     trainDesc.innerText = trainDescriptions[this.value];
                     trainTag = this.value;
                 }
+                unsetExample();
             });
         });
 
@@ -52,6 +65,7 @@ window.addEventListener("load", () => {
                     dataDesc.innerText = dataDescriptions[this.value];
                     dataTag = this.value;
                 }
+                unsetExample();
             });
         });
 
@@ -67,6 +81,7 @@ window.addEventListener("load", () => {
                     dataTypeDesc.innerText = dataTypeDescriptions[this.value];
                     dataTypeTag = this.value;
                 }
+                unsetExample();
             });
         });
 
@@ -96,13 +111,19 @@ window.addEventListener("load", () => {
                     const wizardCode = document.getElementById("wizardCode");
                     wizardCode.innerHTML = code.innerHTML;
                 })
-                .catch(error => console.log(error));
+                .catch(error => {
+                    console.log(error);
+
+                    const exampleSelectionDesc = document.getElementById("exampleSelectionDesc");
+                    exampleSelectionDesc.innerText = "Unfortunately, this example could not be found.";
+
+                    const wizardCode = document.getElementById("wizardCode");
+                    wizardCode.innerHTML = "";
+                });
         });
 
     }
 
 
 });
-
-
 

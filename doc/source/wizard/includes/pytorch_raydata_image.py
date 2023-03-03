@@ -10,7 +10,6 @@ from ray.tune.syncer import SyncConfig
 from ray.air.config import ScalingConfig, RunConfig, CheckpointConfig
 from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.data.preprocessors import TorchVisionPreprocessor
-from ray.train.torch import TorchCheckpoint
 from ray.data.datasource.partitioning import Partitioning
 from ray.air import session
 import ray.train as train

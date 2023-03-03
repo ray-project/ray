@@ -10,8 +10,7 @@ from pathlib import Path
 
 from ray.tune.syncer import SyncConfig
 from ray.air.config import ScalingConfig, RunConfig, CheckpointConfig
-from ray.train.torch import TorchTrainer
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import TorchCheckpoint, TorchTrainer
 from ray.air import session
 import ray.train as train
 
