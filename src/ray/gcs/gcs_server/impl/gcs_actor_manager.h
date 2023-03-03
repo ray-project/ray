@@ -285,27 +285,28 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
-template<typename Executor>
-GcsActorManager(
-    Executor&& exec,
-    std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-    std::shared_ptr<GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<GcsPublisher> gcs_publisher,
-    RuntimeEnvManager &runtime_env_manager,
-    GcsFunctionManager &function_manager,
-    std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)> run_delayed,
-    const rpc::ClientFactoryFn &worker_client_factory = nullptr)
-: gcs_actor_scheduler_(std::move(scheduler)),
-  gcs_table_storage_(std::move(gcs_table_storage)),
-  gcs_publisher_(std::move(gcs_publisher)),
-  worker_client_factory_(worker_client_factory),
-  destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
-  runtime_env_manager_(runtime_env_manager),
-  function_manager_(function_manager),
-  run_delayed_(run_delayed),
-  actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
-  executor_(boost::asio::make_strand(std::forward<Executor>(exec))) {
+  template <typename Executor>
+  GcsActorManager(
+      Executor &&exec,
+      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      std::shared_ptr<GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<GcsPublisher> gcs_publisher,
+      RuntimeEnvManager &runtime_env_manager,
+      GcsFunctionManager &function_manager,
+      std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+          run_delayed,
+      const rpc::ClientFactoryFn &worker_client_factory = nullptr)
+      : gcs_actor_scheduler_(std::move(scheduler)),
+        gcs_table_storage_(std::move(gcs_table_storage)),
+        gcs_publisher_(std::move(gcs_publisher)),
+        worker_client_factory_(worker_client_factory),
+        destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+        runtime_env_manager_(runtime_env_manager),
+        function_manager_(function_manager),
+        run_delayed_(run_delayed),
+        actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
+        executor_(boost::asio::make_strand(std::forward<Executor>(exec))) {
     RAY_CHECK(worker_client_factory_);
     RAY_CHECK(destroy_owned_placement_group_if_needed_);
     actor_state_counter_.reset(
@@ -322,7 +323,6 @@ GcsActorManager(
                {"JobId", ""}});
         });
   }
-
 
   ~GcsActorManager() = default;
 
