@@ -27,7 +27,14 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
             and len(env.observation_space.shape) <= 2
         ):
             return False
-        return "AtariEnv<ALE" in str(env)
+        if (
+            hasattr(env, "spec")
+            and hasattr(env.spec, "kwargs")
+            and env.spec.kwargs.get("env_id").startswith("ALE/")
+        ):
+            return True
+        else:
+            return False
     # If string, check for "ALE/" prefix.
     else:
         return env.startswith("ALE/")
