@@ -5,8 +5,6 @@ parts:
     chapters: 
       - file: ray-overview/index
         title: "Overview"
-      - file: ray-overview/workloads
-        title: "ML Workloads with Ray"
       - file: ray-overview/getting-started
         title: "Getting Started"
       - file: ray-overview/installation
@@ -74,6 +72,8 @@ parts:
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
               - file: ray-air/examples/pytorch_resnet_batch_prediction
+              - file: ray-air/examples/stablediffusion_batch_prediction
+              - file: ray-air/examples/gptj_batch_prediction
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
