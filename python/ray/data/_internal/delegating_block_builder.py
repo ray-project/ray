@@ -5,7 +5,7 @@ import numpy as np
 from ray.data.block import Block, DataBatch, T, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.simple_block import SimpleBlockBuilder
-from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder
+from ray.data._internal.arrow_block import ArrowRow, ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.pandas_block import PandasRow, PandasBlockBuilder
 
 
@@ -53,7 +53,10 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
             return
         if self._builder is None:
             self._builder = accessor.builder()
-        self._builder.add_block(block)
+        if isinstance(accessor, ArrowBlockAccessor):
+            self._builder.add_block(accessor._table)
+        else:
+            self._builder.add_block(block)
 
     def will_build_yield_copy(self) -> bool:
         if self._builder is None:

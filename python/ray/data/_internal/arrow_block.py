@@ -109,24 +109,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        super().__init__(pyarrow.Table)
-
-    def add_block(self, block: Any) -> None:
-        if not isinstance(block, pyarrow.Table) and not isinstance(block, bytes):
-            raise TypeError(
-                f"Got a block of type {type(block)}, expected {self._block_type}."
-                "If you are mapping a function, ensure it returns an "
-                "object with the expected type. Block:\n"
-                f"{block}"
-            )
-        accessor = BlockAccessor.for_block(block)
-        if isinstance(block, bytes):
-            reader = pyarrow.ipc.open_stream(block)
-            self._tables.append(reader.read_all())
-        else:
-            self._tables.append(block)
-        self._tables_size_bytes += accessor.size_bytes()
-        self._num_rows += accessor.num_rows()
+        super().__init__((pyarrow.Table, bytes))
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
