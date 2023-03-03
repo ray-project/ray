@@ -45,7 +45,7 @@ void LocalResourceManager::UpdateTotalCPU(uint64_t total) {
         ResourceID::CPU(),
         std::vector<FixedPoint>{static_cast<double>(total - current_total)});
   } else {
-    uint64_t diff = std::min(current_avail, current_total - total);
+    uint64_t diff = current_total - total;
     local_resources_.available.GetMutable(ResourceID::CPU())[0] -=
         static_cast<double>(diff);
     local_resources_.total.GetMutable(ResourceID::CPU())[0] -= static_cast<double>(diff);
