@@ -54,9 +54,7 @@ def get_device() -> Union[torch.device, List[torch.device]]:
             # 0th device.
             device_ids.append(0)
 
-        devices = sorted(
-            [torch.device(f"cuda:{device_id}") for device_id in device_ids]
-        )
+        devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
         device = devices[0] if len(devices) == 1 else devices
     else:
         device = torch.device("cpu")
