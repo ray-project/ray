@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Step 0
-pushd dreambooth || true
 pip install -Ur requirements.txt
 
 # Step 0 cont
@@ -50,6 +49,3 @@ python run_model.py \
 # Save artifact
 mkdir /tmp/artifacts
 cp -f "$IMAGES_NEW_DIR/0-*.jpg" /tmp/artifacts/example_out.jpg
-
-# Exit
-popd || true
