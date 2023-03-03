@@ -402,7 +402,6 @@ class GcsActorManagerImpl {
   }
 
  private:
-
   /// Get names of named actors.
   //
   /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
@@ -433,9 +432,9 @@ class GcsActorManagerImpl {
   /// the actor is already registered to `registered_actors_` and its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
-  void CreateActor(const rpc::CreateActorRequest &request,
-                   CreateActorCallback callback);
-  void GetActorInfo(const rpc::GetActorInfoRequest& request, std::function<void(GcsActor)> cb) {
+  void CreateActor(const rpc::CreateActorRequest &request, CreateActorCallback callback);
+  void GetActorInfo(const rpc::GetActorInfoRequest &request,
+                    std::function<void(GcsActor)> cb) {
     executor_.dispatch([=] {
       const auto &registered_actor_iter = registered_actors_.find(actor_id);
       GcsActor *ptr = nullptr;
@@ -447,7 +446,6 @@ class GcsActorManagerImpl {
           ptr = destroyed_actor_iter->second.get();
         }
       }
-
     });
   }
 

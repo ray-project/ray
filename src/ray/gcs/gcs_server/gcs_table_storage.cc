@@ -24,7 +24,8 @@ namespace gcs {
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const Key &key,
                                 const Data &value,
-                                const StatusCallback &callback, boost::asio::executor ex) {
+                                const StatusCallback &callback,
+                                boost::asio::executor ex) {
   return store_client_->AsyncPut(table_name_,
                                  key.Binary(),
                                  value.SerializeAsString(),
@@ -35,7 +36,8 @@ Status GcsTable<Key, Data>::Put(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Get(const Key &key,
-                                const OptionalItemCallback<Data> &callback, boost::asio::executor ex) {
+                                const OptionalItemCallback<Data> &callback,
+                                boost::asio::executor ex) {
   std::function<void(const Status &, const boost::optional<std::string> &)> on_done;
   if (callback) {
     on_done = [callback](const Status &status,
@@ -50,12 +52,12 @@ Status GcsTable<Key, Data>::Get(const Key &key,
     };
   }
 
-  return store_client_->AsyncGet(
-      table_name_, key.Binary(), std::move(on_done), ex);
+  return store_client_->AsyncGet(table_name_, key.Binary(), std::move(on_done), ex);
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback, boost::asio::executor ex) {
+Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback,
+                                   boost::asio::executor ex) {
   std::function<void(absl::flat_hash_map<std::string, std::string> &&)> on_done;
   if (callback) {
     on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
@@ -75,13 +77,14 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback, boost
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callback, boost::asio::executor ex) {
+Status GcsTable<Key, Data>::Delete(const Key &key,
+                                   const StatusCallback &callback,
+                                   boost::asio::executor ex) {
   std::function<void(bool)> on_done;
   if (callback) {
     on_done = [callback](auto) { callback(Status::OK()); };
   }
-  return store_client_->AsyncDelete(
-      table_name_, key.Binary(), std::move(on_done), ex);
+  return store_client_->AsyncDelete(table_name_, key.Binary(), std::move(on_done), ex);
 }
 
 template <typename Key, typename Data>
@@ -124,7 +127,8 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
-                                                const MapCallback<Key, Data> &callback, boost::asio::executor ex) {
+                                                const MapCallback<Key, Data> &callback,
+                                                boost::asio::executor ex) {
   std::vector<std::string> keys;
   {
     absl::MutexLock lock(&mutex_);
@@ -166,7 +170,8 @@ Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
 
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::Delete(const Key &key,
-                                            const StatusCallback &callback, boost::asio::executor ex) {
+                                            const StatusCallback &callback,
+                                            boost::asio::executor ex) {
   return BatchDelete({key}, callback, ex);
 }
 
@@ -188,9 +193,7 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
         }
         if (callback) {
           if (ex) {
-            boost::asio::dispatch(
-                ex,
-                boost::asio::append(callback, Status::OK()));
+            boost::asio::dispatch(ex, boost::asio::append(callback, Status::OK()));
           } else {
             callback(Status::OK());
           }
@@ -201,23 +204,22 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::AsyncRebuildIndexAndGetAll(
     const MapCallback<Key, Data> &callback, boost::asio::executor ex) {
-  return this->GetAll([this, callback, ex](absl::flat_hash_map<Key, Data> &&result) mutable {
-    absl::MutexLock lock(&mutex_);
-    index_.clear();
-    for (auto &item : result) {
-      auto key = item.first;
-      index_[GetJobIdFromKey(key)].insert(key);
-    }
-    if (callback) {
-      if (ex) {
-        boost::asio::dispatch(
-            ex,
-            boost::asio::append(callback, std::move(result)));
-      } else {
-        callback(std::move(result));
-      }
-    }
-  });
+  return this->GetAll(
+      [this, callback, ex](absl::flat_hash_map<Key, Data> &&result) mutable {
+        absl::MutexLock lock(&mutex_);
+        index_.clear();
+        for (auto &item : result) {
+          auto key = item.first;
+          index_[GetJobIdFromKey(key)].insert(key);
+        }
+        if (callback) {
+          if (ex) {
+            boost::asio::dispatch(ex, boost::asio::append(callback, std::move(result)));
+          } else {
+            callback(std::move(result));
+          }
+        }
+      });
 }
 
 template class GcsTable<JobID, JobTableData>;
