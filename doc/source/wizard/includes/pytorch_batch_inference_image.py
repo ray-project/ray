@@ -5,9 +5,7 @@ from torchvision import models
 from torch import nn
 
 # checkpoint = result.checkpoint
-checkpoint = TorchCheckpoint.from_directory(
-    "/tmp/pytorch-image.checkpoint"
-)
+checkpoint = TorchCheckpoint.from_directory("/tmp/pytorch-image.checkpoint")
 
 # Read some
 inference_data = ray.data.read_images(

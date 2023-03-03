@@ -3,8 +3,10 @@ from keras import layers
 from keras.applications import EfficientNetB0
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
-from torchvision import models
-from torch import nn
+
+from ray import serve
+from ray.serve import PredictorDeployment
+from ray.serve.http_adapters import pandas_read_json
 
 # checkpoint = result.checkpoint
 checkpoint = TensorflowCheckpoint.from_directory("/tmp/tensorflow-image.checkpoint")
@@ -40,15 +42,11 @@ def build_model():
     return model
 
 
-# Create a batch predictor from the checkpointed model state dict,
-# providing the model class as an input.
-predictor = BatchPredictor.from_checkpoint(
-    checkpoint, TensorflowPredictor, model_definition=build_model
+serve.run(
+    PredictorDeployment.options(name="TorchImageService").bind(
+        TensorflowPredictor,
+        checkpoint,
+        http_adapter=pandas_read_json,
+        model_definition=build_model,
+    )
 )
-
-# Actually run predictions
-predictions = predictor.predict(inference_data)
-
-# We can now process the results, e.g. inspect the dataframe
-df = predictions.to_pandas()
-print(df)

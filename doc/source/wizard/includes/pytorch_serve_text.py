@@ -24,6 +24,9 @@ def initialize_model():
 
 serve.run(
     PredictorDeployment.options(name="TorchTextService").bind(
-        TorchPredictor, checkpoint, http_adapter=pandas_read_json, model=initialize_model()
+        TorchPredictor,
+        checkpoint,
+        http_adapter=pandas_read_json,
+        model=initialize_model(),
     )
 )
