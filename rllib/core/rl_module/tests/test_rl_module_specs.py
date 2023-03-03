@@ -1,22 +1,25 @@
 import unittest
-import gymnasium as gym
-import torch
 
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+import gymnasium as gym
+
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.testing.tf.bc_module import (
+    DiscreteBCTFModule,
+    BCTfRLModuleWithSharedGlobalEncoder,
+    BCTfMultiAgentSpec,
 )
 from ray.rllib.core.testing.torch.bc_module import (
     DiscreteBCTorchModule,
     BCTorchRLModuleWithSharedGlobalEncoder,
     BCTorchMultiAgentSpec,
 )
-from ray.rllib.core.testing.tf.bc_module import (
-    DiscreteBCTFModule,
-    BCTfRLModuleWithSharedGlobalEncoder,
-    BCTfMultiAgentSpec,
-)
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 CUSTOM_MODULES = {

@@ -9,7 +9,11 @@ import ray.rllib.algorithms.ppo as ppo
 import onnxruntime
 import os
 import shutil
-import torch
+
+from ray.rllib.utils.framework import try_import_torch
+
+
+torch, _ = try_import_torch()
 
 if __name__ == "__main__":
     # Configure our PPO trainer

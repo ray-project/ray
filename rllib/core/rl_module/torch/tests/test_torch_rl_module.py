@@ -1,13 +1,16 @@
 import threading
-import gymnasium as gym
-import torch
-from typing import Mapping
 import unittest
+from typing import Mapping
+
+import gymnasium as gym
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.utils.error import NotSerializable
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
+
+torch, _ = try_import_torch()
 
 
 class TestRLModule(unittest.TestCase):

@@ -4,7 +4,6 @@ import os
 import unittest
 
 import numpy as np
-import torch
 import tree
 
 import ray
@@ -18,6 +17,8 @@ from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+
+torch, _ = try_import_torch()
 
 
 class TestSampleBatch(unittest.TestCase):

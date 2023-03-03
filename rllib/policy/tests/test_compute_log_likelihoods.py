@@ -2,7 +2,6 @@ import unittest
 
 import gymnasium as gym
 import numpy as np
-import torch
 from scipy.stats import norm
 
 import ray
@@ -16,7 +15,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, fc, one_hot
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.framework import try_import_torch
 
+
+torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
 
 

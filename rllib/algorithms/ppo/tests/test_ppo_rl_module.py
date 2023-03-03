@@ -4,21 +4,23 @@ import unittest
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
-import torch
 import tree
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 
 import ray
 from ray.rllib import SampleBatch
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+
+torch, _ = try_import_torch()
 
 
 def get_expected_module_config(

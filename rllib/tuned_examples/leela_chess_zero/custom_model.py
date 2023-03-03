@@ -2,7 +2,9 @@ from ray.rllib.algorithms.alpha_zero.models.custom_torch_models import (
     ActorCriticModel,
     Flatten,
 )
-import torch.nn as nn
+from ray.rllib.utils.framework import try_import_torch
+
+_, nn = try_import_torch()
 
 
 class DenseModel(ActorCriticModel):

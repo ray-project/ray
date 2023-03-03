@@ -1,18 +1,20 @@
-import gymnasium as gym
 import unittest
-import torch
+
+import gymnasium as gym
 import numpy as np
 
 import ray
-
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.testing.utils import get_learner
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+
+torch, _ = try_import_torch()
 
 
 def _get_learner() -> Learner:

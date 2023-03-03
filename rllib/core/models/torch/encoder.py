@@ -1,8 +1,8 @@
 from typing import Union
 
-import torch
 import torch.nn as nn
 import tree
+
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
@@ -13,7 +13,6 @@ from ray.rllib.core.models.base import (
 from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
-
 from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
@@ -21,7 +20,10 @@ from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
+
+torch, _ = try_import_torch()
 
 
 class TorchMLPEncoder(TorchModel, Encoder):

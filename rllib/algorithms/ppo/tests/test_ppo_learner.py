@@ -1,7 +1,6 @@
 import ray
 import unittest
 import numpy as np
-import torch
 import tensorflow as tf
 import tree  # pip install dm-tree
 
@@ -15,6 +14,9 @@ from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {

@@ -1,13 +1,16 @@
-import unittest
 import os
 import tempfile
-import torch
+import unittest
+
 from torch import nn
 
-from ray.rllib.utils.test_utils import check
-from ray.rllib.utils.annotations import override
 from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
 from ray.rllib.models.torch.model import TorchRecurrentModel, TorchModel
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import check
+
+torch, _ = try_import_torch()
 
 B, T = 6, 8
 

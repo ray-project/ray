@@ -1,20 +1,23 @@
 import abc
-import numpy as np
 import time
-import torch
-from typing import Dict, Any, Type
 import unittest
+from typing import Dict, Any, Type
 
-from ray.rllib.models.specs.specs_base import TensorSpec, TypeSpec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
+import numpy as np
+
 from ray.rllib.models.specs.checker import (
     convert_to_canonical_format,
     check_input_specs,
     check_output_specs,
 )
+from ray.rllib.models.specs.specs_base import TensorSpec, TypeSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.nested_dict import NestedDict
+
+torch, _ = try_import_torch()
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 

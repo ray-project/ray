@@ -1,19 +1,22 @@
-import unittest
 import time
-import gymnasium as gym
-import torch
+import unittest
 
+import gymnasium as gym
 import numpy as np
+
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
     ImportanceSampling,
     WeightedImportanceSampling,
 )
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
+
+torch, _ = try_import_torch()
 
 import ray
 

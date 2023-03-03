@@ -1,26 +1,27 @@
 from typing import Type, Union, TYPE_CHECKING
 
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
+from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
-
+from ray.rllib.utils.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import gymnasium as gym
-    import torch
-    import tensorflow as tf
+    from ray.rllib.utils.framework import try_import_tf
+
+    _, tf, _ = try_import_tf()
 
     from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.rl_module import RLModule
+    from ray.rllib.utils.framework import try_import_torch
+
+    torch, _ = try_import_torch()
 
 
 Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
