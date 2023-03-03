@@ -38,9 +38,14 @@ class SentimentDataset(Dataset):
         text = self.texts[idx]
         label = self.labels[idx]
         encoding = self.tokenizer(
-            text, truncation=True, padding='max_length', max_length=128, return_tensors='np')
-        input_ids = encoding['input_ids'].squeeze()
-        attention_mask = encoding['attention_mask'].squeeze()
+            text,
+            truncation=True,
+            padding="max_length",
+            max_length=128,
+            return_tensors="np",
+        )
+        input_ids = encoding["input_ids"].squeeze()
+        attention_mask = encoding["attention_mask"].squeeze()
         return input_ids, attention_mask, label
 
 
@@ -48,30 +53,31 @@ class SentimentDataset(Dataset):
 # Training Loop
 # ------------------------
 
+
 def train_loop_per_worker(config):
     # Define data loader
-    tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     train_dataset = SentimentDataset(train_texts, train_labels, tokenizer)
     eval_dataset = SentimentDataset(eval_texts, eval_labels, tokenizer)
 
     worker_batch_size = config["batch_size"] // session.get_world_size()
-    train_loader = DataLoader(
-        train_dataset, batch_size=worker_batch_size, shuffle=True)
-    eval_loader = DataLoader(
-        eval_dataset, batch_size=worker_batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=worker_batch_size, shuffle=True)
+    eval_loader = DataLoader(eval_dataset, batch_size=worker_batch_size, shuffle=False)
 
     train_loader = train.torch.prepare_data_loader(train_loader)
     eval_loader = train.torch.prepare_data_loader(eval_loader)
 
     # Define model
     model = AutoModelForSequenceClassification.from_pretrained(
-        'distilbert-base-uncased', num_labels=2)
+        "distilbert-base-uncased", num_labels=2
+    )
     model = train.torch.prepare_model(model)
 
     # Define optimizer and learning rate scheduler
     optimizer = AdamW(model.parameters(), lr=config["lr"])
     scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=1, gamma=config["gamma"])
+        optimizer, step_size=1, gamma=config["gamma"]
+    )
 
     # Train model
     model.train()
@@ -80,8 +86,9 @@ def train_loop_per_worker(config):
         for batch in train_loader:
             input_ids, attention_mask, labels = batch
             optimizer.zero_grad()
-            outputs = model(input_ids=input_ids,
-                            attention_mask=attention_mask, labels=labels)
+            outputs = model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            )
             loss = outputs.loss
             loss.backward()
             optimizer.step()
@@ -95,8 +102,7 @@ def train_loop_per_worker(config):
         with torch.no_grad():
             for batch in eval_loader:
                 input_ids, attention_mask, labels = batch
-                outputs = model(input_ids=input_ids,
-                                attention_mask=attention_mask)
+                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
                 logits = outputs.logits
                 predictions = torch.argmax(logits, dim=1)
                 total_correct += torch.sum(predictions == labels)
@@ -104,7 +110,8 @@ def train_loop_per_worker(config):
         accuracy = float(total_correct) / total_samples
 
         if session.get_world_rank() == 0:
-            print('Accuracy:', accuracy)
+            print("Accuracy:", accuracy)
+
 
 # ------------------------
 # Setup TorchTrainer
@@ -130,9 +137,9 @@ run_config = RunConfig(
 
 train_loop_config = {
     "batch_size": 128,  # Batch size for training
-    "num_epochs": 10,   # Number of epochs to train for
-    "lr": 0.001,        # Learning Rate
-    "gamma": 0.1,       # Adam parameter
+    "num_epochs": 10,  # Number of epochs to train for
+    "lr": 0.001,  # Learning Rate
+    "gamma": 0.1,  # Adam parameter
 }
 
 trainer = TorchTrainer(

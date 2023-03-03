@@ -13,35 +13,36 @@ from ray.data.datasource.partitioning import Partitioning
 
 ray.data.context.DatasetContext.get_current().use_streaming_executor = True
 
+
 def get_dataset_for_split(split: str):
     data_folder = f"s3://anonymous@air-example-data/food-101-tiny/{split}"
-    partitioning = Partitioning(
-        "dir", field_names=["class"], base_dir=data_folder
-    )
+    partitioning = Partitioning("dir", field_names=["class"], base_dir=data_folder)
 
     def resize(batch: Dict[str, np.ndarray]):
         batch["image"] = tf.convert_to_tensor(batch["image"], dtype=tf.uint8)
         batch["image"] = tf.image.resize(batch["image"], (IMG_SIZE, IMG_SIZE)).numpy()
         return batch
 
-    return ray.data.read_images(
-        data_folder, size=(512, 512), partitioning=partitioning, mode="RGB"
-    ).map_batches(resize, batch_format="numpy").random_shuffle()
+    return (
+        ray.data.read_images(
+            data_folder, size=(512, 512), partitioning=partitioning, mode="RGB"
+        )
+        .map_batches(resize, batch_format="numpy")
+        .random_shuffle()
+    )
 
 
 train_ds, valid_ds = [get_dataset_for_split(split) for split in ("train", "valid")]
 
 labels = valid_ds.groupby("class").count().to_pandas()
-class_to_idx = {
-    class_name: i
-    for i, class_name in enumerate(labels["class"])
-}
+class_to_idx = {class_name: i for i, class_name in enumerate(labels["class"])}
 
 TRAIN_DS_LENGTH = int(train_ds.count())
 VALID_DS_LENGTH = int(valid_ds.count())
 NUM_WORKERS = 1
 
 from ray.data.preprocessors import BatchMapper
+
 
 def build_preprocessor():
     # 1. Map the image folder names to label ids
@@ -82,10 +83,10 @@ from ray.air.integrations.keras import ReportCheckpointCallback
 def train_func(config: dict):
     epochs = config.get("epochs", 5)
     batch_size_per_worker = config.get("batch_size", 64)
-    
+
     # 2. Synchronized model setup
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
-    with strategy.scope():  
+    with strategy.scope():
         model = build_model()
         optimizer = tf.keras.optimizers.Adam()
         loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -104,13 +105,27 @@ def train_func(config: dict):
         # local_shuffle_buffer_size=256,
     )
     # train_ds_length = TRAIN_DS_LENGTH // NUM_WORKERS // batch_size_per_worker
-    train_ds = train_ds.apply(tf.data.experimental.assert_cardinality(train_ray_ds.count()))
-    train_ds = train_ds.map(lambda image, label: (tf.image.resize(image["image"], (IMG_SIZE, IMG_SIZE)), label["label"]))
+    train_ds = train_ds.apply(
+        tf.data.experimental.assert_cardinality(train_ray_ds.count())
+    )
+    train_ds = train_ds.map(
+        lambda image, label: (
+            tf.image.resize(image["image"], (IMG_SIZE, IMG_SIZE)),
+            label["label"],
+        )
+    )
 
     valid_ray_ds = session.get_dataset_shard("valid")
     valid_ds = valid_ray_ds.to_tf(feature_columns=["image"], label_columns=["label"])
-    valid_ds = valid_ds.apply(tf.data.experimental.assert_cardinality(valid_ray_ds.count()))
-    valid_ds = valid_ds.map(lambda image, label: (tf.image.resize(image["image"], (IMG_SIZE, IMG_SIZE)), label["label"]))
+    valid_ds = valid_ds.apply(
+        tf.data.experimental.assert_cardinality(valid_ray_ds.count())
+    )
+    valid_ds = valid_ds.map(
+        lambda image, label: (
+            tf.image.resize(image["image"], (IMG_SIZE, IMG_SIZE)),
+            label["label"],
+        )
+    )
 
     if session.get_world_rank() == 0:
         print(f"\nDataset is sharded across {session.get_world_size()} workers:")
@@ -125,11 +140,10 @@ def train_func(config: dict):
             f"# test batches per worker = {len(valid_ds)} "
             f"(~{len(valid_ds) * batch_size_per_worker} samples)"
         )
-  
+
     # 4. Report metrics and checkpoint the model
     report_metrics_and_checkpoint_callback = ReportCheckpointCallback(
-        report_metrics_on="epoch_end",
-        checkpoint_on="epoch_end"
+        report_metrics_on="epoch_end", checkpoint_on="epoch_end"
     )
     model.fit(
         train_ds,
@@ -146,7 +160,6 @@ def train_func(config: dict):
             f"Final Test Loss: {test_loss:.4f}, "
             f"Final Test Accuracy: {test_accuracy:.4f}"
         )
-
 
 
 from ray import air

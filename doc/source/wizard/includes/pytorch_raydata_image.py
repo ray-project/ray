@@ -25,15 +25,13 @@ warnings.filterwarnings("ignore")
 ray_datasets = {}
 for split in ["train", "valid"]:
     data_folder = f"s3://anonymous@air-example-data/food-101-tiny/{split}"
-    partitioning = Partitioning(
-        "dir", field_names=["class"], base_dir=data_folder)
+    partitioning = Partitioning("dir", field_names=["class"], base_dir=data_folder)
     ray_datasets[split] = ray.data.read_images(
         data_folder, size=(256, 256), partitioning=partitioning, mode="RGB"
     )
 
 labels_df = ray_datasets["valid"].groupby("class").count().to_pandas()
-class_to_idx = {class_str: i for i,
-                class_str in enumerate(labels_df["class"])}
+class_to_idx = {class_str: i for i, class_str in enumerate(labels_df["class"])}
 
 
 def map_labels(batch: np.ndarray) -> np.ndarray:
@@ -42,8 +40,7 @@ def map_labels(batch: np.ndarray) -> np.ndarray:
     return batch
 
 
-ray_datasets = {split: ds.map_batches(
-    map_labels) for split, ds in ray_datasets.items()}
+ray_datasets = {split: ds.map_batches(map_labels) for split, ds in ray_datasets.items()}
 
 
 def build_preprocessor():
@@ -63,13 +60,13 @@ def build_preprocessor():
             transforms.Lambda(to_tensor),
             transforms.Resize(256),
             transforms.CenterCrop(224),
-            transforms.Normalize([0.485, 0.456, 0.406], [
-                0.229, 0.224, 0.225]),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ]
     )
     # Accelerate image processing with batched transformations
     return TorchVisionPreprocessor(
-        columns=["image"], transform=data_transforms, batched=True)
+        columns=["image"], transform=data_transforms, batched=True
+    )
 
 
 # ------------------------
@@ -114,9 +111,7 @@ def train_loop_per_worker(configs):
     # optimizer = optim.SGD(
     #     model.parameters(), lr=configs["lr"], momentum=configs["momentum"]
     # )
-    optimizer = optim.Adam(
-        model.parameters(), lr=configs["lr"]
-    )
+    optimizer = optim.Adam(model.parameters(), lr=configs["lr"])
     criterion = nn.CrossEntropyLoss()
 
     # Start training loops
@@ -212,7 +207,7 @@ trainer = TorchTrainer(
     scaling_config=scaling_config,
     run_config=run_config,
     datasets=ray_datasets,
-    preprocessor=build_preprocessor()
+    preprocessor=build_preprocessor(),
 )
 
 result = trainer.fit()
