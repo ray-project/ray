@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import subprocess
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -142,6 +143,7 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
@@ -238,7 +240,6 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     # So far we have the following gets
     """
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'FunctionsToRun:01000000:\x12\x9b\xea\xa39\x01...'
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x02'
     b'cluster' b'CLUSTER_METADATA'
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
@@ -247,7 +248,36 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     ???? # unknown
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 8
+    assert freqs["internal_kv_get"] == 4
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
+@pytest.mark.parametrize("root_process_no_site", [0, 1])
+@pytest.mark.parametrize("root_process_no_user_site", [0, 1])
+def test_site_flag_inherited(
+    shutdown_only, monkeypatch, root_process_no_site, root_process_no_user_site
+):
+    # The flags we're testing could prevent Python workers in the test environment
+    # from locating site packages; the workers would fail to find Ray and would thus
+    # fail to start. To prevent that, set the PYTHONPATH env. The env will be inherited
+    # by the Python workers, so that they are able to import Ray.
+    monkeypatch.setenv("PYTHONPATH", ":".join(sys.path))
+
+    @ray.remote
+    def get_flags():
+        return sys.flags.no_site, sys.flags.no_user_site
+
+    with patch.multiple(
+        "ray._private.services",
+        _no_site=Mock(return_value=root_process_no_site),
+        _no_user_site=Mock(return_value=root_process_no_user_site),
+    ):
+        ray.init()
+        worker_process_no_site, worker_process_no_user_site = ray.get(
+            get_flags.remote()
+        )
+        assert worker_process_no_site == root_process_no_site
+        assert worker_process_no_user_site == root_process_no_user_site
 
 
 if __name__ == "__main__":

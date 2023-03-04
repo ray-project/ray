@@ -118,7 +118,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
-  stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);

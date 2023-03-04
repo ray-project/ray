@@ -19,6 +19,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -27,13 +28,13 @@ namespace raylet {
 
 RetriableLIFOWorkerKillingPolicy::RetriableLIFOWorkerKillingPolicy() {}
 
-const std::shared_ptr<WorkerInterface>
+const std::pair<std::shared_ptr<WorkerInterface>, bool>
 RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemorySnapshot &system_memory) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
-    return nullptr;
+    return std::make_pair(nullptr, /*should retry*/ false);
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> sorted = workers;
@@ -57,7 +58,7 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
   RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
                 << WorkersDebugString(sorted, max_to_print, system_memory);
 
-  return sorted.front();
+  return std::make_pair(sorted.front(), /*should retry*/ true);
 }
 
 std::string WorkerKillingPolicy::WorkersDebugString(
@@ -76,16 +77,34 @@ std::string WorkerKillingPolicy::WorkersDebugString(
       RAY_LOG_EVERY_MS(INFO, 60000)
           << "Can't find memory usage for PID, reporting zero. PID: " << pid;
     }
-    result << "Worker " << index << ": task assigned time counter "
-           << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
-           << worker->WorkerId() << " memory used " << used_memory << " task spec "
+    result << "Worker " << index << ": task assigned time "
+           << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
+           << " worker id " << worker->WorkerId() << " memory used " << used_memory
+           << " task spec "
            << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+
     index += 1;
     if (index > num_workers) {
       break;
     }
   }
   return result.str();
+}
+
+std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
+    std::string killing_policy_str) {
+  if (killing_policy_str == kLifoPolicy) {
+    RAY_LOG(INFO) << "Running RetriableLIFO policy.";
+    return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
+  } else if (killing_policy_str == kGroupByOwner) {
+    RAY_LOG(INFO) << "Running GroupByOwner policy.";
+    return std::make_shared<GroupByOwnerIdWorkerKillingPolicy>();
+  } else {
+    RAY_LOG(ERROR)
+        << killing_policy_str
+        << " is an invalid killing policy. Defaulting to RetriableLIFO policy.";
+    return std::make_shared<RetriableLIFOWorkerKillingPolicy>();
+  }
 }
 
 }  // namespace raylet

@@ -6,25 +6,23 @@ import inspect
 import os
 import asyncio
 from functools import wraps
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import grpc
 
 import ray
 from ray._private import ray_constants
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from ray.core.generated.common_pb2 import ErrorType
+from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     AvailableResources,
     ErrorTableData,
     GcsEntry,
     GcsNodeInfo,
-    JobConfig,
     JobTableData,
     ObjectTableData,
     PlacementGroupTableData,
-    ProfileTableData,
     PubSubMessage,
     ResourceDemand,
     ResourceLoad,
@@ -52,7 +50,6 @@ __all__ = [
     "ResourceUsageBatchData",
     "ResourcesData",
     "ObjectTableData",
-    "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
     "TaskEvents",
@@ -302,6 +299,26 @@ class GcsClient:
             )
 
     @_auto_reconnect
+    def internal_kv_multi_get(
+        self,
+        keys: List[bytes],
+        namespace: Optional[bytes],
+        timeout: Optional[float] = None,
+    ) -> Dict[bytes, bytes]:
+        logger.debug(f"internal_kv_multi_get {keys!r} {namespace!r}")
+        req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
+        reply = self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
+        if reply.status.code == GcsCode.OK:
+            return {entry.key: entry.value for entry in reply.results}
+        elif reply.status.code == GcsCode.NotFound:
+            return {}
+        else:
+            raise RuntimeError(
+                f"Failed to get value for key {keys!r} "
+                f"due to error {reply.status.message}"
+            )
+
+    @_auto_reconnect
     def internal_kv_put(
         self,
         key: bytes,
@@ -477,6 +494,24 @@ class GcsAioClient:
             )
 
     @_auto_reconnect
+    async def internal_kv_multi_get(
+        self,
+        keys: List[bytes],
+        namespace: Optional[bytes],
+        timeout: Optional[float] = None,
+    ) -> Dict[bytes, bytes]:
+        logger.debug(f"internal_kv_multi_get {keys!r} {namespace!r}")
+        req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
+        reply = await self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
+        if reply.status.code == GcsCode.OK:
+            return {entry.key: entry.value for entry in reply.results}
+        else:
+            raise RuntimeError(
+                f"Failed to get value for keys {keys!r} "
+                f"due to error {reply.status.message}"
+            )
+
+    @_auto_reconnect
     async def internal_kv_put(
         self,
         key: bytes,
@@ -580,3 +615,40 @@ def use_gcs_for_bootstrap():
     This function is included for the purposes of backwards compatibility.
     """
     return True
+
+
+def cleanup_redis_storage(
+    host: str, port: int, password: str, use_ssl: bool, storage_namespace: str
+):
+    """This function is used to cleanup the storage. Before we having
+    a good design for storage backend, it can be used to delete the old
+    data. It support redis cluster and non cluster mode.
+
+    Args:
+       host: The host address of the Redis.
+       port: The port of the Redis.
+       password: The password of the Redis.
+       use_ssl: Whether to encrypt the connection.
+       storage_namespace: The namespace of the storage to be deleted.
+    """
+
+    from ray._raylet import del_key_from_storage  # type: ignore
+
+    if not isinstance(host, str):
+        raise ValueError("Host must be a string")
+
+    if not isinstance(password, str):
+        raise ValueError("Password must be a string")
+
+    if port < 0:
+        raise ValueError(f"Invalid port: {port}")
+
+    if not isinstance(use_ssl, bool):
+        raise TypeError("use_ssl must be a boolean")
+
+    if not isinstance(storage_namespace, str):
+        raise ValueError("storage namespace must be a string")
+
+    # Right now, GCS store all data into a hash set key by storage_namespace.
+    # So we only need to delete the specific key to cleanup the cluster.
+    return del_key_from_storage(host, port, password, use_ssl, storage_namespace)

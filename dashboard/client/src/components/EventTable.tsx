@@ -35,11 +35,16 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     marginTop: theme.spacing(2),
   },
+  filterContainer: {
+    display: "flex",
+    alignItems: "center",
+  },
   search: {
     margin: theme.spacing(1),
     display: "inline-block",
     fontSize: 12,
     lineHeight: "46px",
+    height: 56,
   },
   infokv: {
     margin: theme.spacing(1),
@@ -166,7 +171,7 @@ const EventTable = (props: EventTableProps) => {
 
   return (
     <div style={{ position: "relative" }}>
-      <div>
+      <div className={classes.filterContainer}>
         <Autocomplete
           className={classes.search}
           style={{ width: 200 }}

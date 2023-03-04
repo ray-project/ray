@@ -1,5 +1,5 @@
-ML Framework Examples
----------------------
+Examples using Ray Tune with ML Frameworks
+------------------------------------------
 
 Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.

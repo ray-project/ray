@@ -12,26 +12,29 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Tuple,
     Union,
 )
 import warnings
 
+import numpy as np
+
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal import progress_bar
-from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
+from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data.block import BatchUDF, Block, KeyFn, RowUDF
+from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U, TensorflowFeatureTypeSpec
+from ray.data.dataset import Dataset, T, U
+from ray.data.dataset_iterator import DatasetIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
@@ -52,6 +55,7 @@ if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
     import torch
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 logger = logging.getLogger(__name__)
@@ -79,7 +83,7 @@ class DatasetPipeline(Generic[T]):
         self,
         base_iterable: Iterable[Callable[[], Dataset[T]]],
         stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
-        length: int = None,
+        length: Optional[int] = None,
         progress_bars: bool = progress_bar._enabled,
         _executed: List[bool] = None,
     ):
@@ -98,10 +102,30 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
-        self._dataset_iter = None
-        self._first_dataset = None
+        self._first_dataset: Optional[Dataset] = None
+        self._remaining_datasets_iter: Optional[Iterator[Callable[[], Dataset]]] = None
         self._schema = None
         self._stats = DatasetPipelineStats()
+
+    def iterator(self) -> DatasetIterator:
+        """Return a :class:`~ray.data.DatasetIterator` that
+        can be used to repeatedly iterate over the dataset.
+
+        Note that each pass iterates over the entire original Dataset, even if
+        the dataset was windowed with ``.window()``.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(5).window(bytes_per_window=1).repeat()
+            >>> ds
+            DatasetPipeline(num_windows=inf, num_stages=2)
+            >>> for batch in ds.iterator().iter_batches(batch_size=2):
+            ...     print(batch) # doctest: +SKIP
+
+        It is recommended to use ``DatasetIterator`` methods over directly
+        calling methods such as ``iter_batches()``.
+        """
+        return PipelinedDatasetIterator(self)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
@@ -149,7 +173,8 @@ class DatasetPipeline(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+    ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the data in the pipeline.
 
         Examples:
@@ -201,14 +226,15 @@ class DatasetPipeline(Generic[T]):
             )
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
-        yield from batch_blocks(
+        yield from batch_block_refs(
             self._iter_blocks(),
-            self._stats,
+            stats=self._stats,
             prefetch_blocks=prefetch_blocks,
             clear_block_after_read=blocks_owned_by_consumer,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            collate_fn=_collate_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
@@ -481,7 +507,7 @@ class DatasetPipeline(Generic[T]):
                 # This is calculated later.
                 self._max_i = None
 
-            def __next__(self) -> Dataset[T]:
+            def __next__(self) -> Callable[[], Dataset[T]]:
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
@@ -517,11 +543,11 @@ class DatasetPipeline(Generic[T]):
                     raise StopIteration
 
         class RepeatIterable:
-            def __init__(self, original_iter):
-                self._original_iter = original_iter
+            def __init__(self, original_iterable):
+                self._original_iterable = original_iterable
 
             def __iter__(self):
-                return RepeatIterator(self._original_iter)
+                return RepeatIterator(iter(self._original_iterable))
 
         if not times:
             length = float("inf")
@@ -531,7 +557,7 @@ class DatasetPipeline(Generic[T]):
             length = None
 
         return DatasetPipeline(
-            RepeatIterable(iter(self._base_iterable)),
+            RepeatIterable(self._base_iterable),
             stages=self._stages.copy(),
             length=length,
         )
@@ -765,6 +791,7 @@ class DatasetPipeline(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        prefetch_batches: int = 0,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -779,6 +806,7 @@ class DatasetPipeline(Generic[T]):
                 batch_size=batch_size,
                 compute=compute,
                 batch_format=batch_format,
+                prefetch_batches=prefetch_batches,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
@@ -1055,11 +1083,15 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[Union["torch.Tensor", Dict[str, "torch.Tensor"]]]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Call
         :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
         over the stream of output batches from the pipeline."""
@@ -1067,6 +1099,9 @@ class DatasetPipeline(Generic[T]):
             self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -1074,28 +1109,26 @@ class DatasetPipeline(Generic[T]):
 
     def to_tf(
         self,
+        feature_columns: Union[str, List[str]],
+        label_columns: Union[str, List[str]],
         *,
-        output_signature: Union[
-            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
-        ],
-        label_column: Optional[str] = None,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], Dict[str, List[str]]]
-        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
         output batches from the pipeline"""
         return Dataset.to_tf(
             self,
-            output_signature=output_signature,
-            label_column=label_column,
             feature_columns=feature_columns,
+            label_columns=label_columns,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
         )
 
     def to_torch(
@@ -1150,12 +1183,35 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
-        if self._first_dataset is None:
-            self._peek()
-        iter = itertools.chain([self._first_dataset], self._dataset_iter)
-        self._first_dataset = None
-        self._dataset_iter = None
-        return iter
+
+        self._optimize_stages()
+
+        # If the first dataset has already been executed (via a peek operation), then
+        # we don't re-execute the first dataset when iterating through the pipeline.
+        # We re-use the saved _first_dataset and _remaining_dataset_iter.
+        if self._first_dataset is not None:
+
+            class _IterableWrapper(Iterable):
+                """Wrapper that takes an iterator and converts it to an
+                iterable."""
+
+                def __init__(self, base_iterator):
+                    self.base_iterator = base_iterator
+
+                def __iter__(self):
+                    return self.base_iterator
+
+            # Update the base iterable to skip the first dataset.
+            # It is ok to update the base iterable here since
+            # the pipeline can never be executed again.
+            self._base_iterable = _IterableWrapper(self._remaining_datasets_iter)
+
+            iter = itertools.chain([self._first_dataset], PipelineExecutor(self))
+            self._first_dataset = None
+            self._remaining_datasets_iter = None
+            return iter
+        else:
+            return PipelineExecutor(self)
 
     @DeveloperAPI
     def foreach_window(
@@ -1171,6 +1227,7 @@ class DatasetPipeline(Generic[T]):
         """
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
+
         return DatasetPipeline(
             self._base_iterable,
             self._stages + [fn],
@@ -1259,9 +1316,21 @@ class DatasetPipeline(Generic[T]):
 
     def _peek(self) -> Dataset[T]:
         if self._first_dataset is None:
-            self._optimize_stages()
-            self._dataset_iter = PipelineExecutor(self)
-            self._first_dataset = next(self._dataset_iter)
+            dataset_iter = iter(self._base_iterable)
+            first_dataset_gen = next(dataset_iter)
+            peek_pipe = DatasetPipeline(
+                base_iterable=[first_dataset_gen],
+                stages=self._stages.copy(),
+                length=1,
+                progress_bars=True,
+            )
+            # Cache the executed _first_dataset.
+            self._first_dataset = next(peek_pipe.iter_datasets())
+            self._remaining_datasets_iter = dataset_iter
+
+            # Store the stats from the peek pipeline.
+            self._stats.add_pipeline_stats(peek_pipe._stats)
+
         return self._first_dataset
 
     def _write_each_dataset(self, write_fn: Callable[[Dataset[T]], None]) -> None:
@@ -1276,3 +1345,6 @@ class DatasetPipeline(Generic[T]):
                 uuid = self._get_uuid() or ds._get_uuid()
             ds._set_uuid(f"{uuid}_{i:06}")
             write_fn(ds)
+
+    def _synchronize_progress_bar(self):
+        pass

@@ -4,8 +4,9 @@ import copy
 import json
 import os
 from dataclasses import dataclass
+from typing import List, Dict, Optional
 
-from typing import List, Dict
+import ray
 
 
 @dataclass
@@ -39,6 +40,8 @@ class Panel:
         id: Integer id used to reference the graph from Metrics.tsx.
         unit: The unit to display on the y-axis of the graph.
         targets: List of query targets.
+        fill: Whether or not the graph will be filled by a color.
+        stack: Whether or not the lines in the graph will be stacked.
     """
 
     title: str
@@ -46,6 +49,8 @@ class Panel:
     id: int
     unit: str
     targets: List[Target]
+    fill: int = 10
+    stack: bool = True
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -287,11 +292,24 @@ GRAFANA_PANELS = [
     Panel(
         id=34,
         title="Node Memory by Component",
-        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component.",
+        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.",
         unit="bytes",
         targets=[
             Target(
                 expr="sum(ray_component_uss_mb{{{global_filters}}} * 1e6) by (Component)",
+                legend="{{Component}}",
+            )
+        ],
+    ),
+    Panel(
+        id=37,
+        title="Node CPU by Component",
+        description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.",
+        unit="cores",
+        targets=[
+            Target(
+                # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
+                expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
                 legend="{{Component}}",
             )
         ],
@@ -348,7 +366,54 @@ GRAFANA_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=41,
+        title="Cluster Utilization",
+        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.",
+        unit="%",
+        targets=[
+            # CPU
+            Target(
+                expr="avg(ray_node_cpu_utilization{{{global_filters}}})",
+                legend="CPU (physical)",
+            ),
+            # GPU
+            Target(
+                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
+                legend="GPU (physical)",
+            ),
+            # Memory
+            Target(
+                expr="sum(ray_node_mem_used{{{global_filters}}}) / on() (sum(ray_node_mem_total{{{global_filters}}})) * 100",
+                legend="Memory (RAM)",
+            ),
+            # GRAM
+            Target(
+                expr="sum(ray_node_gram_used{{{global_filters}}}) / on() (sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 100",
+                legend="GRAM",
+            ),
+            # Object Store
+            Target(
+                expr='sum(ray_object_store_memory{{{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",{global_filters}}}) * 100',
+                legend="Object Store Memory",
+            ),
+            # Disk
+            Target(
+                expr="sum(ray_node_disk_usage{{{global_filters}}}) / on() (sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})) * 100",
+                legend="Disk",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
+
+ids = []
+for panel in GRAFANA_PANELS:
+    ids.append(panel.id)
+assert len(ids) == len(
+    set(ids)
+), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 
 TARGET_TEMPLATE = {
@@ -463,11 +528,16 @@ PANEL_TEMPLATE = {
 }
 
 
-def generate_grafana_dashboard() -> str:
+def generate_grafana_dashboard(override_uid: Optional[str] = None) -> str:
     base_json = json.load(
         open(os.path.join(os.path.dirname(__file__), "grafana_dashboard_base.json"))
     )
     base_json["panels"] = _generate_grafana_panels()
+    tags = base_json.get("tags", []) or []
+    tags.append(f"rayVersion:{ray.__version__}")
+    base_json["tags"] = tags
+    if override_uid:
+        base_json["uid"] = override_uid
     return json.dumps(base_json, indent=4)
 
 
@@ -486,6 +556,8 @@ def _generate_grafana_panels() -> List[dict]:
         template["gridPos"]["y"] = i // 2
         template["gridPos"]["x"] = 12 * (i % 2)
         template["yaxes"][0]["format"] = panel.unit
+        template["fill"] = panel.fill
+        template["stack"] = panel.stack
         panels.append(template)
     return panels
 
@@ -493,10 +565,18 @@ def _generate_grafana_panels() -> List[dict]:
 GLOBAL_FILTERS = ['SessionName="$SessionName"']
 
 
+def gen_incrementing_alphabets(length):
+    assert 65 + length < 96, "we only support up to 26 targets at a time."
+    # 65: ascii code of 'A'.
+    return list(map(chr, range(65, 65 + length)))
+
+
 def _generate_targets(panel: Panel) -> List[dict]:
     global_filters = ",".join(GLOBAL_FILTERS)
     targets = []
-    for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
+    for target, ref_id in zip(
+        panel.targets, gen_incrementing_alphabets(len(panel.targets))
+    ):
         template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {

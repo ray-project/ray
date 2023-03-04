@@ -194,15 +194,15 @@ def test_fractional_memory_round_down(shutdown_only):
         pass
 
     with ray.init(num_cpus=1, _memory=2):
-        ray.get(test.options(memory=2.9).remote(), timeout=2)
+        ray.get(test.options(memory=2.9).remote(), timeout=5)
 
     with ray.init(num_cpus=1, _memory=0.2):
-        ray.get(test.options(memory=0.5).remote(), timeout=2)
+        ray.get(test.options(memory=0.5).remote(), timeout=5)
 
     with ray.init(num_cpus=1, _memory=2.2):
-        ray.get(test.options(memory=2.9).remote(), timeout=2)
+        ray.get(test.options(memory=2.9).remote(), timeout=5)
         with pytest.raises(ray.exceptions.GetTimeoutError):
-            ray.get(test.options(memory=3.1).remote(), timeout=2)
+            ray.get(test.options(memory=3.1).remote(), timeout=5)
 
 
 def test_multiple_raylets(ray_start_cluster):

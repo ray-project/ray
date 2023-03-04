@@ -5,10 +5,8 @@ aws:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
-        - Key: anyscale-user
-          Value: '{{env["ANYSCALE_USER"]}}'
-        - Key: anyscale-expiration
-          Value: '{{env["EXPIRATION_1D"]}}'
+        - Key: ttl-hours
+          Value: '24'
 
 head_node_type:
     name: head_node

@@ -212,6 +212,7 @@ For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.
 This is required to expose the Ray dashboard outside the Ray cluster. (Future versions might set
 this parameter by default.)
 
+(kuberay-num-cpus)=
 ### num-cpus
 This optional field tells the Ray scheduler and autoscaler how many CPUs are
 available to the Ray pod. The CPU count can be autodetected from the
@@ -280,7 +281,7 @@ The Ray Client server can be accessed from a pod in another namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 ```
-(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
+(This assumes the Ray cluster was deployed into the default Kubernetes namespace.
 If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
 

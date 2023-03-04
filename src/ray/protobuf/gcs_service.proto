@@ -36,7 +36,10 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {}
+message GetAllJobInfoRequest {
+  // The number of jobs to return. If not specified, return all jobs.
+  optional int32 limit = 1;
+}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -177,14 +180,6 @@ message GetAllNodeInfoReply {
   repeated GcsNodeInfo node_info_list = 2;
 }
 
-message ReportHeartbeatRequest {
-  HeartbeatTableData heartbeat = 1;
-}
-
-message ReportHeartbeatReply {
-  GcsStatus status = 1;
-}
-
 message CheckAliveRequest {
   repeated string raylet_address = 1;
 }
@@ -228,35 +223,6 @@ message ReportResourceUsageRequest {
 
 message ReportResourceUsageReply {
   GcsStatus status = 1;
-}
-
-// Service for heartbeat info access.
-service HeartbeatInfoGcsService {
-  // Report heartbeat of a node to GCS Service.
-  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-}
-
-message AddProfileDataRequest {
-  ProfileTableData profile_data = 1;
-}
-
-message AddProfileDataReply {
-  GcsStatus status = 1;
-}
-
-message GetAllProfileInfoRequest {}
-
-message GetAllProfileInfoReply {
-  GcsStatus status = 1;
-  repeated ProfileTableData profile_info_list = 2;
-}
-
-// Service for stats access.
-service StatsGcsService {
-  // Add profile data to GCS Service.
-  rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
-  // Get information of all profiles from GCS Service.
-  rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
 }
 
 message ReportWorkerFailureRequest {
@@ -460,6 +426,24 @@ message InternalKVGetReply {
   bytes value = 2;
 }
 
+message InternalKVMultiGetRequest {
+  repeated bytes keys = 1;
+  bytes namespace = 2;
+}
+
+message MapFieldEntry {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message InternalKVMultiGetReply {
+  GcsStatus status = 1;
+  // The key-value pairs that are found. Bytes cannot be used as a key in a map, so
+  // we use a repeated field of key-value pairs instead. See
+  // https://protobuf.dev/programming-guides/proto3/#backwards-compatibility
+  repeated MapFieldEntry results = 2;
+}
+
 message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
@@ -506,6 +490,7 @@ message InternalKVKeysReply {
 // Service for KV storage
 service InternalKVGcsService {
   rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVMultiGet(InternalKVMultiGetRequest) returns (InternalKVMultiGetReply);
   rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
@@ -642,6 +627,13 @@ message GetTaskEventsRequest {
     // Get task events from a set of tasks.
     TaskIDs task_ids = 2;
   }
+
+  // Maximum number of TaskEvents to return.
+  // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
+  // guarantee.
+  optional int64 limit = 3;
+  // True if task events from driver (only profiling events) should be excluded.
+  bool exclude_driver = 4;
 }
 
 message GetTaskEventsReply {

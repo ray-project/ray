@@ -108,8 +108,12 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        self.dist_class = self._init_dist_class()
-        self.model = self.make_model()
+        if self.config.get("_enable_rl_module_api", False):
+            self.model = self.make_rl_module()
+            self.dist_class = None
+        else:
+            self.dist_class = self._init_dist_class()
+            self.model = self.make_model()
 
         self._init_view_requirements()
 
@@ -771,7 +775,10 @@ class EagerTFPolicyV2(Policy):
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
-        self._re_trace_counter += 1
+        # NOTE: On the new RLModule API, we won't trace the sampling side, so we should
+        # not increment this counter to trigger excess re-tracing error.
+        if not self.config.get("_enable_rl_module_api", False):
+            self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -782,7 +789,28 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if is_overridden(self.action_sampler_fn):
+            if self.config.get("_enable_rl_module_api", False):
+
+                if explore:
+                    fwd_out = self.model.forward_exploration(input_dict)
+                else:
+                    fwd_out = self.model.forward_inference(input_dict)
+
+                action_dist = fwd_out[SampleBatch.ACTION_DIST]
+                if explore:
+                    actions, logp = action_dist.sample(return_logp=True)
+                else:
+                    actions = action_dist.sample()
+                    logp = None
+                state_out = fwd_out.get("state_out", {})
+
+                # anything but action_dist and state_out is an extra fetch
+                for k, v in fwd_out.items():
+                    if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                        extra_fetches[k] = v
+                dist_inputs = None
+
+            elif is_overridden(self.action_sampler_fn):
                 dist_inputs = None
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(

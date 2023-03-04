@@ -274,7 +274,7 @@ class TestDTModel(unittest.TestCase):
         )
 
         # used to select the causal padded element of each attention tensor
-        select_mask = np.triu(np.ones((3 * T, 3 * T), dtype=np.bool), k=1)
+        select_mask = np.triu(np.ones((3 * T, 3 * T), dtype=np.bool_), k=1)
         select_mask = np.tile(select_mask, (B, model_config["num_heads"], 1, 1))
 
         for attention in attentions:

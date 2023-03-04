@@ -104,6 +104,13 @@ class GcsActor {
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+    if (task_spec.scheduling_strategy().scheduling_strategy_case() ==
+        rpc::SchedulingStrategy::SchedulingStrategyCase::
+            kPlacementGroupSchedulingStrategy) {
+      actor_table_data_.set_placement_group_id(task_spec.scheduling_strategy()
+                                                   .placement_group_scheduling_strategy()
+                                                   .placement_group_id());
+    }
 
     // Set required resources.
     auto resource_map =

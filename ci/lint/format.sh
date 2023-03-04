@@ -8,7 +8,7 @@ set -euo pipefail
 FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
-MYPY_VERSION_REQUIRED="0.782"
+MYPY_VERSION_REQUIRED="0.982"
 ISORT_VERSION_REQUIRED="5.10.1"
 
 check_python_command_exist() {
@@ -138,13 +138,13 @@ MYPY_FLAGS=(
 )
 
 MYPY_FILES=(
-    # Relative to python/ray
-    'autoscaler/node_provider.py'
-    'autoscaler/sdk/__init__.py'
-    'autoscaler/sdk/sdk.py'
-    'autoscaler/_private/commands.py'
-    'autoscaler/_private/autoscaler.py'
-    '_private/gcs_utils.py'
+    # Relative to ray/python
+    'ray/autoscaler/node_provider.py'
+    'ray/autoscaler/sdk/__init__.py'
+    'ray/autoscaler/sdk/sdk.py'
+    'ray/autoscaler/_private/commands.py'
+    'ray/autoscaler/_private/autoscaler.py'
+    'ray/_private/gcs_utils.py'
 )
 
 
@@ -186,7 +186,7 @@ shellcheck_scripts() {
 # Runs mypy on each argument in sequence. This is different than running mypy
 # once on the list of arguments.
 mypy_on_each() {
-    pushd python/ray
+    pushd python
     for file in "$@"; do
        echo "Running mypy on $file"
        mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"

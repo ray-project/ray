@@ -21,11 +21,16 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_traina
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
-from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 from unittest.mock import patch
+
+
+def _make_trial(name, **kwargs):
+    trial = Trial(name, **kwargs)
+    trial.create_placement_group_factory()
+    return trial
 
 
 class _HangingTrainable(tune.Trainable):
@@ -153,13 +158,13 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(checkpoint, trial.checkpoint)
 
     def testStartStop(self):
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
         self.trial_executor.stop_trial(trial)
 
     def testAsyncSave(self):
         """Tests that saved checkpoint value not immediately set."""
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
 
         self._simulate_getting_result(trial)
@@ -170,7 +175,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.TERMINATED, trial.status)
 
     def testSaveRestore(self):
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
 
         self._simulate_getting_result(trial)
@@ -183,7 +188,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testPauseResume(self):
         """Tests that pausing works for trials in flight."""
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
 
         self.trial_executor.pause_trial(trial)
@@ -196,7 +201,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testSavePauseResumeErrorRestore(self):
         """Tests that pause checkpoint does not replace restore checkpoint."""
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
 
         self._simulate_getting_result(trial)
@@ -227,13 +232,13 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testStartFailure(self):
         _global_registry.register(TRAINABLE_CLASS, "asdf", None)
-        trial = Trial("asdf", resources=Resources(1, 0))
+        trial = _make_trial("asdf")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.ERROR, trial.status)
 
     def testTrialHangingCleanup(self):
         register_trainable("hanging", _HangingTrainable)
-        trial = Trial("hanging")
+        trial = _make_trial("hanging")
 
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
         os.environ["TUNE_GET_EXECUTOR_EVENT_WAIT_S"] = "30"
@@ -290,7 +295,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
 
         self._simulate_getting_result(trial)
@@ -312,7 +317,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
         base = max(result_buffer_length, 1)
 
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
 
         self._simulate_getting_result(trial)
@@ -339,7 +344,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
-        trial = Trial("__fake")
+        trial = _make_trial("__fake")
         self._simulate_starting_trial(trial)
         exists = self.trial_executor.reset_trial(trial, {}, "modified_mock")
         self.assertEqual(exists, False)
@@ -453,6 +458,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         while not suggester.is_finished():
             trial = suggester.next_trial()
             if trial:
+                trial.create_placement_group_factory()
                 trials.append(trial)
             else:
                 break
@@ -481,7 +487,11 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
                 "num_cpus": self.head_cpus,
                 "num_gpus": self.head_gpus,
                 "resources": {"custom": self.head_custom},
-                "_system_config": {"num_heartbeats_timeout": 10},
+                "_system_config": {
+                    "health_check_initial_delay_ms": 0,
+                    "health_check_period_ms": 1000,
+                    "health_check_failure_threshold": 10,
+                },
             },
         )
         # Pytest doesn't play nicely with imports
@@ -611,9 +621,9 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
         register_trainable("resettable", train)
 
-        trial1 = Trial("resettable", placement_group_factory=pgf1)
-        trial2 = Trial("resettable", placement_group_factory=pgf1)
-        trial3 = Trial("resettable", placement_group_factory=pgf2)
+        trial1 = _make_trial("resettable", placement_group_factory=pgf1)
+        trial2 = _make_trial("resettable", placement_group_factory=pgf1)
+        trial3 = _make_trial("resettable", placement_group_factory=pgf2)
 
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)

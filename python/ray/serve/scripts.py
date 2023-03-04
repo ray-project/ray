@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+import traceback
 import re
 
 import ray
@@ -246,7 +247,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--host",
     "-h",
-    default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
     help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
@@ -254,7 +254,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--port",
     "-p",
-    default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
     help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
@@ -270,7 +269,11 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--gradio",
     is_flag=True,
-    help=("Whether to enable gradio visualization of deployment graph."),
+    help=(
+        "Whether to enable gradio visualization of deployment graph. The "
+        "visualization can only be used with deployment graphs with DAGDriver "
+        "as the ingress deployment."
+    ),
 )
 def run(
     config_or_import_path: str,
@@ -297,9 +300,24 @@ def run(
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
-            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+            config_dict = yaml.safe_load(config_file)
+            # If host or port is specified as a CLI argument, they should take priority
+            # over config values.
+            config_dict.setdefault("host", DEFAULT_HTTP_HOST)
+            if host is not None:
+                config_dict["host"] = host
+
+            config_dict.setdefault("port", DEFAULT_HTTP_PORT)
+            if port is not None:
+                config_dict["port"] = port
+
+            config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
     else:
+        if host is None:
+            host = DEFAULT_HTTP_HOST
+        if port is None:
+            port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
         node = import_attr(import_path)
@@ -325,7 +343,7 @@ def run(
 
     try:
         if is_config:
-            client.deploy_app(config, _blocking=gradio)
+            client.deploy_apps(config, _blocking=gradio)
             cli_logger.success("Submitted deploy config successfully.")
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
@@ -346,6 +364,15 @@ def run(
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
+        serve.shutdown()
+        sys.exit()
+
+    except Exception:
+        traceback.print_exc()
+        cli_logger.error(
+            "Received unexpected error, see console logs for more details. Shutting "
+            "down..."
+        )
         serve.shutdown()
         sys.exit()
 

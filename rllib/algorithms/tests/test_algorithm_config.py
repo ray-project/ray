@@ -3,7 +3,9 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -145,6 +147,43 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = AlgorithmConfig().environment(env="NotAtari")
         config.validate()
         self.assertFalse(config.is_atari)
+
+    def test_rl_module_api(self):
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .framework("torch")
+            .rollouts(enable_connectors=True)
+            .rl_module(_enable_rl_module_api=True)
+        )
+
+        config.validate()
+        self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
+
+        class A:
+            pass
+
+        config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(A))
+        config.validate()
+        self.assertEqual(config.rl_module_spec.module_class, A)
+
+    def test_learner_api(self):
+        # TODO (Kourosh): the default learner of PPO is not implemented yet. When
+        # that's done this test should be updated
+        class A:
+            pass
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .rollouts(enable_connectors=True)
+            .training(learner_class=A, _enable_learner_api=True)
+            .rl_module(_enable_rl_module_api=True)
+            .framework("tf2")
+        )
+
+        config.validate()
+        self.assertEqual(config.learner_class, A)
 
 
 if __name__ == "__main__":
