@@ -15,7 +15,7 @@ The demo tunes both the text_encoder and unet parts of Stable Diffusion, and uti
   <img src="images/dreambooth_example.png" />
 </p>
 
-### Overview
+## Overview
 
 First, we download the pre-trained stable diffusion model as a starting point.
 
@@ -25,7 +25,7 @@ To achieve this, we choose a non-word as an identifier, e.g. "unqtkn". When fine
 
 After fine-tuning we can run inference with this specific prompt. For instance: "A photo of a unqtkn <class>" will create an image of our subject.
 
-### Step 0
+## Step 0: Preparation
 
 Clone the Ray repository, go to the example directory, and install dependencies.
 
@@ -54,7 +54,7 @@ mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGE
 
 Copy some images for fine-tuning into `$IMAGES_OWN_DIR`.
 
-### Step 1
+## Step 1: Download the pre-trained model
 Download and cache a pre-trained Stable-Diffusion model locally.
 Default model and version are ``CompVis/stable-diffusion-v1-4``
 at git hash ``3857c45b7d4e78b3ba0f39d4d7f50a2a05aa23d4``.
@@ -64,7 +64,7 @@ python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME 
 Note that actual model files will be downloaded into
 ``\<model_dir>\snapshots\<git_hash>\`` directory.
 
-### Step 2
+## Step 2: Create the regularization images
 Create a regularization image set for a class of subjects:
 ```
 python run_model.py \
@@ -74,7 +74,7 @@ python run_model.py \
   --num_samples_per_prompt=200
 ```
 
-### Step 3
+## Step 3: Fine-tune the model
 Save a few (4 to 5) images of the subject being fine-tuned
 in a local directory. Then launch the training job with:
 ```
@@ -87,7 +87,7 @@ python train.py \
   --class_prompt="a photo of a $CLASS_NAME"
 ```
 
-### Step 4
+## Step 4: Generate images of our subject
 Try your model with the same commandline as Step 2, but point
 to your own model this time!
 
