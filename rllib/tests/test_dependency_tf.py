@@ -2,10 +2,19 @@
 
 import os
 import sys
+from importlib.metadata import version
+import pip
 
 if __name__ == "__main__":
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
+
+    # We uninstall tf so that libraries we depend on don't "accidentally" import
+    # tf. This is a hacky way to test that we don't import tf in our code.
+    tf_version = version("tensorflow")
+    failed = pip.main(["uninstall", "tensorflow", "-y"])
+    if failed:
+        raise Exception("pip uninstall failed.")
 
     # Test registering (includes importing) all Trainers.
     from ray.rllib import _register_all
@@ -36,6 +45,11 @@ if __name__ == "__main__":
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
+
+    # Make sure that we reinstall tf again so that this script leaves no trace.
+    failed = pip.main(["install", "--no-deps", "-I", f"tensorflow=={tf_version}"])
+    if failed:
+        raise Exception("pip install failed.")
 
     algo.stop()
 

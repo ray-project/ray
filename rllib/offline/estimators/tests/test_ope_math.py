@@ -4,6 +4,7 @@ import unittest
 import gymnasium as gym
 import numpy as np
 
+import ray
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -17,8 +18,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
 
 torch, _ = try_import_torch()
-
-import ray
 
 
 class FakePolicy(TorchPolicyV2):

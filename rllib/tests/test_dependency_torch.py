@@ -2,10 +2,19 @@
 
 import os
 import sys
+from importlib.metadata import version
+import pip
 
 if __name__ == "__main__":
     # Do not import torch for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
+
+    # We uninstall torch so that libraries we depend on don't "accidentally" import
+    # torch. This is a hacky way to test that we don't import torch in our code.
+    torch_version = version("torch")
+    failed = pip.main(["uninstall", "torch", "-y"])
+    if failed:
+        raise Exception("pip uninstall failed.")
 
     # Test registering (includes importing) all Algorithms.
     from ray.rllib import _register_all
@@ -39,5 +48,10 @@ if __name__ == "__main__":
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]
 
     algo.stop()
+
+    # Make sure that we reinstall torch again so that this script leaves no trace.
+    failed = pip.main(["install", "--no-deps", "-I", f"torch=={torch_version}"])
+    if failed:
+        raise Exception("pip install failed.")
 
     print("ok")
