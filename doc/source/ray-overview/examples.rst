@@ -67,7 +67,7 @@ Ray Example Gallery
             </div>
 
             <div>
-                <p id="exampleSelectionDesc"></p>
+                <h4 id="exampleSelectionDesc"></h4>
             </div>
 
             <div>
@@ -96,7 +96,7 @@ Ray Example Gallery
                       <label for="onlineServing">Serve model using Ray Serve</label>
                     </div>
                 </div>
-                <p id="doMoreDesc"></p>
+                <h4 id="doMoreDesc"></h4>
             </div>
 
             <div>

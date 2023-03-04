@@ -120,17 +120,18 @@ window.addEventListener("load", () => {
                 .then(html => {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const requirementBlocks = doc.getElementsByClassName("highlight-default")[0];
-                    const codeBlocks = doc.getElementsByClassName("highlight-default")[1];
+                    const blocks = doc.getElementsByClassName("highlight-default");
+                    let codeContent = "";
+                    for (let i = 0; i < blocks.length; i++) {
+                        codeContent += blocks[i].innerHTML;
+                    }
                     const header = doc.getElementsByTagName("h1")[1];
 
                     const exampleSelectionDesc = document.getElementById("exampleSelectionDesc");
-                    exampleSelectionDesc.innerText = "Check out our example: " + header.innerText.trim();
+                    exampleSelectionDesc.innerText = header.innerText.trim();
 
                     const wizardCode = document.getElementById("wizardCode");
-
-                    wizardCode.innerHTML = requirementBlocks.innerHTML;
-                    wizardCode.innerHTML += codeBlocks.innerHTML;
+                    wizardCode.innerHTML = codeContent;
 
                     doMoreSelection.style.cssText = 'display: normal !important'
                 })
