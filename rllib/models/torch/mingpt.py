@@ -15,13 +15,12 @@ import math
 from dataclasses import dataclass
 from typing import Tuple
 
-import torch.nn as nn
 from torch.nn import functional as F
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
 
 
 @DeveloperAPI

@@ -1,13 +1,14 @@
-import torch
-from torch import nn
 import tree
 
+from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
+from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     override,
 )
-from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
-from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 class TorchModelIO(ModelIO):

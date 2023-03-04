@@ -1,6 +1,5 @@
 from typing import Union
 
-import torch.nn as nn
 import tree
 
 from ray.rllib.core.models.base import (
@@ -23,7 +22,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
 
 
 class TorchMLPEncoder(TorchModel, Encoder):
