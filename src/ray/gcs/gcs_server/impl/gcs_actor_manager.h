@@ -288,7 +288,9 @@ class GcsActorManagerImpl {
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManagerImpl(
       boost::asio::executor exec,
-      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      rpc::ClientFactoryFn client_factory,
+      std::shared_ptr<rpc::NodeManagerClientPool> pool,
+      const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
@@ -297,8 +299,7 @@ class GcsActorManagerImpl {
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr)
-      : gcs_actor_scheduler_(std::move(scheduler)),
-        gcs_table_storage_(std::move(gcs_table_storage)),
+      : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
         worker_client_factory_(worker_client_factory),
         destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
@@ -306,7 +307,29 @@ class GcsActorManagerImpl {
         function_manager_(function_manager),
         run_delayed_(run_delayed),
         actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
-        executor_(boost::asio::make_strand(exec)) {
+        executor_(exec) {
+    gcs_actor_scheduler_ = std::make_shared<GcsActorScheduler>(
+        executor_,
+        gcs_table_storage->ActorTable(),
+        gcs_node_manager,
+        nullptr,
+        [this](std::shared_ptr<GcsActor> actor,
+               const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+               const std::string &scheduling_failure_message) {
+          // When there are no available nodes to schedule the actor the
+          // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+          // this case, the actor manager should schedule the actor once an
+          // eligible node is registered.
+          OnActorSchedulingFailed(std::move(actor), failure_type, scheduling_failure_message);
+        },
+        [this](std::shared_ptr<GcsActor> actor,
+               const rpc::PushTaskReply &reply) {
+          OnActorCreationSuccess(std::move(actor), reply);
+        },
+        pool,
+        client_factory);
+
+
     RAY_CHECK(worker_client_factory_);
     RAY_CHECK(destroy_owned_placement_group_if_needed_);
     actor_state_counter_.reset(

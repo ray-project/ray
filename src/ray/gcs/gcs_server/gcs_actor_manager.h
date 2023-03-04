@@ -9,7 +9,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   GcsActorManager(
       boost::asio::executor main_executor,
-      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      rpc::ClientFactoryFn client_factory,
+      const GcsNodeManager &gcs_node_manager,
+      std::shared_ptr<rpc::NodeManagerClientPool> pool,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
@@ -24,7 +26,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     }
     for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_sharding_num(); ++i) {
       impls_.emplace_back(main_executor,
-                          scheduler,
+                          client_factory,
+                          pool,
+                          gcs_node_manager,
                           gcs_table_storage,
                           gcs_publisher,
                           runtime_env_manager,

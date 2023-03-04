@@ -363,43 +363,18 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
-  std::unique_ptr<GcsActorSchedulerInterface> scheduler;
-  auto schedule_failure_handler =
-      [this](std::shared_ptr<GcsActor> actor,
-             const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-             const std::string &scheduling_failure_message) {
-        // When there are no available nodes to schedule the actor the
-        // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-        // this case, the actor manager should schedule the actor once an
-        // eligible node is registered.
-        gcs_actor_manager_->OnActorSchedulingFailed(
-            std::move(actor), failure_type, scheduling_failure_message);
-      };
-  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
-                                         const rpc::PushTaskReply &reply) {
-    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
-  };
+  std::shared_ptr<GcsActorSchedulerInterface> scheduler;
+
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
 
   RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
-  scheduler = std::make_shared<GcsActorScheduler>(
-      main_service_,
-      gcs_table_storage_->ActorTable(),
-      *gcs_node_manager_,
-      cluster_task_manager_,
-      schedule_failure_handler,
-      schedule_success_handler,
-      raylet_client_pool_,
-      client_factory,
-      /*normal_task_resources_changed_callback=*/
-      [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
-        gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
-      });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       main_service_.get_executor(),
-      std::move(scheduler),
+      client_factory,
+      *gcs_node_manager_,
+      raylet_client_pool_,
       gcs_table_storage_,
       gcs_publisher_,
       *runtime_env_manager_,

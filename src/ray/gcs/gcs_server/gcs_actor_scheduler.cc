@@ -15,7 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/impl/gcs_actor_manager.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -23,28 +23,6 @@
 namespace ray {
 namespace gcs {
 
-GcsActorScheduler::GcsActorScheduler(
-    instrumented_io_context &io_context,
-    GcsActorTable &gcs_actor_table,
-    const GcsNodeManager &gcs_node_manager,
-    std::shared_ptr<ClusterTaskManager> cluster_task_manager,
-    GcsActorSchedulerFailureCallback schedule_failure_handler,
-    GcsActorSchedulerSuccessCallback schedule_success_handler,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    rpc::ClientFactoryFn client_factory,
-    std::function<void(const NodeID &, const rpc::ResourcesData &)>
-        normal_task_resources_changed_callback)
-    : io_context_(io_context),
-      gcs_actor_table_(gcs_actor_table),
-      gcs_node_manager_(gcs_node_manager),
-      cluster_task_manager_(std::move(cluster_task_manager)),
-      schedule_failure_handler_(std::move(schedule_failure_handler)),
-      schedule_success_handler_(std::move(schedule_success_handler)),
-      raylet_client_pool_(raylet_client_pool),
-      core_worker_clients_(client_factory),
-      normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {
-  RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
-}
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
@@ -338,9 +316,12 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
+  std::function<void()> cb = [this, node, actor] {
+    DoRetryLeasingWorkerFromNode(actor, node);
+  };
   RAY_UNUSED(execute_after(
-      io_context_,
-      [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
+      ioc_,
+      [this, cb = std::move(cb)] {boost::asio::post(executor_, std::move(cb)); },
       RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
 }
 
@@ -502,9 +483,13 @@ void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
   RAY_LOG(DEBUG) << "Retry creating actor " << actor->GetActorID() << " on worker "
                  << worker->GetWorkerID();
+  std::function<void()> cb = [this, worker, actor] {
+    DoRetryCreatingActorOnWorker(actor, worker);
+  };
+
   RAY_UNUSED(execute_after(
-      io_context_,
-      [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
+      ioc_,
+      [this, cb = std::move(cb)] {boost::asio::post(executor_, std::move(cb)); },
       RayConfig::instance().gcs_create_actor_retry_interval_ms()));
 }
 

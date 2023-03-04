@@ -126,16 +126,34 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param client_factory Factory to create remote
   /// core worker client, default factor will be used if not set.
   explicit GcsActorScheduler(
-      instrumented_io_context &io_context,
+      boost::asio::executor e,
       GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      std::shared_ptr<ClusterTaskManager> cluster_task_manager_,
+      std::shared_ptr<ClusterTaskManager> cluster_task_manager,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
-          normal_task_resources_changed_callback = nullptr);
+      normal_task_resources_changed_callback = std::function<void(const NodeID &, const rpc::ResourcesData &)>()) :
+      executor_(e),
+      gcs_actor_table_(gcs_actor_table),
+      gcs_node_manager_(gcs_node_manager),
+      cluster_task_manager_(std::move(cluster_task_manager)),
+      schedule_failure_handler_(std::move(schedule_failure_handler)),
+      schedule_success_handler_(std::move(schedule_success_handler)),
+      raylet_client_pool_(raylet_client_pool),
+      core_worker_clients_(client_factory),
+      normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {
+    RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
+    t_ = std::make_unique<std::thread>([this] {
+      auto work = boost::asio::require(
+          ioc_.get_executor(),
+          boost::asio::execution::outstanding_work.tracked);
+      ioc_.run();
+    });
+  }
+
   virtual ~GcsActorScheduler() = default;
 
   /// Schedule the specified actor.
@@ -360,9 +378,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor);
 
  protected:
+  instrumented_io_context ioc_;
+  std::unique_ptr<std::thread> t_;
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
-  instrumented_io_context &io_context_;
+  boost::asio::executor executor_;
   /// The actor info accessor.
   gcs::GcsActorTable &gcs_actor_table_;
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
