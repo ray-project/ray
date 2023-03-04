@@ -15,14 +15,12 @@
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 
 #include "ray/common/asio/asio_util.h"
-
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/impl/gcs_actor_manager.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace gcs {
-
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
@@ -51,7 +49,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
     const auto &retry_at_raylet_address = reply->retry_at_raylet_address();
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
-    auto node = gcs_node_manager_.GetAliveNode(node_id);
+    auto node = GetAliveNode(node_id);
     RAY_CHECK(node.has_value());
 
     // Update the address of the actor as it is tied to a node.
@@ -72,7 +70,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   };
 
   // Queue and schedule the actor locally (gcs).
-  const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+  const auto &owner_node = GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
   cluster_task_manager_->QueueAndScheduleTask(task,
@@ -86,7 +84,7 @@ void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
   // Select a node to where the actor is forwarded.
   auto node_id = SelectForwardingNode(actor);
 
-  auto node = gcs_node_manager_.GetAliveNode(node_id);
+  auto node = GetAliveNode(node_id);
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
@@ -118,7 +116,7 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   // the owner if possible.
   const auto &task_spec = actor->GetCreationTaskSpecification();
   if (!task_spec.GetRequiredResources().IsEmpty()) {
-    auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+    auto maybe_node = GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
   } else {
     node = SelectNodeRandomly();
@@ -128,7 +126,6 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const {
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   if (alive_nodes.empty()) {
     return nullptr;
   }
@@ -214,7 +211,6 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     node_to_actors_when_leasing_.erase(node_it);
   }
 
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   const auto &iter = alive_nodes.find(node_id);
   if (iter != alive_nodes.end()) {
     const auto &node_info = iter->second;
@@ -257,7 +253,6 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
   // And Raylet will release other leased workers.
   // If the node is dead, there is no need to send the request of release unused
   // workers.
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &alive_node : alive_nodes) {
     const auto &node_id = alive_node.first;
     nodes_of_releasing_unused_workers_.insert(node_id);
@@ -321,7 +316,7 @@ void GcsActorScheduler::RetryLeasingWorkerFromNode(
   };
   RAY_UNUSED(execute_after(
       ioc_,
-      [this, cb = std::move(cb)] {boost::asio::post(executor_, std::move(cb)); },
+      [this, cb = std::move(cb)] { boost::asio::post(executor_, std::move(cb)); },
       RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
 }
 
@@ -351,7 +346,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
-    auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
+    auto maybe_spill_back_node = GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
       auto spill_back_node = maybe_spill_back_node.value();
       actor->UpdateAddress(retry_at_raylet_address);
@@ -389,17 +384,18 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
     core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
-    RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
-                                      actor->GetActorTableData(),
-                                      [this, actor, leased_worker](Status status) {
-                                        RAY_CHECK_OK(status);
-                                        if (actor->GetState() ==
-                                            rpc::ActorTableData::DEAD) {
-                                          // Actor has already been killed.
-                                          return;
-                                        }
-                                        CreateActorOnWorker(actor, leased_worker);
-                                      }));
+    RAY_CHECK_OK(gcs_actor_table_.Put(
+        actor->GetActorID(),
+        actor->GetActorTableData(),
+        [this, actor, leased_worker](Status status) {
+          RAY_CHECK_OK(status);
+          if (actor->GetState() == rpc::ActorTableData::DEAD) {
+            // Actor has already been killed.
+            return;
+          }
+          CreateActorOnWorker(actor, leased_worker);
+        },
+        executor_));
   }
 }
 
@@ -489,7 +485,7 @@ void GcsActorScheduler::RetryCreatingActorOnWorker(
 
   RAY_UNUSED(execute_after(
       ioc_,
-      [this, cb = std::move(cb)] {boost::asio::post(executor_, std::move(cb)); },
+      [this, cb = std::move(cb)] { boost::asio::post(executor_, std::move(cb)); },
       RayConfig::instance().gcs_create_actor_retry_interval_ms()));
 }
 

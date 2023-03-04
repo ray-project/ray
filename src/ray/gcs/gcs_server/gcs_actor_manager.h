@@ -10,7 +10,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(
       boost::asio::executor main_executor,
       rpc::ClientFactoryFn client_factory,
-      const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<rpc::NodeManagerClientPool> pool,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -28,7 +27,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       impls_.emplace_back(main_executor,
                           client_factory,
                           pool,
-                          gcs_node_manager,
                           gcs_table_storage,
                           gcs_publisher,
                           runtime_env_manager,
@@ -67,15 +65,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void SchedulePendingActors() {
-    for (auto &impl : impls_) {
-      impl.SchedulePendingActors();
-    }
-  }
-
   void OnNodeDead(const NodeID &node_id, const std::string node_ip_address) {
     for (auto &impl : impls_) {
       impl.OnNodeDead(node_id, node_ip_address);
+    }
+  }
+
+  void OnNodeAdded(const NodeID &node_id, std::shared_ptr<rpc::GcsNodeInfo> node) {
+    for (auto &impl : impls_) {
+      impl.OnNodeAdded(node_id, node);
     }
   }
 

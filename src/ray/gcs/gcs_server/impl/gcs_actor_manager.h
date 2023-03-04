@@ -290,7 +290,6 @@ class GcsActorManagerImpl {
       boost::asio::executor exec,
       rpc::ClientFactoryFn client_factory,
       std::shared_ptr<rpc::NodeManagerClientPool> pool,
-      const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
@@ -311,7 +310,6 @@ class GcsActorManagerImpl {
     gcs_actor_scheduler_ = std::make_shared<GcsActorScheduler>(
         executor_,
         gcs_table_storage->ActorTable(),
-        gcs_node_manager,
         nullptr,
         [this](std::shared_ptr<GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -320,15 +318,14 @@ class GcsActorManagerImpl {
           // gcs_actor_scheduler will treat it as failed and invoke this handler. In
           // this case, the actor manager should schedule the actor once an
           // eligible node is registered.
-          OnActorSchedulingFailed(std::move(actor), failure_type, scheduling_failure_message);
+          OnActorSchedulingFailed(
+              std::move(actor), failure_type, scheduling_failure_message);
         },
-        [this](std::shared_ptr<GcsActor> actor,
-               const rpc::PushTaskReply &reply) {
+        [this](std::shared_ptr<GcsActor> actor, const rpc::PushTaskReply &reply) {
           OnActorCreationSuccess(std::move(actor), reply);
         },
         pool,
         client_factory);
-
 
     RAY_CHECK(worker_client_factory_);
     RAY_CHECK(destroy_owned_placement_group_if_needed_);
@@ -348,11 +345,6 @@ class GcsActorManagerImpl {
   }
 
   ~GcsActorManagerImpl() = default;
-
-  /// Schedule actors in the `pending_actors_` queue.
-  /// This method should be called when new nodes are registered or resources
-  /// change.
-  void SchedulePendingActors();
 
   /// Handle a node death. This will restart all actors associated with the
   /// specified node id, including actors which are scheduled or have been
@@ -433,7 +425,13 @@ class GcsActorManagerImpl {
   std::vector<std::pair<std::string, std::string>> ListNamedActors(
       bool all_namespaces, const std::string &ray_namespace) const;
 
+  /// Schedule actors in the `pending_actors_` queue.
+  /// This method should be called when new nodes are registered or resources
+  /// change.
+  void SchedulePendingActors();
+
  public:
+  void OnNodeAdded(const NodeID &node_id, std::shared_ptr<rpc::GcsNodeInfo> node);
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -676,7 +674,7 @@ class GcsActorManagerImpl {
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
-  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  std::shared_ptr<GcsActorScheduler> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   /// A publisher for publishing gcs messages.

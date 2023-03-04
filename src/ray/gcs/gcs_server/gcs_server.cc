@@ -373,7 +373,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       main_service_.get_executor(),
       client_factory,
-      *gcs_node_manager_,
       raylet_client_pool_,
       gcs_table_storage_,
       gcs_publisher_,
@@ -586,7 +585,7 @@ void GcsServer::InstallEventListeners() {
     auto node_id = NodeID::FromBinary(node->node_id());
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
-    gcs_actor_manager_->SchedulePendingActors();
+    gcs_actor_manager_->OnNodeAdded(node_id, node);
     rpc::Address address;
     address.set_raylet_id(node->node_id());
     address.set_ip_address(node->node_manager_address());

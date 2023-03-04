@@ -758,10 +758,18 @@ void GcsActorManagerImpl::OnWorkerDead(const ray::NodeID &node_id,
   });
 }
 
+void GcsActorManagerImpl::OnNodeAdded(const NodeID &node_id,
+                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
+  boost::asio::dispatch(executor_, [=] {
+    gcs_actor_scheduler_->alive_nodes[node_id] = node;
+    SchedulePendingActors();
+  });
+}
+
 void GcsActorManagerImpl::OnNodeDead(const NodeID &node_id,
                                      const std::string node_ip_address) {
   boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
+    gcs_actor_scheduler_->alive_nodes.erase(node_id);
     RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors.";
     // Kill all children of owner actors on a dead node.
     const auto it = owners_.find(node_id);
@@ -1019,19 +1027,16 @@ void GcsActorManagerImpl::OnActorCreationSuccess(const std::shared_ptr<GcsActor>
 }
 
 void GcsActorManagerImpl::SchedulePendingActors() {
-  boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
-    if (pending_actors_.empty()) {
-      return;
-    }
+  RAY_CHECK(executor_.running_in_this_thread());
+  if (pending_actors_.empty()) {
+    return;
+  }
 
-    RAY_LOG(DEBUG) << "Scheduling actor creation tasks, size = "
-                   << pending_actors_.size();
-    auto actors = std::move(pending_actors_);
-    for (auto &actor : actors) {
-      gcs_actor_scheduler_->Schedule(std::move(actor));
-    }
-  });
+  RAY_LOG(DEBUG) << "Scheduling actor creation tasks, size = " << pending_actors_.size();
+  auto actors = std::move(pending_actors_);
+  for (auto &actor : actors) {
+    gcs_actor_scheduler_->Schedule(std::move(actor));
+  }
 }
 
 void GcsActorManagerImpl::Initialize(const GcsInitData &gcs_init_data) {

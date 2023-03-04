@@ -22,7 +22,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
@@ -128,33 +127,43 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   explicit GcsActorScheduler(
       boost::asio::executor e,
       GcsActorTable &gcs_actor_table,
-      const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
-      normal_task_resources_changed_callback = std::function<void(const NodeID &, const rpc::ResourcesData &)>()) :
-      executor_(e),
-      gcs_actor_table_(gcs_actor_table),
-      gcs_node_manager_(gcs_node_manager),
-      cluster_task_manager_(std::move(cluster_task_manager)),
-      schedule_failure_handler_(std::move(schedule_failure_handler)),
-      schedule_success_handler_(std::move(schedule_success_handler)),
-      raylet_client_pool_(raylet_client_pool),
-      core_worker_clients_(client_factory),
-      normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {
-    RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
+          normal_task_resources_changed_callback =
+              std::function<void(const NodeID &, const rpc::ResourcesData &)>())
+      : executor_(e),
+        gcs_actor_table_(gcs_actor_table),
+        cluster_task_manager_(std::move(cluster_task_manager)),
+        schedule_failure_handler_(std::move(schedule_failure_handler)),
+        schedule_success_handler_(std::move(schedule_success_handler)),
+        raylet_client_pool_(raylet_client_pool),
+        core_worker_clients_(client_factory),
+        normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {
+    RAY_CHECK(schedule_failure_handler_ != nullptr &&
+              schedule_success_handler_ != nullptr);
     t_ = std::make_unique<std::thread>([this] {
-      auto work = boost::asio::require(
-          ioc_.get_executor(),
-          boost::asio::execution::outstanding_work.tracked);
+      auto work = boost::asio::require(ioc_.get_executor(),
+                                       boost::asio::execution::outstanding_work.tracked);
       ioc_.run();
     });
   }
 
   virtual ~GcsActorScheduler() = default;
+
+  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(const NodeID &node_id) {
+    auto iter = alive_nodes.find(node_id);
+    if (iter != alive_nodes.end()) {
+      return std::make_optional(iter->second);
+    } else {
+      return std::optional<std::shared_ptr<rpc::GcsNodeInfo>>();
+    }
+  }
+
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
 
   /// Schedule the specified actor.
   /// If there is no available nodes then the actor would be queued in the
@@ -394,8 +403,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_map<NodeID,
                       absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
-  /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
   /// The cluster task manager.
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// The handler to handle the scheduling failures.
