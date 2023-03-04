@@ -11,9 +11,10 @@ Ray Example Gallery
     .. raw:: html
 
         <div id="wizardMain">
+            <form id="wizardMainForm">
 
             <div id="trainSelection">
-                <p class="text-justify">What training framework do you want to use?</p>
+                <h3 class="text-justify">What training framework do you want to use?</h3>
                 <div class="radio-button-group" role="group">
                     <div class="item">
                       <input class="radio-button" type="radio" name="trainGroup" id="pytorchTrain" value="pytorch">
@@ -23,16 +24,16 @@ Ray Example Gallery
                       <input class="radio-button" type="radio" name="trainGroup" id="tfTrain" value="tensorflow">
                       <label for="tfTrain">TensorFlow</label>
                     </div>
-                    <div class="item">
+                    <!-- <div class="item">
                       <input class="radio-button" type="radio" name="trainGroup" id="xgbTrain" value="xgboost">
                       <label for="xgbTrain">XGBoost</label>
-                    </div>
+                    </div> -->
                 </div>
                 <p id="trainDesc"></p>
             </div>
 
             <div id="dataSelection" style="display:none;">
-                <p class="text-justify">How do you load your data?</p>
+                <h3 class="text-justify">How do you load your data?</h3>
                 <div class="radio-button-group" role="group">
                     <div class="item">
                       <input class="radio-button" type="radio" name="dataGroup" id="nativeData" value="nativedata">
@@ -47,12 +48,12 @@ Ray Example Gallery
             </div>
 
             <div id="dataTypeSelection" style="display:none;">
-                <p class="text-justify">What kind of data are you using?</p>
+                <h3 class="text-justify">What kind of data are you using?</h3>
                 <div class="radio-button-group" role="group">
-                    <div class="item">
+                    <!-- <div class="item">
                       <input class="radio-button" type="radio" name="dataTypeGroup" id="anyData" value="any">
                       <label for="anyData">Any Data</label>
-                    </div>
+                    </div> -->
                     <div class="item">
                       <input class="radio-button" type="radio" name="dataTypeGroup" id="imageData" value="image">
                       <label for="imageData">Image Data</label>
@@ -80,6 +81,30 @@ Ray Example Gallery
                 </div>
             </div>
 
+            </form>
+            <form id="wizardDoMoreForm">
+
+            <div id="doMoreSelection" style="display:none;">
+                <h3 class="text-justify">After training...</h3>
+                <div class="radio-button-group" role="group">
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="doMoreGroup" id="batchInference" value="batch_inference">
+                      <label for="batchInference">Run offline batch inference</label>
+                    </div>
+                    <div class="item">
+                      <input class="radio-button" type="radio" name="doMoreGroup" id="onlineServing" value="serve">
+                      <label for="onlineServing">Serve model using Ray Serve</label>
+                    </div>
+                </div>
+                <p id="doMoreDesc"></p>
+            </div>
+
+            <div>
+                <div id="doMoreCode">
+                </div>
+            </div>
+
+            </form>
         </div>
 
 .. raw:: html

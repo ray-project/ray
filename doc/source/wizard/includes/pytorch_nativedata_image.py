@@ -10,8 +10,7 @@ from pathlib import Path
 
 from ray.tune.syncer import SyncConfig
 from ray.air.config import ScalingConfig, RunConfig, CheckpointConfig
-from ray.train.torch import TorchTrainer
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import TorchCheckpoint, TorchTrainer
 from ray.air import session
 import ray.train as train
 
@@ -26,7 +25,7 @@ warnings.filterwarnings("ignore")
 
 def download_dataset_from_s3(destination_dir: str):
     destination_path = Path(destination_dir).resolve()
-    s3_resource = boto3.resource('s3')
+    s3_resource = boto3.resource("s3")
     bucket = s3_resource.Bucket("air-example-data")
     for obj in bucket.objects.filter(Prefix="food-101-tiny"):
         os.makedirs(os.path.dirname(obj.key), exist_ok=True)
@@ -88,7 +87,8 @@ def train_loop_per_worker(configs):
     dataloaders = dict()
     for split, dataset in torch_datasets.items():
         dataloader = DataLoader(
-            dataset=dataset, batch_size=worker_batch_size, shuffle=True)
+            dataset=dataset, batch_size=worker_batch_size, shuffle=True
+        )
         dataloaders[split] = train.torch.prepare_data_loader(dataloader)
 
     # Calculate the batch size for a single worker
@@ -101,9 +101,7 @@ def train_loop_per_worker(configs):
 
     model = train.torch.prepare_model(model)
 
-    optimizer = optim.Adam(
-        model.parameters(), lr=configs["lr"]
-    )
+    optimizer = optim.Adam(model.parameters(), lr=configs["lr"])
     criterion = nn.CrossEntropyLoss()
 
     # Start training loops
@@ -200,3 +198,6 @@ trainer = TorchTrainer(
 )
 
 result = trainer.fit()
+
+# Save checkpoint to a well-known location
+result.checkpoint.to_directory("/tmp/pytorch-image.checkpoint")

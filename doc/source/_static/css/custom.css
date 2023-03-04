@@ -568,6 +568,11 @@ span.rst-current-version > span.fa.fa-book {
     height: 100%;
 }
 
+#wizardCode, #doMoreCode {
+    max-height: 300pt;
+    overflow-y: auto;
+}
+
 
 .radio-button-group {
   display: flex;
