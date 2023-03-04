@@ -33,8 +33,8 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
 
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(
-            **batch[SampleBatch.ACTION_DIST_INPUTS].asdict()
+        prev_action_dist = action_dist_class.from_logits(
+            batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(
