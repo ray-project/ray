@@ -411,8 +411,8 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-def test_get_serve_instance_details(ray_sart_stop):
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_get_serve_instance_details(ray_start_stop):
     pizza_import_path = (
         "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
     )
@@ -485,14 +485,14 @@ def test_get_serve_instance_details(ray_sart_stop):
     print("Confirmed the deployed app configs from the fetched metadata is correct.")
 
     # Check that all deployed deployments are present in the fetched metadata
-    assert {name for name in app_details["app1"].deployments_details} == {
+    assert app_details["app1"].deployments_details.keys() == {
         "app1_DAGDriver",
         "app1_create_order",
         "app1_Router",
         "app1_Adder",
         "app1_Multiplier",
     }
-    assert {name for name in app_details["app2"].deployments_details} == {
+    assert app_details["app2"].deployments_details.keys() == {
         "app2_f",
         "app2_BasicDriver",
     }
