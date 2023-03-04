@@ -12,7 +12,7 @@ require more GPUs.
 The demo tunes both the text_encoder and unet parts of Stable Diffusion, and utilizes the prior preserving loss function.
 
 <p align="center">
-  <img src="assets/example.png" />
+  <img src="images/dreambooth_example.png" />
 </p>
 
 ### Overview
