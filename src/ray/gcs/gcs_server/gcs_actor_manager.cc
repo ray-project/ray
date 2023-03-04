@@ -27,14 +27,15 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
                 << ", actor id = " << actor_id;
 
   auto cb = [reply, send_reply_callback, actor_id](
-      const std::shared_ptr<gcs::GcsActor> &actor, Status status) {
-    if(status.ok()) {
+                const std::shared_ptr<gcs::GcsActor> &actor, Status status) {
+    if (status.ok()) {
       RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                     << ", actor id = " << actor_id;
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     } else {
       RAY_LOG(WARNING) << "Failed to register actor: " << status.ToString()
-                       << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+                       << ", job id = " << actor_id.JobId()
+                       << ", actor id = " << actor_id;
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     }
   };
@@ -53,15 +54,15 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
 
   RAY_LOG(INFO) << "Creating actor, job id = " << actor_id.JobId()
                 << ", actor id = " << actor_id;
-  auto cb = [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
-                                                   const rpc::PushTaskReply &task_reply,
-                                                   Status status) {
+  auto cb = [reply, send_reply_callback, actor_id](
+                const std::shared_ptr<gcs::GcsActor> &actor,
+                const rpc::PushTaskReply &task_reply,
+                Status status) {
     if (status.IsSchedulingCancelled()) {
       // Actor creation is cancelled.
       RAY_LOG(INFO) << "Actor creation was cancelled, job id = " << actor_id.JobId()
                     << ", actor id = " << actor_id;
-      reply->mutable_death_cause()->CopyFrom(
-          actor->GetActorTableData().death_cause());
+      reply->mutable_death_cause()->CopyFrom(actor->GetActorTableData().death_cause());
       GCS_RPC_SEND_REPLY(send_reply_callback,
                          reply,
                          Status::SchedulingCancelled("Actor creation cancelled."));
@@ -73,7 +74,8 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     } else {
       RAY_LOG(WARNING) << "Failed to create actor, job id = " << actor_id.JobId()
-                       << ", actor id = " << actor_id << ", status: " << status.ToString();
+                       << ", actor id = " << actor_id
+                       << ", status: " << status.ToString();
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     }
   };
@@ -88,8 +90,8 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
   RAY_LOG(DEBUG) << "Getting actor info"
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
-  GetShard(actor_id).GetActorInfo(actor_id, [reply, send_reply_callback] (GcsActor* ptr){
-    if(ptr != nullptr) {
+  GetShard(actor_id).GetActorInfo(actor_id, [reply, send_reply_callback](GcsActor *ptr) {
+    if (ptr != nullptr) {
       *reply->mutable_actor_table_data() = ptr->GetActorTableData();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -141,7 +143,8 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   //       auto arena = reply->GetArena();
   //       RAY_CHECK(arena != nullptr);
   //       auto ptr = google::protobuf::Arena::Create<
-  //           absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
+  //           absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena,
+  //           std::move(result));
   //       auto count = 0;
   //       for (const auto &pair : *ptr) {
   //         if (limit != -1 && count >= limit) {
@@ -160,7 +163,9 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   //   // Send the response to unblock the sender and free the request.
   //   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   // }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::NotImplemented("Get all actor info is not implemented"));
+  GCS_RPC_SEND_REPLY(send_reply_callback,
+                     reply,
+                     Status::NotImplemented("Get all actor info is not implemented"));
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
@@ -226,8 +231,6 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
   });
   ++counts_[CountType::KILL_ACTOR_REQUEST];
 }
-
-
 
 }  // namespace gcs
 }  // namespace ray
