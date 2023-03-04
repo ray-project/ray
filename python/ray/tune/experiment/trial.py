@@ -641,7 +641,7 @@ class Trial:
             )
         assert self.logdir
         logdir_path = Path(self.logdir)
-        if Trial._is_path_too_long(logdir_path):
+        if _is_path_too_long(logdir_path):
             logger.warning(
                 "The path to the trial log directory is too long. "
                 "Consider using trial_dirname_creator to shorten the path. Path: "
@@ -650,26 +650,6 @@ class Trial:
         logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
-
-    @staticmethod
-    def _is_path_too_long(logdir_path: Path) -> bool:
-        """Check if the path to the trial log directory is too long for this OS.
-
-        If too long, can cause issues with creating new processes. [issues-#31926]
-        Args:
-            logdir_path: Path to the trial log directory.
-
-        Returns:
-            True if the path is too long, False otherwise.
-        """
-        safety_buffer = 15  # arbitrary size to account for other path components.
-        if platform.system() == "Windows":
-            # Windows has a 260-character limit:
-            return len(str(logdir_path)) + safety_buffer > 260
-        elif platform.system() == "Linux":
-            # Linux has a 4096-character limit:
-            return len(str(logdir_path)) + safety_buffer > 4096
-        return False
 
     def update_resources(self, resources: Union[dict, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -1011,3 +991,23 @@ class Trial:
             validate_trainable(self.trainable_name)
 
         assert self.placement_group_factory
+
+
+def _is_path_too_long(logdir_path: Path) -> bool:
+    """Check if the path to the trial log directory is too long for this OS.
+
+    If too long, can cause issues with creating new processes. [issues-#31926]
+    Args:
+        logdir_path: Path to the trial log directory.
+
+    Returns:
+        True if the path is too long, False otherwise.
+    """
+    safety_buffer = 15  # arbitrary size to account for other path components.
+    if platform.system() == "Windows":
+        # Windows has a 260-character limit:
+        return len(str(logdir_path)) + safety_buffer > 260
+    elif platform.system() == "Linux":
+        # Linux has a 4096-character limit:
+        return len(str(logdir_path)) + safety_buffer > 4096
+    return False
