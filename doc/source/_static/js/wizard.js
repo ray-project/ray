@@ -1,16 +1,16 @@
 const trainDescriptions = {
-    pytorch: "Select PyTorch if you are using a custom PyTorch training loop. You can also use it to " +
+    torch: "Select PyTorch if you are using a custom PyTorch training loop. You can also use it to " +
         "train PyTorchLightning models or Huggingface transformer or diffuser models.",
-    tensorflow: "Select TensorFlow if you are using a custom tensorflow training loop. " +
+    tf: "Select TensorFlow if you are using a custom tensorflow training loop. " +
         "This can also be a loop that utilizes Keras for training.",
     xgboost: "Select XGBoost if you are using a custom XGBoost training loop.",
 }
 
 const dataDescriptions = {
-  nativedata: "Select this if you're e.g. using Pandas, a " +
-            "PyTorch dataloader or TensorFlow dataset to load your data.",
-  raydata: "Select this if you're not using any of the native dataloaders, " +
-            "yet, or if you'd like to use Ray Data to preprocess you data.",
+    nativedata: "Select this if you're e.g. using Pandas, a " +
+        "PyTorch dataloader or TensorFlow dataset to load your data.",
+    raydata: "Select this if you're not using any of the native dataloaders, " +
+        "yet, or if you'd like to use Ray Data to preprocess you data.",
 }
 
 const dataTypeDescriptions = {
@@ -145,9 +145,9 @@ window.addEventListener("load", () => {
                 });
         };
 
-//        submitButton.addEventListener('click', function (event) {
-//
-//        });
+        //        submitButton.addEventListener('click', function (event) {
+        //
+        //        });
 
         function loadDoMore() {
             const pageUrl = window.location.href

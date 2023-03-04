@@ -17,11 +17,11 @@ Ray Example Gallery
                 <h3 class="text-justify">What training framework do you want to use?</h3>
                 <div class="radio-button-group" role="group">
                     <div class="item">
-                      <input class="radio-button" type="radio" name="trainGroup" id="pytorchTrain" value="pytorch">
+                      <input class="radio-button" type="radio" name="trainGroup" id="pytorchTrain" value="torch">
                       <label for="pytorchTrain">PyTorch</label>
                     </div>
                     <div class="item">
-                      <input class="radio-button" type="radio" name="trainGroup" id="tfTrain" value="tensorflow">
+                      <input class="radio-button" type="radio" name="trainGroup" id="tfTrain" value="tf">
                       <label for="tfTrain">TensorFlow</label>
                     </div>
                     <!-- <div class="item">

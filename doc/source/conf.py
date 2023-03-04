@@ -443,6 +443,9 @@ def setup(app):
     # Create galleries on the fly
     app.connect("builder-inited", build_gallery)
 
+    # Create AIR wizard examples on the fly
+    app.connect("builder-inited", generate_air_examples)
+
     # tag filtering system
     app.add_js_file("js/tags.js")
 

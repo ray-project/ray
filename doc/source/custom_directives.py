@@ -27,6 +27,7 @@ __all__ = [
     "update_context",
     "LinkcheckSummarizer",
     "build_gallery",
+    "generate_air_examples",
 ]
 
 GALLERIES = ["ray-overview/eco-gallery.yml"]
@@ -345,3 +346,9 @@ def build_gallery(app):
 
         gallery_out = gallery.replace(".yml", ".txt")
         (Path(app.srcdir) / gallery_out).write_text(panels)
+
+
+def generate_air_examples(app):
+    from wizard.autogen import generate
+
+    generate()
