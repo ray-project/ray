@@ -127,8 +127,8 @@ class PPOTorchPolicyWithRLModule(
             reduce_mean_valid = torch.mean
 
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(
-            **train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        prev_action_dist = action_dist_class.from_logits(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(

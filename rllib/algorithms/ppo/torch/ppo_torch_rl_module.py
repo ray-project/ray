@@ -40,6 +40,11 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         TorchRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
 
+        if self._is_discrete:
+            self.action_dist_cls = TorchCategorical
+        else:
+            self.action_dist_cls = TorchDiagGaussian
+
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
         return self.input_specs_exploration()
@@ -82,17 +87,10 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        if self._is_discrete:
-            action_dist_inputs = ((SampleBatch.ACTION_DIST_INPUTS, "logits"),)
-        else:
-            action_dist_inputs = (
-                (SampleBatch.ACTION_DIST_INPUTS, "loc"),
-                (SampleBatch.ACTION_DIST_INPUTS, "scale"),
-            )
         return [
             SampleBatch.VF_PREDS,
             SampleBatch.ACTION_DIST,
-            *action_dist_inputs,
+            SampleBatch.ACTION_DIST_INPUTS,
         ]
 
     @override(RLModule)
@@ -124,17 +122,11 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head
-        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_logits = pi_out
-        if self._is_discrete:
-            action_dist = TorchCategorical(logits=action_logits)
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
-        else:
-            loc, log_std = action_logits.chunk(2, dim=-1)
-            scale = log_std.exp()
-            action_dist = TorchDiagGaussian(loc, scale)
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
-        output[SampleBatch.ACTION_DIST] = action_dist
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
+            logits=action_logits
+        )
         return output
 
     @override(RLModule)
@@ -184,13 +176,11 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         # Policy head
         pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
-        if self._is_discrete:
-            action_dist = TorchCategorical(logits=action_logits)
-        else:
-            mu, scale = action_logits.chunk(2, dim=-1)
-            action_dist = TorchDiagGaussian(mu, scale.exp())
+        action_dist = self.action_dist_cls.from_logits(logits=action_logits)
         logp = action_dist.logp(batch[SampleBatch.ACTIONS])
         entropy = action_dist.entropy()
+
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
         output[SampleBatch.ACTION_DIST] = action_dist
         output[SampleBatch.ACTION_LOGP] = logp
         output["entropy"] = entropy
