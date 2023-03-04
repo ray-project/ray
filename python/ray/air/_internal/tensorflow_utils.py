@@ -52,6 +52,9 @@ def convert_ndarray_batch_to_tf_tensor_batch(
 
     Returns: A (dict of) TensorFlow Tensor(s).
     """
+    import pdb
+
+    pdb.set_trace()
     if isinstance(ndarrays, np.ndarray):
         # Single-tensor case.
         if isinstance(dtypes, dict):
