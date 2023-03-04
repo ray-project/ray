@@ -27,11 +27,11 @@ After fine-tuning we can run inference with this specific prompt. For instance: 
 
 ### Step 0
 
-Clone this repository and install dependencies.
+Clone the Ray repository, go to the example directory, and install dependencies.
 
 ```bash
-git clone [repo]
-cd DreamBoothOnRay
+git clone https://github.com/ray-project/ray.git
+cd ray/python/ray/air/examples/dreambooth
 pip install -Ur requirements.txt
 ```
 
@@ -41,7 +41,7 @@ Prepare some directories and environment variables.
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export ORIG_MODEL_HASH="249dd2d739844dea6a0bc7fc27b3c1d014720b28"
 export ORIG_MODEL_DIR="./model-orig"
-export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/$ORIG_MODEL_NAME/snapshots/$ORIG_MODEL_HASH"
+export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/models--${ORIG_MODEL_NAME/\//--}/snapshots/$ORIG_MODEL_HASH"
 export TUNED_MODEL_DIR="./model-tuned"
 export IMAGES_REG_DIR="./images-reg"
 export IMAGES_OWN_DIR="./images-own"

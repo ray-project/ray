@@ -130,7 +130,9 @@ def train_fn(config):
     global_step = 0
     for epoch in range(num_train_epochs):
         for step, batch in enumerate(
-            train_dataset.iter_torch_batches(batch_size=config["train_batch_size"])
+            train_dataset.iter_torch_batches(
+                batch_size=config["train_batch_size"], device=cuda[1]
+            )
         ):
             # Load batch on GPU 2 because VAE and text encoder are there.
             batch = collate(batch, cuda[1], torch.bfloat16)

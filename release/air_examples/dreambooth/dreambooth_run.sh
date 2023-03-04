@@ -12,7 +12,7 @@ pip install -Ur requirements.txt
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export ORIG_MODEL_HASH="249dd2d739844dea6a0bc7fc27b3c1d014720b28"
 export ORIG_MODEL_DIR="/tmp/model-orig"
-export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/$ORIG_MODEL_NAME/snapshots/$ORIG_MODEL_HASH"
+export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/models--${ORIG_MODEL_NAME/\//--}/snapshots/$ORIG_MODEL_HASH"
 export TUNED_MODEL_DIR="/tmp/model-tuned"
 export IMAGES_REG_DIR="/tmp/images-reg"
 export IMAGES_OWN_DIR="/tmp/images-own"
@@ -29,11 +29,12 @@ cp -rf ./assets/unqtkn/*.jpg "$IMAGES_OWN_DIR/"
 python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME --revision=$ORIG_MODEL_HASH
 
 # Step 2
-python run_model.py \
-  --model_dir=$ORIG_MODEL_PATH \
-  --output_dir=$IMAGES_REG_DIR \
-  --prompts="photo of a $CLASS_NAME" \
-  --num_samples_per_prompt=200
+# ATTN: Reduced the number of samples per prompt for faster testing
+#python run_model.py \
+#  --model_dir=$ORIG_MODEL_PATH \
+#  --output_dir=$IMAGES_REG_DIR \
+#  --prompts="photo of a $CLASS_NAME" \
+#  --num_samples_per_prompt=20
 
 # Step 3
 python train.py \
@@ -45,11 +46,12 @@ python train.py \
   --class_prompt="a photo of a $CLASS_NAME"
 
 # Step 4
+# ATTN: Reduced the number of samples per prompt for faster testing
 python run_model.py \
   --model_dir=$TUNED_MODEL_DIR \
   --output_dir=$IMAGES_NEW_DIR \
   --prompts="photo of a unqtkn $CLASS_NAME" \
-  --num_samples_per_prompt=20
+  --num_samples_per_prompt=5
 
 # Save artifact
 mkdir -p /tmp/artifacts
