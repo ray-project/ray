@@ -121,3 +121,57 @@ class Distribution(abc.ABC):
         Returns:
             size of the required input vector (minus leading batch dimension).
         """
+
+    @classmethod
+    def from_logits(cls, logits: TensorType, **kwargs) -> "Distribution":
+        """Creates a Distribution from logits.
+
+        The caller does not need to have knowledge of the distribution class in order
+        to create it and sample from it. The passed batched logits vectors might be
+        split up and are passed to the distribution class' constructor as kwargs.
+
+        Args:
+            logits: The logits to create the distribution from.
+            **kwargs: Forward compatibility placeholder.
+
+        Returns:
+            The created distribution.
+
+        .. code-block:: python
+
+            import numpy as np
+            from ray.rllib.models.distributions import Distribution
+
+            class Uniform(Distribution):
+                def __init__(self, lower, upper):
+                    self.lower = lower
+                    self.upper = upper
+
+                def sample(self):
+                    return self.lower + (self.upper - self.lower) * np.random.rand()
+
+                def logp(self, x):
+                    ...
+
+                def kl(self, other):
+                    ...
+
+                def entropy(self):
+                    ...
+
+                @staticmethod
+                def required_model_output_shape(space, model_config):
+                    ...
+
+                def rsample(self):
+                    ...
+
+                @classmethod
+                def from_logits(cls, logits, **kwargs):
+                    return Uniform(logits[:, 0], logits[:, 1])
+
+            logits = np.array([[0.0, 1.0], [2.0, 3.0]])
+            my_dist = Uniform.from_logits(logits)
+            my_dist.sample()
+        """
+        raise NotImplementedError

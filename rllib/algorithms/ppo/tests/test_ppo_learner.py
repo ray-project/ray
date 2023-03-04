@@ -33,9 +33,9 @@ FAKE_BATCH = {
     SampleBatch.TERMINATEDS: np.array([False, False, True]),
     SampleBatch.TRUNCATEDS: np.array([False, False, False]),
     SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: {
-        "logits": np.array([[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32)
-    },
+    SampleBatch.ACTION_DIST_INPUTS: np.array(
+        [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
+    ),
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     SampleBatch.EPS_ID: np.array([0, 0, 0]),
     SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),

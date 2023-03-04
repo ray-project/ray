@@ -121,6 +121,13 @@ class TorchCategorical(TorchDistribution):
     ) -> Tuple[int, ...]:
         return (space.n,)
 
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
+
 
 @DeveloperAPI
 class TorchDiagGaussian(TorchDistribution):
@@ -182,6 +189,13 @@ class TorchDiagGaussian(TorchDistribution):
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        scale = log_std.exp()
+        return TorchDiagGaussian(loc=loc, scale=scale)
 
 
 @DeveloperAPI
@@ -255,3 +269,8 @@ class TorchDeterministic(Distribution):
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
         return tuple(np.prod(space.shape, dtype=np.int32))
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
+        return TorchDeterministic(loc=logits)
