@@ -90,7 +90,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
             def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
                 try:
-                    item = self._outer._output_node.get_output_blocking()  # TODO: output_split_idx
+                    item = self._outer._output_node.get_output_blocking(
+                        output_split_idx
+                    )
                     if item is None:
                         raise StopIteration
                     elif isinstance(item, Exception):
