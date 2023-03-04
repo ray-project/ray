@@ -320,7 +320,7 @@ class _LocalInferenceThread(threading.Thread):
                     }
                 )
         except Exception as e:
-            logger.info("Error: inference worker thread died!", e)
+            logger.error("Error: inference worker thread died!", e)
 
 
 def _auto_wrap_external(real_env_creator):
