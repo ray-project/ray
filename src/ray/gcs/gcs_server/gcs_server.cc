@@ -384,7 +384,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   };
 
   RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
-  scheduler = std::make_unique<GcsActorScheduler>(
+  scheduler = std::make_shared<GcsActorScheduler>(
       main_service_,
       gcs_table_storage_->ActorTable(),
       *gcs_node_manager_,
