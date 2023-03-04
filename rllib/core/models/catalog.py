@@ -5,6 +5,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.base import Encoder
 from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
     LSTMEncoderConfig,
@@ -114,7 +115,7 @@ class Catalog:
         # to the heads.
         self.latent_dim = self.encoder_config.output_dim
 
-    def build_encoder(self, framework: str):
+    def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
 
         By default this method builds an encoder instance from Catalog.encoder_config.
