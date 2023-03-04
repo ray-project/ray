@@ -1,3 +1,5 @@
+<!-- ATTN: This should be kept in sync with release/air_examples/dreambooth/dreambooth_run.sh -->
+
 # Fine-tuning DreamBooth with Ray AIR
 
 This example shows how to fine-tune a DreamBooth model using Ray AIR.
@@ -36,8 +38,8 @@ pip install -Ur requirements.txt
 Prepare some directories and environment variables.
 
 ```bash
-export ORIG_MODEL_NAME="models--CompVis--stable-diffusion-v1-4"
-export ORIG_MODEL_HASH="3857c45b7d4e78b3ba0f39d4d7f50a2a05aa23d4"
+export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export ORIG_MODEL_HASH="249dd2d739844dea6a0bc7fc27b3c1d014720b28"
 export ORIG_MODEL_DIR="./model-orig"
 export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/$ORIG_MODEL_NAME/snapshots/$ORIG_MODEL_HASH"
 export TUNED_MODEL_DIR="./model-tuned"
