@@ -1,9 +1,8 @@
-from ray.air import session
 from ray.train.torch import TorchCheckpoint
 
 lr = 1e-3
 epochs = 10
-device = train.torch.get_device()
+device = ray.train.torch.get_device()
 
 # Prepare DDP Model, optimizer, and loss function
 model = build_model()
@@ -35,9 +34,9 @@ for epoch in range(epochs):
         # Create a dataset iterator for the shard on the current worker
 
         num_batches = 0
-        for inputs, labels in datasets[phase]:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+        for batch in datasets[phase]:
+            inputs = batch["image"].to(device)
+            labels = batch["label"].to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()

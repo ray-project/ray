@@ -1,6 +1,7 @@
-from jinja2 import Environment, FileSystemLoader
-
+import copy
 import os
+
+from jinja2 import Environment, FileSystemLoader
 
 # 1. Crawl tf for all files
 examples = {}
@@ -11,6 +12,12 @@ def collect_files_along_path(path: str, file_tree: dict) -> list:
     path = tuple(path.split(os.sep))
     for i in range(len(path)):
         files += file_tree.get(path[: i + 1], [])
+
+    # Include common modules
+    common_path = ("modules", "_common") + path[2:]
+    for i in range(len(common_path)):
+        files += file_tree.get(common_path[: i + 1], [])
+
     return files
 
 
@@ -35,8 +42,6 @@ def get_trainer_cls(example_path: str):
 
 file_tree = {}
 for root, dirs, files in os.walk("modules"):
-    print(root, dirs, files)
-
     path = tuple(root.split(os.sep))
     file_tree[path] = [os.path.join(root, file) for file in files]
 

@@ -13,19 +13,9 @@ def train_loop_per_worker(config: dict):
 {% filter indent(width=4) %}
 {{ train_loop_prologue }}
 {%- endfilter %}
-
-{% if use_ray_data -%}
 {% filter indent(width=4) %}
 {{ data_loading }}
 {%- endfilter %}
-{% else %}
-{% filter indent(width=4) %}
-batch_size_per_worker = 32
-global_batch_size = batch_size_per_worker * session.get_world_size()
-datasets = get_datasets(global_batch_size, batch_size_per_worker)
-{%- endfilter %}
-{%- endif %}
-
 {% filter indent(width=4) %}
 {{ train_loop_body }}
 {% endfilter %}

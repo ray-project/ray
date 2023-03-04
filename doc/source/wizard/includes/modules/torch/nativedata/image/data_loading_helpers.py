@@ -35,14 +35,17 @@ def get_datasets(global_batch_size: int, batch_size_per_worker: int) -> dict:
             os.path.join("./food-101-tiny", split), data_transforms
         )
 
-    batch_size_per_worker = 64
-    torch_datasets = build_datasets()
+    def collate_fn(batch):
+        return {"image": batch[0], "label": batch[1]}
 
     dataloaders = {}
     for split, dataset in torch_datasets.items():
         dataloader = DataLoader(
-            dataset=dataset, batch_size=batch_size_per_worker, shuffle=True
+            dataset=dataset,
+            batch_size=batch_size_per_worker,
+            shuffle=True,
+            collate_fn=collate_fn,
         )
         dataloaders[split] = ray.train.torch.prepare_data_loader(dataloader)
 
-    return torch_datasets
+    return dataloaders
