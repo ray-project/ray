@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Tuple, Callable
+from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
@@ -390,6 +390,19 @@ class PhysicalOperator(Operator):
         return ExecutionResources()
 
 
+class OutputIterator(Iterator[RefBundle]):
+    def __init__(self, base: Iterable[RefBundle]):
+        self._it = iter(base)
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        if output_split_idx is not None:
+            raise NotImplementedError()
+        return next(self._it)
+
+    def __next__(self) -> RefBundle:
+        return self.get_next()
+
+
 class Executor:
     """Abstract class for executors, which implement physical operator execution.
 
@@ -404,7 +417,7 @@ class Executor:
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterable[RefBundle]:
+    ) -> OutputIterator:
         """Start execution.
 
         Args:

@@ -106,6 +106,7 @@ class SplitCoordinator:
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
+        # TODO: for backpressure, outboxes should be implemented in the output iterator API?
         self._outboxes = [deque() for _ in range(n)]
         self._finished = False
 
