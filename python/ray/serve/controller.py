@@ -42,6 +42,8 @@ from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
+    ApplicationDetails,
+    ServeInstanceDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -664,6 +666,34 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def get_serve_instance_details(self) -> Dict:
+        """Some description."""
+
+        http_config = self.get_http_config()
+        application_details = {}
+
+        for (
+            app_name,
+            app_status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            application_details[app_name] = ApplicationDetails(
+                name=app_name,
+                route_prefix=self.application_state_manager.get_route_prefix(app_name),
+                app_status=app_status_info.status,
+                app_message=app_status_info.message,
+                deployment_timestamp=app_status_info.deployment_timestamp,
+                deployed_app_config=self.get_app_config(app_name),
+                deployments_details=(
+                    self.application_state_manager.list_deployment_details(app_name)
+                ),
+            )
+
+        return ServeInstanceDetails(
+            host=http_config.host,
+            port=http_config.port,
+            application_details=application_details,
+        ).dict(exclude_unset=True)
+
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
         Args:
@@ -714,6 +744,25 @@ class ServeController:
         """Gets deployment status bytes for all live deployments."""
         statuses = self.deployment_state_manager.get_deployment_statuses()
         return [status.to_proto().SerializeToString() for status in statuses]
+
+    def get_user_deployed_app_configs(self) -> Dict[str, ServeApplicationSchema]:
+        """Gets all configs of format ServeApplicationSchema deployed by the user.
+
+        The set of config dicts returned contains exactly the config options set by
+        the user. For human readability, deployments that aren't listed and default
+        values not explicitly set by user are not included.
+        """
+        checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if checkpoint is None:
+            return ServeDeploySchema.get_empty_schema_dict()
+        else:
+            _, config_checkpoints_dict = pickle.loads(checkpoint)
+            return {
+                app_config_dict.get("name", ""): ServeApplicationSchema.parse_obj(
+                    app_config_dict
+                ).remove_app_name_from_deployment_names()
+                for app_config_dict, _ in config_checkpoints_dict.values()
+            }
 
     def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""

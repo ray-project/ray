@@ -12,6 +12,8 @@ import ray._private.ray_constants as ray_constants
 from ray.experimental.state.api import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
+from ray.serve.schema import ServeInstanceDetails
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -407,6 +409,107 @@ def test_get_status(ray_start_stop):
     assert serve_status["app_status"]["deployment_timestamp"] > 0
     assert serve_status["app_status"]["message"] == ""
     print("Serve app status is correct.")
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_get_serve_instance_details(ray_sart_stop):
+    pizza_import_path = (
+        "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
+    )
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    config1 = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": pizza_import_path,
+                "deployments": [
+                    {
+                        "name": "Adder",
+                        "num_replicas": 3,
+                        "ray_actor_options": {
+                            "runtime_env": {"env_vars": {"override_increment": "3"}}
+                        },
+                    },
+                    {
+                        "name": "Multiplier",
+                        "ray_actor_options": {
+                            "runtime_env": {"env_vars": {"override_factor": "4"}}
+                        },
+                    },
+                ],
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(config1)
+
+    def applications_running():
+        response = requests.get(GET_OR_PUT_URL_V2, timeout=15)
+        assert response.status_code == 200
+
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            serve_details.application_details["app1"].app_status
+            == ApplicationStatus.RUNNING
+            and serve_details.application_details["app2"].app_status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(applications_running, timeout=15)
+    print("All applications are in a RUNNING state.")
+
+    serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
+    assert serve_details.host == "127.0.0.1"
+    assert serve_details.port == 8000
+    print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
+
+    app_details = serve_details.application_details
+
+    # Check that the app configs deployed by the user matches what is returned
+    assert (
+        app_details["app1"].deployed_app_config.dict(exclude_unset=True)
+        == config1["applications"][0]
+    )
+    assert (
+        app_details["app2"].deployed_app_config.dict(exclude_unset=True)
+        == config1["applications"][1]
+    )
+    print("Confirmed the deployed app configs from the fetched metadata is correct.")
+
+    # Check that all deployed deployments are present in the fetched metadata
+    assert {name for name in app_details["app1"].deployments_details} == {
+        "app1_DAGDriver",
+        "app1_create_order",
+        "app1_Router",
+        "app1_Adder",
+        "app1_Multiplier",
+    }
+    assert {name for name in app_details["app2"].deployments_details} == {
+        "app2_f",
+        "app2_BasicDriver",
+    }
+    print("Metadata for all deployed deployments are present.")
+
+    # Check application details
+    for app in ["app1", "app2"]:
+        assert app_details[app].route_prefix == f"/{app}"
+        for dep_details in app_details[app].deployments_details.values():
+            assert dep_details.deployment_status == DeploymentStatus.HEALTHY
+
+            config = dep_details.deployment_config
+            # If app state = RUNNING, deployments should have reached target # replicas
+            assert dep_details.num_running_replicas == config.num_replicas
+            # Route prefix should be app level options eventually
+            assert "route_prefix" not in config.dict(exclude_unset=True)
+    print("Finished checking application details.")
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")

@@ -6,11 +6,44 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
     ApplicationStatus,
+    DeploymentStatus,
     StatusOverview,
+    DeploymentInfo,
 )
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+
+def route_prefix_format(cls, v):
+    """
+    The route_prefix
+    1. must start with a / character
+    2. must not end with a / character (unless the entire prefix is just /)
+    3. cannot contain wildcards (must not have "{" or "}")
+    """
+
+    if v is None:
+        return v
+
+    if len(v) < 1 or v[0] != "/":
+        raise ValueError(
+            f'Got "{v}" for route_prefix. Route prefix ' 'must start with "/".'
+        )
+    if v[-1] == "/" and len(v) > 1:
+        raise ValueError(
+            f'Got "{v}" for route_prefix. Route prefix '
+            'cannot end with "/" unless the '
+            'entire prefix is just "/".'
+        )
+    if "{" in v or "}" in v:
+        raise ValueError(
+            f'Got "{v}" for route_prefix. Route prefix '
+            "cannot contain wildcards, so it cannot "
+            'contain "{" or "}".'
+        )
+
+    return v
 
 
 @PublicAPI(stability="beta")
@@ -99,6 +132,7 @@ class DeploymentSchema(
         ),
         gt=0,
     )
+    # route_prefix of None means the deployment is not exposed over HTTP.
     route_prefix: Union[str, None] = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -197,38 +231,9 @@ class DeploymentSchema(
 
         return values
 
-    @validator("route_prefix")
-    def route_prefix_format(cls, v):
-        """
-        The route_prefix
-        1. must start with a / character
-        2. must not end with a / character (unless the entire prefix is just /)
-        3. cannot contain wildcards (must not have "{" or "}")
-        """
-
-        # route_prefix of None means the deployment is not exposed
-        # over HTTP.
-        if v is None or v == DEFAULT.VALUE:
-            return v
-
-        if len(v) < 1 or v[0] != "/":
-            raise ValueError(
-                f'Got "{v}" for route_prefix. Route prefix ' 'must start with "/".'
-            )
-        if v[-1] == "/" and len(v) > 1:
-            raise ValueError(
-                f'Got "{v}" for route_prefix. Route prefix '
-                'cannot end with "/" unless the '
-                'entire prefix is just "/".'
-            )
-        if "{" in v or "}" in v:
-            raise ValueError(
-                f'Got "{v}" for route_prefix. Route prefix '
-                "cannot contain wildcards, so it cannot "
-                'contain "{" or "}".'
-            )
-
-        return v
+    _route_prefix_format = validator("route_prefix", allow_reuse=True)(
+        route_prefix_format
+    )
 
     def get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
@@ -239,6 +244,31 @@ class DeploymentSchema(
         return {
             field for field, value in self.dict().items() if value is not DEFAULT.VALUE
         }
+
+
+@DeveloperAPI
+def deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
+    """Converts a DeploymentInfo object to DeploymentSchema.
+
+    Compatible with 2.x multi-application API, so route_prefix is not set, as starting
+    in 2.x route_prefix is an application-level concept.
+    """
+
+    return DeploymentSchema(
+        name=name,
+        num_replicas=info.deployment_config.num_replicas,
+        max_concurrent_queries=info.deployment_config.max_concurrent_queries,
+        user_config=info.deployment_config.user_config,
+        autoscaling_config=info.deployment_config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=(
+            info.deployment_config.graceful_shutdown_wait_loop_s
+        ),
+        graceful_shutdown_timeout_s=info.deployment_config.graceful_shutdown_timeout_s,
+        health_check_period_s=info.deployment_config.health_check_period_s,
+        health_check_timeout_s=info.deployment_config.health_check_timeout_s,
+        ray_actor_options=info.replica_config.ray_actor_options,
+        is_driver_deployment=info.is_driver_deployment,
+    )
 
 
 @PublicAPI(stability="beta")
@@ -485,6 +515,115 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         """
 
         return {"applications": []}
+
+
+class DeploymentDetails(BaseModel, extra=Extra.forbid):
+    name: str = Field(description="Deployment name.")
+    num_running_replicas: int = Field(
+        description=(
+            "The number of replicas that are currently RUNNING in this deployment."
+        )
+    )
+    deployment_status: DeploymentStatus = Field(
+        description="The current status of the deployment."
+    )
+    message: str = Field(
+        description=(
+            "If the deployment status is UNHEALTHY, this will describe the issue in "
+            "more detail."
+        )
+    )
+    deployment_config: DeploymentSchema = Field(
+        description=(
+            "The set of deployment config options that are currently applied to this "
+            "deployment. These options may come from users code, or from override "
+            "options specified in the config file applied to the cluster, or could be "
+            "default values loaded in if unspecified."
+        )
+    )
+
+    @validator("deployment_config")
+    def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
+        # Route prefix should not be set at the deployment level. Deployment-level route
+        # prefix is outdated, there should be one route prefix per application
+        if "route_prefix" in v.dict(exclude_unset=True):
+            raise ValueError(
+                "Unexpectedly found a non-null route_prefix in the deployment_config "
+                f'for deployment "{cls.name}". The route_prefix in deployment_config '
+                "within DeploymentDetails should not be set; please set it at the "
+                "application level."
+            )
+        return v
+
+
+class ApplicationDetails(BaseModel, extra=Extra.forbid):
+    name: str = Field(description="Application name.")
+    route_prefix: Optional[str] = Field(
+        description=(
+            "Requests to paths under this HTTP path prefix will be routed to this "
+            "application. This value can be null if the application is deploying "
+            "and app information has not been fully propagated in the backend; or "
+            "if the application is not exposed over HTTP. Routing is done based on "
+            'longest-prefix match, so if you have deployment A with a prefix of "/a" '
+            'and deployment B with a prefix of "/a/b", requests to "/a", "/a/", and '
+            '"/a/c" go to A and requests to "/a/b", "/a/b/", and "/a/b/c" go to B. '
+            'Routes must not end with a "/" unless they\'re the root (just "/"), which '
+            "acts as a catch-all."
+        )
+    )
+    app_status: ApplicationStatus = Field(
+        description="The current status of the application."
+    )
+    app_message: str = Field(
+        description="A message that gives more insight into the application status."
+    )
+    deployment_timestamp: float = Field(
+        description="The time at which the application was deployed"
+    )
+    deployed_app_config: ServeApplicationSchema = Field(
+        description=(
+            "The exact copy of the application config that was submitted to the "
+            "cluster. This will include all of, and only, the options that were "
+            "explicitly specified in the submitted config. Default values for "
+            "unspecified options will not be displayed, and deployments that are part "
+            "of the application but unlisted in the config will also not be displayed. "
+            "Note that default values for unspecified options are applied to the "
+            "cluster under the hood, and deployments that were unlisted will still be "
+            "deployed. This config simply avoids cluttering with unspecified fields "
+            "for readability."
+        )
+    )
+    deployments_details: Dict[str, DeploymentDetails] = Field(
+        description="Details about the deployments in this application."
+    )
+
+    _route_prefix_format = validator("route_prefix", allow_reuse=True)(
+        route_prefix_format
+    )
+
+
+class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
+    host: str = Field(
+        description="The host on which the HTTP server is listening for requests."
+    )
+    port: int = Field(
+        description="The port on which the HTTP server is listening for requests."
+    )
+    application_details: Dict[str, ApplicationDetails] = Field(
+        description="Details about all live applications running on the cluster."
+    )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Empty Serve instance details dictionary.
+
+        Represents a Serve instance with no applications deployed.
+        """
+
+        return {
+            "application_configs": {},
+            "application_details": {},
+        }
 
 
 @PublicAPI(stability="beta")
