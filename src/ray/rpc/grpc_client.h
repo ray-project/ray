@@ -45,6 +45,27 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
+// This macro wraps the logic to call a specific RPC method of a service,
+// to make it easier to implement a new RPC client.
+#define INVOKE_RPC_CALL_E(                                                \
+    SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms, e) \
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(                \
+      &SERVICE::Stub::PrepareAsync##METHOD,                               \
+      request,                                                            \
+      callback,                                                           \
+      #SERVICE ".grpc_client." #METHOD,                                   \
+      method_timeout_ms,                                                  \
+      e))
+
+// Define a void RPC client method.
+#define VOID_RPC_CLIENT_METHOD_E(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS) \
+  void METHOD(const METHOD##Request &request,                                           \
+              const ClientCallback<METHOD##Reply> &callback,                            \
+              boost::asio::executor e = boost::asio::executor()) SPECS {                \
+    INVOKE_RPC_CALL_E(                                                                  \
+        SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms, e);          \
+  }
+
 inline std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,
     int port,
@@ -144,14 +165,16 @@ class GrpcClient {
       const Request &request,
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
-      int64_t method_timeout_ms = -1) {
+      int64_t method_timeout_ms = -1,
+      boost::asio::executor e = boost::asio::executor()) {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
         *stub_,
         prepare_async_function,
         request,
         callback,
         std::move(call_name),
-        method_timeout_ms);
+        method_timeout_ms,
+        e);
     RAY_CHECK(call != nullptr);
   }
 

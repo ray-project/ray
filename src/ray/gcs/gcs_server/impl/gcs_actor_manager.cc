@@ -267,8 +267,10 @@ void GcsActorManagerImpl::RegisterActor(const ray::rpc::RegisterActorRequest &re
                                         job_id);
 
           RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
-          RAY_CHECK_OK(
-              gcs_publisher_->PublishError(job_id.Hex(), *error_data_ptr, nullptr));
+          boost::asio::post(main_executor_, [this, job_id, data = *error_data_ptr] {
+            RAY_CHECK_OK(
+                gcs_publisher_->PublishError(job_id.Hex(), std::move(data), nullptr));
+          });
         }
         actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
       } else {
@@ -319,8 +321,10 @@ void GcsActorManagerImpl::RegisterActor(const ray::rpc::RegisterActorRequest &re
             // overwrite the actor state to DEAD to avoid race condition.
             return;
           }
-          RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor->GetActorID(), actor->GetActorTableData(), nullptr));
+          boost::asio::post(main_executor_, [this, actor] {
+            RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                actor->GetActorID(), actor->GetActorTableData(), nullptr));
+          });
           // Invoke all callbacks for all registration requests of this actor (duplicated
           // requests are included) and remove all of them from
           // actor_to_register_callbacks_.
@@ -402,9 +406,11 @@ void GcsActorManagerImpl::CreateActor(const ray::rpc::CreateActorRequest &reques
     auto actor = std::make_shared<GcsActor>(
         request.task_spec(), actor_namespace, actor_state_counter_);
     actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
-    const auto &actor_table_data = actor->GetActorTableData();
     // Pub this state for dashboard showing.
-    RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
+    boost::asio::post(main_executor_, [this, actor] {
+      RAY_CHECK_OK(gcs_publisher_->PublishActor(
+          actor->GetActorID(), actor->GetActorTableData(), nullptr));
+    });
     RemoveUnresolvedActor(actor);
 
     // Update the registered actor as its creation task specification may have changed due
@@ -606,11 +612,16 @@ void GcsActorManagerImpl::DestroyActor(const ActorID &actor_id,
       actor->GetActorID(),
       *actor_table_data,
       [this, actor_id, actor_table_data](Status status) {
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
         RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
-        // Destroy placement group owned by this actor.
-        destroy_owned_placement_group_if_needed_(actor_id);
+
+        boost::asio::post(
+            main_executor_,
+            [this, actor_id, actor_table_data = std::move(actor_table_data)] {
+              RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                  actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
+              // Destroy placement group owned by this actor.
+              destroy_owned_placement_group_if_needed_(actor_id);
+            });
       },
       executor_));
 
@@ -652,7 +663,6 @@ absl::flat_hash_set<ActorID> GcsActorManagerImpl::GetUnresolvedActorsByOwnerWork
 void GcsActorManagerImpl::OnWorkerDead(const ray::NodeID &node_id,
                                        const ray::WorkerID &worker_id) {
   boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
     OnWorkerDead(node_id,
                  worker_id,
                  "",
@@ -668,7 +678,6 @@ void GcsActorManagerImpl::OnWorkerDead(const ray::NodeID &node_id,
                                        const std::string &disconnect_detail,
                                        const rpc::RayException *creation_task_exception) {
   boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
     std::string message = absl::StrCat("Worker ",
                                        worker_id.Hex(),
                                        " on node ",
@@ -888,7 +897,7 @@ void GcsActorManagerImpl::ReconstructActor(const ActorID &actor_id,
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
         },
-        executor_));
+        main_executor_));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     RemoveActorNameFromRegistry(actor);
@@ -909,10 +918,15 @@ void GcsActorManagerImpl::ReconstructActor(const ActorID &actor_id,
           if (actor->IsDetached()) {
             DestroyActor(actor_id, death_cause);
           }
-          RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           RAY_CHECK_OK(
               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+          boost::asio::post(
+              main_executor_,
+              [this,
+               actor_id,
+               data = *GenActorDataOnlyWithStates(*mutable_actor_table_data)] {
+                RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, data, nullptr));
+              });
         },
         executor_));
     // The actor is dead, but we should not remove the entry from the
@@ -927,7 +941,6 @@ void GcsActorManagerImpl::OnActorSchedulingFailed(
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
     if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
       // We will attempt to schedule this actor once an eligible node is
       // registered.
@@ -974,7 +987,6 @@ void GcsActorManagerImpl::OnActorSchedulingFailed(
 void GcsActorManagerImpl::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                                                  const rpc::PushTaskReply &reply) {
   boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
     auto actor_id = actor->GetActorID();
     liftime_num_created_actors_++;
     RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
@@ -1009,8 +1021,12 @@ void GcsActorManagerImpl::OnActorCreationSuccess(const std::shared_ptr<GcsActor>
         actor_id,
         actor_table_data,
         [this, actor_id, actor_table_data, actor, reply](Status status) {
-          RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+          boost::asio::post(
+              main_executor_,
+              [this, actor_id, actor_table_data = std::move(actor_table_data)] {
+                RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                    actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+              });
           // Invoke all callbacks for all registration requests of this actor (duplicated
           // requests are included) and remove all of them from
           // actor_to_create_callbacks_.
@@ -1027,7 +1043,6 @@ void GcsActorManagerImpl::OnActorCreationSuccess(const std::shared_ptr<GcsActor>
 }
 
 void GcsActorManagerImpl::SchedulePendingActors() {
-  RAY_CHECK(executor_.running_in_this_thread());
   if (pending_actors_.empty()) {
     return;
   }
@@ -1125,7 +1140,6 @@ void GcsActorManagerImpl::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsActorManagerImpl::OnJobFinished(const JobID &job_id) {
   boost::asio::dispatch(executor_, [=] {
-    RAY_CHECK(executor_.running_in_this_thread());
     auto on_done = [this,
                     job_id](const absl::flat_hash_map<ActorID, ActorTableData> &result) {
       if (!result.empty()) {
@@ -1404,7 +1418,6 @@ void GcsActorManagerImpl::KillActorViaGcs(ActorID actor_id,
 }
 
 void GcsActorManagerImpl::RecordMetrics() const {
-  RAY_CHECK(executor_.running_in_this_thread());
   ray::stats::STATS_gcs_actors_count.Record(registered_actors_.size(), "Registered");
   ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");

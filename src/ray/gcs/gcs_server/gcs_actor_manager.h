@@ -23,8 +23,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_threading_num(); ++i) {
       threads_.emplace_back([this]() { pool_.attach(); });
     }
+    impls_.reserve(::RayConfig::instance().gcs_actor_sharding_num());
     for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_sharding_num(); ++i) {
-      impls_.emplace_back(main_executor,
+      impls_.emplace_back(main_executor_,
+                          main_executor_,
                           client_factory,
                           pool,
                           gcs_table_storage,
@@ -133,7 +135,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
  private:
   GcsActorManagerImpl &GetShard(const ActorID &actor_id) {
-    return impls_[actor_id.Hash() % impls_.size()];
+    auto shard_id = actor_id.Hash() % impls_.size();
+    RAY_LOG(INFO) << "Actor " << actor_id << " will go to shard " << shard_id;
+    return impls_[shard_id];
   }
 
   boost::asio::executor main_executor_;

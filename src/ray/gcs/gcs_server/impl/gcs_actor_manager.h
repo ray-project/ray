@@ -287,6 +287,7 @@ class GcsActorManagerImpl {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManagerImpl(
+      boost::asio::executor main_executor,
       boost::asio::executor exec,
       rpc::ClientFactoryFn client_factory,
       std::shared_ptr<rpc::NodeManagerClientPool> pool,
@@ -306,10 +307,12 @@ class GcsActorManagerImpl {
         function_manager_(function_manager),
         run_delayed_(run_delayed),
         actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
+        main_executor_(main_executor),
         executor_(exec) {
+    RAY_CHECK(executor_);
     gcs_actor_scheduler_ = std::make_shared<GcsActorScheduler>(
         executor_,
-        gcs_table_storage->ActorTable(),
+        gcs_table_storage_->ActorTable(),
         nullptr,
         [this](std::shared_ptr<GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -705,7 +708,8 @@ class GcsActorManagerImpl {
   int64_t liftime_num_created_actors_ = 0;
 
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
-  boost::asio::strand<boost::asio::executor> executor_;
+  boost::asio::executor main_executor_;
+  boost::asio::executor executor_;
 };
 
 }  // namespace gcs

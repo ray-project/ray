@@ -143,6 +143,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
         raylet_client_pool_(raylet_client_pool),
         core_worker_clients_(client_factory),
         normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {
+    RAY_CHECK(cluster_task_manager == nullptr);
+    RAY_CHECK(normal_task_resources_changed_callback == nullptr);
+
     RAY_CHECK(schedule_failure_handler_ != nullptr &&
               schedule_success_handler_ != nullptr);
     t_ = std::make_unique<std::thread>([this] {

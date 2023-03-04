@@ -116,7 +116,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                              const ClientCallback<PushTaskReply> &callback) {}
+                              const ClientCallback<PushTaskReply> &callback,
+                              boost::asio::executor e = boost::asio::executor()) {}
 
   /// Notify a wait has completed for direct actor call arguments.
   ///
@@ -156,7 +157,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
 
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
-                         const ClientCallback<KillActorReply> &callback) {}
+                         const ClientCallback<KillActorReply> &callback,
+                         boost::asio::executor e = boost::asio::executor()) {}
 
   virtual void CancelTask(const CancelTaskRequest &request,
                           const ClientCallback<CancelTaskReply> &callback) {}
@@ -235,11 +237,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         KillActor,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RPC_CLIENT_METHOD_E(CoreWorkerService,
+                           KillActor,
+                           grpc_client_,
+                           /*method_timeout_ms*/ -1,
+                           override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          CancelTask,
@@ -367,7 +369,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                      const ClientCallback<PushTaskReply> &callback) override {
+                      const ClientCallback<PushTaskReply> &callback,
+                      boost::asio::executor e = boost::asio::executor()) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService,
@@ -375,7 +378,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                     *request,
                     callback,
                     grpc_client_,
-                    /*method_timeout_ms*/ -1);
+                    /*method_timeout_ms*/ -1,
+                    e);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.

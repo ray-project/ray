@@ -220,7 +220,9 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     address.set_port(node_info->node_manager_port());
     auto lease_client = GetOrConnectLeaseClient(address);
     lease_client->CancelWorkerLease(
-        task_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
+        task_id,
+        [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {},
+        executor_);
   }
 }
 
@@ -273,7 +275,8 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    lease_client->ReleaseUnusedWorkers(workers_in_use, release_unused_workers_callback);
+    lease_client->ReleaseUnusedWorkers(
+        workers_in_use, release_unused_workers_callback, executor_);
   }
 }
 
@@ -306,7 +309,8 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
       },
-      0);
+      0,
+      executor_);
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
@@ -472,7 +476,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
           auto actor_id = status.ok() ? actor->GetActorID() : ActorID::Nil();
           KillActorOnWorker(worker->GetAddress(), actor_id);
         }
-      });
+      },
+      executor_);
 }
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(
@@ -524,10 +529,13 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   request.set_intended_actor_id(actor_id.Binary());
   request.set_force_kill(true);
   request.set_no_restart(true);
-  cli->KillActor(request, [actor_id](auto &status, auto &) {
-    RAY_LOG(DEBUG) << "Killing actor " << actor_id
-                   << " with return status: " << status.ToString();
-  });
+  cli->KillActor(
+      request,
+      [actor_id](auto &status, auto &) {
+        RAY_LOG(DEBUG) << "Killing actor " << actor_id
+                       << " with return status: " << status.ToString();
+      },
+      executor_);
   return true;
 }
 

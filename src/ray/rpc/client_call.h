@@ -68,8 +68,10 @@ class ClientCallImpl : public ClientCall {
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           std::shared_ptr<StatsHandle> stats_handle,
-                          int64_t timeout_ms = -1)
-      : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
+                          int64_t timeout_ms = -1,
+                          boost::asio::executor e = boost::asio::executor())
+      : e_(e),
+        callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)) {
     if (timeout_ms != -1) {
       auto deadline =
@@ -95,13 +97,18 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      if (e_) {
+        boost::asio::dispatch(e_, boost::asio::append(callback_, status, reply_));
+      } else {
+        callback_(status, reply_);
+      }
     }
   }
 
   std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
 
  private:
+  boost::asio::executor e_;
   /// The reply message.
   Reply reply_;
 
@@ -234,13 +241,14 @@ class ClientCallManager {
       const Request &request,
       const ClientCallback<Reply> &callback,
       std::string call_name,
-      int64_t method_timeout_ms = -1) {
+      int64_t method_timeout_ms = -1,
+      boost::asio::executor e = boost::asio::executor()) {
     auto stats_handle = main_service_.stats().RecordStart(call_name);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
     auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, std::move(stats_handle), method_timeout_ms);
+        callback, std::move(stats_handle), method_timeout_ms, e);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(

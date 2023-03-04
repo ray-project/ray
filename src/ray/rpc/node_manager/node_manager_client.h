@@ -104,10 +104,10 @@ class NodeManagerWorkerClient
                          /*method_timeout_ms*/ -1, )
 
   /// Request a worker lease.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestWorkerLease,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD_E(NodeManagerService,
+                           RequestWorkerLease,
+                           grpc_client_,
+                           /*method_timeout_ms*/ -1, )
 
   /// Report task backlog information
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
@@ -122,10 +122,10 @@ class NodeManagerWorkerClient
                          /*method_timeout_ms*/ -1, )
 
   /// Release unused workers.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedWorkers,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD_E(NodeManagerService,
+                           ReleaseUnusedWorkers,
+                           grpc_client_,
+                           /*method_timeout_ms*/ -1, )
 
   /// Shutdown the raylet gracefully.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
@@ -134,10 +134,10 @@ class NodeManagerWorkerClient
                          /*method_timeout_ms*/ -1, )
 
   /// Cancel a pending worker lease request.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         CancelWorkerLease,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD_E(NodeManagerService,
+                           CancelWorkerLease,
+                           grpc_client_,
+                           /*method_timeout_ms*/ -1, )
 
   /// Request prepare resources for an atomic placement group creation.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
