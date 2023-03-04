@@ -9,6 +9,9 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
+# Type alias for a node id.
+NodeIdStr = str
+
 
 @dataclass
 class RefBundle:
@@ -37,6 +40,9 @@ class RefBundle:
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
+
+    # Cached location, used for get_cached_location().
+    _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
         for b in self.blocks:
@@ -73,6 +79,24 @@ class RefBundle:
         for b in self.blocks:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
+
+    def get_cached_location(self) -> Optional[NodeIdStr]:
+        if self._cached_location is None:
+            # Only consider the first block in the bundle for now. TODO(ekl) consider
+            # taking into account other blocks.
+            ref = self.blocks[0][0]
+            # This call is pretty fast for owned objects (~5k/s), so we don't need to
+            # batch it for now.
+            locs = ray.experimental.get_object_locations([ref])
+            nodes = locs[ref]["node_ids"]
+            if nodes:
+                self._cached_location = nodes[0]
+            else:
+                self._cached_location = ""
+        if self._cached_location:
+            return self._cached_location
+        else:
+            return None  # Return None if cached location is "".
 
     def __eq__(self, other) -> bool:
         return self is other

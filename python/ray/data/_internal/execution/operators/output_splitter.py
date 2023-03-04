@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from ray.data.block import Block, BlockMetadata, BlockAccessor
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
     ExecutionResources,
+    NodeIdStr,
 )
 from ray.types import ObjectRef
 
@@ -30,6 +31,7 @@ class OutputSplitter(PhysicalOperator):
         input_op: PhysicalOperator,
         n: int,
         equal: bool,
+        locality_hints: Optional[List[NodeIdStr]] = None,
     ):
         super().__init__(f"split({n}, equal={equal})", [input_op])
         self._equal = equal
@@ -39,6 +41,15 @@ class OutputSplitter(PhysicalOperator):
         self._output_queue: List[RefBundle] = []
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
+
+        if locality_hints is not None:
+            if n != len(locality_hints):
+                raise ValueError(
+                    "Locality hints list must have length `n`: "
+                    f"len({locality_hints}) != {n}")
+        self._locality_hints = locality_hints
+        self.hits = 0
+        self.misses = 0
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
@@ -102,7 +113,7 @@ class OutputSplitter(PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._equal:
-            return f"{len(self._buffer)} buffered"
+            return f"{len(self._buffer)} buffered [{self.hits} {self.misses}]"
         assert not self._buffer
         return ""
 
@@ -127,7 +138,14 @@ class OutputSplitter(PhysicalOperator):
         return i
 
     def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
-        # TODO implement locality aware bundle selection.
+        if self._locality_hints:
+            preferred_loc = self._locality_hints[target_index]
+            for bundle in self._buffer:
+                if bundle.get_cached_location() == preferred_loc:
+                    self._buffer.remove(bundle)
+                    self.hits += 1
+                    return bundle
+            self.misses += 1
         return self._buffer.pop(0)
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:

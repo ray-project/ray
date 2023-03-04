@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import ray
 from ray.data.block import Block, BlockAccessor
