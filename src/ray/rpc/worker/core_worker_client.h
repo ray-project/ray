@@ -373,13 +373,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                       boost::asio::executor e = boost::asio::executor()) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
-    INVOKE_RPC_CALL(CoreWorkerService,
-                    PushTask,
-                    *request,
-                    callback,
-                    grpc_client_,
-                    /*method_timeout_ms*/ -1,
-                    e);
+    INVOKE_RPC_CALL_E(CoreWorkerService,
+                      PushTask,
+                      *request,
+                      callback,
+                      grpc_client_,
+                      /*method_timeout_ms*/ -1,
+                      e);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.

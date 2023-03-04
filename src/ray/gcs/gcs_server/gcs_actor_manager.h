@@ -26,7 +26,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     impls_.reserve(::RayConfig::instance().gcs_actor_sharding_num());
     for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_sharding_num(); ++i) {
       impls_.emplace_back(main_executor_,
-                          main_executor_,
+                          pool_.get_executor(),
                           client_factory,
                           pool,
                           gcs_table_storage,

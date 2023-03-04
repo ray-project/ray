@@ -219,10 +219,7 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     address.set_ip_address(node_info->node_manager_address());
     address.set_port(node_info->node_manager_port());
     auto lease_client = GetOrConnectLeaseClient(address);
-    lease_client->CancelWorkerLease(
-        task_id,
-        [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {},
-        executor_);
+    lease_client->CancelWorkerLease(task_id, nullptr);
   }
 }
 

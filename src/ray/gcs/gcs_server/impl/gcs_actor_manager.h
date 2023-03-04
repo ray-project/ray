@@ -308,7 +308,7 @@ class GcsActorManagerImpl {
         run_delayed_(run_delayed),
         actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
         main_executor_(main_executor),
-        executor_(exec) {
+        executor_(boost::asio::make_strand(exec)) {
     RAY_CHECK(executor_);
     gcs_actor_scheduler_ = std::make_shared<GcsActorScheduler>(
         executor_,

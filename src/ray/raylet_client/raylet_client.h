@@ -91,11 +91,13 @@ class WorkerLeaseInterface {
   /// unused workers. \return ray::Status
   virtual void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback,
+      boost::asio::executor e = boost::asio::executor()) = 0;
 
   virtual void CancelWorkerLease(
       const TaskID &task_id,
-      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback,
+      boost::asio::executor e = boost::asio::executor()) = 0;
 
   /// Report the backlog size of a given worker and a given scheduling class to the
   /// raylet.
@@ -426,11 +428,12 @@ class RayletClient : public RayletClientInterface {
   /// Implements WorkerLeaseInterface.
   void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback,
+      boost::asio::executor e = boost::asio::executor()) override;
 
-  void CancelWorkerLease(
-      const TaskID &task_id,
-      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
+  void CancelWorkerLease(const TaskID &task_id,
+                         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback,
+                         boost::asio::executor e = boost::asio::executor()) override;
 
   /// Implements PrepareBundleResourcesInterface.
   void PrepareBundleResources(

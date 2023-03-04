@@ -401,7 +401,8 @@ void raylet::RayletClient::GetTaskFailureCause(
 
 void raylet::RayletClient::ReleaseUnusedWorkers(
     const std::vector<WorkerID> &workers_in_use,
-    const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
+    const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback,
+    boost::asio::executor e) {
   rpc::ReleaseUnusedWorkersRequest request;
   for (auto &worker_id : workers_in_use) {
     request.add_worker_ids_in_use(worker_id.Binary());
@@ -415,15 +416,17 @@ void raylet::RayletClient::ReleaseUnusedWorkers(
               << status;
         }
         callback(status, reply);
-      });
+      },
+      e);
 }
 
 void raylet::RayletClient::CancelWorkerLease(
     const TaskID &task_id,
-    const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
+    const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback,
+    boost::asio::executor e) {
   rpc::CancelWorkerLeaseRequest request;
   request.set_task_id(task_id.Binary());
-  grpc_client_->CancelWorkerLease(request, callback);
+  grpc_client_->CancelWorkerLease(request, callback, e);
 }
 
 void raylet::RayletClient::PrepareBundleResources(
