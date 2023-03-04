@@ -353,6 +353,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                        int64_t backlog_size,
                        int64_t num_available_cpus);
 
+  /// Try to prestart a number of CPU workers with the given language.
+  ///
+  void PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed);
+
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
   ///

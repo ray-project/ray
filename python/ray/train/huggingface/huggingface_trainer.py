@@ -3,7 +3,7 @@ import inspect
 import os
 import sys
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 try:
     from packaging.version import Version
@@ -26,6 +26,7 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.huggingface._huggingface_utils import (
     TrainReportCallback,
     process_datasets,
@@ -71,6 +72,9 @@ if "datasets_modules" not in sys.modules and is_datasets_available():
 # is special for HuggingFaceTrainer, but can and should be
 # made generic.
 # TODO(ml-team): Make dir syncing checkpoint logic generic.
+
+
+TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
 
 @PublicAPI(stability="alpha")
@@ -123,6 +127,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             import ray
             from ray.train.huggingface import HuggingFaceTrainer
             from ray.air.config import ScalingConfig
+
+            # If using GPUs, set this to True.
+            use_gpu = False
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -180,6 +187,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
+                    no_cuda=(not use_gpu),
                 )
                 return transformers.Trainer(
                     model=model,
@@ -188,9 +196,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = ScalingConfig(num_workers=3)
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
@@ -264,16 +270,11 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
-            raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
-            )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
-
         super().__init__(
             train_loop_per_worker=_huggingface_train_loop_per_worker,
-            train_loop_config=trainer_init_config,
+            train_loop_config=self._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            ),
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -281,6 +282,67 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+    @classmethod
+    def _create_trainer_init_config(
+        cls,
+        trainer_init_per_worker: Callable[
+            [TorchDataset, Optional[TorchDataset], Any],
+            transformers.trainer.Trainer,
+        ],
+        trainer_init_config: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if TRAINER_INIT_FN_KEY in trainer_init_config:
+            raise ValueError(
+                f"'{TRAINER_INIT_FN_KEY}' is a reserved key in `trainer_init_config`."
+            )
+        if trainer_init_per_worker:
+            trainer_init_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
+        return trainer_init_config
+
+    @classmethod
+    def restore(
+        cls: Type["HuggingFaceTrainer"],
+        path: str,
+        trainer_init_per_worker: Optional[
+            Callable[
+                [TorchDataset, Optional[TorchDataset], Any],
+                transformers.trainer.Trainer,
+            ]
+        ] = None,
+        trainer_init_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "HuggingFaceTrainer":
+        """Restores a HuggingFaceTrainer from a previously interrupted/failed run.
+
+        Args:
+            trainer_init_per_worker: Optionally re-specified trainer init function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g., it holds onto outdated
+                object references). This should be the same trainer init
+                that was passed to the original trainer constructor.
+            trainer_init_config: Optionally re-specified trainer init config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            HuggingFaceTrainer: A restored instance of `HuggingFaceTrainer`
+        """
+        return super(DataParallelTrainer, cls).restore(
+            path=path,
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
         )
 
     def _validate_trainer_init_per_worker(
@@ -319,11 +381,6 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
-
-    # Env vars necessary for HF to setup DDP
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)

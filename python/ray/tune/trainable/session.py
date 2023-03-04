@@ -210,7 +210,9 @@ def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
+    global _session_v2
     _session = None
+    _session_v2 = None
 
 
 @Deprecated(message=_deprecation_msg)
@@ -377,8 +379,7 @@ def get_trial_id():
 def get_trial_resources():
     """Trial resources for the corresponding trial.
 
-    Will be a PlacementGroupFactory if trial uses those,
-    otherwise a Resources instance.
+    Will be a PlacementGroupFactory.
 
     For function API use only.
     """

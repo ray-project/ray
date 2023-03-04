@@ -67,7 +67,7 @@ class TestCQL(unittest.TestCase):
                 evaluation_num_workers=2,
             )
             .rollouts(num_rollout_workers=0)
-            .reporting(min_time_s_per_iteration=0.0)
+            .reporting(min_time_s_per_iteration=0)
         )
         num_iterations = 4
 

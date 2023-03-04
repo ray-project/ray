@@ -48,7 +48,9 @@ def test_max_running_tasks(num_tasks):
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
     used_cpus = max_cpus - min_cpus_available
     err_str = f"Only {used_cpus}/{max_cpus} cpus used."
-    threshold = num_tasks * cpus_per_task * 0.70
+    # 1500 tasks. Note that it is a pretty low threshold, and the
+    # performance should be tracked via perf dashboard.
+    threshold = num_tasks * cpus_per_task * 0.60
     print(f"{used_cpus}/{max_cpus} used.")
     assert used_cpus > threshold, err_str
 

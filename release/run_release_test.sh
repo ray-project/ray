@@ -39,7 +39,7 @@ INSTALL_MATCHING_RAY=${BUILDKITE-false}
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -q -r requirements.txt
+  pip install --use-deprecated=legacy-resolver -q -r requirements.txt
   pip install -q -U boto3 botocore
 
   if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
@@ -64,12 +64,13 @@ fi
 
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
+  echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
   pushd "${TMPDIR}/release" || true
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -e .
+  pip install --use-deprecated=legacy-resolver -c requirements.txt -e .
 fi
 
 RETRY_NUM=0
@@ -102,10 +103,23 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
   fi
 
+  _term() {
+    echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
+    kill "$proc"
+    wait "$proc"
+  }
+
   set +e
-  python "${RAY_TEST_SCRIPT}" "$@"
+
+  trap _term SIGINT SIGTERM
+  python "${RAY_TEST_SCRIPT}" "$@" &
+  proc=$!
+
+  wait "$proc"
   EXIT_CODE=$?
+
   set -e
+
   REASON=$(reason "${EXIT_CODE}")
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 

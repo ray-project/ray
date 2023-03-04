@@ -18,9 +18,6 @@
                 "env": {
 					"type": "string"
 				},
-				"legacy": {
-					"$ref": "#/definitions/Legacy"
-				},
 				"stable": {
 					"type": "boolean"
 				},
@@ -99,23 +96,6 @@
 			],
 			"title": "Cluster"
 		},
-		"Legacy": {
-			"type": "object",
-			"additionalProperties": false,
-			"properties": {
-				"test_name": {
-					"type": "string"
-				},
-				"test_suite": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"test_name",
-				"test_suite"
-			],
-			"title": "Legacy"
-		},
 		"Run": {
 			"type": "object",
 			"additionalProperties": false,
@@ -126,13 +106,13 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
+						"client",
+						"anyscale_job"
 					]
 				},
 				"file_manager": {
 					"type": "string",
 					"enum": [
-
 						"sdk",
 						"client",
 						"job"

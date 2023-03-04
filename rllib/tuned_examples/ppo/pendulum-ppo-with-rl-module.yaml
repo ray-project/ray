@@ -6,7 +6,8 @@ pendulum-ppo:
         episode_reward_mean: -400
         timesteps_total: 400000
     config:
-        # TODO (Kourosh): Works only for torch.
+        # Works for both torch and tf2
+        # TODO (Kourosh) tf2 is way slower than torch
         framework: torch
         train_batch_size: 512
         vf_clip_param: 10.0
@@ -19,4 +20,7 @@ pendulum-ppo:
         observation_filter: MeanStdFilter
         seed: 42
         enable_connectors: true
+        model:
+            fcnet_activation: relu
         _enable_rl_module_api: true
+        eager_tracing: false

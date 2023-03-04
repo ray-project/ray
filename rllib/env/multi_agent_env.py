@@ -84,7 +84,8 @@ class MultiAgentEnv(gym.Env):
                 "traffic_light_1": [0, 3, 5, 1],
             }
         """
-        raise NotImplementedError
+        # Call super's `reset()` method to (maybe) set the given `seed`.
+        super().reset(seed=seed, options=options)
 
     @PublicAPI
     def step(
@@ -535,6 +536,13 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
+
+            # the environment is expecting action for at least one agent
+            if len(action_dict) == 0:
+                raise ValueError(
+                    "The environment is expecting action for at least one agent."
+                )
+
             for i, action in action_dict.items():
                 obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[
                     i

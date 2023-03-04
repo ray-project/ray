@@ -115,8 +115,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
 
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-      // Decrease to account for the dummy object id.
+    if (task_spec.IsActorCreationTask()) {
+      // Decrease to account for the dummy object id returned by the actor
+      // creation task.
       num_returns--;
     }
     RAY_CHECK(num_returns >= 0);
@@ -213,7 +214,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto dependencies = task_spec.GetDependencies(false);
+  auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());

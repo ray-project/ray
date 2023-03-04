@@ -7,6 +7,7 @@ import sys
 import grpc
 import pytest
 import ray
+import redis
 from ray._private.gcs_utils import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
@@ -56,6 +57,24 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert gcs_utils._called_freq["internal_kv_get"] == 4
     assert gcs_utils._called_freq["internal_kv_put"] == 5
 
+    # Test internal_kv_multi_get
+    assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
+    assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
+    assert gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
+    assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+    assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
+
+    # Test internal_kv_multi_get where some keys don't exist
+    assert gcs_client.internal_kv_multi_get([b"A", b"B", b"C"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+
+    assert gcs_utils._called_freq["internal_kv_multi_get"] == 4
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
@@ -102,6 +121,23 @@ async def test_kv_basic_aio(ray_start_regular):
     assert await gcs_client.internal_kv_del(b"A", True, b"NS") == 2
     assert await gcs_client.internal_kv_keys(b"A", b"NS") == []
     assert await gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
+
+    # Test internal_kv_multi_get
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
+    assert await gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
+    assert await gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+
+    # Test internal_kv_multi_get where some keys don't exist
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B", b"C"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
@@ -161,35 +197,20 @@ def test_external_storage_namespace_isolation(shutdown_only):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pull_based,ray_start_cluster",
+    "ray_start_cluster",
     [
-        (
-            False,
-            generate_system_config_map(
-                RAY_num_heartbeats_timeout=2, pull_based_healthcheck=False
-            ),
-        ),
-        (
-            True,
-            generate_system_config_map(
-                health_check_initial_delay_ms=0,
-                health_check_period_ms=1000,
-                health_check_failure_threshold=2,
-                pull_based_healthcheck=True,
-            ),
+        generate_system_config_map(
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=2,
         ),
     ],
     indirect=["ray_start_cluster"],
 )
-async def test_check_liveness(pull_based, monkeypatch, ray_start_cluster):
-    if pull_based:
-        monkeypatch.setenv("RAY_pull_based_healthcheck", "true")
-        monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
-        monkeypatch.setenv("RAY_health_check_period_ms", "1000")
-        monkeypatch.setenv("RAY_health_check_failure_threshold", "2")
-    else:
-        monkeypatch.setenv("RAY_pull_based_healthcheck", "false")
-        monkeypatch.setenv("RAY_num_heartbeats_timeout", "2")
+async def test_check_liveness(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "2")
 
     cluster = ray_start_cluster
     h = cluster.add_node(node_manager_port=find_free_port())
@@ -224,6 +245,44 @@ async def test_check_liveness(pull_based, monkeypatch, ray_start_cluster):
     await async_wait_for_condition_async_predicate(
         check, expect_liveness=[True, False, False]
     )
+
+
+@pytest.fixture(params=[True, False])
+def redis_replicas(request, monkeypatch):
+    if request.param:
+        monkeypatch.setenv("TEST_EXTERNAL_REDIS_REPLICAS", "3")
+    yield
+
+
+@pytest.mark.skipif(
+    not enable_external_redis(), reason="Only valid when start with an external redis"
+)
+def test_redis_cleanup(redis_replicas, shutdown_only):
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c1"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+    gcs_client.internal_kv_put(b"ABC", b"DEF", True, None)
+
+    ray.shutdown()
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c2"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+    gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None)
+    ray.shutdown()
+    redis_addr = os.environ["RAY_REDIS_ADDRESS"]
+    host, port = redis_addr.split(":")
+    if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
+        cli = redis.RedisCluster(host, int(port))
+    else:
+        cli = redis.Redis(host, int(port))
+
+    assert set(cli.keys()) == {b"c1", b"c2"}
+    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
+    assert set(cli.keys()) == {b"c2"}
+    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
+    assert len(cli.keys()) == 0
 
 
 if __name__ == "__main__":

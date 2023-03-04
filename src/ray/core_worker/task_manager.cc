@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
 
@@ -61,9 +62,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
-    num_returns--;
-  }
   std::vector<rpc::ObjectReference> returned_refs;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < num_returns; i++) {
@@ -105,7 +103,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
-  RecordTaskStatusEvent(spec.AttemptNumber(), spec, rpc::TaskStatus::PENDING_ARGS_AVAIL);
+  RecordTaskStatusEvent(spec.AttemptNumber(),
+                        spec,
+                        rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                        /* include_task_info */ true);
 
   return returned_refs;
 }
@@ -438,6 +439,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
+      } else if (num_oom_retries_left == -1) {
+        will_retry = true;
+      } else {
+        RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
       if (num_retries_left > 0) {
@@ -541,13 +546,19 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
-                                         bool mark_task_object_failed) {
+                                         bool mark_task_object_failed,
+                                         bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type);
-  const bool will_retry = RetryTaskIfPossible(
-      task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+                 << rpc::ErrorType_Name(error_type) << " Fail immediately? "
+                 << fail_immediately;
+  bool will_retry = false;
+  if (!fail_immediately) {
+    will_retry = RetryTaskIfPossible(
+        task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+  }
+
   if (!will_retry && mark_task_object_failed) {
     FailPendingTask(task_id, error_type, status, ray_error_info);
   }
@@ -608,9 +619,6 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> return_ids;
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
-    num_returns--;
-  }
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
   }
@@ -779,7 +787,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
 }
 
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
-                                              const NodeID &node_id) {
+                                              const NodeID &node_id,
+                                              const WorkerID &worker_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
@@ -792,7 +801,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
                         it->second.spec,
                         rpc::TaskStatus::SUBMITTED_TO_WORKER,
                         /* include_task_info */ false,
-                        node_id);
+                        node_id,
+                        worker_id);
 }
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
@@ -808,7 +818,8 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   // the new task attempt, we pass the the attempt number explicitly.
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
                         task_entry.spec,
-                        rpc::TaskStatus::PENDING_ARGS_AVAIL);
+                        rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                        /* include_task_info */ true);
 }
 
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
@@ -828,38 +839,6 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
 void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
   task_entry.SetStatus(status);
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber(), task_entry.spec, status);
-}
-
-rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
-    const TaskSpecification &task_spec) const {
-  rpc::TaskInfoEntry task_info;
-  rpc::TaskType type;
-  if (task_spec.IsNormalTask()) {
-    type = rpc::TaskType::NORMAL_TASK;
-  } else if (task_spec.IsActorCreationTask()) {
-    type = rpc::TaskType::ACTOR_CREATION_TASK;
-    task_info.set_actor_id(task_spec.ActorCreationId().Binary());
-  } else {
-    RAY_CHECK(task_spec.IsActorTask());
-    type = rpc::TaskType::ACTOR_TASK;
-    task_info.set_actor_id(task_spec.ActorId().Binary());
-  }
-  task_info.set_type(type);
-  task_info.set_name(task_spec.GetName());
-  task_info.set_language(task_spec.GetLanguage());
-  task_info.set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
-  // NOTE(rickyx): we will have scheduling states recorded in the events list.
-  task_info.set_scheduling_state(rpc::TaskStatus::NIL);
-  task_info.set_job_id(task_spec.JobId().Binary());
-
-  task_info.set_task_id(task_spec.TaskId().Binary());
-  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
-  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
-  task_info.mutable_required_resources()->insert(resources_map.begin(),
-                                                 resources_map.end());
-  task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
-
-  return task_info;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -917,55 +896,21 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
                                         const TaskSpecification &spec,
                                         rpc::TaskStatus status,
                                         bool include_task_info,
-                                        absl::optional<NodeID> node_id) {
+                                        absl::optional<NodeID> node_id,
+                                        absl::optional<WorkerID> worker_id) {
   if (!task_event_buffer_.Enabled()) {
     return;
   }
-  // Make task event
-  rpc::TaskEvents task_event;
-  task_event.set_task_id(spec.TaskId().Binary());
-  task_event.set_job_id(spec.JobId().Binary());
-  task_event.set_attempt_number(attempt_number);
-  auto state_updates = task_event.mutable_state_updates();
-  if (include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    // Initialize a new TaskInfoEntry
-    auto task_info = MakeTaskInfoEntry(spec);
-    task_event.mutable_task_info()->Swap(&task_info);
-  }
+  auto task_event = std::make_unique<worker::TaskStatusEvent>(
+      spec.TaskId(),
+      spec.JobId(),
+      attempt_number,
+      status,
+      /* timestamp */ absl::GetCurrentTimeNanos(),
+      include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
+      node_id,
+      worker_id);
 
-  switch (status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    state_updates->set_pending_args_avail_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    RAY_CHECK(node_id.has_value())
-        << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
-    state_updates->set_node_id(node_id->Binary());
-    state_updates->set_submitted_to_worker_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    state_updates->set_pending_node_assignment_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    state_updates->set_finished_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    state_updates->set_failed_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  default: {
-    // NOTE: Other task status should not be set by the TaskManager.
-    UNREACHABLE;
-  }
-  }
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 

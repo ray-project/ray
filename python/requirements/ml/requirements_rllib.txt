@@ -16,13 +16,16 @@ kaggle_environments==1.7.11
 mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.22.1; python_version >= '3.7'
+# When installing pettingzoo, chess is missing, even though its a dependancy
+# TODO: remove if a future pettingzoo and/or ray version fixes this dependancy issue
+chess==1.7.0
 pymunk==6.2.1
 supersuit==3.7.0; python_version >= '3.7'
 # For tests on minigrid.
-minigrid==2.1.0
+minigrid==2.1.1
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
-tensorflow_estimator==2.9.0
+tensorflow_estimator==2.11.0
 # DeepMind's OpenSpiel
 open-spiel==1.2
 
@@ -35,7 +38,7 @@ pyglet==1.5.15
 imageio-ffmpeg==0.4.5
 # ONNX
 onnx==1.12.0
-onnxruntime==1.12.0
-tf2onnx==1.12.1
+onnxruntime==1.14.0
+tf2onnx==1.13.0
 typer==0.6.1
 rich==12.0.1

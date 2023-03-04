@@ -225,9 +225,9 @@ class TensorflowPredictor(DLPredictor):
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
+        dtype: Optional[Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]]],
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
-        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
+        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtype)
 
     def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
         if not isinstance(tensor, tf.Tensor):

@@ -18,12 +18,28 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 namespace core {
+namespace {
+std::shared_ptr<LeaseRequestRateLimiter> kOneRateLimiter =
+    std::make_shared<StaticLeaseRequestRateLimiter>(1);
+std::shared_ptr<LeaseRequestRateLimiter> kTwoRateLimiter =
+    std::make_shared<StaticLeaseRequestRateLimiter>(2);
+
+class DynamicRateLimiter : public LeaseRequestRateLimiter {
+ public:
+  explicit DynamicRateLimiter(size_t limit) : limit(limit) {}
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override { return limit; }
+
+ public:
+  size_t limit;
+};
+}  // namespace
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
@@ -36,11 +52,13 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 std::string serialized_runtime_env = "") {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
+  rpc::JobConfig config;
   builder.SetCommonTaskSpec(TaskID::Nil(),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
                             JobID::Nil(),
+                            config,
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),
@@ -50,7 +68,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             resources,
                             serialized_runtime_env,
-                            depth);
+                            depth,
+                            TaskID::Nil());
   return builder.Build();
 }
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
@@ -122,7 +141,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                               rpc::ErrorType error_type,
                               const Status *status,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                              bool mark_task_object_failed = true) override {
+                              bool mark_task_object_failed = true,
+                              bool fail_immediately = false) override {
     num_tasks_failed++;
     return true;
   }
@@ -143,7 +163,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
   void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                   const NodeID &node_id) override {}
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
@@ -386,7 +407,8 @@ TEST(DirectTaskTransportTest, TestLocalityAwareSubmitOneTask) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -437,7 +459,8 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -488,7 +511,8 @@ TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -544,7 +568,8 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -554,9 +579,9 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(raylet_client->num_get_task_failure_causes, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
-  ASSERT_EQ(raylet_client->num_get_task_failure_causes, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
@@ -587,8 +612,7 @@ TEST(DirectTaskTransportTest, TestHandleUnschedulableTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          2);
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -658,8 +682,7 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          2);
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -729,8 +752,7 @@ TEST(DirectTaskTransportTest, TestWorkerHandleLocalRayletDied) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          2);
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -759,8 +781,7 @@ TEST(DirectTaskTransportTest, TestDriverHandleLocalRayletDied) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          2);
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -802,6 +823,9 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
+
+  int64_t concurrency = 10;
+  auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -814,54 +838,263 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          2);
+                                          rateLimiter);
 
-  TaskSpecification task1 = BuildEmptyTaskSpec();
-  TaskSpecification task2 = BuildEmptyTaskSpec();
-  TaskSpecification task3 = BuildEmptyTaskSpec();
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 2 * concurrency; i++) {
+    auto task = BuildEmptyTaskSpec();
+    tasks.push_back(task);
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency);
+  ASSERT_EQ(raylet_client->num_workers_requested, concurrency);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Trigger the periodic backlog report
   submitter.ReportWorkerBacklog();
-  ASSERT_EQ(raylet_client->reported_backlog_size, 1);
+  ASSERT_EQ(raylet_client->reported_backlog_size, concurrency);
 
-  // Task 1 is pushed; worker 3 is requested.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
-  ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 3);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
-
-  // Task 2 is pushed; no more workers requested.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
-  ASSERT_EQ(worker_client->callbacks.size(), 2);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 3);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
-
-  // Task 3 is pushed; no more workers requested.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil()));
-  ASSERT_EQ(worker_client->callbacks.size(), 3);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 3);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  // Grant the first round of leases.
+  for (int i = 0; i < concurrency; i++) {
+    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
+    ASSERT_EQ(worker_client->callbacks.size(), i + 1);
+    ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + i + 1);
+    ASSERT_EQ(raylet_client->num_workers_requested, concurrency + i + 1);
+    ASSERT_EQ(raylet_client->reported_backlog_size, concurrency - i - 1);
+  }
+  for (int i = 0; i < concurrency; i++) {
+    ASSERT_TRUE(
+        raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
+    ASSERT_EQ(worker_client->callbacks.size(), concurrency + i + 1);
+    ASSERT_EQ(lease_policy->num_lease_policy_consults, tasks.size());
+    ASSERT_EQ(raylet_client->num_workers_requested, tasks.size());
+    ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  }
 
   // All workers returned.
   while (!worker_client->callbacks.empty()) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
-  ASSERT_EQ(raylet_client->num_workers_returned, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, tasks.size());
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(task_finisher->num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher->num_tasks_complete, tasks.size());
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+
+  int64_t concurrency = 10;
+  auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
+  CoreWorkerDirectTaskSubmitter submitter(address,
+                                          raylet_client,
+                                          client_pool,
+                                          nullptr,
+                                          lease_policy,
+                                          store,
+                                          task_finisher,
+                                          NodeID::Nil(),
+                                          WorkerType::WORKER,
+                                          kLongTimeout,
+                                          actor_creator,
+                                          JobID::Nil(),
+                                          rateLimiter);
+
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 2 * concurrency; i++) {
+    auto task = BuildEmptyTaskSpec();
+    tasks.push_back(task);
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
+
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Trigger the periodic backlog report
+  submitter.ReportWorkerBacklog();
+  ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 1);
+
+  // Max concurrency is still 1.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
+
+  // Increase max concurrency. Should request leases up to the max concurrency.
+  rateLimiter->limit = concurrency;
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2 + concurrency);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
+  ASSERT_EQ(raylet_client->reported_backlog_size,
+            tasks.size() - raylet_client->num_workers_requested);
+
+  // Decrease max concurrency again. Should not request any more leases even as
+  // previous requests are granted, since we are still over the current
+  // concurrency.
+  rateLimiter->limit = 1;
+  for (int i = 0; i < concurrency - 1; i++) {
+    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
+    ASSERT_EQ(lease_policy->num_lease_policy_consults, 2 + concurrency);
+    ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
+    ASSERT_EQ(raylet_client->reported_backlog_size,
+              tasks.size() - raylet_client->num_workers_requested);
+  }
+
+  // Grant remaining leases with max lease concurrency of 1.
+  int num_tasks_remaining = tasks.size() - raylet_client->num_workers_requested;
+  lease_policy->num_lease_policy_consults = 0;
+  raylet_client->num_workers_requested = 0;
+  for (int i = 0; i < num_tasks_remaining; i++) {
+    ASSERT_TRUE(
+        raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
+    ASSERT_EQ(lease_policy->num_lease_policy_consults, i + 1);
+    ASSERT_EQ(raylet_client->num_workers_requested, i + 1);
+  }
+
+  lease_policy->num_lease_policy_consults = 0;
+  raylet_client->num_workers_requested = 0;
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, NodeID::Nil()));
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 0);
+
+  // All workers returned.
+  while (!worker_client->callbacks.empty()) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_returned, tasks.size());
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, tasks.size());
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_client_factory = [&](const std::string &ip, int port) {
+    return raylet_client;
+  };
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+
+  int64_t concurrency = 10;
+  auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
+  CoreWorkerDirectTaskSubmitter submitter(address,
+                                          raylet_client,
+                                          client_pool,
+                                          lease_client_factory,
+                                          lease_policy,
+                                          store,
+                                          task_finisher,
+                                          NodeID::Nil(),
+                                          WorkerType::WORKER,
+                                          kLongTimeout,
+                                          actor_creator,
+                                          JobID::Nil(),
+                                          rateLimiter);
+
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 2 * concurrency; i++) {
+    auto task = BuildEmptyTaskSpec();
+    tasks.push_back(task);
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
+
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Trigger the periodic backlog report
+  submitter.ReportWorkerBacklog();
+  ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 1);
+
+  // Max concurrency is still 1.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
+
+  // Increase max concurrency.
+  rateLimiter->limit = concurrency;
+  // The outstanding lease request is spilled back to a remote raylet.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
+  // We should request one lease request from the spillback raylet and then the
+  // rest from the raylet returned by the lease policy.
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
+  ASSERT_EQ(raylet_client->reported_backlog_size,
+            tasks.size() - raylet_client->num_workers_requested + 1);
+
+  // Decrease max concurrency again. Should not request any more leases even as
+  // previous requests are granted, since we are still over the current
+  // concurrency.
+  rateLimiter->limit = 1;
+  for (int i = 0; i < concurrency - 1; i++) {
+    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
+    ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + 1);
+    ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
+    ASSERT_EQ(raylet_client->reported_backlog_size,
+              tasks.size() - raylet_client->num_workers_requested + 1);
+  }
+
+  // Grant remaining leases with max lease concurrency of 1.
+  int num_tasks_remaining = tasks.size() - raylet_client->num_workers_requested + 1;
+  lease_policy->num_lease_policy_consults = 0;
+  raylet_client->num_workers_requested = 0;
+  for (int i = 0; i < num_tasks_remaining; i++) {
+    ASSERT_TRUE(
+        raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
+    ASSERT_EQ(lease_policy->num_lease_policy_consults, i + 1);
+    ASSERT_EQ(raylet_client->num_workers_requested, i + 1);
+  }
+
+  lease_policy->num_lease_policy_consults = 0;
+  raylet_client->num_workers_requested = 0;
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, NodeID::Nil()));
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 0);
+
+  // All workers returned.
+  while (!worker_client->callbacks.empty()) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_returned, tasks.size());
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, tasks.size());
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -894,8 +1127,7 @@ TEST(DirectTaskTransportTest, TestSubmitMultipleTasks) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -967,8 +1199,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1041,8 +1272,7 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1109,7 +1339,8 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1174,8 +1405,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1230,7 +1460,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1285,7 +1516,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1358,7 +1590,8 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1436,8 +1669,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1590,8 +1822,7 @@ TEST(DirectTaskTransportTest, TestBacklogReport) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1660,8 +1891,7 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
                                           /*lease_timeout_ms=*/5,
                                           actor_creator,
                                           JobID::Nil(),
-                                          absl::nullopt,
-                                          1);
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1727,7 +1957,8 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1752,15 +1983,15 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
 
   // Try non-force kill, worker returns normally
   ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
-  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
+  ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
             task.TaskId().Binary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
-  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
@@ -1788,12 +2019,11 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-
-  // Try force kill
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1803,24 +2033,6 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
-  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
-
-  // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil(), true));
-
-  task.GetMutableMessage().set_task_id(
-      TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
-
-  // Try non-force kill
-  ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
-  ASSERT_EQ(worker_client->kill_requests.size(), 0);
-  ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 2);
-  ASSERT_EQ(raylet_client->num_leases_canceled, 2);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
@@ -1852,7 +2064,8 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
                                           WorkerType::WORKER,
                                           kLongTimeout,
                                           actor_creator,
-                                          JobID::Nil());
+                                          JobID::Nil(),
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -1871,6 +2084,43 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(LeaseRequestRateLimiterTest, StaticLeaseRequestRateLimiter) {
+  StaticLeaseRequestRateLimiter limiter(10);
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 10);
+}
+
+TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
+  rpc::GcsNodeInfo dead_node;
+  dead_node.set_state(rpc::GcsNodeInfo::DEAD);
+  rpc::GcsNodeInfo alive_node;
+  alive_node.set_state(rpc::GcsNodeInfo::ALIVE);
+  {
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(1);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 2);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+  }
+
+  {
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+  }
 }
 
 }  // namespace core

@@ -50,7 +50,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      local_node_id_(NodeID::FromRandom()),
       pubsub_periodical_runner_(pubsub_io_service_),
       periodical_runner_(main_service),
       is_started_(false),
@@ -137,8 +136,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
 
-  // Init gcs heartbeat manager.
-  InitGcsHeartbeatManager(gcs_init_data);
+  // Init gcs health check manager.
+  InitGcsHealthCheckManager(gcs_init_data);
 
   // Init KV Manager
   InitKVManager();
@@ -167,6 +166,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init GCS task manager.
   InitGcsTaskManager();
 
+  // Init Monitor service.
+  InitMonitorServer();
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -181,17 +183,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
-
-  // Only after the rpc_server_ is running can the heartbeat manager
-  // be run. Otherwise the node failure detector will mistake
-  // some living nodes as dead as the timer inside node failure
-  // detector is already run.
-  if (gcs_heartbeat_manager_) {
-    gcs_heartbeat_manager_->Start();
-  }
-  RAY_CHECK(int(gcs_heartbeat_manager_ != nullptr) +
-                int(gcs_healthcheck_manager_ != nullptr) ==
-            1);
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   RecordMetrics();
 
@@ -220,14 +212,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
-    // GcsHeartbeatManager should be stopped before RPCServer.
-    // Because closing RPC server will cost several seconds, during this time,
-    // GcsHeartbeatManager is still checking nodes' heartbeat timeout. Since RPC Server
-    // won't handle heartbeat calls anymore, some nodes will be marked as dead during this
-    // time, causing many nodes die after GCS's failure.
-    if (gcs_heartbeat_manager_) {
-      gcs_heartbeat_manager_->Stop();
-    }
     if (RayConfig::instance().use_ray_syncer()) {
       ray_syncer_io_context_.stop();
       ray_syncer_thread_->join();
@@ -245,6 +229,10 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
+    if (gcs_redis_failure_detector_) {
+      gcs_redis_failure_detector_->Stop();
+    }
+
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
@@ -261,7 +249,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*node_info_service_);
 }
 
-void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
+void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     main_service_.post(
@@ -269,28 +257,17 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  if (RayConfig::instance().pull_based_healthcheck()) {
-    gcs_healthcheck_manager_ =
-        std::make_unique<GcsHealthCheckManager>(main_service_, node_death_callback);
-    for (const auto &item : gcs_init_data.Nodes()) {
-      if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-        rpc::Address remote_address;
-        remote_address.set_raylet_id(item.second.node_id());
-        remote_address.set_ip_address(item.second.node_manager_address());
-        remote_address.set_port(item.second.node_manager_port());
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-        gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
-      }
+  gcs_healthcheck_manager_ =
+      std::make_unique<GcsHealthCheckManager>(main_service_, node_death_callback);
+  for (const auto &item : gcs_init_data.Nodes()) {
+    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      rpc::Address remote_address;
+      remote_address.set_raylet_id(item.second.node_id());
+      remote_address.set_ip_address(item.second.node_manager_address());
+      remote_address.set_port(item.second.node_manager_port());
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
-  } else {
-    gcs_heartbeat_manager_ = std::make_shared<GcsHeartbeatManager>(
-        heartbeat_manager_io_service_, /*on_node_death_callback=*/node_death_callback);
-    // Initialize by gcs tables data.
-    gcs_heartbeat_manager_->Initialize(gcs_init_data);
-    // Register service.
-    heartbeat_info_service_.reset(new rpc::HeartbeatInfoGrpcService(
-        heartbeat_manager_io_service_, *gcs_heartbeat_manager_));
-    rpc_server_.RegisterService(*heartbeat_info_service_);
   }
 }
 
@@ -299,7 +276,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      local_node_id_,
+      kGCSNodeID,
       cluster_task_manager_);
 
   // Initialize by gcs tables data.
@@ -346,7 +323,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID(local_node_id_.Binary()),
+      scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
@@ -356,7 +333,7 @@ void GcsServer::InitClusterResourceScheduler() {
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
-      local_node_id_,
+      kGCSNodeID,
       cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
@@ -371,8 +348,11 @@ void GcsServer::InitClusterTaskManager() {
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(
-      gcs_table_storage_, gcs_publisher_, *runtime_env_manager_, *function_manager_);
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
+                                                     gcs_publisher_,
+                                                     *runtime_env_manager_,
+                                                     *function_manager_,
+                                                     kv_manager_->GetInstance());
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -498,8 +478,8 @@ std::string GcsServer::StorageType() const {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().use_ray_syncer()) {
-    ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
-                                                      local_node_id_.Binary());
+    ray_syncer_ =
+        std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_, kGCSNodeID.Binary());
     ray_syncer_->Register(
         syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
     ray_syncer_->Register(
@@ -508,19 +488,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       boost::asio::io_service::work work(ray_syncer_io_context_);
       ray_syncer_io_context_.run();
     });
-
-    for (const auto &pair : gcs_init_data.Nodes()) {
-      if (pair.second.state() ==
-          rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE) {
-        rpc::Address address;
-        address.set_raylet_id(pair.second.node_id());
-        address.set_ip_address(pair.second.node_manager_address());
-        address.set_port(pair.second.node_manager_port());
-
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
-        ray_syncer_->Connect(raylet_client->GetChannel());
-      }
-    }
+    ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(*ray_syncer_);
+    rpc_server_.RegisterService(*ray_syncer_service_);
   } else {
     /*
       The current synchronization flow is:
@@ -547,7 +516,8 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (storage_type_ == "redis") {
-    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
   } else if (storage_type_ == "memory") {
     instance =
         std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
@@ -623,6 +593,17 @@ void GcsServer::InitGcsTaskManager() {
   rpc_server_.RegisterService(*task_info_service_);
 }
 
+void GcsServer::InitMonitorServer() {
+  monitor_server_ = std::make_unique<GcsMonitorServer>(
+      gcs_node_manager_,
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      gcs_resource_manager_,
+      gcs_placement_group_manager_);
+  monitor_grpc_service_.reset(
+      new rpc::MonitorGrpcService(main_service_, *monitor_server_));
+  rpc_server_.RegisterService(*monitor_grpc_service_);
+}
+
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -632,10 +613,6 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    if (gcs_heartbeat_manager_) {
-      gcs_heartbeat_manager_->AddNode(*node);
-    }
-
     rpc::Address address;
     address.set_raylet_id(node->node_id());
     address.set_ip_address(node->node_manager_address());
@@ -651,9 +628,7 @@ void GcsServer::InstallEventListeners() {
     }
     cluster_task_manager_->ScheduleAndDispatchTasks();
 
-    if (RayConfig::instance().use_ray_syncer()) {
-      ray_syncer_->Connect(raylet_client->GetChannel());
-    } else {
+    if (!RayConfig::instance().use_ray_syncer()) {
       gcs_ray_syncer_->AddNode(*node);
     }
   });
@@ -667,17 +642,9 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(node_id);
-        if (gcs_heartbeat_manager_) {
-          gcs_heartbeat_manager_->RemoveNode(node_id);
-        }
+        gcs_healthcheck_manager_->RemoveNode(node_id);
 
-        if (gcs_healthcheck_manager_) {
-          gcs_healthcheck_manager_->RemoveNode(node_id);
-        }
-
-        if (RayConfig::instance().use_ray_syncer()) {
-          ray_syncer_->Disconnect(node_id.Binary());
-        } else {
+        if (!RayConfig::instance().use_ray_syncer()) {
           gcs_ray_syncer_->RemoveNode(*node);
         }
       });
@@ -703,9 +670,11 @@ void GcsServer::InstallEventListeners() {
       });
 
   // Install job event listeners.
-  gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
-    gcs_actor_manager_->OnJobFinished(*job_id);
-    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
+  gcs_job_manager_->AddJobFinishedListener([this](const rpc::JobTableData &job_data) {
+    const auto job_id = JobID::FromBinary(job_data.job_id());
+    gcs_actor_manager_->OnJobFinished(job_id);
+    gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
+    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
 
   // Install scheduling event listeners.
@@ -776,7 +745,9 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
+        main_service_, redis_client_->GetPrimaryContext(), []() {
+          RAY_LOG(FATAL) << "Redis failed. Shutdown GCS.";
+        });
     gcs_redis_failure_detector_->Start();
   }
   return redis_client_;
@@ -788,6 +759,8 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "GcsTaskManager Event stats:\n\n"
+                  << gcs_task_manager_->GetIoContext().stats().StatsString() << "\n\n";
   }
 }
 
@@ -807,14 +780,14 @@ void GcsServer::TryGlobalGC() {
     if (RayConfig::instance().use_ray_syncer()) {
       auto msg = std::make_shared<syncer::RaySyncMessage>();
       msg->set_version(absl::GetCurrentTimeNanos());
-      msg->set_node_id(local_node_id_.Binary());
+      msg->set_node_id(kGCSNodeID.Binary());
       msg->set_message_type(syncer::MessageType::COMMANDS);
       std::string serialized_msg;
       RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
       msg->set_sync_message(std::move(serialized_msg));
       ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
     } else {
-      resources_data.set_node_id(local_node_id_.Binary());
+      resources_data.set_node_id(kGCSNodeID.Binary());
       gcs_ray_syncer_->Update(resources_data);
     }
 

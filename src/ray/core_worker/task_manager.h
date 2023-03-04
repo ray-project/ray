@@ -49,10 +49,12 @@ class TaskFinisherInterface {
                                       rpc::ErrorType error_type,
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                                      bool mark_task_object_failed = true) = 0;
+                                      bool mark_task_object_failed = true,
+                                      bool fail_immediately = false) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                           const NodeID &node_id) = 0;
+                                           const NodeID &node_id,
+                                           const WorkerID &worker_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -185,12 +187,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed. If this is set to false, then the caller is
   /// responsible for later failing or completing the task.
+  /// \param[in] fail_immediately whether to fail the task and ignore
+  /// the retries that are available.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                              bool mark_task_object_failed = true) override;
+                              bool mark_task_object_failed = true,
+                              bool fail_immediately = false) override;
 
   /// A pending task failed. This will mark the task as failed.
   /// This doesn't always mark the return object as failed
@@ -284,7 +289,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id The task that is will be running.
   /// \param[in] node_id The node id that this task wil be running.
-  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id) override;
+  /// \param[in] worker_id The worker id that this task wil be running.
+  void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -295,12 +303,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
-
-  /// Make a rpc::TaskInfoEntry based on the TaskSpecification.
-  ///
-  /// \param[in] task_spec TaskSpecification of the task.
-  /// \return TaskInfoEntry based on the spec.
-  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
@@ -317,11 +319,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
   /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
   /// for SUBMITTED_TO_WORKER status change.
+  /// \param worker_id Worker ID of the worker for which the task's submitted. Only
+  /// applicable for SUBMITTED_TO_WORKER status change.
   void RecordTaskStatusEvent(int32_t attempt_number,
                              const TaskSpecification &spec,
                              rpc::TaskStatus status,
                              bool include_task_info = false,
-                             absl::optional<NodeID> node_id = absl::nullopt);
+                             absl::optional<NodeID> node_id = absl::nullopt,
+                             absl::optional<WorkerID> worker_id = absl::nullopt);
 
  private:
   struct TaskEntry {

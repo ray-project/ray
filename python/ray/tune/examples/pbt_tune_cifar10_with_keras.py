@@ -116,7 +116,7 @@ class Cifar10Model(Trainable):
         model = self._build_model(x_train.shape[1:])
 
         opt = tf.keras.optimizers.Adadelta(
-            lr=self.config.get("lr", 1e-4), decay=self.config.get("decay", 1e-4)
+            lr=self.config.get("lr", 1e-4), weight_decay=self.config.get("decay", 1e-4)
         )
         model.compile(
             loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"]
