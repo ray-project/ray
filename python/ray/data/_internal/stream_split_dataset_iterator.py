@@ -1,33 +1,59 @@
-from typing import List, Literal, Optional, Iterator, Callable, Any
-import time
+import asyncio
+from collections import deque
+import copy
+import threading
+from typing import (
+    List,
+    Literal,
+    Optional,
+    Iterator,
+    Callable,
+    Any,
+    Union,
+    TYPE_CHECKING,
+)
 
 import ray
-from ray.data import Dataset, DatasetIterator
+from ray.data.dataset_iterator import DatasetIterator
 from ray.data.block import Block, DataBatch
+from ray.data.context import DatasetContext
 from ray.data._internal.block_batching import batch_block_refs
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    import pyarrow
+    from ray.data import Dataset
 
 
 class StreamSplitDatasetIterator(DatasetIterator):
     @staticmethod
     def create(
-        self,
-        base: Dataset,
+        base_dataset: "Dataset",
         n: int,
         equal: bool,
         locality_hints: Optional[List[ray.actor.ActorHandle]],
     ) -> List["StreamSplitDatasetIterator"]:
-        coord_actor = SplitCoordinator.remote(base, n, equal, locality_hints)
-        coord_actor.start_processing.remote()
-        return [StreamSplitDatasetIterator(coord_actor, i) for i in range(n)]
+        coord_actor = SplitCoordinator.remote(base_dataset, n, equal, locality_hints)
+        return [
+            StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
+        ]
 
     def __init__(
         self,
+        base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
     ):
+        self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
+
+    def stats(self) -> str:
+        return self._base_dataset.stats()
+
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        return self._base_dataset.schema()
 
     def iter_batches(
         self,
@@ -56,19 +82,22 @@ class StreamSplitDatasetIterator(DatasetIterator):
         )
 
     def _gen_blocks(self) -> Iterator[ObjectRef[Block]]:
+        future = self._coord_actor.get.remote(self._output_split_idx)
         while True:
-            blocks = ray.get(self._coord_actor.get(self._output_split_idx))
-            if not blocks:
+            block = ray.get(future)
+            if not block:
                 break
             else:
-                yield from blocks
+                future = self._coord_actor.get.remote(self._output_split_idx)
+                yield block
 
 
+# TODO schedule on same node
 @ray.remote(num_cpus=0)
 class SplitCoordinator:
     def __init__(
         self,
-        dataset: Dataset,
+        dataset: "Dataset",
         n: int,
         equal: bool,
         locality_hints: Optional[List[ray.actor.ActorHandle]],
@@ -77,28 +106,50 @@ class SplitCoordinator:
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
-        self._outboxes = [[] for _ in range(n)]
+        self._outboxes = [deque() for _ in range(n)]
         self._finished = False
 
-    async def start_processing(self) -> None:
-        try:
-            print("START PROCESSING LOOP")
-            ds = self._base_dataset
-            block_iterator, stats, executor = ds._plan.execute_to_iterator()
-            # TODO: backpressure???
-            for block in block_iterator:
-                self._outboxes[block.output_split_idx].append(block)
-            print("END PROCESSING LOOP")
-        finally:
-            self._finished = True
+        outer = self
 
-    async def get(self, output_split_idx: int) -> List[ObjectRef[Block]]:
-        result = []
+        class Runner(threading.Thread):
+            def run(self) -> None:
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
+                )
+                from ray.data._internal.execution.legacy_compat import (
+                    execute_to_legacy_bundle_iterator,
+                )
+
+                ctx = DatasetContext.get_current()
+                executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+                try:
+                    print("START PROCESSING LOOP")
+                    ds = outer._base_dataset
+
+                    def add_split_op(dag):
+                        return OutputSplitter(dag, outer._n, outer._equal)
+
+                    bundle_iterator = execute_to_legacy_bundle_iterator(
+                        executor,
+                        ds._plan,
+                        True,
+                        ds._plan._dataset_uuid,
+                        dag_rewrite=add_split_op,
+                    )
+                    for bundle in bundle_iterator:
+                        for block, _ in bundle.blocks:
+                            outer._outboxes[bundle.output_split_idx].append(block)
+                    print("END PROCESSING LOOP")
+                finally:
+                    outer._finished = True
+
+        self._runner = Runner()
+        self._runner.start()
+
+    async def get(self, output_split_idx: int) -> ObjectRef[Block]:
         outbox = self._outboxes[output_split_idx]
         while not self._finished:
-            while outbox:
-                result.append(outbox.pop(0))
-            if result:
-                return result
-            time.sleep(0.1)  # Polling loop.
-        return []  # End of stream.
+            if outbox:
+                return outbox.popleft()
+            await asyncio.sleep(0.1)  # Polling loop.
+        return None  # End of stream.

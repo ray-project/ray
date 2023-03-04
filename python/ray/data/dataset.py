@@ -1141,7 +1141,7 @@ class Dataset(Generic[T]):
 
         return self.map_batches(process_batch)
 
-    @ConsumptionAPI
+    # @ConsumptionAPI
     def streaming_split(
         self,
         n: int,
