@@ -31,7 +31,7 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     const std::shared_ptr<const TaskSpecification> &task_spec,
-    absl::optional<const TaskStatusEvent::TaskStateUpdate> &state_update)
+    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
@@ -86,8 +86,7 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
     dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
   }
 
-  if (state_update_->error_info_.has_value() &&
-      state_update_->error_info_->has_error_type()) {
+  if (state_update_->error_info_.has_value()) {
     dst_state_update->set_error_type(state_update_->error_info_->error_type());
   }
 }

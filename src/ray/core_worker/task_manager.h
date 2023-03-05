@@ -321,8 +321,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       const TaskSpecification &spec,
       rpc::TaskStatus status,
       bool include_task_info = false,
-      std::unique_ptr<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
-          nullptr);
+      absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt);
 
  private:
   struct TaskEntry {

@@ -806,12 +806,11 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   it->second.SetNodeId(node_id);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
-  RecordTaskStatusEvent(
-      it->second.spec.AttemptNumber(),
-      it->second.spec,
-      rpc::TaskStatus::SUBMITTED_TO_WORKER,
-      /* include_task_info */ false,
-      std::make_unique<worker::TaskStatusEvent::TaskStateUpdate>(node_id, worker_id));
+  RecordTaskStatusEvent(it->second.spec.AttemptNumber(),
+                        it->second.spec,
+                        rpc::TaskStatus::SUBMITTED_TO_WORKER,
+                        /* include_task_info */ false,
+                        worker::TaskStatusEvent::TaskStateUpdate(node_id, worker_id));
 }
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
@@ -834,12 +833,11 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                                         const rpc::RayErrorInfo &error_info) {
   // Record the old attempt status as FAILED.
-  RecordTaskStatusEvent(
-      task_entry.spec.AttemptNumber(),
-      task_entry.spec,
-      rpc::TaskStatus::FAILED,
-      /* include_task_info */ false,
-      std::make_unique<const worker::TaskStatusEvent::TaskStateUpdate>(error_info));
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
+                        task_entry.spec,
+                        rpc::TaskStatus::FAILED,
+                        /* include_task_info */ false,
+                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
@@ -854,12 +852,11 @@ void TaskManager::SetTaskStatus(TaskEntry &task_entry,
                                 rpc::TaskStatus status,
                                 const rpc::RayErrorInfo &error_info) {
   task_entry.SetStatus(status);
-  RecordTaskStatusEvent(
-      task_entry.spec.AttemptNumber(),
-      task_entry.spec,
-      status,
-      /* include_task_info */ false,
-      std::make_unique<const worker::TaskStatusEvent::TaskStateUpdate>(error_info));
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
+                        task_entry.spec,
+                        status,
+                        /* include_task_info */ false,
+                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -918,7 +915,7 @@ void TaskManager::RecordTaskStatusEvent(
     const TaskSpecification &spec,
     rpc::TaskStatus status,
     bool include_task_info,
-    std::unique_ptr<const worker::TaskStatusEvent::TaskStateUpdate> state_update) {
+    absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update) {
   if (!task_event_buffer_.Enabled()) {
     return;
   }

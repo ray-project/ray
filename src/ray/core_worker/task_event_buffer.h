@@ -94,7 +94,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
-      absl::optional<const TaskStateUpdate> &state_update = absl::nullopt);
+      absl::optional<const TaskStateUpdate> state_update = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
