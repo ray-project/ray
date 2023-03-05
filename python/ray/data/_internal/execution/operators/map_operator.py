@@ -132,7 +132,9 @@ class MapOperator(PhysicalOperator, ABC):
             self._output_queue = _OrderedOutputQueue()
         else:
             self._output_queue = _UnorderedOutputQueue()
-        if options.locality_with_output:
+        if isinstance(options.locality_with_output, list):
+            self._ray_remote_args_factory = ... # TODO round robin these
+        elif options.locality_with_output:
             # Try to schedule tasks locally.
             self._ray_remote_args[
                 "scheduling_strategy"

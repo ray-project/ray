@@ -113,7 +113,7 @@ class OutputSplitter(PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._equal:
-            return f"{len(self._buffer)} buffered [{self.hits} {self.misses}]"
+            return f"{len(self._buffer)} buffered [{self.hits} locality hits {self.misses} misses]"
         assert not self._buffer
         return ""
 
@@ -138,6 +138,7 @@ class OutputSplitter(PhysicalOperator):
         return i
 
     def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
+        # TODO also check the actor locality enabled flag
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:

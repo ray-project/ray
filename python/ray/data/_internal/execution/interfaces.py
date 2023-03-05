@@ -9,7 +9,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
-# Type alias for a node id.
+# Type alias for a node id. TODO: explain this
 NodeIdStr = str
 
 
@@ -191,8 +191,9 @@ class ExecutionOptions:
     resource_limits: ExecutionResources = ExecutionResources()
 
     # Set this to prefer running tasks on the same node as the output
-    # node (node driving the execution).
-    locality_with_output: bool = False
+    # node (node driving the execution). It can also be set to a list of node ids
+    # to spread the outputs across those nodes.
+    locality_with_output: Union[bool, List[NodeIdStr]] = False
 
     # Set this to preserve the ordering between blocks processed by operators under the
     # streaming executor. The bulk executor always preserves order.
