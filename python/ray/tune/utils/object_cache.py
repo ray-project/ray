@@ -85,17 +85,18 @@ class _ObjectCache:
         Returns:
             True if the object has been cached. False otherwise.
         """
-        # If we have more objects cached already than we desire,
+        # If we have more objects cached already than we desire
         if len(self._cached_objects[key]) >= self._max_num_objects[key]:
-            # ... and we also have at least one cached object, we don't want
-            # to cache this object.
+            # If eager caching is disabled, never cache
+            if not self._eager_caching:
+                return False
+
+            # If we have more than one other cached object, don't cache
             if self._num_cached_objects > 0:
                 return False
 
-            # ... or, if we don't have any cached objects (i.e. the max
-            # num objects is also 0), we only want to cache this object if
-            # eager caching is enabled.
-            if self._num_cached_objects == 0 and not self._eager_caching:
+            # If any other objects are expected to be cached, don't cache
+            if any(v for v in self._max_num_objects.values()):
                 return False
 
         # Otherwise, cache (for now).

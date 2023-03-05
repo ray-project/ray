@@ -603,6 +603,9 @@ class RayTrialExecutor:
             return False
 
         logger.debug(f"Caching actor of trial {trial} for re-use")
+
+        self._trial_to_acquired_resources.pop(trial)
+
         trial.set_runner(None)
 
         return True

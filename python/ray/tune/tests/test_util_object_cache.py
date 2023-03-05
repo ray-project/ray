@@ -87,6 +87,23 @@ def test_multi(eager):
     assert cache.num_cached_objects == (0 if not eager else 1)
 
 
+def test_multi_eager_other():
+    """On eager caching, only cache an object if no other object is expected.
+
+    - Expect up to one cached A object
+    - Try to cache object B --> doesn't get cached
+    - Remove expectation for A object
+    - Try to cache object B --> get's cached
+    """
+    cache = _ObjectCache(eager_caching=True)
+
+    cache.increase_max("A", 1)
+    assert not cache.cache_object("B", 2)
+
+    cache.decrease_max("A", 1)
+    assert cache.cache_object("B", 3)
+
+
 @pytest.mark.parametrize("eager", [False, True])
 def test_force_all(eager):
     """Assert that force_all=True will always evict all object."""
