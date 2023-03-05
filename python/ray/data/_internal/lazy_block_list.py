@@ -2,14 +2,13 @@ import math
 import uuid
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
-import numpy as np
-
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.data._internal.util import _split_list
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -162,22 +161,22 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
         num_splits = math.ceil(len(self._tasks) / split_size)
-        tasks = np.array_split(self._tasks, num_splits)
-        block_partition_refs = np.array_split(self._block_partition_refs, num_splits)
-        block_partition_meta_refs = np.array_split(
+        tasks = _split_list(self._tasks, num_splits)
+        block_partition_refs = _split_list(self._block_partition_refs, num_splits)
+        block_partition_meta_refs = _split_list(
             self._block_partition_meta_refs, num_splits
         )
-        cached_metadata = np.array_split(self._cached_metadata, num_splits)
+        cached_metadata = _split_list(self._cached_metadata, num_splits)
         output = []
         for t, b, m, c in zip(
             tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
         ):
             output.append(
                 LazyBlockList(
-                    t.tolist(),
-                    b.tolist(),
-                    m.tolist(),
-                    c.tolist(),
+                    t,
+                    b,
+                    m,
+                    c,
                     owned_by_consumer=self._owned_by_consumer,
                 )
             )

@@ -4581,9 +4581,19 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
             ds = ray.data.range(10)
             ds = ds.map_batches(lambda x: x)
             ds.take()
-        except LoggerWarningCalled:
-            logger_args, logger_kwargs = mock_logger.call_args
-            assert "Warning: The Ray cluster currently does not have " in logger_args[0]
+        except Exception as e:
+            if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+                assert isinstance(e, ValueError)
+                assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(
+                    e
+                )
+            else:
+                assert isinstance(e, LoggerWarningCalled)
+                logger_args, logger_kwargs = mock_logger.call_args
+                assert (
+                    "Warning: The Ray cluster currently does not have "
+                    in logger_args[0]
+                )
 
 
 def test_nowarning_execute_with_cpu(ray_start_cluster_init):
