@@ -38,19 +38,19 @@ LocalResourceManager::LocalResourceManager(
 
 void LocalResourceManager::UpdateTotalCPU(uint64_t total) {
   uint64_t current_total = GetNumCpus();
-  uint64_t current_avail =
-      static_cast<uint64_t>(local_resources_.available.Sum(ResourceID::CPU()).Double());
   if (total > current_total) {
+    // Turbo
     AddLocalResourceInstances(
         ResourceID::CPU(),
         std::vector<FixedPoint>{static_cast<double>(total - current_total)});
   } else {
+    // Un-turbo
     uint64_t diff = current_total - total;
     local_resources_.available.GetMutable(ResourceID::CPU())[0] -=
         static_cast<double>(diff);
     local_resources_.total.GetMutable(ResourceID::CPU())[0] -= static_cast<double>(diff);
-    OnResourceChanged();
   }
+  OnResourceChanged();
 }
 
 void LocalResourceManager::AddLocalResourceInstances(
