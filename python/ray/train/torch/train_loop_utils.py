@@ -63,6 +63,7 @@ def get_device() -> torch.device:
         >>> # torch.cuda.is_available() == True
         >>> # get_device() == torch.device("cuda:4")
     """
+    device = torch.device("cpu")
     if torch.cuda.is_available():
         # GPU IDs are assigned by Ray after you specify "use_gpu"
         # GPU `ray.get_gpu_ids()` may return ints or may return strings.
@@ -92,8 +93,10 @@ def get_device() -> torch.device:
             # 0th device.
             device_id = 0
         device = torch.device(f"cuda:{device_id}")
-    else:
-        device = torch.device("cpu")
+    elif torch.backends.mps.is_available():
+        gpu_ids = ray.get_gpu_ids()
+        if len(gpu_ids) > 0:
+            device = torch.device("mps")
 
     return device
 

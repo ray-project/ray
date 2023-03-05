@@ -149,7 +149,10 @@ class _TorchBackend(Backend):
         if dist.is_available():
             # Set the appropriate training backend.
             if backend_config.backend is None:
-                if worker_group.num_gpus_per_worker > 0:
+                if (
+                    worker_group.num_workers > 1
+                    and worker_group.num_gpus_per_worker > 0
+                ):
                     backend = "nccl"
                 else:
                     backend = "gloo"
