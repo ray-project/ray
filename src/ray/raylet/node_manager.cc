@@ -684,6 +684,8 @@ void NodeManager::HandleUpdateTotalCPU(rpc::UpdateTotalCPURequest request,
   RAY_LOG(INFO) << "[HandleUpdateTotalCPU After] " << request.total() << " "
                 << cluster_resource_scheduler_->GetLocalResourceManager().DebugString();
 
+  cluster_task_manager_->ScheduleAndDispatchTasks();
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
