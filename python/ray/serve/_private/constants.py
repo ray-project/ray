@@ -140,3 +140,5 @@ MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
 )
+# Routing tag
+RAY_SERVE_REQUEST_ROUTING_TAG = "ray_serve_request_routing_tag"

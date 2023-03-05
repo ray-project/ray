@@ -11,6 +11,7 @@ try:
         shutdown,
         start,
         delete,
+        multiplex,
     )
     from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
@@ -40,4 +41,5 @@ __all__ = [
     "run",
     "PredictorDeployment",
     "delete",
+    "multiplex",
 ]

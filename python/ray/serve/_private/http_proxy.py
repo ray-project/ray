@@ -30,11 +30,13 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_REQUEST_ROUTING_TAG,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
 from ray.serve._private.utils import get_random_letters
+from starlette.datastructures import QueryParams
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -77,6 +79,10 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # dataclasses are 10-100x faster than cloudpickle.
     request = pickle.dumps(request)
 
+    # Extract the request routing tags
+    params = QueryParams(scope["query_string"])
+    tag = params.get(RAY_SERVE_REQUEST_ROUTING_TAG, None)
+
     retries = 0
     backoff_time_s = 0.05
     backoff = False
@@ -84,8 +90,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-        assignment_task: asyncio.Task = handle.remote(request)
+    while retries < MAX_REPLICA_FAILURE_RETRIES:
+        assignment_task: asyncio.Task = handle.remote(request, request_routing_tags=tag)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,

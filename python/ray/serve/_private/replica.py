@@ -264,6 +264,10 @@ def create_replica_wrapper(name: str):
         async def check_health(self):
             await self.replica.check_health()
 
+        @ray.method(num_returns=1)
+        async def get_custom_tags(self):
+            return await self.replica.get_custom_tags()
+
     # Dynamically create a new class with custom name here so Ray picks it up
     # correctly in actor metadata table and observability stack.
     return type(
@@ -297,12 +301,14 @@ class RayServeReplica:
         self.rwlock = aiorwlock.RWLock()
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
+        get_custom_tags = getattr(_callable, "get_custom_tags", None)
         if not callable(user_health_check):
 
             def user_health_check():
                 pass
 
         self.user_health_check = sync_to_async(user_health_check)
+        self.custom_tags_get = sync_to_async(get_custom_tags)
 
         self.num_ongoing_requests = 0
 
@@ -370,6 +376,24 @@ class RayServeReplica:
                 collection_callback=self._collect_autoscaling_metrics,
                 metrics_process_func=process_remote_func,
             )
+
+        # NOTE(edoakes): we used to recommend that users use the "ray" logger
+        # and tagged the logs with metadata as below. We now recommend using
+        # the "ray.serve" 'component logger' (as of Ray 1.13). This is left to
+        # maintain backwards compatibility with users who were using the
+        # existing logger. We can consider removing it in Ray 2.0.
+        ray_logger = logging.getLogger("ray")
+        for handler in ray_logger.handlers:
+            handler.setFormatter(
+                logging.Formatter(
+                    handler.formatter._fmt
+                    + f" component=serve deployment={self.deployment_name} "
+                    f"replica={self.replica_tag}"
+                )
+            )
+
+    async def get_custom_tags(self):
+        return await self.custom_tags_get()
 
     async def check_health(self):
         await self.user_health_check()

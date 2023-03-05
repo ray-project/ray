@@ -138,6 +138,43 @@ class ReplicaSet:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
+
+        # Find replica by tag
+        tag = query.kwargs.get("request_routing_tags", None)
+        # k = self.in_flight_queries.keys()
+        # for item in k:
+        #    print(item)
+        replica_candidate = None
+        if tag:
+            for _ in range(len(self.in_flight_queries.keys())):
+                replica = next(self.replica_iterator)
+                # pick up a replica which has least tags
+                if replica_candidate is None or len(replica.custom_tags) < len(
+                    replica_candidate.custom_tags
+                ):
+                    replica_candidate = replica
+                if (
+                    len(self.in_flight_queries[replica])
+                    >= replica.max_concurrent_queries
+                ):
+                    # This replica is overloaded, try next one
+                    continue
+                if tag in replica.custom_tags:
+                    replica_candidate = replica
+                    break
+            # pick up replica which has least number of tags
+            if replica_candidate:
+                # Directly passing args because it might contain an ObjectRef.
+                (
+                    tracker_ref,
+                    user_ref,
+                ) = replica_candidate.actor_handle.handle_request.remote(
+                    pickle.dumps(query.metadata), *query.args, **query.kwargs
+                )
+                self.in_flight_queries[replica_candidate].add(tracker_ref)
+                return user_ref
+
+        # Find replica general
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
             if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:

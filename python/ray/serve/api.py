@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_PORT,
     SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
+    RAY_SERVE_REQUEST_ROUTING_TAG,
 )
 from ray.serve.context import (
     ReplicaContext,
@@ -49,6 +50,9 @@ from ray.serve._private.utils import (
 )
 
 from ray.serve._private import api as _private_api
+import starlette
+from collections import OrderedDict
+from ray.util import metrics
 
 logger = logging.getLogger(__file__)
 
@@ -154,6 +158,68 @@ def get_replica_context() -> ReplicaContext:
             "Ray Serve deployment."
         )
     return internal_replica_context
+
+
+# from ray.serve.multiplex import ModelMultiplex
+@PublicAPI(stability="alpha")
+def multiplex(num_models_per_replicas=1):
+    """Model multiplexing support"""
+
+    # For demo
+    class bcolors:
+        HEADER = "\033[95m"
+        OKBLUE = "\033[94m"
+        OKCYAN = "\033[96m"
+        OKGREEN = "\033[92m"
+        WARNING = "\033[93m"
+        FAIL = "\033[91m"
+        ENDC = "\033[0m"
+        BOLD = "\033[1m"
+        UNDERLINE = "\033[4m"
+
+    def decorator(cls):
+        class ModelMultiplexWrapper:
+            async def __init__(self, *args, **kwargs):
+                # Make it LRU
+                self.models: Dict[str:Any] = OrderedDict()
+                self.num_models_per_replicas = num_models_per_replicas
+                self._lru_order = []
+                self.nums_model_unload = 0
+                import os
+
+                self.pid = os.getpid()
+
+            def get_custom_tags(self):
+                return self.models.keys()
+
+            def load_model(self, tag):
+                return cls(tag)
+
+            def _should_unload_model(self):
+                return len(self.models) >= self.num_models_per_replicas
+
+            def _unload_model(self):
+                tag, _ = self.models.popitem(last=False)
+                self.nums_model_unload += 1
+
+            async def __call__(self, request: starlette.requests.Request):
+                assert RAY_SERVE_REQUEST_ROUTING_TAG in request.query_params
+                tag = request.query_params[RAY_SERVE_REQUEST_ROUTING_TAG]
+                if tag not in self.models:
+                    print(f"{bcolors.WARNING}Model miss {tag} {bcolors.ENDC}")
+                    if self._should_unload_model():
+                        self._unload_model()
+                    self.models[tag] = self.load_model(tag)
+                else:
+                    print(f"{bcolors.OKGREEN}Model hit {tag} {bcolors.ENDC}")
+                self.models.move_to_end(tag)
+                resp = await self.models[tag](request)
+                return (self.pid, self.nums_model_unload, resp)
+
+        ModelMultiplexWrapper.__name__ = cls.__name__
+        return ModelMultiplexWrapper
+
+    return decorator
 
 
 @PublicAPI(stability="beta")

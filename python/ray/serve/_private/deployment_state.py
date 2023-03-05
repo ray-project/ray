@@ -704,6 +704,7 @@ class DeploymentReplica(VersionedReplica):
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+        self._custom_tags = []
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -712,6 +713,7 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
+            custom_tags=self._custom_tags,
         )
 
     def get_replica_details(self, state: ReplicaState) -> ReplicaDetails:
@@ -864,6 +866,15 @@ class DeploymentReplica(VersionedReplica):
         # when dumping these dictionaries. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
+
+    def update_custom_tags(self) -> bool:
+        # return whether the tags updated or not
+        tags = ray.get(self._actor.actor_handle.get_custom_tags.remote())
+        updated = False
+        if set(tags).difference(set(self._custom_tags)):
+            updated = True
+        self._custom_tags = tags
+        return updated
 
 
 class ReplicaStateContainer:
@@ -1707,6 +1718,12 @@ class DeploymentState:
 
         return running_replicas_changed
 
+    def _update_replica_custom_tags(self):
+        replica_changed = False
+        for replica in self._replicas.get(states=[ReplicaState.RUNNING]):
+            replica_changed |= replica.update_custom_tags()
+        return replica_changed
+
     def update(self) -> bool:
         """Attempts to reconcile this deployment to match its goal state.
 
@@ -1726,6 +1743,9 @@ class DeploymentState:
 
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed |= self._check_and_update_replicas()
+
+            # Check replica custom tags
+            running_replicas_changed |= self._update_replica_custom_tags()
 
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
