@@ -180,11 +180,15 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
+            gpu_types = None
+            # TODO: Fix ordering. GPUtil may be installed but only detects NVIDIA GPUs.
             if importlib.util.find_spec("GPUtil") is not None:
                 gpu_types = _get_gpu_types_gputil()
-            else:
+            elif sys.platform.startswith("linux"):
                 info_string = _get_gpu_info_string()
                 gpu_types = _constraints_from_gpu_info(info_string)
+            elif sys.platform == "darwin" and platform.processor() == "arm":
+                gpu_types = _get_gpu_types_mac()
             resources.update(gpu_types)
         except Exception:
             logger.exception("Could not parse gpu information.")
@@ -289,9 +293,7 @@ def _autodetect_num_gpus():
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
         result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
     elif sys.platform == "darwin" and platform.processor() == "arm":
-        cmdargs = ["system_profiler", "SPDisplaysDataType", "-json"]
-        output = json.loads(subprocess.check_output(cmdargs))
-        gpus = [d for d in output["SPDisplaysDataType"] if "spdisplays_metalfamily" in d]
+        gpus = _get_gpus_mac()
         return len(gpus)
     return result
 
@@ -368,3 +370,36 @@ def _pretty_gpu_name(name):
         return None
     match = GPU_NAME_PATTERN.match(name)
     return match.group(1) if match else None
+
+
+def _get_gpus_mac():
+    cmdargs = ["system_profiler", "SPDisplaysDataType", "-json"]
+    output = json.loads(subprocess.check_output(cmdargs))
+    gpus = [d for d in output["SPDisplaysDataType"] if "spdisplays_metalfamily" in d]
+    return gpus
+
+
+def _get_gpu_types_mac():
+    def _pretty_gpu_name_mac(name):
+        """Prettify Apple GPU name.
+
+        Examples:
+            >>> _pretty_gpu_name_mac("Apple M1")
+            M1
+            >>> _pretty_gpu_name_mac("Apple M1 Pro")
+            M1_Pro
+        """
+        words = name.split(" ")
+        if len(words) > 1 and words[0] == "Apple":
+            words = words[1:]
+            pretty_name = "_".join(words)
+            return pretty_name
+        return None
+
+    gpus = _get_gpus_mac()
+    if len(gpus) > 0:
+        gpu_name = gpus[0]["sppci_model"]
+        pretty_name = _pretty_gpu_name_mac(gpu_name)
+        constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{pretty_name}"
+        return {constraint_name: 1}
+    return None
