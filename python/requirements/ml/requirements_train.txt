@@ -2,8 +2,7 @@
 
 -r requirements_dl.txt
 
-torchmetrics==0.8.2
-mosaicml==0.12.1
+mosaicml==0.10.1
 mlflow==1.30.0
 tensorboardX==2.4.1
 
