@@ -10,7 +10,6 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 
 def get_dataset():
-
     return datasets.FashionMNIST(
         root="/tmp/data",
         train=True,
@@ -34,11 +33,9 @@ class NeuralNetwork(nn.Module):
         inputs = self.flatten(inputs)
         logits = self.linear_relu_stack(inputs)
         return logits
-
 # __torch_setup_end__
 
 # __torch_single_begin__
-
 def train_func():
     num_epochs = 3
     batch_size = 64
@@ -59,11 +56,9 @@ def train_func():
             loss.backward()
             optimizer.step()
         print(f"epoch: {epoch}, loss: {loss.item()}")
-
 # __torch_single_end__
 
 # __torch_distributed_begin__
-
 from ray import train
 
 def train_func_distributed():
@@ -88,30 +83,23 @@ def train_func_distributed():
             loss.backward()
             optimizer.step()
         print(f"epoch: {epoch}, loss: {loss.item()}")
-
 # __torch_distributed_end__
 
+# __torch_single_run_begin__
+train_func()
+# __torch_single_run_end__
 
-if __name__ == "__main__":
-    # __torch_single_run_begin__
+# __torch_trainer_begin__
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
-    train_func()
+# For GPU Training, set `use_gpu` to True.
+use_gpu = False
 
-    # __torch_single_run_end__
+trainer = TorchTrainer(
+    train_func_distributed,
+    scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu)
+)
 
-    # __torch_trainer_begin__
-
-    from ray.train.torch import TorchTrainer
-    from ray.air.config import ScalingConfig
-
-    # For GPU Training, set `use_gpu` to True.
-    use_gpu = False
-
-    trainer = TorchTrainer(
-        train_func_distributed,
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu)
-    )
-
-    results = trainer.fit()
-
-    # __torch_trainer_end__
+results = trainer.fit()
+# __torch_trainer_end__
