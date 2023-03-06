@@ -325,7 +325,7 @@ class RayTrialExecutor:
             resource_request = trial.placement_group_factory
 
             self._staged_trials.add(trial)
-            self._actor_cache.increase_max(trial.placement_group_factory)
+            self._actor_cache.increase_max(resource_request)
             self._resource_manager.request_resources(resource_request=resource_request)
 
         self._resource_manager.update_state()

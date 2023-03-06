@@ -2,12 +2,14 @@ from collections import defaultdict, Counter
 
 from typing import Dict, Generator, List, Optional, TypeVar
 
+# Grouping key - must be hashable
 T = TypeVar("T")
+# Objects to cache
 U = TypeVar("U")
 
 
 class _ObjectCache:
-    """Cache a number of max objects given a grouping key.
+    """Cache up to some maximum count given a grouping key.
 
     This object cache can e.g. be used to cache Ray Tune trainable actors
     given their resource requirements (reuse_actors=True).
@@ -15,9 +17,9 @@ class _ObjectCache:
     If the max number of cached objects for a grouping key is reached,
     no more objects for this group will be cached.
 
-    However, if eager caching is enabled, one object (globally)
-    may be cached, even if the number of max objects is 0. This is to
-    allow to cache an object if the number of max object of this key
+    However, if eager caching is enabled, one object (globally across all grouping
+    keys) may be cached, even if the max number of objects is 0. This is to
+    allow to cache an object if the max number of objects of this key
     will increase shortly after (as is the case e.g. in the Ray Tune control
     loop).
 
@@ -131,6 +133,11 @@ class _ObjectCache:
         If the number of max objects is lower than the number of
         cached objects for a given key, objects are evicted until
         the numbers are equal.
+
+        If eager caching is enabled (and ``force_all=False``), one cached object
+        may be retained.
+
+        Objects are evicted FIFO.
 
         If ``keep_one=True``, one (global) object is allowed to remain cached.
 
