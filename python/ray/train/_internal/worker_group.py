@@ -228,6 +228,8 @@ class WorkerGroup:
         """Execute ``func`` on each worker and return the futures.
 
         Args:
+            name: Allows customized task name to be used rather than
+                `_RayTrainWorker__execute`.
             func: A function to call on each worker.
             args, kwargs: Passed directly into func.
 
@@ -255,6 +257,8 @@ class WorkerGroup:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
+            name: Allows customized task name to be used rather than
+                `_RayTrainWorker__execute`.
             func: A function to call on each worker.
             args, kwargs: Passed directly into func.
 
@@ -271,6 +275,8 @@ class WorkerGroup:
         """Execute ``func`` on worker ``worker_index`` and return futures.
 
         Args:
+            name: Allows customized task name to be used rather than
+                `_RayTrainWorker__execute`.
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
             args, kwargs: Passed directly into func.
@@ -298,6 +304,8 @@ class WorkerGroup:
         """Execute ``func`` on worker with index ``worker_index``.
 
         Args:
+            name: Allows customized task name to be used rather than
+                `_RayTrainWorker__execute`.
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
             args, kwargs: Passed directly into func.
