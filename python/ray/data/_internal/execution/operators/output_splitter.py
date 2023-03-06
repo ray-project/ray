@@ -46,7 +46,8 @@ class OutputSplitter(PhysicalOperator):
             if n != len(locality_hints):
                 raise ValueError(
                     "Locality hints list must have length `n`: "
-                    f"len({locality_hints}) != {n}")
+                    f"len({locality_hints}) != {n}"
+                )
         self._locality_hints = locality_hints
         self.hits = 0
         self.misses = 0
@@ -113,7 +114,13 @@ class OutputSplitter(PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._equal:
-            return f"{len(self._buffer)} buffered [{self.hits} locality hits {self.misses} misses]"
+            if self._locality_hints:
+                return (
+                    f"{len(self._buffer)} buffered "
+                    f"[{self.hits} locality hits {self.misses} misses]"
+                )
+            else:
+                return f"{len(self._buffer)} buffered [locality disabled]"
         assert not self._buffer
         return ""
 

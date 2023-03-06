@@ -16,6 +16,7 @@ from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.interfaces import NodeIdStr
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         base_dataset: "Dataset",
         n: int,
         equal: bool,
-        locality_hints: Optional[List[ray.actor.ActorHandle]],
+        locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDatasetIterator"]:
         coord_actor = SplitCoordinator.options(max_concurrency=n).remote(
             base_dataset, n, equal, locality_hints
@@ -99,7 +100,7 @@ class SplitCoordinator:
         dataset: "Dataset",
         n: int,
         equal: bool,
-        locality_hints: Optional[List[ray.actor.ActorHandle]],
+        locality_hints: Optional[List[NodeIdStr]],
     ):
         self._base_dataset = dataset
         self._n = n
@@ -118,7 +119,7 @@ class SplitCoordinator:
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
         def add_split_op(dag):
-            return OutputSplitter(dag, n, equal)
+            return OutputSplitter(dag, n, equal, locality_hints)
 
         self._output_iterator = execute_to_legacy_bundle_iterator(
             executor,

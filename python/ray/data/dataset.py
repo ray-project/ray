@@ -147,7 +147,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
-    from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -1147,7 +1147,7 @@ class Dataset(Generic[T]):
         n: int,
         *,
         equal: bool = False,
-        locality_hints: Optional[List[ray.actor.ActorHandle]] = None,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
     ) -> List[DatasetIterator]:
         return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
 

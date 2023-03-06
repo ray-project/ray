@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable
+from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
