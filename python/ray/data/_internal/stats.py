@@ -63,6 +63,7 @@ class _DatasetStatsBuilder:
 
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
+        # Track multi-stage stats here?
         for i, (k, v) in enumerate(stages.items()):
             if len(stages) > 1:
                 if i == 0:
@@ -84,6 +85,7 @@ class _DatasetStatsBuilder:
             stages={self.stage_name: final_blocks.get_metadata()},
             parent=self.parent,
         )
+        # fix flattening part here
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
@@ -222,8 +224,22 @@ class DatasetStats:
     def stats_actor(self):
         return _get_or_create_stats_actor()
 
-    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+    def child_builder(self, name: str, has_fused_read: bool) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
+        # if has_fused_read:
+        #     read_stage_name = "read"
+        #     if not name.startswith(f"{read_stage_name}->") or read_stage_name not in self.stages:
+        #         raise ValueError(f"Found stage name without fused read: {name}")
+        #     fused_stage_name = name.replace(f"{read_stage_name}->", "", 1)
+        #     read_metadata = self.stages[read_stage_name] # TODO: figure out how ot use here
+        #     read_stats = DatasetStats(
+        #         stages=self.stages,
+        #         parent=self.parents,
+        #         needs_stats_actor=self.needs_stats_actor,
+        #         stats_uuid=self.stats_uuid,
+        #         base_name=self.base_name,
+        #     )
+
         return _DatasetStatsBuilder(name, self)
 
     def child_TODO(self, name: str) -> "DatasetStats":

@@ -30,7 +30,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data.block import Block
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 
 if TYPE_CHECKING:
@@ -563,7 +563,7 @@ class ExecutionPlan:
                 blocks, stats, stages = _rewrite_read_stages(
                     blocks, stats, stages, self._dataset_uuid
                 )
-            stages = _fuse_one_to_one_stages(stages)
+            stages, stats = _fuse_one_to_one_stages(stages, stats)
             self._last_optimized_stages = stages
         return blocks, stats, stages
 
@@ -757,7 +757,7 @@ class OneToOneStage(Stage):
             return False
         return True
 
-    def fuse(self, prev: Stage):
+    def fuse(self, prev: Stage, stats: DatasetStats):
         if not self.can_fuse(prev):
             raise ValueError(
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
@@ -817,8 +817,20 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
-            return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
+            # Scott: insert a time start here?
+            nonlocal stats
+            stats_builder = stats.child_builder(prev.name, False)
+
+            blocks_1 = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
+            
+            # multistage_stats = stats_builder.build_multistage()
+            # stats.child_builder(blocks)
+            # print("===> type of blocks is:", blocks)
+            # print("===> got:", ray.get(blocks).get_metadata())
+            # self.substage_metadata = {prev.name: blocks}
+            blocks_2 = block_fn2(blocks_1, *self_fn_args, **self_fn_kwargs)
+            # stats_multistage = stats_builder.build_multistage({prev.name: blocks_1, self.name: blocks_2})
+            return blocks_2
 
         return OneToOneStage(
             name,
@@ -831,7 +843,7 @@ class OneToOneStage(Stage):
             fn_kwargs={},
             fn_constructor_args=self.fn_constructor_args,
             fn_constructor_kwargs=self.fn_constructor_kwargs,
-        )
+        ), stats
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
@@ -846,6 +858,8 @@ class OneToOneStage(Stage):
                 run_by_consumer
             ), "Blocks owned by consumer can only be consumed by consumer"
 
+        # Plan(Scott): Insert a time start here?
+        # build substage_info from merged stage somehow
         blocks = compute._apply(
             self.block_fn,
             self.ray_remote_args,
@@ -1056,7 +1070,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
     return output
 
 
-def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
+def _fuse_one_to_one_stages(stages: List[Stage], stats: DatasetStats) -> List[Stage]:
     """Fuses compatible one-to-one stages.
 
     Args:
@@ -1071,14 +1085,14 @@ def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
         if prev_stage is None:
             prev_stage = stage
         elif stage.can_fuse(prev_stage):
-            prev_stage = stage.fuse(prev_stage)
+            prev_stage, stats = stage.fuse(prev_stage, stats)
         else:
             fused_stages.append(prev_stage)
             prev_stage = stage
     if prev_stage:
         fused_stages.append(prev_stage)
         prev_stage = None
-    return fused_stages
+    return fused_stages, stats
 
 
 def _are_remote_args_compatible(prev_args, next_args):
