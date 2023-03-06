@@ -67,37 +67,37 @@ class PPOCatalog(Catalog):
         )
 
         if isinstance(action_space, gym.spaces.Discrete):
-            pi_output_dim = action_space.n
+            pi_output_dims = [action_space.n]
         else:
-            pi_output_dim = action_space.shape[0] * 2
+            pi_output_dims = [action_space.shape[0] * 2]
 
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
         self.pi_head_config = MLPHeadConfig(
-            input_dim=self.encoder_config.output_dim,
+            input_dims=self.encoder_config.output_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=pi_output_dim,
+            output_dims=pi_output_dims,
         )
 
         self.vf_head_config = MLPHeadConfig(
-            input_dim=self.encoder_config.output_dim,
+            input_dims=self.encoder_config.output_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=1,
+            output_dims=[1],
         )
 
         # Set input- and output dimensions to fit PPO's needs.
-        self.encoder_config.input_dim = observation_space.shape[0]
-        self.pi_head_config.input_dim = self.encoder_config.output_dim
+        self.encoder_config.input_dims = [observation_space.shape[0]]
+        self.pi_head_config.input_dims = self.encoder_config.output_dims
         if isinstance(action_space, gym.spaces.Discrete):
-            self.pi_head_config.output_dim = int(action_space.n)
+            self.pi_head_config.output_dims = [int(action_space.n)]
         else:
-            self.pi_head_config.output_dim = int(action_space.shape[0] * 2)
-        self.vf_head_config.output_dim = 1
+            self.pi_head_config.output_dims = [int(action_space.shape[0] * 2)]
+        self.vf_head_config.output_dims = [1]
 
     def build_actor_critic_encoder(self, framework: str):
         """Builds the ActorCriticEncoder.

@@ -40,8 +40,8 @@ class Catalog:
                 super().__init__(observation_space, action_space, model_config_dict)
                 self.my_model_config_dict = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
-                    input_dim=self.observation_space.shape[0],
-                    output_dim=1,
+                    input_dims=[self.observation_space.shape[0]],
+                    output_dims=[1],
                 )
 
             def build_my_head(self, framework: str):
@@ -88,9 +88,6 @@ class Catalog:
             model_config_dict=model_config_dict,
             view_requirements=view_requirements,
         )
-        # The dimensions of the latent vector that is output by the encoder and fed
-        # to the heads.
-        self.latent_dim = self.encoder_config.output_dim
 
     def build_encoder(self, framework: str):
         """Builds the encoder.
@@ -149,20 +146,22 @@ class Catalog:
         encoder_latent_dim = (
             model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
         )
+        use_lstm = model_config_dict["use_lstm"]
+        use_attention = model_config_dict["use_attention"]
 
-        if model_config_dict["use_lstm"]:
+        if use_lstm:
             encoder_config = LSTMEncoderConfig(
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_first=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dim=model_config_dict["lstm_cell_size"],
+                output_dims=[model_config_dict["lstm_cell_size"]],
                 output_activation=output_activation,
                 observation_space=observation_space,
                 action_space=action_space,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )
-        elif model_config_dict["use_attention"]:
+        elif use_attention:
             raise NotImplementedError
         else:
             # TODO (Artur): Maybe check for original spaces here
@@ -176,10 +175,10 @@ class Catalog:
                 else:
                     hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
                 encoder_config = MLPEncoderConfig(
-                    input_dim=observation_space.shape[0],
+                    input_dims=[observation_space.shape[0]],
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    output_dim=encoder_latent_dim,
+                    output_dims=[encoder_latent_dim],
                     output_activation=output_activation,
                 )
 
@@ -197,12 +196,18 @@ class Catalog:
                     filter_specifiers=model_config_dict["conv_filters"],
                     filter_layer_activation=activation,
                     output_activation=output_activation,
-                    output_dim=encoder_latent_dim,
+                    output_dims=[encoder_latent_dim],
                 )
             # input_space is a possibly nested structure of spaces.
             else:
                 # NestedModelConfig
-                raise NotImplementedError("No default config for complex spaces yet!")
+                raise ValueError(
+                    f"No default encoder config for "
+                    f"obs space={observation_space},"
+                    f" lstm={use_lstm} and "
+                    f"attention={use_attention} "
+                    f"found."
+                )
 
         return encoder_config
 
