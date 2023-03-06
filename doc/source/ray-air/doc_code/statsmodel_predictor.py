@@ -41,12 +41,11 @@ class StatsmodelPredictor(Predictor):
         cls,
         checkpoint: Checkpoint,
         filename: str,
-        preprocessor: Optional[Preprocessor] = None,
     ) -> Predictor:
         with checkpoint.as_directory() as directory:
             path = os.path.join(directory, filename)
             results = OLSResults.load(path)
-        return cls(results, preprocessor)
+        return cls(results, checkpoint.get_preprocessor())
 # __statsmodelpredictor_from_checkpoint_end__
 
 
@@ -67,6 +66,7 @@ predictor = BatchPredictor.from_checkpoint(
 )
 # This is the same data we trained our model on. Don't do this in practice.
 dataset = ray.data.from_pandas(data)
-predictor.predict(dataset)
+predictions = predictor.predict(dataset)
+predictions.show()
 # __statsmodelpredictor_predict_end__
 # fmt: on

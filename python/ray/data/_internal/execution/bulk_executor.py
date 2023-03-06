@@ -24,6 +24,8 @@ class BulkExecutor(Executor):
     """
 
     def __init__(self, options: ExecutionOptions):
+        # Bulk executor always preserves order.
+        options.preserve_order = True
         super().__init__(options)
         self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
         self._executed = False
@@ -55,10 +57,11 @@ class BulkExecutor(Executor):
             logger.get_logger().debug("Executing op %s", op.name)
             builder = self._stats.child_builder(op.name)
             try:
+                op.start(self._options)
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                    op.inputs_done(i)
+                op.inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()
@@ -107,10 +110,12 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
             while op.has_next():
                 bar.update(1)
                 output.append(op.get_next())
+                progress_str = op.progress_str()
+                if progress_str:
+                    bar.set_description(op.name + ", " + progress_str)
         bar.close()
-    # An operator is finished only after it has no remaining work as well as no
-    # remaining outputs.
-    while op.has_next():
-        output.append(op.get_next())
-    assert not op.get_work_refs(), "Should not have any remaining work"
+    else:
+        while op.has_next():
+            output.append(op.get_next())
+    assert op.completed(), "Should have finished execution of the op."
     return output

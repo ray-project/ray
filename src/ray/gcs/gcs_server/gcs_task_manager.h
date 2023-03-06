@@ -18,7 +18,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -26,6 +28,25 @@ namespace gcs {
 
 /// Type alias for a single task attempt, i.e. <task id and attempt number>.
 using TaskAttempt = std::pair<TaskID, int32_t>;
+
+enum GcsTaskManagerCounter {
+  kTotalNumTaskEventsReported,
+  kTotalNumStatusTaskEventsDropped,
+  kTotalNumProfileTaskEventsDropped,
+  kNumTaskEventsBytesStored,
+  kNumTaskEventsStored,
+  kTotalNumActorCreationTask,
+  kTotalNumActorTask,
+  kTotalNumNormalTask,
+  kTotalNumDriverTask,
+};
+
+const absl::flat_hash_map<rpc::TaskType, GcsTaskManagerCounter> kTaskTypeToCounterType = {
+    {rpc::TaskType::NORMAL_TASK, kTotalNumNormalTask},
+    {rpc::TaskType::ACTOR_CREATION_TASK, kTotalNumActorCreationTask},
+    {rpc::TaskType::ACTOR_TASK, kTotalNumActorTask},
+    {rpc::TaskType::DRIVER_TASK, kTotalNumDriverTask},
+};
 
 /// GcsTaskManger is responsible for capturing task states change reported by
 /// TaskEventBuffer from other components.
@@ -41,14 +62,16 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
   GcsTaskManager()
-      : task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
-            RayConfig::instance().task_events_max_num_task_in_gcs())),
+      : stats_counter_(),
+        task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
+            RayConfig::instance().task_events_max_num_task_in_gcs(), stats_counter_)),
         io_service_thread_(std::make_unique<std::thread>([this] {
           SetThreadName("task_events");
           // Keep io_service_ alive.
           boost::asio::io_service::work io_service_work_(io_service_);
           io_service_.run();
-        })) {}
+        })),
+        timer_(io_service_) {}
 
   /// Handles a AddTaskEventData request.
   ///
@@ -57,8 +80,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param send_reply_callback Callback to invoke when sending reply.
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
-                              rpc::SendReplyCallback send_reply_callback)
-      LOCKS_EXCLUDED(mutex_) override;
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle GetTaskEvent request.
   ///
@@ -67,14 +89,20 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param send_reply_callback Callback to invoke when sending reply.
   void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                            rpc::GetTaskEventsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback)
-      LOCKS_EXCLUDED(mutex_) override;
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Stops the event loop and the thread of the task event handler.
   ///
   /// After this is called, no more requests will be handled.
   /// This function returns when the io thread is joined.
-  void Stop() LOCKS_EXCLUDED(mutex_);
+  void Stop();
+
+  /// Handler to be called when a job finishes. This marks all non-terminated tasks
+  /// of the job as failed.
+  ///
+  /// \param job_id Job Id
+  /// \param job_finish_time_ms Job finish time in ms.
+  void OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms);
 
   /// Returns the io_service.
   ///
@@ -84,10 +112,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Return string of debug state.
   ///
   /// \return Debug string
-  std::string DebugString() LOCKS_EXCLUDED(mutex_);
+  std::string DebugString();
 
   /// Record metrics.
   void RecordMetrics() LOCKS_EXCLUDED(mutex_);
+
+  /// Set telemetry client.
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) LOCKS_EXCLUDED(mutex_);
 
   /// A storage component that stores the task events.
   ///
@@ -108,8 +139,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     ///
     /// \param max_num_task_events Max number of task events stored before replacing older
     /// ones.
-    GcsTaskManagerStorage(size_t max_num_task_events)
-        : max_num_task_events_(max_num_task_events) {}
+    GcsTaskManagerStorage(size_t max_num_task_events,
+                          CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter)
+        : max_num_task_events_(max_num_task_events), stats_counter_(stats_counter) {}
 
     /// Add a new task event or replace an existing task event in the storage.
     ///
@@ -129,7 +161,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// Get all task events.
     ///
-    /// \return all task events stored.
+    /// This retrieves copies of all task events ordered from the least recently inserted
+    /// to the most recently inserted task events.
+    ///
+    /// \return all task events stored sorted with insertion order.
     std::vector<rpc::TaskEvents> GetTaskEvents() const;
 
     /// Get task events from tasks corresponding to `task_ids`.
@@ -145,6 +180,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return task events from the `task_attempts`.
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
+
+    ///  Mark tasks from a job as failed.
+    ///
+    /// \param job_id Job ID
+    /// \param job_finish_time_ns job finished time in nanoseconds, which will be the task
+    /// failed time.
+    void MarkTasksFailed(const JobID &job_id, int64_t job_finish_time_ns);
 
    private:
     /// Mark the task tree containing this task attempt as failure if necessary.
@@ -192,6 +234,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::optional<int64_t> GetTaskStatusUpdateTime(
         const TaskID &task_id, const rpc::TaskStatus &task_status) const;
 
+    ///  Return if task has terminated.
+    ///
+    /// \param task_id Task id
+    /// \return True if the task has finished or failed timestamp sets, false otherwise.
+    bool IsTaskTerminated(const TaskID &task_id) const;
+
     /// Mark the task as failure with the failed timestamp.
     ///
     /// This also overwrites the finished state of the task if the task has finished by
@@ -201,6 +249,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \param failed_ts The failure timestamp that's the same from parent's failure
     /// timestamp.
     void MarkTaskFailed(const TaskID &task_id, int64_t failed_ts);
+
+    ///  Mark a task attempt as failed.
+    ///
+    /// \param task_attempt Task attempt.
+    /// \param failed_ts The failure timestamp.
+    void MarkTaskAttemptFailed(const TaskAttempt &task_attempt, int64_t failed_ts);
 
     /// Get the latest task attempt for the task.
     ///
@@ -212,12 +266,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return The latest task attempt of the task, abls::nullopt if no task attempt
     /// could be found or there's data loss.
     absl::optional<TaskAttempt> GetLatestTaskAttempt(const TaskID &task_id) const;
-
-    /// Get the number of task events stored.
-    size_t GetTaskEventsCount() const { return task_events_.size(); }
-
-    /// Get the total number of bytes of task events stored.
-    uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
@@ -246,9 +294,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskID>>
         parent_to_children_task_index_;
 
-    /// Counter for tracking the size of task event. This assumes tasks events are never
-    /// removed actively.
-    uint64_t num_bytes_task_events_ = 0;
+    /// Reference to the counter map owned by the GcsTaskManager.
+    CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
 
     friend class GcsTaskManager;
     FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
@@ -258,20 +305,35 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   };
 
  private:
-  /// Mutex guarding all fields that will be accessed by main_io as well.
+  /// Test only
+  size_t GetTotalNumStatusTaskEventsDropped() {
+    return stats_counter_.Get(kTotalNumStatusTaskEventsDropped);
+  }
+
+  /// Test only
+  size_t GetTotalNumProfileTaskEventsDropped() {
+    return stats_counter_.Get(kTotalNumProfileTaskEventsDropped);
+  }
+
+  /// Test only
+  size_t GetTotalNumTaskEventsReported() {
+    return stats_counter_.Get(kTotalNumTaskEventsReported);
+  }
+
+  /// Test only
+  size_t GetNumTaskEventsStored() { return stats_counter_.Get(kNumTaskEventsStored); }
+
+  // Mutex guarding the usage stats client
   absl::Mutex mutex_;
 
-  /// Total number of task events reported.
-  uint32_t total_num_task_events_reported_ GUARDED_BY(mutex_) = 0;
+  UsageStatsClient *usage_stats_client_ GUARDED_BY(mutex_) = nullptr;
 
-  /// Total number of status task events dropped on the worker.
-  uint32_t total_num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
+  /// Counter map for GcsTaskManager stats.
+  CounterMapThreadSafe<GcsTaskManagerCounter> stats_counter_;
 
-  /// Total number of profile task events dropped on the worker.
-  uint32_t total_num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
-
-  // Pointer to the underlying task events storage.
-  std::unique_ptr<GcsTaskManagerStorage> task_event_storage_ GUARDED_BY(mutex_);
+  // Pointer to the underlying task events storage. This is only accessed from
+  // the io_service_thread_. Access to it is *not* thread safe.
+  std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
   /// Its own separate IO service separated from the main service.
   instrumented_io_context io_service_;
@@ -279,10 +341,14 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;
 
+  /// Timer for delay functions.
+  boost::asio::deadline_timer timer_;
+
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
+  FRIEND_TEST(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks);
 };
 
 }  // namespace gcs

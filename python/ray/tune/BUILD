@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -20,7 +25,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
 )
 
 py_test(
@@ -35,6 +40,14 @@ py_test(
     name = "test_automl_searcher",
     size = "small",
     srcs = ["tests/test_automl_searcher.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_callbacks",
+    size = "small",
+    srcs = ["tests/test_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
@@ -161,6 +174,17 @@ py_test(
 )
 
 py_test(
+    name = "test_multi_tenancy",
+    size = "medium",
+    srcs = [
+        "tests/test_multi_tenancy.py",
+        "tests/_test_multi_tenancy_run.py"
+    ],
+    deps = [":tune_lib"],
+    tags = ["team:ml"],
+)
+
+py_test(
     name = "test_multinode_sync",
     size = "large",
     srcs = ["tests/test_multinode_sync.py"],
@@ -230,6 +254,14 @@ py_test(
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
+)
+
+py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(

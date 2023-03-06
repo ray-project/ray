@@ -62,7 +62,7 @@ Objects from the outer scope of the `training_function` will also be automatical
 TL;DR - use the `param_space` argument to specify small, serializable constants and variables.
 ```
 
-The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
+The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-search-space>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
 
 ```{warning}
 Each value in the search space will be saved directly in the Trial metadata. This means that every value in the search space **must** be serializable and take up a small amount of memory.
@@ -116,7 +116,7 @@ tuner = Tuner(
 TL;DR - use the `tune.with_parameters` util function to specify large constant parameters.
 ```
 
-If we have large objects that are constant across Trials, we can use the [`tune.with_parameters`](tune-with-parameters) utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
+If we have large objects that are constant across Trials, we can use the {func}`tune.with_parameters <ray.tune.with_parameters>` utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
 
 ```{tip}
 Objects put into the Ray object store must be serializable.
@@ -301,10 +301,10 @@ Ray AIR (which contains Ray Tune) provides a [`Checkpoint`](air-checkpoints-doc)
 
 In Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
 
-Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-checkpoint-syncing), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
+Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
 
 ```{note}
-The experiment state itself is checkpointed separately. See {ref}`tune-two-types-of-ckpt` for more details.
+The experiment state itself is checkpointed separately. See {ref}`tune-persisted-experiment-data` for more details.
 ```
 
 In our example, we want to be able to resume the training from the latest checkpoint, and to save the `trained_model` in a checkpoint every iteration. To accomplish this, we will use the `session` and `Checkpoint` APIs.
@@ -522,6 +522,6 @@ Checkpoints, metrics, and the log directory for each trial can be accessed throu
 
 ### How do I access Tune results after I am finished?
 
-After you have finished running the Python session, you can still access the results and checkpoints. By default, Tune will save the experiment results to the `~/ray_results` local directory. You can configure Tune to persist results in the cloud as well. See {ref}`tune-checkpoint-syncing` for more information on how to configure syncing.
+After you have finished running the Python session, you can still access the results and checkpoints. By default, Tune will save the experiment results to the `~/ray_results` local directory. You can configure Tune to persist results in the cloud as well. See {ref}`tune-storage-options` for more information on how to configure storage options for persisting experiment results.
 
-You can restore the Tune experiment by calling `Tuner.restore(path_or_cloud_uri)`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints by calling `Tuner.get_results()` to recieve the `ResultGrid` object, and then proceeding as outlined in the previous section.
+You can restore the Tune experiment by calling `Tuner.restore(path_or_cloud_uri)`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints by calling `Tuner.get_results()` to receive the `ResultGrid` object, and then proceeding as outlined in the previous section.

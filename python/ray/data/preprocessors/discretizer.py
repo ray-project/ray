@@ -158,11 +158,9 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.duplicates = duplicates
         self.dtypes = dtypes
 
-    _is_fittable = False
-
-    def _transform(self, dataset: Dataset) -> Dataset:
         self._validate_bins_columns()
-        return super()._transform(dataset)
+
+    _is_fittable = False
 
 
 @PublicAPI(stability="alpha")

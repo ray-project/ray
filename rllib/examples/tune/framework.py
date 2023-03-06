@@ -10,7 +10,8 @@ from ray import air, tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.tune import CLIReporter
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.WARN)
+logger = logging.getLogger("tune_framework")
 
 
 def run(smoke_test=False):

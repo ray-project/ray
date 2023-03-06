@@ -13,13 +13,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
 
 from ray._private.storage import _load_class
-from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
@@ -30,13 +30,13 @@ try:
     from wandb.sdk.lib.disabled import RunDisabled
     from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
 WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
+WANDB_MODE_ENV_VAR = "WANDB_MODE"
 # Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
 # to populate the API key if it isn't already set when initializing the callback.
 # It doesn't take in any arguments and returns the W&B API key.
@@ -295,7 +295,11 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
       1) From `api_key` or `api_key_file` arguments
       2) From WANDB_API_KEY environment variables
       3) User already logged in to W&B (wandb.api.api_key set)
-      4) From external hook WANDB_SETUP_API_KEY_HOOK"""
+      4) From external hook WANDB_SETUP_API_KEY_HOOK
+    """
+    if os.environ.get(WANDB_MODE_ENV_VAR) in {"offline", "disabled"}:
+        return
+
     if api_key_file:
         if api_key:
             raise ValueError("Both WandB `api_key_file` and `api_key` set.")
@@ -350,8 +354,8 @@ class _QueueItem(enum.Enum):
 
 class _WandbLoggingActor:
     """
-    We need a separate process to allow multiple concurrent
-    wandb logging instances locally. We use Ray actors as forking multiprocessing
+    Wandb assumes that each trial's information should be logged from a
+    separate process. We use Ray actors as forking multiprocessing
     processes is not supported by Ray and spawn processes run into pickling
     problems.
 
@@ -448,6 +452,43 @@ class WandbLoggerCallback(LoggerCallback):
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
 
+    Example:
+
+        .. testcode::
+
+            import random
+
+            from ray import tune
+            from ray.air import session, RunConfig
+            from ray.air.integrations.wandb import WandbLoggerCallback
+
+
+            def train_func(config):
+                offset = random.random() / 5
+                for epoch in range(2, config["epochs"]):
+                    acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
+                    loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
+                    session.report({"acc": acc, "loss": loss})
+
+
+            tuner = tune.Tuner(
+                train_func,
+                param_space={
+                    "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+                    "epochs": 10,
+                },
+                run_config=RunConfig(
+                    callbacks=[WandbLoggerCallback(project="Optimization_Project")]
+                ),
+            )
+            results = tuner.fit()
+
+        .. testoutput::
+            :hide:
+            :options: +ELLIPSIS
+
+            ...
+
     Args:
         project: Name of the Wandb project. Mandatory.
         group: Name of the Wandb group. Defaults to the trainable
@@ -472,26 +513,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     Please see here for all other valid configuration settings:
     https://docs.wandb.ai/library/init
-
-    Example:
-
-    .. code-block:: python
-
-        from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.air.integrations.wandb import WandbLoggerCallback
-        tune.run(
-            train_fn,
-            config={
-                # define search space here
-                "parameter_1": tune.choice([1, 2, 3]),
-                "parameter_2": tune.choice([4, 5, 6]),
-            },
-            callbacks=[WandbLoggerCallback(
-                project="Optimization_Project",
-                api_key_file="/path/to/file",
-                log_config=True)])
-
-    """
+    """  # noqa: E501
 
     # Do not log these result keys
     _exclude_results = ["done", "should_checkpoint"]
@@ -521,6 +543,11 @@ class WandbLoggerCallback(LoggerCallback):
         save_checkpoints: bool = False,
         **kwargs,
     ):
+        if not wandb:
+            raise RuntimeError(
+                "Wandb was not found - please install with `pip install wandb`"
+            )
+
         if save_checkpoints:
             warnings.warn(
                 "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",

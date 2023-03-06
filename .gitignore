@@ -119,6 +119,7 @@ scripts/nodes.txt
 /doc/_build
 /doc/source/_static/thumbs
 /doc/source/tune/generated_guides/
+/doc/source/**/doc/
 
 # User-specific stuff:
 .idea/**/workspace.xml
@@ -189,6 +190,7 @@ venv
 tags
 tags.lock
 tags.temp
+*.vim
 
 # Emacs
 .#*
@@ -223,3 +225,5 @@ workflow_data/
 
 # Auto-generated tag mapping
 tag-mapping.json
+
+.bazeliskrc

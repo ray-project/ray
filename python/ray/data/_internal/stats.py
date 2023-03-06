@@ -56,10 +56,15 @@ class _DatasetStatsBuilder:
     called with the final blocks of the new dataset, the time delta is
     saved as part of the stats."""
 
-    def __init__(self, stage_name: str, parent: "DatasetStats"):
+    def __init__(
+        self,
+        stage_name: str,
+        parent: "DatasetStats",
+        override_start_time: Optional[float],
+    ):
         self.stage_name = stage_name
         self.parent = parent
-        self.start_time = time.perf_counter()
+        self.start_time = override_start_time or time.perf_counter()
 
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
@@ -197,7 +202,7 @@ class DatasetStats:
         self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
-        self.parents: List["DatasetStats"] = parent
+        self.parents: List["DatasetStats"] = parent or []
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -222,9 +227,11 @@ class DatasetStats:
     def stats_actor(self):
         return _get_or_create_stats_actor()
 
-    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+    def child_builder(
+        self, name: str, override_start_time: Optional[float] = None
+    ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
-        return _DatasetStatsBuilder(name, self)
+        return _DatasetStatsBuilder(name, self, override_start_time)
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
@@ -351,11 +358,11 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
-        out += str(self.iter_stats)
         if self.extra_metrics:
             indent = "\t" if stage_stats_summary.is_substage else ""
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+        out += str(self.iter_stats)
         return out
 
     def get_total_wall_time(self) -> float:
@@ -644,13 +651,23 @@ class DatasetPipelineStats:
         self.wait_time_s = []
 
         # Iteration stats, filled out if the user iterates over the pipeline.
-        self.iter_ds_wait_s: Timer = Timer()
-        self.iter_wait_s: Timer = Timer()
-        self.iter_get_s: Timer = Timer()
-        self.iter_next_batch_s: Timer = Timer()
-        self.iter_format_batch_s: Timer = Timer()
-        self.iter_user_s: Timer = Timer()
-        self.iter_total_s: Timer = Timer()
+        self._iter_stats = {
+            "iter_ds_wait_s": Timer(),
+            "iter_wait_s": Timer(),
+            "iter_get_s": Timer(),
+            "iter_next_batch_s": Timer(),
+            "iter_format_batch_s": Timer(),
+            "iter_user_s": Timer(),
+            "iter_total_s": Timer(),
+        }
+
+    # Make iteration stats also accessible via attributes.
+    def __getattr__(self, name):
+        if name == "_iter_stats":
+            raise AttributeError
+        if name in self._iter_stats:
+            return self._iter_stats[name]
+        raise AttributeError
 
     def add(self, stats: DatasetStats) -> None:
         """Called to add stats for a newly computed window."""
@@ -658,6 +675,20 @@ class DatasetPipelineStats:
         if len(self.history_buffer) > self.max_history:
             self.history_buffer.pop(0)
         self.count += 1
+
+    def add_pipeline_stats(self, other_stats: "DatasetPipelineStats"):
+        """Add the provided pipeline stats to the current stats.
+
+        `other_stats` should cover a disjoint set of windows than
+        the current stats.
+        """
+        for _, dataset_stats in other_stats.history_buffer:
+            self.add(dataset_stats)
+
+        self.wait_time_s.extend(other_stats.wait_time_s)
+
+        for stat_name, timer in self._iter_stats.items():
+            timer.add(other_stats._iter_stats[stat_name].get())
 
     def _summarize_iter(self) -> str:
         out = ""

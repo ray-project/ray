@@ -283,6 +283,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
+      worker_killing_policy_(
+          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
@@ -525,6 +527,8 @@ ray::Status NodeManager::RegisterGcs() {
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */ 0);
 
+    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
     periodical_runner_.RunFnPeriodically(
         [this] {
           auto triggered_by_global_gc = TryLocalGC();
@@ -798,8 +802,10 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
+                   << ", fail immediately: " << !it->second.should_retry;
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
+    reply->set_fail_task_immediately(!it->second.should_retry);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
@@ -1276,11 +1282,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
-  if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
-      worker_type == rpc::WorkerType::DRIVER) {
+  if (worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
-  } else {
+  } else if (worker_type == rpc::WorkerType::SPILL_WORKER ||
+             worker_type == rpc::WorkerType::RESTORE_WORKER) {
     RAY_CHECK(job_id.IsNil());
   }
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(
@@ -1333,7 +1338,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
     // Compute a dummy driver task id from a given driver.
-    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
+    // The task id set in the worker here should be consistent with the task
+    // id set in the core worker.
+    const TaskID driver_task_id = TaskID::ForDriverTask(job_id);
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
@@ -1454,10 +1461,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
   // Publish the worker failure.
   auto worker_failure_data_ptr =
-      gcs::CreateWorkerFailureData(self_node_id_,
-                                   worker->WorkerId(),
-                                   worker->IpAddress(),
-                                   worker->Port(),
+      gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
@@ -1539,6 +1543,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
+  cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
 
   client->Close();
 
@@ -2867,9 +2872,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "idle worker are occupying most of the memory.";
           return;
         }
-        RetriableLIFOWorkerKillingPolicy worker_killing_policy;
         auto worker_to_kill_and_should_retry =
-            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
         auto worker_to_kill = worker_to_kill_and_should_retry.first;
         bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
@@ -2879,14 +2883,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details =
-              this->CreateOomKillMessageDetails(worker_to_kill,
-                                                this->self_node_id_,
-                                                system_memory,
-                                                usage_threshold,
-                                                should_retry);
+          std::string oom_kill_details = this->CreateOomKillMessageDetails(
+              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
           std::string oom_kill_suggestions =
-              this->CreateOomKillMessageSuggestions(worker_to_kill);
+              this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
 
           RAY_LOG(INFO)
               << "Killing worker with task "
@@ -2933,8 +2933,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
     const MemorySnapshot &system_memory,
-    float usage_threshold,
-    bool should_retry) const {
+    float usage_threshold) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
   std::string used_bytes_gb =
@@ -2976,7 +2975,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 }
 
 const std::string NodeManager::CreateOomKillMessageSuggestions(
-    const std::shared_ptr<WorkerInterface> &worker) const {
+    const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
   std::stringstream not_retriable_recommendation_ss;
   if (worker && !worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
     not_retriable_recommendation_ss << "Set ";
@@ -2987,6 +2986,11 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
     }
     not_retriable_recommendation_ss
         << " to enable retry when the task crashes due to OOM. ";
+  }
+  std::stringstream deadlock_recommendation;
+  if (!should_retry) {
+    deadlock_recommendation
+        << "The node has insufficient memory to execute this workload. ";
   }
   std::stringstream oom_kill_suggestions_ss;
   oom_kill_suggestions_ss

@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import override
 
 
 class _MockTrainer(Algorithm):
-    """Mock trainer for use in tests"""
+    """Mock trainer for use in tests."""
 
     @classmethod
     @override(Algorithm)
@@ -27,7 +27,7 @@ class _MockTrainer(Algorithm):
         )
 
     @classmethod
-    def default_resource_request(cls, config):
+    def default_resource_request(cls, config: AlgorithmConfig):
         return None
 
     @override(Algorithm)

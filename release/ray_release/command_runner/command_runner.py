@@ -3,6 +3,8 @@ from typing import Dict, Any, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
+from ray_release.util import exponential_backoff_retry
+from click.exceptions import ClickException
 
 
 class CommandRunner(abc.ABC):
@@ -72,7 +74,11 @@ class CommandRunner(abc.ABC):
         raise NotImplementedError
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         """Run command."""
         raise NotImplementedError
@@ -85,7 +91,12 @@ class CommandRunner(abc.ABC):
         Command runners may choose to run this differently than the
         test command.
         """
-        return self.run_command(command, env, timeout)
+        return exponential_backoff_retry(
+            lambda: self.run_command(command, env, timeout),
+            ClickException,
+            initial_retry_delay_s=5,
+            max_retries=3,
+        )
 
     def get_last_logs(self):
         raise NotImplementedError

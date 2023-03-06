@@ -18,7 +18,6 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/runtime_env_common.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -154,6 +153,8 @@ message ActorTableData {
   // so we have a separate field to track this.
   // If the actor is restarting, the node id could be incorrect.
   optional bytes node_id = 29;
+  // Placement group ID if the actor requires a placement group.
+  optional bytes placement_group_id = 30;
 }
 
 message ErrorTableData {
@@ -212,6 +213,8 @@ message TaskStateUpdate {
   optional int64 finished_ts = 6;
   // Timestamp when status changes to FAILED.
   optional int64 failed_ts = 7;
+  // Worker that runs the task.
+  optional bytes worker_id = 8;
 }
 
 // Represents events and state changes from a single task run.
@@ -285,14 +288,49 @@ message GcsNodeInfo {
 
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
-  // Timestamp that the node is dead.
-  int64 timestamp = 10;
 
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
   // The user-provided identifier or name for this node.
   string node_name = 12;
+  // The unix ms timestamp the node was started at.
+  uint64 start_time_ms = 23;
+  // The unix ms timestamp the node was ended at.
+  uint64 end_time_ms = 24;
+}
+
+// Please keep this in sync with the definition of JobInfo in
+// dashboard/modules/job/common.py
+message JobsAPIInfo {
+  // The status of the job.
+  string status = 1;
+  // The entrypoint command for this job.
+  string entrypoint = 2;
+  // A message describing the status in more detail.
+  optional string message = 3;
+  // TODO(architkulkarni): Populate this field
+  // Error type (e.g. Runtime env setup failure, Internal error, user script error)
+  optional string error_type = 4;
+  // The time when the job was started.  A Unix timestamp in ms.
+  optional uint64 start_time = 5;
+  // The time when the job moved into a terminal state.  A Unix timestamp in ms.
+  optional uint64 end_time = 6;
+  // Arbitrary user-provided metadata for the job.
+  map<string, string> metadata = 7;
+  // The JSON-serialized runtime environment for the job.
+  optional string runtime_env_json = 8;
+  // The quantity of CPU cores to reserve for the entrypoint command.
+  optional double entrypoint_num_cpus = 9;
+  // The number of GPUs to reserve for the entrypoint command.
+  optional double entrypoint_num_gpus = 10;
+  // The quantity of various custom resources to reserve for the entrypoint command.
+  map<string, double> entrypoint_resources = 11;
+  // Driver agent http address
+  optional string driver_agent_http_address = 12;
+  // The node id that driver running on. It will be None only when the job status
+  // is PENDING, and this field will not be deleted or modified even if the driver dies
+  optional string driver_node_id = 13;
 }
 
 message JobTableData {
@@ -314,6 +352,8 @@ message JobTableData {
   uint64 end_time = 8;
   // The entrypoint of the job.
   string entrypoint = 9;
+  // The optional JobInfo from the Ray Job API.
+  optional JobsAPIInfo job_info = 10;
 }
 
 message WorkerTableData {
@@ -336,6 +376,10 @@ message WorkerTableData {
   optional string exit_detail = 20;
   // pid of the worker process.
   uint32 pid = 21;
+  // The unix ms timestamp the worker was started at.
+  uint64 start_time_ms = 23;
+  // The unix ms timestamp the worker was ended at.
+  uint64 end_time_ms = 24;
 }
 
 // Fields to publish when worker fails.

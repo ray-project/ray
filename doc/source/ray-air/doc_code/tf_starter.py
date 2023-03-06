@@ -10,6 +10,10 @@ from ray.air.integrations.keras import Callback
 from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 
+
+# If using GPUs, set this to True.
+use_gpu = False
+
 a = 5
 b = 10
 size = 100
@@ -59,9 +63,7 @@ config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
 train_dataset = ray.data.from_items(
     [{"x": x / 200, "y": 2 * x / 200} for x in range(200)]
 )
-scaling_config = ScalingConfig(num_workers=2)
-# If using GPUs, use the below scaling config instead.
-# scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+scaling_config = ScalingConfig(num_workers=2, use_gpu=use_gpu)
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_func,
     train_loop_config=config,

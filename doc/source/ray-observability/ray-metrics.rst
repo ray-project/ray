@@ -14,6 +14,11 @@ To help monitor Ray applications, Ray
 Getting Started
 ---------------
 
+.. tip::
+
+  The below instructions for Prometheus to enable a basic workflow of running and accessing the dashboard on your local machine.
+  For more information about how to run Prometheus on a remote cluster, see :ref:`here <multi-node-metrics>`.
+
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
 First, `download Prometheus <https://prometheus.io/download/>`_. Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
@@ -64,10 +69,20 @@ See :ref:`here <multi-node-metrics>` for more information on how to set up Prome
 
 Grafana
 -------
+
+.. tip::
+
+  The below instructions for Grafana setup to enable a basic workflow of running and accessing the dashboard on your local machine.
+  For more information about how to run Grafana on a remote cluster, see :ref:`here <multi-node-metrics-grafana>`.
+
 Grafana is a tool that supports more advanced visualizations of prometheus metrics and
 allows you to create custom dashboards with your favorite metrics. Ray exports some default
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
+
+
+Deploying Grafana
+~~~~~~~~~~~~~~~~~
 
 First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
@@ -86,6 +101,9 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 
 .. image:: images/graphs.png
     :align: center
+
+
+See :ref:`here <multi-node-metrics-grafana>` for more information on how to set up Grafana on a Ray Cluster.
 
 .. _system-metrics:
 
@@ -147,7 +165,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - The amount of physical memory available per node, in bytes.
    * - `ray_component_uss_mb`
      - `Component`, `InstanceId`
-     - The measured unique set size in megabytes, broken down by logical Ray component (e.g., raylet, gcs, workers).
+     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_cpu_percentage`
+     - `Component`, `InstanceId`
+     - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
      - `InstanceId`
      - The amount of GPU memory used per node, in bytes.
@@ -207,8 +228,11 @@ If you open this in the browser, you should see the following output:
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
 
+Configurations
+--------------
+
 Customize prometheus export port
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray by default provides the service discovery file, but you can directly scrape metrics from prometheus ports.
 To do that, you may want to customize the port that metrics gets exposed to a pre-defined port.
@@ -219,6 +243,34 @@ To do that, you may want to customize the port that metrics gets exposed to a pr
 
 Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
 
+Alternate Prometheus host location
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can choose to run Prometheus on a non-default port or on a different machine. When doing so, you should
+make sure that prometheus can scrape the metrics from your ray nodes following instructions :ref:`here <multi-node-metrics>`.
+
+In addition, both Ray and Grafana needs to know how to access this prometheus instance. This can be configured
+by setting the `RAY_PROMETHEUS_HOST` env var when launching ray. The env var takes in the address to access Prometheus. More
+info can be found :ref:`here <multi-node-metrics-grafana>`. By default, we assume Prometheus is hosted at `localhost:9090`.
+
+For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, One should set the value to
+`RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
+
+
+Alternate Grafana host location
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can choose to run Grafana on a non-default port or on a different machine. If you choose to do this, the
+:ref:`Dashboard <ray-dashboard>` needs to be configured with a public address to that service so the web page
+can load the graphs. This can be done with the `RAY_GRAFANA_HOST` env var when launching ray. The env var takes
+in the address to access Grafana. More info can be found :ref:`here <multi-node-metrics-grafana>`. Instructions
+to use an existing Grafana instance can be found :ref:`here <multi-node-metrics-grafana-existing>`.
+
+For the Grafana charts to work on the Ray dashboard, the user of the dashboard's browser must be able to reach
+the Grafana service. If this browser cannot reach Grafana the same way the Ray head node can, you can use a separate
+env var `RAY_GRAFANA_IFRAME_HOST` to customize the host the browser users to attempt to reach Grafana. If this is not set,
+we use the value of `RAY_GRAFANA_HOST` by default.
+
+For example, if Grafana is hosted at is 55.66.77.88 on port 3000. One should set the value
+to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 
 Troubleshooting
 ---------------
@@ -237,3 +289,9 @@ When downloading binaries from the internet, Mac requires that the binary be sig
 Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
 See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
+
+Grafana dashboards are not embedded in the Ray dashboard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
+That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).

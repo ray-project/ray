@@ -145,6 +145,9 @@ class RedisCallbackManager {
   /// Get a callback.
   std::shared_ptr<CallbackItem> GetCallback(int64_t callback_index) const;
 
+  /// Clear all callbacks.
+  void Clear();
+
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 

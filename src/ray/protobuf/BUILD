@@ -5,6 +5,21 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "c
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 
 proto_library(
+    name = "monitor_proto",
+    srcs = ["monitor.proto"],
+)
+
+cc_proto_library(
+    name = "monitor_cc_proto",
+    deps = [":monitor_proto"],
+)
+
+python_grpc_compile(
+    name = "monitor_py_proto",
+    deps = [":monitor_proto"],
+)
+
+proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
     deps = [":runtime_env_common_proto"],
