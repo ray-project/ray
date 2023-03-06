@@ -15,7 +15,7 @@ Each block holds a set of items in a `Arrow table <https://arrow.apache.org/docs
 `pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
 Having multiple blocks in a dataset allows for parallel transformation and ingest.
 
-For ML use cases, Datasets also natively supports mixing :ref:`Tensor <datasets_tensor_support>` and tabular data.
+For ML use cases, Datasets also natively supports mixing :ref:`Tensors <datasets_tensor_support>` and tabular data.
 
 There are three types of datasets:
 
@@ -91,7 +91,7 @@ Datasets can shuffle hundreds of terabytes of data. For an in-depth guide on shu
 Execution mode
 ==============
 
-Datasets is lazy. The library doesn't execute operations until you
+Datasets are lazy. The library doesn't execute operations until you
 consume a dataset or call :meth:`Dataset.fully_executed() <ray.data.Dataset.fully_executed>`.
 
 For an in-depth guide on Datasets execution, read :ref:`Execution <datasets_execution>`.
@@ -105,4 +105,4 @@ hardware failure occurs, Datasets recreates lost blocks by re-executing tasks.
 Fault tolerance isn't supported in two cases:
 
 * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
-* If ``compute=ActorPoolStrategy()`` is specified for transformations.
+* If ``compute=ActorPoolStrategy()`` is specified for transformations. This is because Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>`.
