@@ -13,9 +13,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.types import ObjectRef
 
 
-MIN_BUFFER_SIZE = 10
-
-
 class OutputSplitter(PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
@@ -52,6 +49,14 @@ class OutputSplitter(PhysicalOperator):
                     f"len({locality_hints}) != {n}"
                 )
         self._locality_hints = locality_hints
+        if locality_hints:
+            # To optimize locality, we should buffer a certain number of elements
+            # internally before dispatch to allow the locality algorithm a good chance
+            # of selecting a preferred location. We use a small multiple of `n` since
+            # it's reasonable to buffer a couple blocks per consumer.
+            self._min_buffer_size = 2 * n
+        else:
+            self._min_buffer_size = 0
         self.hits = 0
         self.misses = 0
 
@@ -130,7 +135,7 @@ class OutputSplitter(PhysicalOperator):
     def _dispatch_bundles(self) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
-        while self._buffer and len(self._buffer) > MIN_BUFFER_SIZE:
+        while self._buffer and len(self._buffer) > self._min_buffer_size:
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
