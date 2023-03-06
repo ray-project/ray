@@ -9,6 +9,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
+    FromModin,
     FromPandas,
     FromPandasRefs,
 )
@@ -624,14 +625,13 @@ def test_from_dask_operator(ray_start_regular_shared, enable_optimizer):
 
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
-    # ds = ray.data.from_dask(ddf)
 
     planner = Planner()
-    from_items_op = FromDask(ddf)
-    plan = LogicalPlan(from_items_op)
+    from_dask_op = FromDask(ddf)
+    plan = LogicalPlan(from_dask_op)
     physical_op = planner.plan(plan).dag
 
-    assert from_items_op.name == "FromDask"
+    assert from_dask_op.name == "FromDask"
     assert isinstance(physical_op, InputDataBuffer)
     assert len(physical_op.input_dependencies) == 0
 
@@ -643,6 +643,39 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.data.from_dask(ddf)
     dfds = ds.to_pandas()
+    assert df.equals(dfds)
+    # Underlying implementation uses `FromPandasRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+
+
+def test_from_modin_operator(ray_start_regular_shared, enable_optimizer):
+    import modin.pandas as mopd
+
+    df = pd.DataFrame(
+        {"one": list(range(100)), "two": list(range(100))},
+    )
+    modf = mopd.DataFrame(df)
+
+    planner = Planner()
+    from_modin_op = FromModin(modf)
+    plan = LogicalPlan(from_modin_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_modin_op.name == "FromModin"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
+    import modin.pandas as mopd
+
+    df = pd.DataFrame(
+        {"one": list(range(100)), "two": list(range(100))},
+    )
+    modf = mopd.DataFrame(df)
+    ds = ray.data.from_modin(modf)
+    dfds = ds.to_pandas()
+
     assert df.equals(dfds)
     # Underlying implementation uses `FromPandasRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromPandasRefs"

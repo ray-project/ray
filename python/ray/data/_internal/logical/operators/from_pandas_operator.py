@@ -7,6 +7,7 @@ import ray
 if TYPE_CHECKING:
     import pandas
     import dask
+    import modin
 
 
 class FromPandasRefs(LogicalOperator):
@@ -57,4 +58,18 @@ class FromDask(FromPandasRefs):
 
         refs = [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions]
         super().__init__(refs, "FromDask")
+        self._df = df
+
+
+class FromModin(FromPandasRefs):
+    """Logical operator for `from_modin`."""
+
+    def __init__(
+        self,
+        df: "modin.DataFrame",
+    ):
+        from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
+
+        parts = unwrap_partitions(df, axis=0)
+        super().__init__(parts, "FromModin")
         self._df = df
