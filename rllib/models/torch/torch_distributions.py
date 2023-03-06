@@ -119,7 +119,7 @@ class TorchCategorical(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return (space.n,)
+        return (int(space.n),)
 
     @classmethod
     @override(Distribution)
@@ -188,7 +188,7 @@ class TorchDiagGaussian(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
 
     @classmethod
     @override(Distribution)
@@ -268,7 +268,7 @@ class TorchDeterministic(Distribution):
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
-        return tuple(np.prod(space.shape, dtype=np.int32))
+        return (int(np.prod(space.shape, dtype=np.int32)),)
 
     @classmethod
     @override(Distribution)
