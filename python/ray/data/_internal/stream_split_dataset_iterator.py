@@ -32,8 +32,9 @@ class StreamSplitDatasetIterator(DatasetIterator):
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDatasetIterator"]:
+        ctx = DatasetContext.get_current()
         coord_actor = SplitCoordinator.options(max_concurrency=n).remote(
-            base_dataset, n, equal, locality_hints
+            ctx, base_dataset, n, equal, locality_hints
         )
         return [
             StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
@@ -97,11 +98,13 @@ class StreamSplitDatasetIterator(DatasetIterator):
 class SplitCoordinator:
     def __init__(
         self,
+        ctx: DatasetContext,
         dataset: "Dataset",
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        DatasetContext._set_current(ctx)
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
@@ -115,7 +118,6 @@ class SplitCoordinator:
             execute_to_legacy_bundle_iterator,
         )
 
-        ctx = DatasetContext.get_current()
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
         def add_split_op(dag):
