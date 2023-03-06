@@ -31,7 +31,7 @@ py_test(
     name = "tensor",
     size = "small",
     srcs = ["source/data/doc_code/tensor.py"],
-    tags = ["exclusive", "team:data"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
