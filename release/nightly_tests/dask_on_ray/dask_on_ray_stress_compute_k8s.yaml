@@ -1,4 +1,4 @@
-cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
 aws:
