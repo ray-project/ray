@@ -47,6 +47,8 @@ py_test_run_all_notebooks(
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
         "torch_detection.ipynb"  # Requires GPUs
+        "gptj_batch_prediction.ipynb",  # Requires GPUs
+        "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
@@ -79,6 +81,8 @@ py_test_run_all_notebooks(
         "huggingface_text_classification.ipynb",
         "pytorch_resnet_batch_prediction.ipynb",
         "torch_detection.ipynb"
+        "gptj_batch_prediction.ipynb",
+        "stablediffusion_batch_prediction.ipynb",
     ],
     exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],

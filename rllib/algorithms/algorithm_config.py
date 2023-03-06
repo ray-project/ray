@@ -910,6 +910,7 @@ class AlgorithmConfig(_Config):
                 raise ValueError(
                     "rl_module_spec must be an instance of "
                     "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+                    f"Got {type(self.rl_module_spec)} instead."
                 )
 
         # make sure the resource requirements for learner_group is valid
@@ -2816,7 +2817,7 @@ class AlgorithmConfig(_Config):
         else:
             raise ValueError(
                 "RLModuleSpec must be either SingleAgentRLModuleSpec "
-                "or MultiAgentRLModuleSpec!"
+                f"or MultiAgentRLModuleSpec got {type(self.rl_module_spec)} instead."
             )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
