@@ -1432,23 +1432,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
-  if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT) {
-    // A Java worker process may have multiple workers. If one of them disconnects
-    // unintentionally (which means that the worker process has died), we remove the
-    // others from idle pool so that the failed actor will not be rescheduled on the same
-    // process.
-    auto pid = worker->GetProcess().GetId();
-    for (auto worker2 : state.registered_workers) {
-      if (worker2->GetProcess().GetId() == pid) {
-        // NOTE(kfstorm): We have to use a new field to record these workers (instead of
-        // just removing them from idle sets) because they may haven't announced worker
-        // port yet. When they announce worker port, they'll be marked idle again. So
-        // removing them from idle sets here doesn't really prevent them from being popped
-        // later.
-        state.pending_disconnection_workers.insert(worker2);
-      }
-    }
-  }
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
