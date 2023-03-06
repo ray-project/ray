@@ -12,13 +12,16 @@ Datasets
 
 A :term:`Dataset` contains a list of Ray object references to :term:`blocks <Block>`.
 Each block holds a set of items in a `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_,
-`pandas DataFrames <https://pandas.pydata.org/docs/reference/frame.html>`, or Python list.
+`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
+Having multiple blocks in a dataset allows for parallel transformation and ingest.
+
+For ML use cases, Datasets also natively supports mixing :ref:`Tensor <datasets_tensor_support>` and tabular data.
 
 There are three types of datasets:
 
-* :term:`Simple Datasets <Simple Dataset>`
-* :term:`Tabular Datasets <Tabular Dataset>`
-* :term:`Tensor Datasets <Tensor Dataset>`
+* :term:`Simple datasets <Simple Dataset>` -- Datasets that represents a collection of Python objects
+* :term:`Tabular datasets <Tabular Dataset>` -- Datasets that represents columnar data
+* :term:`Tensor datasets <Tensor Dataset>` -- Datasets that represents a collection of ndarrays
 
 The following figure visualizes a tabular dataset with three blocks, each block holding 1000 rows:
 
@@ -94,7 +97,7 @@ Execution mode
 ==============
 
 Datasets is lazy. The library doesn't execute operations until you
-consume a dataset or call :meth:`Dataset.fully_executed <ray.data.Dataset.fully_executed>`.
+consume a dataset or call :meth:`Dataset.fully_executed() <ray.data.Dataset.fully_executed>`.
 
 For an in-depth guide on Datasets execution, read :ref:`Execution <datasets_execution>`.
 
@@ -107,4 +110,4 @@ hardware failure occurs, Datasets recreates lost blocks by re-executing tasks.
 Fault tolerance isn't supported in two cases:
 
 * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
-* If you perform a transformation with actors.
+* If ``compute=ActorPoolStrategy()`` is specified for transformations.
