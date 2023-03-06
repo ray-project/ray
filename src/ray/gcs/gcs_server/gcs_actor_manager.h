@@ -19,9 +19,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr)
-  : main_executor_(main_executor),
-    pool_(::RayConfig::instance().gcs_actor_threading_num()) {
-
+      : main_executor_(main_executor),
+        pool_(::RayConfig::instance().gcs_actor_threading_num()) {
     // RAY_LOG(INFO) << "Creating actor manager with number of thread: "
     //               << ::RayConfig::instance().gcs_actor_threading_num();
     // for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_threading_num(); ++i) {
