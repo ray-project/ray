@@ -19,10 +19,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr)
-      : main_executor_(main_executor) {
-    for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_threading_num(); ++i) {
-      threads_.emplace_back([this]() { pool_.attach(); });
-    }
+  : main_executor_(main_executor),
+    pool_(::RayConfig::instance().gcs_actor_threading_num()) {
+
+    // RAY_LOG(INFO) << "Creating actor manager with number of thread: "
+    //               << ::RayConfig::instance().gcs_actor_threading_num();
+    // for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_threading_num(); ++i) {
+    //   threads_.emplace_back([this]() { pool_.attach(); });
+    // }
+
     impls_.reserve(::RayConfig::instance().gcs_actor_sharding_num());
     for (size_t i = 0; i < ::RayConfig::instance().gcs_actor_sharding_num(); ++i) {
       impls_.emplace_back(main_executor_,
@@ -39,6 +44,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     }
   }
 
+  ~GcsActorManager() {
+    pool_.stop();
+    pool_.join();
+  }
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;

@@ -350,6 +350,7 @@ void GcsActorManagerImpl::CreateActor(const ray::rpc::CreateActorRequest &reques
     RAY_CHECK(callback);
     const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
     auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
+    RAY_LOG(INFO) << "Thread: Actor:" << actor_id << "\t" << std::this_thread::get_id();
 
     auto iter = registered_actors_.find(actor_id);
     if (iter == registered_actors_.end()) {

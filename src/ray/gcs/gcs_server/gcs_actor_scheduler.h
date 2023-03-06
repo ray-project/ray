@@ -155,7 +155,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     });
   }
 
-  virtual ~GcsActorScheduler() = default;
+  virtual ~GcsActorScheduler() {
+    ioc_.stop();
+    t_->join();
+  }
 
   std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(const NodeID &node_id) {
     auto iter = alive_nodes.find(node_id);
