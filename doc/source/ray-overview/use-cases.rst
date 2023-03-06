@@ -5,39 +5,6 @@ Ray Use Cases
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
-You can filter our use cases by the framework you are using, the use case category,
-and the type of workload you are running.
-You can select (and deselect) multiple values:
-
-.. raw:: html
-
-    <!--Deselect all-->
-    <div>
-        <div id="allButton" type="button" class="tag btn btn-primary">All</div>
-
-        <!--Frameworks-->
-        <div type="button" class="tag btn btn-outline-primary">PyTorch</div>
-        <div type="button" class="tag btn btn-outline-primary">TensorFlow</div>
-        <div type="button" class="tag btn btn-outline-primary">XGBoost</div>
-        <div type="button" class="tag btn btn-outline-primary">LightGBM</div>
-        <div type="button" class="tag btn btn-outline-primary">Sklearn</div>
-
-        <!--Domains-->
-        <div type="button" class="tag btn btn-outline-primary">Classification</div>
-        <div type="button" class="tag btn btn-outline-primary">Regression</div>
-        <div type="button" class="tag btn btn-outline-primary">Object Detection</div>
-        <div type="button" class="tag btn btn-outline-primary">Image Segmentation</div>
-        <div type="button" class="tag btn btn-outline-primary">Reinforcement Learning</div>
-
-        <!--Components-->
-        <div type="button" class="tag btn btn-outline-primary">Preprocessing</div>
-        <div type="button" class="tag btn btn-outline-primary">Training</div>
-        <div type="button" class="tag btn btn-outline-primary">Tuning</div>
-        <div type="button" class="tag btn btn-outline-primary">Prediction</div>
-        <div type="button" class="tag btn btn-outline-primary">Serving</div>
-    </div>
-
-
 Batch Inference
 ---------------
 

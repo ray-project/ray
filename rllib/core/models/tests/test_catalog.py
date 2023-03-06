@@ -1,10 +1,11 @@
 import itertools
 import unittest
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree
 from gymnasium.spaces import Box, Discrete
+from collections import namedtuple
 
 from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.catalog import Catalog
@@ -195,25 +196,30 @@ class TestCatalog(unittest.TestCase):
                 required input dimensions and sample from them.
 
         """
-        action_spaces_dist_types_and_expected_cls_dicts = [
-            (
+        TestConfig = namedtuple(
+            "TestConfig", ("action_space", "deterministic", "expected_dist_cls_dict")
+        )
+        test_configs = [
+            TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 False,
                 {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
             ),
-            (
+            TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 True,
                 {"torch": TorchDeterministic, "tf": TfDeterministic},
             ),
-            (Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}),
+            TestConfig(
+                Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}
+            ),
         ]
 
         for (
             action_space,
             deterministic,
             expected_cls_dict,
-        ) in action_spaces_dist_types_and_expected_cls_dicts:
+        ) in test_configs:
             print(
                 f"Testing action space: {action_space} and deterministic:"
                 f" {deterministic}"
@@ -225,15 +231,12 @@ class TestCatalog(unittest.TestCase):
             )
             dist_dict = catalog.get_action_dist_cls_dict(
                 action_space=action_space,
-                model_config_dict=MODEL_DEFAULTS.copy(),
                 deterministic=deterministic,
             )
 
-            for framework, sess in framework_iterator(
-                frameworks=["tf", "torch"], session=True
-            ):
-                if framework not in dist_dict:
-                    continue
+            for framework in framework_iterator(frameworks=["tf2", "torch"]):
+                if framework == "tf2":
+                    framework = "tf"
                 dist_cls = dist_dict[framework]
                 # Check if we can query the required input dimensions
                 input_shape = expected_cls_dict[framework].required_model_output_shape(
@@ -247,13 +250,8 @@ class TestCatalog(unittest.TestCase):
                 # We don't need a model if we input tensors
                 dist = dist_cls.from_logits(logits=logits)
                 assert isinstance(dist, expected_cls_dict[framework])
-                outputs = dist.sample()
-                if framework == "torch":
-                    action = outputs.numpy()[0]
-                else:
-                    action = sess.run(outputs)[0]
-
-                assert action_space.contains(action)
+                actions = dist.sample()
+                assert action_space.contains(actions.numpy()[0])
 
 
 if __name__ == "__main__":
