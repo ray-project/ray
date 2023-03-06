@@ -24,8 +24,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
         self.config = config
         catalog = config.catalog
 
-        assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
-
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
