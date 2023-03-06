@@ -7,9 +7,45 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import Write
 
-
+# The dictionary for the operator name and count.
 _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
+
+# The white list of operator names allowed to be recorded.
+_op_name_white_list = [
+    # Read
+    "ReadRange",
+    "ReadMongo",
+    "ReadParquet",
+    "ReadParquetBulk",
+    "ReadImage",
+    "ReadJSON",
+    "ReadCSV",
+    "ReadText",
+    "ReadNumpy",
+    "ReadTFRecord",
+    "ReadBinary",
+    "ReadCustom",
+    # Write
+    "WriteParquet",
+    "WriteJSON",
+    "WriteCSV",
+    "WriteTFRecord",
+    "WriteNumpy",
+    "WriteMongo",
+    "WriteCustom",
+    # Map
+    "MapBatches",
+    "MapRows",
+    "Filter",
+    "FlatMap",
+    # All-to-all
+    "RandomizeBlocks",
+    "RandomShuffle",
+    "Repartition",
+    "Sort",
+    "Aggregate",
+]
 
 
 def record_operators_usage(op: LogicalOperator):
@@ -32,10 +68,20 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
         _collect_operators_to_dict(child, ops_dict)
 
     op_name = op.name
-    if isinstance(op, Read):
+
+    # Check read and write operator, and anonymize user-defined data source.
+    if isinstance(op, Read) or isinstance(op, Write):
         op_name = f"Read{op._datasource.get_name()}"
+        if op_name not in _op_name_white_list:
+            op_name = "ReadCustom"
     elif isinstance(op, Write):
         op_name = f"Write{op._datasource.get_name()}"
+        if op_name not in _op_name_white_list:
+            op_name = "WriteCustom"
+
+    # Anonymize any operator name if not in white list.
+    if op_name not in _op_name_white_list:
+        op_name = "Unknown"
 
     ops_dict.setdefault(op_name, 0)
     ops_dict[op_name] += 1
