@@ -31,6 +31,8 @@ class PPORLModuleBase(RLModule, abc.ABC):
         self.pi = catalog.build_pi_head(framework=self.framework)
         self.vf = catalog.build_vf_head(framework=self.framework)
 
+        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
             gym.spaces.Discrete,
