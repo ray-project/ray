@@ -138,8 +138,10 @@ class TfCategorical(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TfCategorical":
-        return TfCategorical(logits=logits)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TfCategorical":
+        return TfCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
@@ -210,7 +212,7 @@ class TfDiagGaussian(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TfDiagGaussian":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDiagGaussian":
         loc, log_std = tf.split(logits, num_or_size_splits=2, axis=1)
         scale = tf.math.exp(log_std)
         return TfDiagGaussian(loc=loc, scale=scale)
@@ -285,5 +287,5 @@ class TfDeterministic(Distribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TfDeterministic":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
         return TfDeterministic(loc=logits)

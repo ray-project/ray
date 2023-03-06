@@ -2,6 +2,7 @@ import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig
+from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
 
 
@@ -66,12 +67,6 @@ class PPOCatalog(Catalog):
             shared=self.model_config_dict["vf_share_layers"],
         )
 
-        # Get a mapping from framework to action distribution class
-        self.action_dist_cls_dict = self.get_action_dist_cls_dict(
-            action_space=action_space,
-            model_config_dict=self.model_config_dict,
-        )
-
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
@@ -101,7 +96,7 @@ class PPOCatalog(Catalog):
             self.pi_head_config.output_dim = int(action_space.shape[0] * 2)
         self.vf_head_config.output_dim = 1
 
-    def build_actor_critic_encoder(self, framework: str):
+    def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
         """Builds the ActorCriticEncoder.
 
         The default behavior is to build the encoder from the encoder_config.
@@ -117,7 +112,7 @@ class PPOCatalog(Catalog):
         return self.actor_critic_encoder_config.build(framework=framework)
 
     @override(Catalog)
-    def build_encoder(self, framework: str):
+    def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
 
         Since PPO uses an ActorCriticEncoder, this method should not be implemented.
@@ -126,7 +121,7 @@ class PPOCatalog(Catalog):
             "Use PPOCatalog.build_actor_critic_encoder() instead."
         )
 
-    def build_pi_head(self, framework: str):
+    def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head.
 
         The default behavior is to build the head from the pi_head_config.
@@ -148,7 +143,7 @@ class PPOCatalog(Catalog):
         )
         return self.pi_head_config.build(framework=framework)
 
-    def build_vf_head(self, framework: str):
+    def build_vf_head(self, framework: str) -> Model:
         """Builds the value function head.
 
         The default behavior is to build the head from the vf_head_config.
