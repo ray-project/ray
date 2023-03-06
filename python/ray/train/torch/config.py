@@ -157,7 +157,9 @@ class _TorchBackend(Backend):
                 backend = backend_config.backend
 
             if backend == "nccl":
-                worker_group.execute(_set_nccl_network_interface)
+                worker_group.execute(
+                    "set_nccl_network_interface", _set_nccl_network_interface
+                )
 
             master_addr, master_port = worker_group.execute_single(
                 "get_address_and_port", 0, get_address_and_port
