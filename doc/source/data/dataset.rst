@@ -46,7 +46,7 @@ Its utility is as the last-mile bridge from ETL pipeline outputs to distributed 
 ..
   https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
 
-Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to enable running a full data to
+You can also use Datasets seamlessly with Ray-integrated DataFrame libraries. You can run a data to
 ML pipeline completely within Ray without materializing data to external storage.
 
 .. image:: images/dataset-loading-2.png
