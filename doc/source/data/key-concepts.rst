@@ -37,7 +37,7 @@ This flexibility is a unique characteristic of Ray Datasets.
 Reading Data
 ============
 
-Datasets uses Ray tasks to read data from remote storage. When you read from a file-based datasource like S3, Datasets creates a number of read tasks proportional to the number of CPUs in the cluster. Each read task reads its assigned files and produces an output block:
+Datasets uses Ray tasks to read data from remote storage. Each read task reads its assigned files and produces an output block:
 
 .. image:: images/dataset-read.svg
    :align: center
