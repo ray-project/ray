@@ -8,6 +8,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_pandas_operator import (
+    FromDask,
     FromPandas,
     FromPandasRefs,
 )
@@ -618,6 +619,35 @@ def test_aggregate_e2e(
         assert row.as_pydict() == {"value": idx, "count()": 1}
 
 
+def test_from_dask_operator(ray_start_regular_shared, enable_optimizer):
+    import dask.dataframe as dd
+
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
+    ddf = dd.from_pandas(df, npartitions=10)
+    # ds = ray.data.from_dask(ddf)
+
+    planner = Planner()
+    from_items_op = FromDask(ddf)
+    plan = LogicalPlan(from_items_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_items_op.name == "FromDask"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
+    import dask.dataframe as dd
+
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
+    ddf = dd.from_pandas(df, npartitions=10)
+    ds = ray.data.from_dask(ddf)
+    dfds = ds.to_pandas()
+    assert df.equals(dfds)
+    # Underlying implementation uses `FromPandasRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+
+
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_pandas_refs_operator(
     ray_start_regular_shared, enable_optimizer, enable_pandas_block
@@ -669,6 +699,7 @@ def test_from_pandas_refs_e2e(
         assert values == rows
         # Check that metadata fetch is included in stats.
         assert "from_pandas_refs" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -724,6 +755,8 @@ def test_from_pandas_e2e(
         assert values == rows
         # Check that metadata fetch is included in stats.
         assert "from_pandas_refs" in ds.stats()
+        # Underlying implementation uses `FromPandasRefs` operator
+        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
