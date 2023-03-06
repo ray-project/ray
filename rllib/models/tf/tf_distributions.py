@@ -129,7 +129,7 @@ class TfCategorical(TfDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return (space.n,)
+        return (int(space.n),)
 
     @override(TfDistribution)
     def _rsample(self, sample_shape=()):
@@ -202,7 +202,7 @@ class TfDiagGaussian(TfDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
 
     @override(TfDistribution)
     def _rsample(self, sample_shape=()):
@@ -283,7 +283,7 @@ class TfDeterministic(Distribution):
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
-        return tuple(np.prod(space.shape, dtype=np.int32))
+        return (int(np.prod(space.shape, dtype=np.int32)),)
 
     @classmethod
     @override(Distribution)
