@@ -119,7 +119,7 @@ class Catalog:
 
         # Get a mapping from framework to action distribution class
         self.action_dist_cls_dict = self.get_action_dist_cls_dict(
-            action_space=action_space,
+            action_space=self.action_space,
         )
 
         # The dimensions of the latent vector that is output by the encoder and fed

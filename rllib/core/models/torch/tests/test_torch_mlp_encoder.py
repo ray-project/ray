@@ -47,9 +47,9 @@ class TestTorchMLPEncoder(unittest.TestCase):
             )
 
             config = MLPEncoderConfig(
-                input_dim=inputs_dim,
+                input_dims=inputs_dim,
                 hidden_layer_dims=hidden_layer_dims,
-                output_dim=output_dims,
+                output_dims=output_dims,
                 hidden_layer_activation=hidden_layer_activation,
                 output_activation=output_activation,
             )

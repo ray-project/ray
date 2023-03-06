@@ -63,7 +63,7 @@ class TestTorchCNNEncoder(unittest.TestCase):
                 filter_specifiers=filter_specifiers,
                 filter_layer_activation=filter_layer_activation,
                 output_activation=output_activation,
-                output_dim=output_dims,
+                output_dims=output_dims,
             )
 
             model = config.build(framework="torch")
