@@ -289,8 +289,3 @@ class TfDeterministic(Distribution):
     @override(Distribution)
     def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
         return TfDeterministic(loc=logits)
-
-    @classmethod
-    @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
-        return TfDeterministic(loc=logits)
