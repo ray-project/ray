@@ -13,6 +13,9 @@ from ray.data._internal.execution.interfaces import (
 from ray.types import ObjectRef
 
 
+MIN_BUFFER_SIZE = 10
+
+
 class OutputSplitter(PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
@@ -127,7 +130,7 @@ class OutputSplitter(PhysicalOperator):
     def _dispatch_bundles(self) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
-        while self._buffer:
+        while self._buffer and len(self._buffer) > MIN_BUFFER_SIZE:
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
