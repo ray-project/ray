@@ -124,7 +124,7 @@ class Catalog:
 
         # The dimensions of the latent vector that is output by the encoder and fed
         # to the heads.
-        self.latent_dim = self.encoder_config.output_dim
+        self.latent_dims = self.encoder_config.output_dims
 
     def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
@@ -143,6 +143,27 @@ class Catalog:
             "an encoder_config i created in the __post_init__ method."
         )
         return self.encoder_config.build(framework=framework)
+
+    def get_action_dist_cls(self, framework: str):
+        """Get the action distribution class.
+
+        The default behavior is to get the action distribution from the
+        action_dist_cls_dict. This can be overridden to build a custom action
+        distribution as a means of configuring the behavior of a PPORLModuleBase
+        implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf".
+
+        Returns:
+            The action distribution.
+        """
+        assert hasattr(self, "action_dist_cls_dict"), (
+            "You must define a `Catalog.action_dist_cls_dict` attribute in your "
+            "Catalog subclass or override the `Catalog.get_action_dist_cls` method. "
+            "Normally, an action_dist_cls_dict is created in the __post_init__ method."
+        )
+        return self.action_dist_cls_dict[framework]
 
     @classmethod
     def get_encoder_config(
@@ -346,19 +367,3 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
-
-    def get_action_dist_cls(self, framework: str):
-        """Get the action distribution class.
-
-        The default behavior is to get the action distribution from the
-        action_dist_cls_dict. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
-        implementation.
-
-        Args:
-            framework: The framework to use. Either "torch" or "tf".
-
-        Returns:
-            The action distribution.
-        """
-        return self.action_dist_cls_dict[framework]
