@@ -113,8 +113,8 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
   When using the actor compute strategy, per-row and per-batch UDFs can also be
   *callable classes*, i.e. classes that implement the ``__call__`` magic method. The
   constructor of the class can be used for stateful setup, and will be only invoked once
-  per worker actor. 
-  
+  per worker actor.
+
   Callable classes are useful if there is expensive state (such as a neural network) that need to be loaded for the UDF. By using an actor class, the state only needs to be loaded once in the beginning, rather than for each batch.
 
   .. note::
@@ -372,6 +372,97 @@ The following output types are allowed for per-row UDFs (e.g.,
     :language: python
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
+
+.. _datasets-groupbys:
+
+--------------------------
+Group-bys and aggregations
+--------------------------
+
+Unlike mapping operations, groupbys and aggregations are global. Grouped aggregations
+are executed lazily. Global aggregations are executed *eagerly* and block until the
+aggregation has been computed.
+
+.. code-block:: python
+
+    ds: ray.data.Dataset = ray.data.from_items([
+        {"A": x % 3, "B": 2 * x, "C": 3 * x}
+        for x in range(10)])
+
+    # Group by the A column and calculate the per-group mean for B and C columns.
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).fully_executed()
+    # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
+    # -> Dataset(num_blocks=10, num_rows=3, schema={})
+    agg_ds.to_pandas()
+    # ->
+    #    A  mean(B)  mean(C)
+    # 0  0      9.0     13.5
+    # 1  1      8.0     12.0
+    # 2  2     10.0     15.0
+
+    # Global mean on B column.
+    ds.mean("B")
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 2851.91it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 319.69it/s]
+    # -> 9.0
+
+    # Global mean on multiple columns.
+    ds.mean(["B", "C"])
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1730.32it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 231.41it/s]
+    # -> {'mean(B)': 9.0, 'mean(C)': 13.5}
+
+    # Multiple global aggregations on multiple columns.
+    from ray.data.aggregate import Mean, Std
+    ds.aggregate(Mean("B"), Std("B", ddof=0), Mean("C"), Std("C", ddof=0))
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1568.73it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 133.51it/s]
+    # -> {'mean(A)': 0.9, 'std(A)': 0.8306623862918076, 'mean(B)': 9.0, 'std(B)': 5.744562646538029}
+
+Combine aggreations with batch mapping to transform datasets using computed statistics.
+For example, you can efficiently standardize feature columns and impute missing values
+with calculated column means.
+
+.. code-block:: python
+
+    # Impute missing values with the column mean.
+    b_mean = ds.mean("B")
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 4054.03it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 359.22it/s]
+    # -> 9.0
+
+    def impute_b(df: pd.DataFrame):
+        df["B"].fillna(b_mean)
+        return df
+
+    ds = ds.map_batches(impute_b, batch_format="pandas")
+    # -> MapBatches(impute_b)
+    #    +- Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
+
+    # Standard scaling of all feature columns.
+    stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
+    # -> MapBatches(impute_b): 100%|██████████████████████████████| 10/10 [00:01<00:00,  7.16it/s]
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1260.99it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 128.77it/s]
+    # -> {'mean(B)': 9.0, 'std(B)': 6.0553007081949835, 'mean(C)': 13.5, 'std(C)': 9.082951062292475}
+
+    def batch_standard_scaler(df: pd.DataFrame):
+        def column_standard_scaler(s: pd.Series):
+            s_mean = stats[f"mean({s.name})"]
+            s_std = stats[f"std({s.name})"]
+            return (s - s_mean) / s_std
+
+        cols = df.columns.difference(["A"])
+        df.loc[:, cols] = df.loc[:, cols].transform(column_standard_scaler)
+        return df
+
+    ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
+    ds.fully_executed()
+    # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
+    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
+
 
 .. _transform_datasets_configuring_batch_size:
 

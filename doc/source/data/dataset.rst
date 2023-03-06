@@ -36,8 +36,22 @@ Data Loading and Preprocessing for ML Training
 Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
 Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality per-epoch global shuffles) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
-Ray Datasets are not intended as a replacement for more general data processing systems.
-:ref:`Learn more about how Ray Datasets work with other ETL systems <datasets-ml-preprocessing>`.
+Datasets is not intended as a replacement for more general data processing systems.
+Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
+
+.. image:: images/dataset-loading-1.png
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
+
+Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to enable running a full data to
+ML pipeline completely within Ray without requiring data to be materialized to external storage:
+
+.. image:: images/dataset-loading-2.png
+   :width: 650px
+   :align: center
 
 -----------------------------
 Datasets for Parallel Compute
@@ -102,8 +116,8 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     Learn how to :ref:`create datasets <creating_datasets>`, :ref:`save
     datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
     :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
-    transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
-    :ref:`work with tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
+    transformations <pipelining_datasets>`, :ref:`work with tensor data <datasets_tensor_support>`,
+    or :ref:`use pipelines <data_pipeline_usage>`.
 
     +++
     .. link-button:: data_user_guide

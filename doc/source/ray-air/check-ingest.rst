@@ -131,7 +131,13 @@ Enabling Streaming Ingest
 Shuffling Data
 ~~~~~~~~~~~~~~
 
-Shuffling or data randomization is important for training high-quality models. By default, AIR will randomize the order the data files (blocks) are read from. AIR also offers options for further randomizing data records within each file:
+Shuffling or data randomization is important for training high-quality models.
+
+By default, AIR reads data files (blocks) in a random order and shuffles the blocks
+assigned to each dataset shard. You can disable this behaviour by setting
+``randomize_block_order`` to ``False`` in your :class:`~ray.air.config.DatasetConfig`.
+
+To randomize data records within a file, perform a local or global shuffle.
 
 .. tabbed:: Local Shuffling
 
