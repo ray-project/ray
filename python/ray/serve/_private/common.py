@@ -323,10 +323,6 @@ class RunningReplicaInfo:
         return all(
             [
                 isinstance(other, RunningReplicaInfo),
-                self.deployment_name == other.deployment_name,
-                self.replica_tag == other.replica_tag,
-                self.actor_handle._actor_id == other.actor_handle._actor_id,
-                self.max_concurrent_queries == other.max_concurrent_queries,
-                self.is_cross_language == other.is_cross_language,
+                self._hash == other._hash,
             ]
         )

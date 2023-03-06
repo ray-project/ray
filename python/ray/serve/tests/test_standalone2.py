@@ -1,4 +1,3 @@
-import functools
 import os
 import subprocess
 import sys
@@ -1231,27 +1230,43 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     handle = serve.run(f.bind())
     first_ref = handle.remote()
 
-    # Second request should be hanging.
-    with ThreadPoolExecutor() as pool:
-        # Send the first request, it should block for the result
-        second_request_fut = pool.submit(
-            functools.partial(requests.get, "http://127.0.0.1:8000", timeout=100)
-        )
-        # Let the long poll timeout happens.
-        time.sleep(20)
-        assert not second_request_fut.done()
-        # Make sure the first request is being run.
-        replicas = list(handle.router._replica_set.in_flight_queries.keys())
-        assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
-        # First ref should be still ongoing
-        with pytest.raises(ray.exceptions.GetTimeoutError):
-            ray.get(first_ref, timeout=1)
-        # Unblock the first request.
-        signal_actor.send.remote()
-        assert ray.get(first_ref) == "hello"
-        # Second request should be sent and processed.
-        wait_for_condition(lambda: second_request_fut.done())
-        second_request_fut.result().text == "hello"
+    # Clear all the internal longpoll client objects within handle
+    # long poll client will receive new updates from long poll host,
+    # this is to simulate the longpoll timeout
+    object_snapshots1 = handle.router.long_poll_client.object_snapshots
+    handle.router.long_poll_client._reset()
+    wait_for_condition(
+        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
+    )
+    object_snapshots2 = handle.router.long_poll_client.object_snapshots
+
+    # Check object snapshots between timeout interval
+    assert object_snapshots1.keys() == object_snapshots2.keys()
+    assert len(object_snapshots1.keys()) == 1
+    key = list(object_snapshots1.keys())[0]
+    assert (
+        object_snapshots1[key][0].actor_handle != object_snapshots2[key][0].actor_handle
+    )
+    assert (
+        object_snapshots1[key][0].actor_handle._actor_id
+        == object_snapshots2[key][0].actor_handle._actor_id
+    )
+
+    # Make sure the inflight queries still one
+    assert len(handle.router._replica_set.in_flight_queries) == 1
+    key = list(handle.router._replica_set.in_flight_queries.keys())[0]
+    assert len(handle.router._replica_set.in_flight_queries[key]) == 1
+
+    # Make sure the first request is being run.
+    replicas = list(handle.router._replica_set.in_flight_queries.keys())
+    assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
+    # First ref should be still ongoing
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(first_ref, timeout=1)
+    # Unblock the first request.
+    signal_actor.send.remote()
+    assert ray.get(first_ref) == "hello"
+
     serve.shutdown()
 
 
