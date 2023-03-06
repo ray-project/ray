@@ -85,21 +85,23 @@ def train_func_distributed():
         print(f"epoch: {epoch}, loss: {loss.item()}")
 # __torch_distributed_end__
 
-# __torch_single_run_begin__
-train_func()
-# __torch_single_run_end__
 
-# __torch_trainer_begin__
-from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
+if __name__ == "__main__":
+    # __torch_single_run_begin__
+    train_func()
+    # __torch_single_run_end__
 
-# For GPU Training, set `use_gpu` to True.
-use_gpu = False
+    # __torch_trainer_begin__
+    from ray.train.torch import TorchTrainer
+    from ray.air.config import ScalingConfig
 
-trainer = TorchTrainer(
-    train_func_distributed,
-    scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu)
-)
+    # For GPU Training, set `use_gpu` to True.
+    use_gpu = False
 
-results = trainer.fit()
-# __torch_trainer_end__
+    trainer = TorchTrainer(
+        train_func_distributed,
+        scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu)
+    )
+
+    results = trainer.fit()
+    # __torch_trainer_end__
