@@ -574,7 +574,7 @@ class Checkpoint:
                 " a local directory"
             )
         path = os.path.normpath(str(path))
-        _make_dir(path, acquire_del_lock=True)
+        _make_dir(path)
         self._local_path = self._to_directory_safe(path, move_instead_of_copy=True)
         return self._local_path
 
@@ -858,7 +858,7 @@ def _get_del_lock_path(path: str, pid: str = None) -> str:
     return f"{path}.del_lock_{pid}"
 
 
-def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
+def _make_dir(path: str, acquire_del_lock: bool = False) -> None:
     """Create the temporary checkpoint dir in ``path``."""
     if acquire_del_lock:
         # Each process drops a deletion lock file it then cleans up.
