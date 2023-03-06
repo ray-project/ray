@@ -544,6 +544,7 @@ const GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
     }
     return &entry->second;
   }
+  RAY_LOG_EVERY_MS(INFO, 10000) << "Node " << node_id.Hex() << " doesn't exist.";
   return nullptr;
 }
 
