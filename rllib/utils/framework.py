@@ -26,7 +26,7 @@ def try_import_jax(error: bool = False):
     """
     if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
         logger.warning("Not importing JAX for test purposes.")
-        return None
+        return None, None
 
     try:
         import jax
