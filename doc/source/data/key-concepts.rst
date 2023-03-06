@@ -37,10 +37,7 @@ This flexibility is a unique characteristic of Ray Datasets.
 Reading Data
 ============
 
-Datasets uses Ray tasks to read data from remote storage. When you read from a
-file-based datasource like S3, Datasets creates a number of read tasks proportional to
-the number of CPUs in the cluster. Each read task reads its assigned files and produces
-an output block:
+Datasets uses Ray tasks to read data from remote storage. When you read from a file-based datasource like S3, Datasets creates a number of read tasks proportional to the number of CPUs in the cluster. Each read task reads its assigned files and produces an output block:
 
 .. image:: images/dataset-read.svg
    :align: center
@@ -48,8 +45,7 @@ an output block:
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-You can manually specify the number of read tasks, but the final parallelism is always
-capped by the number of files in the underlying dataset.
+You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying dataset.
 
 For an in-depth guide on creating datasets, read :ref:`Creating Datasets <creating_datasets>`.
 
