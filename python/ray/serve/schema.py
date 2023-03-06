@@ -15,6 +15,7 @@ from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@DeveloperAPI
 def route_prefix_format(cls, v):
     """
     The route_prefix
@@ -250,8 +251,9 @@ class DeploymentSchema(
 def deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
     """Converts a DeploymentInfo object to DeploymentSchema.
 
-    Compatible with 2.x multi-application API, so route_prefix is not set, as starting
-    in 2.x route_prefix is an application-level concept.
+    Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
+    route_prefix is an application-level concept. (This should only be used on the 2.x
+    codepath)
     """
 
     return DeploymentSchema(
@@ -517,6 +519,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         return {"applications": []}
 
 
+@PublicAPI(stability="alpha")
 class DeploymentDetails(BaseModel, extra=Extra.forbid):
     name: str = Field(description="Deployment name.")
     num_running_replicas: int = Field(
@@ -556,6 +559,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
         return v
 
 
+@PublicAPI(stability="alpha")
 class ApplicationDetails(BaseModel, extra=Extra.forbid):
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
@@ -602,6 +606,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
     )
 
 
+@PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     host: str = Field(
         description="The host on which the HTTP server is listening for requests."

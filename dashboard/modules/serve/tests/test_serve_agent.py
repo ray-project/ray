@@ -411,7 +411,7 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_get_serve_instance_details(ray_start_stop):
     pizza_import_path = (
         "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
@@ -428,7 +428,6 @@ def test_get_serve_instance_details(ray_start_stop):
                 "deployments": [
                     {
                         "name": "Adder",
-                        "num_replicas": 3,
                         "ray_actor_options": {
                             "runtime_env": {"env_vars": {"override_increment": "3"}}
                         },
