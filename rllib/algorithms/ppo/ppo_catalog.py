@@ -75,7 +75,7 @@ class PPOCatalog(Catalog):
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
         self.pi_head_config = MLPHeadConfig(
-            input_dims=self.encoder_config.output_dims,
+            input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
@@ -83,21 +83,12 @@ class PPOCatalog(Catalog):
         )
 
         self.vf_head_config = MLPHeadConfig(
-            input_dims=self.encoder_config.output_dims,
+            input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
             output_dims=[1],
         )
-
-        # Set input- and output dimensions to fit PPO's needs.
-        self.encoder_config.input_dims = [observation_space.shape[0]]
-        self.pi_head_config.input_dims = self.encoder_config.output_dims
-        if isinstance(action_space, gym.spaces.Discrete):
-            self.pi_head_config.output_dims = [int(action_space.n)]
-        else:
-            self.pi_head_config.output_dims = [int(action_space.shape[0] * 2)]
-        self.vf_head_config.output_dims = [1]
 
     def build_actor_critic_encoder(self, framework: str):
         """Builds the ActorCriticEncoder.

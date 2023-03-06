@@ -81,13 +81,25 @@ class Catalog:
         self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self.view_requirements = view_requirements
 
-        # Produce a basic encoder config.
+        self.latent_dims = None
+        # Overwrite this post-init hook in subclasses
+        self.__post_init__()
+
+    def __post_init__(self):
+        """Post-init hook for subclasses to override.
+
+        This makes it so that subclasses are not forced to create an encoder config
+        if the rest of their catalog is not dependent on it or if it breaks.
+        At the end of Catalog initialization, an attribute `Catalog.latent_dims`
+        should be set so that heads can be built using that information.
+        """
         self.encoder_config = self.get_encoder_config(
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config_dict=model_config_dict,
-            view_requirements=view_requirements,
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config_dict=self.model_config_dict,
+            view_requirements=self.view_requirements,
         )
+        self.latent_dims = self.encoder_config.output_dims
 
     def build_encoder(self, framework: str):
         """Builds the encoder.
@@ -100,6 +112,11 @@ class Catalog:
         Returns:
             The encoder.
         """
+        assert hasattr(self, "encoder_config"), (
+            "You must define a `Catalog.encoder_config` attribute in your Catalog "
+            "subclass or override the `Catalog.build_encoder` method. Normally, "
+            "an encoder_config i created in the __post_init__ method."
+        )
         return self.encoder_config.build(framework=framework)
 
     @classmethod
