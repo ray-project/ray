@@ -1226,8 +1226,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1238,7 +1236,6 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-    type: client
 
     wait_for_nodes:
       num_nodes: 4
@@ -1253,8 +1250,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1265,7 +1260,6 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
-    type: client
 
     wait_for_nodes:
       num_nodes: 4
@@ -1280,8 +1274,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1291,7 +1283,6 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    type: client
 
     wait_for_nodes:
       num_nodes: 4
@@ -1422,8 +1413,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1752,8 +1741,6 @@
   working_dir: long_running_tests
 
   stable: true
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   frequency: weekly
   team: serve
@@ -1765,7 +1752,6 @@
     timeout: 86400
     script: python workloads/serve_failure.py
     long_running: true
-    type: sdk_command
 
   smoke_test:
     frequency: nightly
@@ -3788,16 +3774,11 @@
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
-
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4060,8 +4041,6 @@
   working_dir: k8s_tests
 
   stable: false
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: serve
@@ -4073,16 +4052,12 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
-    type: sdk_command
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -4093,16 +4068,12 @@
   run:
     timeout: 1200
     script: cd tests && bash test_aws_cluster_launcher.sh aws_cluster.yaml
-    type: sdk_command
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -4113,4 +4084,3 @@
   run:
     timeout: 1200
     script: cd tests && bash test_aws_cluster_launcher.sh ../example-minimal.yaml
-    type: sdk_command
