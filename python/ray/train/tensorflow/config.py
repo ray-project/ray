@@ -47,14 +47,18 @@ class _TensorflowBackend(Backend):
             address, port = get_address_and_port()
             return f"{address}:{port}"
 
-        urls = worker_group.execute(get_url)
+        urls = worker_group.execute("get_url", get_url)
 
         # Get setup tasks in order to throw errors on failure.
         setup_futures = []
         for i in range(len(worker_group)):
             setup_futures.append(
                 worker_group.execute_single_async(
-                    i, _setup_tensorflow_environment, worker_addresses=urls, index=i
+                    "setup_tensorflow_environment",
+                    i,
+                    _setup_tensorflow_environment,
+                    worker_addresses=urls,
+                    index=i,
                 )
             )
         ray.get(setup_futures)
