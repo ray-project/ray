@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -20,7 +25,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
 )
 
 py_test(
