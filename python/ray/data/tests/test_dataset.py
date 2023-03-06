@@ -382,12 +382,13 @@ def test_zip_different_num_blocks_split_smallest(
         [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
         parallelism=num_blocks2,
     )
-    ds = ds1.zip(ds2)
+    ds = ds1.zip(ds2).fully_executed()
+    num_blocks = ds._plan._snapshot_blocks.executed_num_blocks()
     assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
     if should_invert:
-        assert ds.num_blocks() == num_blocks2
+        assert num_blocks == num_blocks2
     else:
-        assert ds.num_blocks() == num_blocks1
+        assert num_blocks == num_blocks1
 
 
 def test_zip_pandas(ray_start_regular_shared):
@@ -4580,9 +4581,19 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
             ds = ray.data.range(10)
             ds = ds.map_batches(lambda x: x)
             ds.take()
-        except LoggerWarningCalled:
-            logger_args, logger_kwargs = mock_logger.call_args
-            assert "Warning: The Ray cluster currently does not have " in logger_args[0]
+        except Exception as e:
+            if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+                assert isinstance(e, ValueError)
+                assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(
+                    e
+                )
+            else:
+                assert isinstance(e, LoggerWarningCalled)
+                logger_args, logger_kwargs = mock_logger.call_args
+                assert (
+                    "Warning: The Ray cluster currently does not have "
+                    in logger_args[0]
+                )
 
 
 def test_nowarning_execute_with_cpu(ray_start_cluster_init):
