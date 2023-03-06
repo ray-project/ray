@@ -75,7 +75,7 @@ class PPOCatalog(Catalog):
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=None,  # We don't know the output dimension yet, because it
+            output_dims=None,  # We don't know the output dimension yet, because it
             # depends on the action distribution input dimension
         )
 
