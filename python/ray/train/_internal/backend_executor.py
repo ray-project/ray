@@ -114,7 +114,7 @@ class BackendExecutor:
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
-                self.worker_group.execute(initialization_hook)
+                self.worker_group.execute("initialization_hook", initialization_hook)
 
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
@@ -238,7 +238,9 @@ class BackendExecutor:
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(worker_id, set_gpu_ids)
+                    self.worker_group.execute_single_async(
+                        "set_gpu_ids", worker_id, set_gpu_ids
+                    )
                 )
         ray.get(futures)
 
@@ -387,6 +389,7 @@ class BackendExecutor:
         for index in range(len(self.worker_group)):
             futures.append(
                 self.worker_group.execute_single_async(
+                    "initialize_session",
                     index,
                     initialize_session,
                     world_rank=index,
@@ -411,7 +414,7 @@ class BackendExecutor:
             session = get_session()
             session.start()
 
-        self.worker_group.execute_async(train_async)
+        self.worker_group.execute_async("train", train_async)
 
     def get_next_results(self) -> Optional[List[TrainingResult]]:
         """Fetches the next ``TrainingResult`` from each worker.
@@ -440,7 +443,7 @@ class BackendExecutor:
             return result
 
         # Get next result from each worker.
-        futures = self.worker_group.execute_async(get_next)
+        futures = self.worker_group.execute_async("get_next", get_next)
         results = self.get_with_failure_handling(futures)
 
         # Check if any worker returned None.
@@ -478,7 +481,9 @@ class BackendExecutor:
             session = _get_session("pause_reporting")
             return session.pause_reporting()
 
-        futures = self.worker_group.execute_async(pause_session_reporting)
+        futures = self.worker_group.execute_async(
+            "pause_session_reporting", pause_session_reporting
+        )
         self.get_with_failure_handling(futures)
 
     def finish_training(self):
@@ -505,7 +510,7 @@ class BackendExecutor:
 
             return output
 
-        futures = self.worker_group.execute_async(end_training)
+        futures = self.worker_group.execute_async("end_training", end_training)
         results = self.get_with_failure_handling(futures)
         return results
 

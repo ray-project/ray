@@ -160,7 +160,7 @@ class _TorchBackend(Backend):
                 worker_group.execute(_set_nccl_network_interface)
 
             master_addr, master_port = worker_group.execute_single(
-                0, get_address_and_port
+                "get_address_and_port", 0, get_address_and_port
             )
             if backend_config.init_method == "env":
 
@@ -168,7 +168,9 @@ class _TorchBackend(Backend):
                     os.environ["MASTER_ADDR"] = addr
                     os.environ["MASTER_PORT"] = str(port)
 
-                worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
+                worker_group.execute(
+                    "set_env_vars", set_env_vars, addr=master_addr, port=master_port
+                )
                 url = "env://"
             elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
@@ -183,6 +185,7 @@ class _TorchBackend(Backend):
             for i in range(len(worker_group)):
                 setup_futures.append(
                     worker_group.execute_single_async(
+                        "setup_torch_process_group",
                         i,
                         _setup_torch_process_group,
                         backend=backend,
@@ -197,15 +200,18 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-
         worker_group.execute(
-            _shutdown_torch, destroy_process_group=len(worker_group) > 1
+            "shutdown_torch",
+            _shutdown_torch,
+            destroy_process_group=len(worker_group) > 1,
         )
 
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
-        worker_group.execute(_set_torch_distributed_env_vars)
+        worker_group.execute(
+            "set_torch_distributed_env_vars", _set_torch_distributed_env_vars
+        )
 
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint):

@@ -140,7 +140,6 @@ class WorkerGroup:
         actor_cls_kwargs: Optional[Dict] = None,
         placement_group: Union[PlacementGroup, str] = "default",
     ):
-
         if num_workers <= 0:
             raise ValueError(
                 "The provided `num_workers` must be greater "
@@ -223,7 +222,9 @@ class WorkerGroup:
         logger.debug("Shutdown successful.")
         self.workers = []
 
-    def execute_async(self, func: Callable[..., T], *args, **kwargs) -> List[ObjectRef]:
+    def execute_async(
+        self, name: str, func: Callable[..., T], *args, **kwargs
+    ) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
 
         Args:
@@ -244,11 +245,13 @@ class WorkerGroup:
             )
 
         return [
-            w.actor._RayTrainWorker__execute.remote(func, *args, **kwargs)
+            w.actor._RayTrainWorker__execute.options(
+                name=f"_RayTrainWorker__execute.{name}"
+            ).remote(func, *args, **kwargs)
             for w in self.workers
         ]
 
-    def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
+    def execute(self, name: str, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
@@ -260,10 +263,10 @@ class WorkerGroup:
                 worker. The order is the same as ``self.workers``.
 
         """
-        return ray.get(self.execute_async(func, *args, **kwargs))
+        return ray.get(self.execute_async(name, func, *args, **kwargs))
 
     def execute_single_async(
-        self, worker_index: int, func: Callable[..., T], *args, **kwargs
+        self, name: str, worker_index: int, func: Callable[..., T], *args, **kwargs
     ) -> ObjectRef:
         """Execute ``func`` on worker ``worker_index`` and return futures.
 
@@ -281,12 +284,16 @@ class WorkerGroup:
                 f"The provided worker_index {worker_index} is "
                 f"not valid for {self.num_workers} workers."
             )
-        return self.workers[worker_index].actor._RayTrainWorker__execute.remote(
-            func, *args, **kwargs
+        return (
+            self.workers[worker_index]
+            .actor._RayTrainWorker__execute.options(
+                name=f"_RayTrainWorker__execute.{name}"
+            )
+            .remote(func, *args, **kwargs)
         )
 
     def execute_single(
-        self, worker_index: int, func: Callable[..., T], *args, **kwargs
+        self, name: str, worker_index: int, func: Callable[..., T], *args, **kwargs
     ) -> T:
         """Execute ``func`` on worker with index ``worker_index``.
 
@@ -300,7 +307,9 @@ class WorkerGroup:
 
         """
 
-        return ray.get(self.execute_single_async(worker_index, func, *args, **kwargs))
+        return ray.get(
+            self.execute_single_async(name, worker_index, func, *args, **kwargs)
+        )
 
     def remove_workers(self, worker_indexes: List[int]):
         """Removes the workers with the specified indexes.
@@ -336,7 +345,9 @@ class WorkerGroup:
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
-                actor._RayTrainWorker__execute.remote(construct_metadata)
+                actor._RayTrainWorker__execute.options(
+                    name="_RayTrainWorker__execute.construct_metadata"
+                ).remote(construct_metadata)
             )
 
         # Get metadata from all actors.
