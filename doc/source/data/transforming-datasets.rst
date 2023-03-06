@@ -111,7 +111,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 .. tabbed:: "Callable Class UDFs"
 
   With the actor compute strategy, you can use per-row and per-batch UDFs
-  *callable classes*, i.e. classes that implement the ``__call__`` magic method. The
+  *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
   can use the constructor of the class for stateful setup, and it is only invoked once
   per worker actor.
 
