@@ -91,8 +91,8 @@ Datasets can shuffle hundreds of terabytes of data. For an in-depth guide on shu
 Execution mode
 ==============
 
-Datasets are lazy. The library doesn't execute operations until you
-consume a dataset or call :meth:`Dataset.fully_executed() <ray.data.Dataset.fully_executed>`.
+Most transformations are lazy. They don't execute until you consume a dataset or call
+:meth:`Dataset.fully_executed() <ray.data.Dataset.fully_executed>`.
 
 For an in-depth guide on Datasets execution, read :ref:`Execution <datasets_execution>`.
 
