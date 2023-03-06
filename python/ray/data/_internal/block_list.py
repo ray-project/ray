@@ -1,13 +1,11 @@
 import math
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
 import ray
-import ray.cloudpickle as cloudpickle
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockMetadata
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 
 
@@ -91,16 +89,12 @@ class BlockList:
             bytes_per_split: The max number of bytes per split.
         """
         self._check_if_cleared()
+        _resolve_size_bytes(self._blocks, self._metadata)
         output = []
         cur_blocks = []
         cur_meta = []
         cur_size = 0
         for b, m in zip(self._blocks, self._metadata):
-            if m.size_bytes is None:
-                # Fetch the block size in bytes if missing.
-                get_size_bytes = cached_remote_fn(_get_size_bytes)
-                # Cache on the block metadata.
-                m.size_bytes = ray.get(get_size_bytes.remote(b))
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
                 output.append(
@@ -248,10 +242,30 @@ class BlockList:
         return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)
 
 
-def _get_size_bytes(block: Block) -> int:
-    """Get the size in bytes for the provided block."""
-    try:
-        return BlockAccessor.for_block(block).size_bytes()
-    except TypeError:
-        # Fallback for read tasks, which we currently shoehorn into block lists.
-        return len(cloudpickle.dumps(block))
+def _resolve_size_bytes(
+    blocks: List[Union[ObjectRef[Block], None]],
+    metadata: List[BlockMetadata],
+):
+    """Manually fetch the block sizes in bytes if missing in block metadata.
+
+    This will mutate the provided block metadata list by overriding the missing size in
+    bytes.
+    """
+    # TODO(Clark): Port this to a logical operator or a metadata resolution pass of the
+    # plan.
+    assert len(blocks) == len(metadata)
+    missing_size_bytes = {}
+    for b, m in zip(blocks, metadata):
+        if m.size_bytes is None and b is not None:
+            missing_size_bytes[b] = m
+    if missing_size_bytes:
+        # At least one block is missing size bytes, which we need to populate.
+        # We just use the size of the pickled objects, which is returned in the
+        # locations fetch. This should be a lot more efficient than a block size
+        # fetching task.
+        block_locations = ray.experimental.get_object_locations(
+            list(missing_size_bytes.keys())
+        )
+        for block_ref in missing_size_bytes.keys():
+            block_loc = block_locations[block_ref]
+            missing_size_bytes[block_ref].size_bytes = block_loc["object_size"]

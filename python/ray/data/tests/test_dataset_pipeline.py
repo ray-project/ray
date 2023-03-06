@@ -245,14 +245,16 @@ def test_window_by_bytes_needing_bytes_fetch(
     ds = ray.data.read_parquet_bulk(paths, parallelism=parallelism)
 
     # 2 blocks per window.
-    pipe = ds.window(bytes_per_window=8 * 1024)
-    for ds in pipe.iter_datasets():
-        if enable_optimize_fuse_read_stages:
+    if enable_optimize_fuse_read_stages:
+        pipe = ds.window(bytes_per_window=8 * 1024)
+        for ds in pipe.iter_datasets():
             assert ds.num_blocks() == 2
-        else:
-            # If read stage fusion is disabled, the block size in bytes will be the
-            # serialized size of the read tasks, which is comparatively small.
-            assert ds.num_blocks() == 10
+    else:
+        with pytest.raises(RuntimeError):
+            # If read fusing is disabled, splitting the LazyBlockList will fail with a
+            # runtime error since the block sizes in bytes aren't known and windowing by
+            # bytes is guaranteed to not trigger execution on LazyBlockLists.
+            pipe = ds.window(bytes_per_window=8 * 1024)
 
 
 def test_epoch(ray_start_regular_shared):
