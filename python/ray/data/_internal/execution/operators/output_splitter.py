@@ -137,6 +137,12 @@ class OutputSplitter(PhysicalOperator):
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
+                if self._locality_hints:
+                    preferred_loc = self._locality_hints[target_index]
+                    if target_bundle.get_cached_location() == preferred_loc:
+                        self.hits += 1
+                    else:
+                        self.misses += 1
             else:
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)
@@ -154,9 +160,7 @@ class OutputSplitter(PhysicalOperator):
             for bundle in self._buffer:
                 if bundle.get_cached_location() == preferred_loc:
                     self._buffer.remove(bundle)
-                    self.hits += 1
                     return bundle
-            self.misses += 1
         return self._buffer.pop(0)
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
