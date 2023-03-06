@@ -6,7 +6,7 @@ import boto3
 s3_client = boto3.client("s3", region_name="us-west-2")
 
 # Set the name of the S3 bucket and the key to download
-bucket_name = "oss-release-test-ssh-keys"
+bucket_name = "oss-release-test-resources"
 key_name = "ray-autoscaler_59_us-west-2.pem"
 
 # Download the key from the S3 bucket to a local file
