@@ -7,6 +7,7 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_items_operator import FromItems
+from ray.data._internal.logical.operators.from_pandas_operator import FromPandasRefs
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Aggregate,
@@ -615,13 +616,40 @@ def test_aggregate_e2e(
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas(ray_start_regular_shared, enable_optimizer, enable_pandas_block):
+def test_from_pandas_refs_operator(
+    ray_start_regular_shared, enable_optimizer, enable_pandas_block
+):
     ctx = ray.data.context.DatasetContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
+        planner = Planner()
+        from_pandas_op = FromPandasRefs([df1, df2])
+        plan = LogicalPlan(from_pandas_op)
+        physical_op = planner.plan(plan).dag
+
+        assert from_pandas_op.name == "FromPandasRefs"
+        assert isinstance(physical_op, InputDataBuffer)
+        assert len(physical_op.input_dependencies) == 0
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
+
+
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas_refs_e2e(
+    ray_start_regular_shared, enable_optimizer, enable_pandas_block
+):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
         ds = ray.data.from_pandas([df1, df2])
         assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
         values = [(r["one"], r["two"]) for r in ds.take(6)]

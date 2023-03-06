@@ -10,6 +10,7 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_items_operator import FromItems
+from ray.data._internal.logical.operators.from_pandas_operator import FromPandasRefs
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
@@ -1299,6 +1300,9 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
+    from_pandas_refs_op = FromPandasRefs(dfs)
+    logical_plan = LogicalPlan(from_pandas_refs_op)
+
     context = DatasetContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
@@ -1311,6 +1315,7 @@ def from_pandas_refs(
             ),
             0,
             True,
+            logical_plan,
         )
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
@@ -1326,6 +1331,7 @@ def from_pandas_refs(
         ),
         0,
         True,
+        logical_plan,
     )
 
 
