@@ -139,9 +139,9 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             DatasetStats(stages={"from_items": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        epoch=0,
-        lazy=True,
-        logical_plan=logical_plan,
+        0,
+        True,
+        logical_plan,
     )
 
 

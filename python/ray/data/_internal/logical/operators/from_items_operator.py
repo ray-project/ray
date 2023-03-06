@@ -4,7 +4,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 
 
 class FromItems(LogicalOperator):
-    """Logical operator for from_items."""
+    """Logical operator for `from_items`."""
 
     def __init__(
         self,
