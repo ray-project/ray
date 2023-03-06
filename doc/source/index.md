@@ -3,6 +3,14 @@
 
 # Welcome to the Ray documentation
 
+```{raw} html
+
+<div>
+    <iframe width="600" height="600" src="https://8536-95-116-102-49.ngrok.io"</iframe>
+</div>
+```
+
+
 ````{panels}
 :container: text-center
 :column: col-lg-6 px-2 py-2
