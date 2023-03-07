@@ -427,16 +427,15 @@ class Checkpoint:
 
         return checkpoint
 
-    # TODO: Deprecate `from_checkpoint`. For context, see #29058.
     @classmethod
+    @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+        """Create a checkpoint from a generic :class:`Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
-        generic :py:class:`Checkpoint` object.
+        generic :class:`Checkpoint` object.
 
         Examples:
-
             >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
             >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
             >>> model = checkpoint.get_model()  # doctest: +SKIP
