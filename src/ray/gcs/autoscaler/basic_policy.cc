@@ -21,37 +21,45 @@
 namespace ray {
 namespace autoscaler {
 
-std::vector<std::pair<rpc::NodeType, int32_t>> BasciAutoscalingPolicy::GetNewNodesToLaunch(
-  const ray::rpc::ResourceLoad& normal_resource_load,
-  const ray::rpc::PlacementGroupLoad& pg_resource_load,
-  const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData>& cluster_resource_view,
-  const rpc::AvailableNodeTypesResponse& available_node_types,
-  const std::vector<std::pair<rpc::NodeType, int32_t>>& nodes_starting
-) {
-  auto new_nodes_to_start = FitsPlacementGroups(pg_resource_load, cluster_resource_view, available_node_types, nodes_starting);  
+std::vector<std::pair<rpc::NodeType, int32_t>>
+BasciAutoscalingPolicy::GetNewNodesToLaunch(
+    const ray::rpc::ResourceLoad &normal_resource_load,
+    const ray::rpc::PlacementGroupLoad &pg_resource_load,
+    const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData> &cluster_resource_view,
+    const rpc::AvailableNodeTypesResponse &available_node_types,
+    const std::vector<std::pair<rpc::NodeType, int32_t>> &nodes_starting) {
+  auto new_nodes_to_start = FitsPlacementGroups(
+      pg_resource_load, cluster_resource_view, available_node_types, nodes_starting);
+  auto new_nodes_to_start = FitsResourceDemands(pg_resource_load,
+                                                normal_resource_load,
+                                                cluster_resource_view,
+                                                available_node_types,
+                                                nodes_starting,
+                                                new_nodes_to_start);
+  //
 }
 
 namespace {
 
-bool Schedulable(const ray::rpc::ResourceData& resource_data, ray::rpc::Bundle bundle) {
+bool Schedulable(const ray::rpc::ResourceData &resource_data, ray::rpc::Bundle bundle) {
   return true;
 }
 
-bool FitPlacementGroupBundle(  
-  const ray::rpc::Bundle& bundle,
-  const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData>& cluster_resource_view,
-   const std::vector<std::pair<rpc::NodeType, int32_t>>& nodes_starting) {
-  
-  for (auto& pg : pg_resource_load.placement_group_data()) {
-    if (pg.stats() != rpc::PlacementGroupState::PENDING && pg.stats == rpc::PlacementGroupState::RESCHEDULING) {
+bool FitPlacementGroupBundle(
+    const ray::rpc::Bundle &bundle,
+    const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData> &cluster_resource_view,
+    const std::vector<std::pair<rpc::NodeType, int32_t>> &nodes_starting) {
+  for (auto &pg : pg_resource_load.placement_group_data()) {
+    if (pg.stats() != rpc::PlacementGroupState::PENDING &&
+        pg.stats == rpc::PlacementGroupState::RESCHEDULING) {
       continue;
     }
     if (pg.strategy != PlacementStrategy::STRICT_SPREAD) {
       continue;
     }
 
-    for (auto& bundle : pg_resource_load.bundles()) {
-      for (auto& [node, resource] : cluster_resource_view) {
+    for (auto &bundle : pg_resource_load.bundles()) {
+      for (auto &[node, resource] : cluster_resource_view) {
         if (Schedulable(resource, bundle)) {
           continue;
         }
@@ -60,20 +68,20 @@ bool FitPlacementGroupBundle(
   }
 }
 
-std::optional<NodeType> StartNewNode(  
-  const ray::rpc::Bundle& bundle,
-  const rpc::AvailableNodeTypesResponse& available_node_types) {
-  
-  for (auto& pg : pg_resource_load.placement_group_data()) {
-    if (pg.stats() != rpc::PlacementGroupState::PENDING && pg.stats == rpc::PlacementGroupState::RESCHEDULING) {
+std::optional<NodeType> StartNewNode(
+    const ray::rpc::Bundle &bundle,
+    const rpc::AvailableNodeTypesResponse &available_node_types) {
+  for (auto &pg : pg_resource_load.placement_group_data()) {
+    if (pg.stats() != rpc::PlacementGroupState::PENDING &&
+        pg.stats == rpc::PlacementGroupState::RESCHEDULING) {
       continue;
     }
     if (pg.strategy != PlacementStrategy::STRICT_SPREAD) {
       continue;
     }
 
-    for (auto& bundle : pg_resource_load.bundles()) {
-      for (auto& [node, resource] : cluster_resource_view) {
+    for (auto &bundle : pg_resource_load.bundles()) {
+      for (auto &[node, resource] : cluster_resource_view) {
         if (Schedulable(resource, bundle)) {
           continue;
         }
@@ -82,24 +90,22 @@ std::optional<NodeType> StartNewNode(
   }
 }
 
-const std::vector<std::pair<rpc::NodeType, int32_t>> FitsPlacementGroups(  
-  const ray::rpc::PlacementGroupLoad& pg_resource_load,
-  const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData>& cluster_resource_view,
-  const rpc::AvailableNodeTypesResponse& available_node_types,
-  const std::vector<std::pair<rpc::NodeType, int32_t>>& nodes_starting) {
-  
-
+const std::vector<std::pair<rpc::NodeType, int32_t>> FitsPlacementGroups(
+    const ray::rpc::PlacementGroupLoad &pg_resource_load,
+    const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData> &cluster_resource_view,
+    const rpc::AvailableNodeTypesResponse &available_node_types,
+    const std::vector<std::pair<rpc::NodeType, int32_t>> &nodes_starting) {
   std::vector<rpc::NodeType> new_nodes_to_start;
-  for (auto& pg : pg_resource_load.placement_group_data()) {
-    if (pg.stats() != rpc::PlacementGroupState::PENDING && pg.stats == rpc::PlacementGroupState::RESCHEDULING) {
+  for (auto &pg : pg_resource_load.placement_group_data()) {
+    if (pg.stats() != rpc::PlacementGroupState::PENDING &&
+        pg.stats == rpc::PlacementGroupState::RESCHEDULING) {
       continue;
     }
     if (pg.strategy != PlacementStrategy::STRICT_SPREAD) {
       continue;
     }
 
-
-    for (auto& bundle : pg_resource_load.bundles()) {
+    for (auto &bundle : pg_resource_load.bundles()) {
       if (FitPlacementGroupBundle(bundle, clsuter_resource_view, node_starting)) {
         continue;
       }
@@ -113,7 +119,6 @@ const std::vector<std::pair<rpc::NodeType, int32_t>> FitsPlacementGroups(
   }
 }
 
-
-}
+}  // namespace
 }  // namespace autoscaler
 }  // namespace ray

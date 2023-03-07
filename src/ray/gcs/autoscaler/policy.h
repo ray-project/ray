@@ -29,12 +29,11 @@ class IAutoscalingPolicy {
 
   // decide the new nodes to startup, based on the current state.
   virtual std::vector<std::pair<rpc::NodeType, int32_t>> GetNewNodesToLaunch(
-    const ray::rpc::ResourceLoad& normal_resource_load,
-    const ray::rpc::PlacementGroupLoad& pg_resource_load,
-    const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData>& cluster_resource_view,
-    const rpc::AvailableNodeTypesResponse& available_node_types,
-    const std::vector<std::pair<rpc::NodeType, int32_t>>& nodes_starting
-  ) = 0;
+      const ray::rpc::ResourceLoad &normal_resource_load,
+      const ray::rpc::PlacementGroupLoad &pg_resource_load,
+      const absl::flat_hash_map<NodeID, ray::rpc::ResourcesData> &cluster_resource_view,
+      const rpc::AvailableNodeTypesResponse &available_node_types,
+      const std::vector<std::pair<rpc::NodeType, int32_t>> &nodes_starting) = 0;
 };
 }  // namespace autoscaler
 }  // namespace ray
