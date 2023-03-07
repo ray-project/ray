@@ -33,7 +33,7 @@ LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
 LIGHTNING_TRAINER_FIT_PARAMS_KEY = "_lightning_trainer_fit_params"
 MODEL_CHECKPOINT_CONFIG_KEY = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
-
+RAY_DATASET_ITER_CONFIG_KEY = "_ray_dataset_iter_config"
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
@@ -89,14 +89,15 @@ class LightningTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
-            the key "train" to denote which dataset is the training
-            dataset and (optionally) key "evaluation" to denote the evaluation
-            dataset. Can only contain a training dataset
-            and up to one extra dataset to be used for evaluation with key "val".
-            If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be
+        datasets: A dictionary of Ray Datasets to use for training. 
+            Use the key "train" to denote which dataset is the training
+            dataset and (optionally) key "val" to denote the validation
+            dataset. If a ``preprocessor`` is provided and has not already 
+            been fit, it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
+        datasets_iter_config: Configuration to iterate the provided ray datasets.
+            Please check the valid arguments list here: 
+            :meth:`ray.data.Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -116,6 +117,7 @@ class LightningTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets_iter_config: Optional[Dict] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -129,6 +131,7 @@ class LightningTrainer(DataParallelTrainer):
             lightning_trainer_fit_params,
             ddp_strategy_config,
             model_checkpoint_config,
+            datasets_iter_config,
         )
 
         super(LightningTrainer, self).__init__(
@@ -152,6 +155,7 @@ class LightningTrainer(DataParallelTrainer):
         lightning_trainer_fit_params: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
         model_checkpoint_config: Optional[Dict] = None,
+        datasets_iter_config: Optional[Dict] = None,
     ) -> Dict[str, Any]:
 
         trainer_loop_config = {}
@@ -170,6 +174,7 @@ class LightningTrainer(DataParallelTrainer):
         trainer_loop_config[LIGHTNING_TRAINER_FIT_PARAMS_KEY] = lightning_trainer_fit_params
         trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
         trainer_loop_config[MODEL_CHECKPOINT_CONFIG_KEY] = model_checkpoint_config
+        trainer_loop_config[RAY_DATASET_ITER_CONFIG_KEY] = datasets_iter_config
 
         for key, config in trainer_loop_config.items():
             if not config:
@@ -201,10 +206,14 @@ def _lightning_train_loop_per_worker(config):
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
-    if not datamodule and not train_dataloaders:
-        # TODO(yunxuanx): configuration for iter_torch_batches
-        # TODO(yunxuanx): Add error message
-        datamodule = RayDataModule(train_ray_dataset, val_ray_dataset, {})
+    ray_dataset_iter_config = config.pop(RAY_DATASET_ITER_CONFIG_KEY)
+    if train_ray_dataset:
+        if datamodule or train_dataloaders:
+            logger.warning(
+                "Using Ray Dataset as primary datasource, datamodule and dataloaders "
+                "specified in lightning_trainer_fit_params will be ignored."
+            )
+        datamodule = RayDataModule(train_ray_dataset, val_ray_dataset, ray_dataset_iter_config)
 
     # Prepare Lightning Module
     LightningModuleCls = config.pop(LIGHTNING_MODULE_KEY)

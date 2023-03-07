@@ -10,7 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.strategies import DDPStrategy
-from lightning_fabric.plugins.environments.lightning import LightningEnvironment
+from pytorch_lightning.plugins.environments import LightningEnvironment
 
 import ray
 from ray.air import session
@@ -20,10 +20,11 @@ from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
+
 class RayModelCheckpoint(ModelCheckpoint):
     """
     AIR customized ModelCheckpoint callback.
-    
+
     A subclass of ``pytorch_lightning.callbacks.ModelCheckpoint``.
     This callback function reports the latest metrics to the AIR session and 
     creates an AIR checkpoint when a lightning checkpoint is saved.
@@ -42,7 +43,8 @@ class RayModelCheckpoint(ModelCheckpoint):
         e.g. './epoch=2-validation_loss=0.12.ckpt' -> './epoch=2-validation_loss=0.12/checkpoint.ckpt'
         """
         filepath = super().format_checkpoint_name(metrics, filename, ver)
-        filepath = filepath.replace(self.FILE_EXTENSION, f"/checkpoint{self.FILE_EXTENSION}")
+        filepath = filepath.replace(
+            self.FILE_EXTENSION, f"/checkpoint{self.FILE_EXTENSION}")
         return filepath
 
     def _session_report(self, trainer: "pl.Trainer"):
@@ -63,9 +65,11 @@ class RayModelCheckpoint(ModelCheckpoint):
 
             # AIR only takes the checkpoint of rank 0. Report a dummy checkpoint on other workers.
             if trainer.global_rank == 0:
-                kwargs["checkpoint"] = LightningCheckpoint.from_directory(path=os.path.dirname(filepath))
+                kwargs["checkpoint"] = LightningCheckpoint.from_directory(
+                    path=os.path.dirname(filepath))
             else:
-                kwargs["checkpoint"] = LightningCheckpoint.from_dict({"rank": session.get_world_rank()})
+                kwargs["checkpoint"] = LightningCheckpoint.from_dict(
+                    {"rank": session.get_world_rank()})
 
         self.last_best_k_models = deepcopy(self.best_k_models)
         session.report(**kwargs)
@@ -77,17 +81,18 @@ class RayModelCheckpoint(ModelCheckpoint):
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         super().on_train_epoch_end(trainer, pl_module)
         self._session_report(trainer=trainer)
-    
+
     def on_validation_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         super().on_validation_end(trainer, pl_module)
         self._session_report(trainer=trainer)
+
 
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy that ensures DDP training correctly with Ray orchestration."""
     @property
     def root_device(self) -> torch.device:
         return ray.train.torch.get_device()
-    
+
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
         return dict(
@@ -95,8 +100,10 @@ class RayDDPStrategy(DDPStrategy):
             rank=self.global_rank,
         )
 
+
 class RayEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
+
     def world_size(self) -> int:
         return session.get_world_size()
 
@@ -119,6 +126,7 @@ class RayEnvironment(LightningEnvironment):
     def teardown(self):
         pass
 
+
 class RayIterableDataset(IterableDataset):
     def __init__(self, dataset: "Dataset", config: Dict[str, Any]) -> None:
         super().__init__()
@@ -128,23 +136,31 @@ class RayIterableDataset(IterableDataset):
     def __iter__(self):
         return self.dataset.iter_torch_batches(**self.config)
 
+
 class RayDataModule(pl.LightningDataModule):
-    def __init__(self, 
-                train_dataset: "Dataset", 
-                val_dataset: Optional["Dataset"]=None,
-                config: Optional[Dict[str, Any]]=None) -> None:
+    def __init__(self,
+                 train_dataset: "Dataset",
+                 dataset_iter_config: Dict[str, Any],
+                 val_dataset: Optional["Dataset"] = None) -> None:
         super().__init__()
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.config = config if config else {}
+        self.dataset_iter_config = dataset_iter_config
+
+        if not self.dataset_iter_config:
+            raise RuntimeError(
+                "To use Ray Datasets with LightningTrainer, you must provide `datasets_iter_config`!"
+            )
 
     def train_dataloader(self):
-        ds = RayIterableDataset(self.train_dataset, self.config)
+        ds = RayIterableDataset(self.train_dataset, self.dataset_iter_config)
         return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
 
     def val_dataloader(self):
         if self.val_dataset:
-            ds = RayIterableDataset(self.val_dataset, self.config)
+            ds = RayIterableDataset(self.val_dataset, self.dataset_iter_config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
         else:
-            raise RuntimeError("val_dataset is None for RayDataModule.")
+            raise RuntimeError(
+                "val_dataset is None. Please provide your validation ray dataset when initializing the `LightningTrainer`."
+            )
