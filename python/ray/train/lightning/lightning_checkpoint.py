@@ -30,7 +30,7 @@ class LightningCheckpoint(Checkpoint):
     #     raise NotImplementedError(
     #         "LightningCheckpoint doesn't support loading from_dict()! Please use from_directory() or from_uri() instead.")
 
-    def get_model(self, model_class: pl.LightningModule, model_init_config: Dict["str", Any] = {}) -> pl.LightningModule:
+    def get_model(self, model_class: Type[pl.LightningModule], model_init_config: Dict["str", Any] = {}) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
 
         Args:

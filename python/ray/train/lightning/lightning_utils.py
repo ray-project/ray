@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 class RayModelCheckpoint(ModelCheckpoint):
     """AIR customized ModelCheckpoint callback """
 
-    def setup(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", stage: str) -> None:
-        super().setup(trainer, pl_module, stage)
+    def setup(self, *args, **kwargs) -> None:
+        super().setup(*args, **kwargs)
         self.last_best_k_models = {}
 
     def format_checkpoint_name(

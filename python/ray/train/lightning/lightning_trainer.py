@@ -59,9 +59,8 @@ class LightningTrainer(DataParallelTrainer):
     ``pytorch_lightning.Trainer.fit``.
 
     Args:
-        lightning_module: A class object (not a class instance) that is a subclass
-            of ``pytorch_lightning.LightningModule``. This class should define your
-            model logic.
+        lightning_module: A subclass of ``pytorch_lightning.LightningModule``
+            that defines define your training logic.
         lightning_module_config: Configurations to pass into
             ``lightning_module.__init__`` as kwargs.
         lightning_trainer_config: Configurations to pass into
@@ -72,12 +71,12 @@ class LightningTrainer(DataParallelTrainer):
             ``pytorch_lightning.strategies.DDPStrategy.__init__`` as kwargs. Most users
             should only set this to ``{"find_unused_parameters": False}`` or leave this
             as-is. For valid arguments to pass, see
-            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html#pytorch_lightning.strategies.DDPStrategy
+            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html
             and
-            https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel.
-        model_checkpoint_config: Configurations used to build a RayModelCheckpoint callback.
+            https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html
+        model_checkpoint_config: Configurations used to build a `ModelCheckpoint` callback.
             The valid arguments list is the same as ``pytorch_lightning.callbacks.ModelCheckpoint``. Please check:
-            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html#pytorch_lightning.callbacks.ModelCheckpoint
+            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
