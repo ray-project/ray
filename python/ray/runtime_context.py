@@ -26,7 +26,7 @@ class RuntimeContext(object):
         context = {
             "job_id": self.get_job_id(),
             "node_id": self.get_node_id(),
-            "namespace": self.get_namespace(),
+            "namespace": self.namespace(),
         }
         if self.worker.mode == ray._private.worker.WORKER_MODE:
             if self.get_task_id() is not None:
