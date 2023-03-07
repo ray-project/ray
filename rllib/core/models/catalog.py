@@ -282,7 +282,7 @@ class Catalog:
                 "gaussian": TorchDiagGaussian,
                 "categorical": TorchCategorical,
             }
-        elif framework == "tf2":
+        elif framework == "tf":
             from ray.rllib.models.tf.tf_distributions import (
                 TfCategorical,
                 TfDeterministic,
