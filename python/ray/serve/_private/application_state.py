@@ -236,7 +236,6 @@ class ApplicationStateManager:
         all_route_prefixes: Dict[str, str] = {
             self._application_states[app_name].route_prefix: app_name
             for app_name in self._application_states
-            if self._application_states[app_name].route_prefix is not None
         }
         for deploy_param in deployment_args:
             if "route_prefix" in deploy_param:
