@@ -1,4 +1,5 @@
 from collections import Counter
+import gc
 from typing import Any, Optional, Type
 
 import pytest
@@ -37,6 +38,14 @@ def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture
+def cleanup():
+    # Garbage collect at the start
+    # This ensures that all resources are freed up for the upcoming test.
+    gc.collect()
+    yield
 
 
 class Actor:
@@ -176,7 +185,7 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 @pytest.mark.parametrize("where", ["init", "fn"])
-def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
+def test_actor_fail(ray_start_4_cpus, cleanup, resource_manager_cls, where):
     """Test that actor failures are handled properly.
 
     - Start actor that either fails on init or in a task (RayActorError)
