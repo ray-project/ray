@@ -1,4 +1,5 @@
 from typing import Optional, Mapping, Any
+import functools
 
 import numpy as np
 import gymnasium as gym
@@ -12,16 +13,6 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.models.tf.tf_distributions import (
-    TfCategorical,
-    TfDeterministic,
-    TfDiagGaussian,
-)
-from ray.rllib.models.torch.torch_distributions import (
-    TorchCategorical,
-    TorchDeterministic,
-    TorchDiagGaussian,
-)
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -117,9 +108,10 @@ class Catalog:
             view_requirements=self.view_requirements,
         )
 
-        # Get a mapping from framework to action distribution class
-        self.action_dist_cls_dict = self.get_action_dist_cls_dict(
-            action_space=self.action_space,
+        # Create a function that can be called when framework is known to retrieve the
+        # class type for action distributions
+        self.action_dist_class_fn = functools.partial(
+            self.get_dist_cls_from_action_space, action_space=action_space
         )
 
         # The dimensions of the latent vector that is output by the encoder and fed
@@ -295,12 +287,14 @@ class Catalog:
         )
 
     @classmethod
-    def get_action_dist_cls_dict(
+    def get_dist_cls_from_action_space(
         cls,
         action_space: gym.Space,
+        *,
+        framework: Optional[str] = None,
         deterministic: Optional[bool] = False,
     ) -> Mapping[str, Any]:
-        """Returns a mapping from framework to distribution class.
+        """Returns a distribution class for the given action space.
 
         You can get the required input dimension for the distribution by calling
         `action_dict_cls.required_model_output_shape(action_space, model_config_dict)`
@@ -310,20 +304,47 @@ class Catalog:
 
         Args:
             action_space: Action space of the target gym env.
+            framework: The framework to use.
             deterministic: Whether to return a Deterministic distribution on input
                 logits instead of a stochastic distributions. For example for Discrete
                 spaces, the stochastic is a Categorical distribution with output logits,
                 while the deterministic distribution will be to output the argmax of
                 logits directly.
 
+
         Returns:
-                Mapping from framework to distribution class.
+            The distribution class for the given action space.
         """
-        distribution_dicts = {
-            "deterministic": {"torch": TorchDeterministic, "tf": TfDeterministic},
-            "gaussian": {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
-            "categorical": {"torch": TorchCategorical, "tf": TfCategorical},
-        }
+
+        if framework == "torch":
+            from ray.rllib.models.torch.torch_distributions import (
+                TorchCategorical,
+                TorchDeterministic,
+                TorchDiagGaussian,
+            )
+
+            distribution_dicts = {
+                "deterministic": TorchDeterministic,
+                "gaussian": TorchDiagGaussian,
+                "categorical": TorchCategorical,
+            }
+        elif framework == "tf":
+            from ray.rllib.models.tf.tf_distributions import (
+                TfCategorical,
+                TfDeterministic,
+                TfDiagGaussian,
+            )
+
+            distribution_dicts = {
+                "deterministic": TfDeterministic,
+                "gaussian": TfDiagGaussian,
+                "categorical": TfCategorical,
+            }
+        else:
+            raise ValueError(
+                f"Unknown framework: {framework}. Only 'torch' and 'tf2' are "
+                "supported for RLModule Catalogs."
+            )
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
@@ -368,3 +389,22 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
+
+    def get_action_dist_cls(self, framework: str):
+        """Get the action distribution class.
+
+        The default behavior is to get the action distribution from the
+        action_dist_class_fn. This can be overridden to build a custom action
+        distribution as a means of configuring the behavior of a PPORLModuleBase
+        implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf".
+
+        Returns:
+            The action distribution.
+        """
+        # TODO (Kourosh): We can probably deprecate this method in favor of
+        # get_dist_cls_from_action_space since this method is super shallow.
+        action_dist_cls = self.action_dist_class_fn(framework=framework)
+        return action_dist_cls
