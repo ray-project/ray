@@ -292,7 +292,7 @@ def test_deploy_http_override(ray_start_stop):
         == "4 pizzas please!",
         timeout=15,
     )
-    print('Application "app2" is reachable over HTTP at port 8005.')
+    print('Application "app1" is reachable over HTTP at port 8005.')
     wait_for_condition(
         lambda: requests.post("http://localhost:8005/app2").text == "wonderful world",
         timeout=15,
