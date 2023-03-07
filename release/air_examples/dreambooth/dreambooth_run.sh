@@ -9,14 +9,15 @@ pushd dreambooth || true
 pip install -Ur requirements.txt
 
 # Step 0 cont
+export DATA_PREFIX="/tmp"
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export ORIG_MODEL_HASH="249dd2d739844dea6a0bc7fc27b3c1d014720b28"
-export ORIG_MODEL_DIR="/tmp/model-orig"
+export ORIG_MODEL_DIR="$DATA_PREFIX/model-orig"
 export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/models--${ORIG_MODEL_NAME/\//--}/snapshots/$ORIG_MODEL_HASH"
-export TUNED_MODEL_DIR="/tmp/model-tuned"
-export IMAGES_REG_DIR="/tmp/images-reg"
-export IMAGES_OWN_DIR="/tmp/images-own"
-export IMAGES_NEW_DIR="/tmp/images-new"
+export TUNED_MODEL_DIR="$DATA_PREFIX/model-tuned"
+export IMAGES_REG_DIR="$DATA_PREFIX/images-reg"
+export IMAGES_OWN_DIR="$DATA_PREFIX/images-own"
+export IMAGES_NEW_DIR="$DATA_PREFIX/images-new"
 
 export CLASS_NAME="lego car"
 
