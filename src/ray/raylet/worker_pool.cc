@@ -1233,8 +1233,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
-    if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-        state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+    if (task_spec.GetLanguage() != it->first->GetLanguage() || it->first->IsDead()) {
       continue;
     }
 
@@ -1420,8 +1419,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     RemoveWorker(io_worker_state.idle_io_workers, worker);
     return;
   }
-
-  RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
 
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
        it++) {
