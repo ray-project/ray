@@ -28,6 +28,13 @@ py_test(
 )
 
 py_test(
+    name = "tensor",
+    size = "small",
+    srcs = ["source/data/doc_code/tensor.py"],
+    tags = ["exclusive", "team:ml"]
+)
+
+py_test(
     name = "big_data_ingestion",
     size = "small",
     main = "test_myst_doc.py",
