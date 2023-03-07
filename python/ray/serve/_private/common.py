@@ -311,7 +311,18 @@ class RunningReplicaInfo:
                 ]
             )
         )
+
+        # RunningReplicaInfo class set frozen=True, this is the hacky way to set
+        # new attribute for the class.
         object.__setattr__(self, "_hash", hash_val)
 
     def __hash__(self):
         return self._hash
+
+    def __eq__(self, other):
+        return all(
+            [
+                isinstance(other, RunningReplicaInfo),
+                self._hash == other._hash,
+            ]
+        )
