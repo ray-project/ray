@@ -2819,7 +2819,7 @@ class Dataset(Generic[T]):
             It is recommended to use ``DatasetIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return BulkDatasetIterator(self)
+        return DatasetIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:

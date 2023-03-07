@@ -144,7 +144,7 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self) -> MaybeRefBundle:
+    def get_output_blocking(self, output_split_idx: Optional[int]) -> MaybeRefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         Returns:
@@ -152,9 +152,19 @@ class OpState:
         """
         while True:
             try:
-                return self.outqueue.popleft()
+                if output_split_idx is None:
+                    return self.outqueue.popleft()
+                else:
+                    for i in range(len(self.outqueue)):
+                        bundle = self.outqueue[i]
+                        if bundle is None:
+                            return None  # End of stream for this index!
+                        elif bundle.output_split_idx == output_split_idx:
+                            self.outqueue.remove(bundle)
+                            return bundle
             except IndexError:
-                time.sleep(0.01)
+                pass
+            time.sleep(0.01)
 
     def outqueue_memory_usage(self) -> int:
         """Return the object store memory of this operator's outqueue.

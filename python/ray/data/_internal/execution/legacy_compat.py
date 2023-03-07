@@ -52,10 +52,35 @@ def execute_to_legacy_block_iterator(
     Returns:
         The output as a block iterator.
     """
+    bundle_iter = execute_to_legacy_bundle_iterator(
+        executor, plan, allow_clear_input_blocks, dataset_uuid
+    )
+    for bundle in bundle_iter:
+        for block, _ in bundle.blocks:
+            yield block
+
+
+def execute_to_legacy_bundle_iterator(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+    dag_rewrite=None,
+) -> Iterator[RefBundle]:
+    """Same as execute_to_legacy_block_iterator but returning bundles.
+
+    Args:
+        dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
+            This is currently used as a legacy hack to inject the OutputSplit operator
+            for `Dataset.streaming_split()`.
+    """
+
     if DatasetContext.get_current().optimizer_enabled:
         dag, stats = get_execution_plan(plan._logical_plan).dag, None
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if dag_rewrite:
+        dag = dag_rewrite(dag)
 
     # Enforce to preserve ordering if the plan has stages required to do so, such as
     # Zip and Sort.
@@ -64,10 +89,7 @@ def execute_to_legacy_block_iterator(
         executor._options.preserve_order = True
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
-
-    for bundle in bundle_iter:
-        for block, _ in bundle.blocks:
-            yield block
+    return bundle_iter
 
 
 def execute_to_legacy_block_list(
