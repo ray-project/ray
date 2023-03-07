@@ -227,3 +227,12 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = [
+        "source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"
+    ],
+    exclude = [],
+    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
+)
