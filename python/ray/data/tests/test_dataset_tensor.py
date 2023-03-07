@@ -23,8 +23,8 @@ def test_tensors_basic(ray_start_regular_shared):
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
-        "Dataset(num_blocks=6, num_rows=6, "
-        "schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)})"
+        "Dataset(\n\tnum_blocks=6,\n\tnum_rows=6,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)}\n)"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -273,8 +273,8 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
     ds.fully_executed()
     assert str(ds) == (
-        "Dataset(num_blocks=10, num_rows=10, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "Dataset(\n\tnum_blocks=10,\n\tnum_rows=10,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n)"
     )
 
     # Test map_batches.
@@ -283,8 +283,8 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds.fully_executed()
     assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "Dataset(\n\tnum_blocks=4,\n\tnum_rows=24,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n)"
     )
 
     # Test flat_map.
@@ -293,8 +293,8 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds.fully_executed()
     assert str(ds) == (
-        "Dataset(num_blocks=10, num_rows=20, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "Dataset(\n\tnum_blocks=10,\n\tnum_rows=20,"
+        "\n\tschema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n)"
     )
 
     # Test map_batches ndarray column.
@@ -303,8 +303,8 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds.fully_executed()
     assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=24, "
-        "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
+        "Dataset(\n\tnum_blocks=4,\n\tnum_rows=24,"
+        "\n\tschema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n)"
     )
 
     ds = ray.data.range(16, parallelism=4).map_batches(
@@ -313,8 +313,8 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds.fully_executed()
     assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=16, "
-        "schema={a: TensorDtype(shape=(None, None), dtype=float64)})"
+        "Dataset(\n\tnum_blocks=4,\n\tnum_rows=16,"
+        "\n\tschema={a: TensorDtype(shape=(None, None), dtype=float64)}\n)"
     )
 
 
