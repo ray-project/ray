@@ -45,11 +45,15 @@ class DataParallelTrainerPatchedMultipleReturns(DataParallelTrainer):
 
 
 def gen_execute_single_async_special(special_f):
-    def execute_single_async_special(self, i, f, *args, **kwargs):
+    def execute_single_async_special(self, name: str, i, f, *args, **kwargs):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
+        return (
+            self.workers[i]
+            .actor._RayTrainWorker__execute.options(name=name)
+            .remote(f, *args, **kwargs)
+        )
 
     return execute_single_async_special
 
