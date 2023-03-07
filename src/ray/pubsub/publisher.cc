@@ -262,34 +262,55 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
-  mailbox_.push(pub_message);
+  mailbox_.push(std::make_pair(next_sequence_id_, pub_message));
+  next_sequence_id_++;
   if (try_publish) {
     PublishIfPossible();
   }
 }
 
 bool SubscriberState::PublishIfPossible(bool force_noop) {
-  if (!long_polling_connection_) {
+  if (!long_polling_connection_ || publish_inflight_.load()) {
     return false;
   }
   if (!force_noop && mailbox_.empty()) {
     return false;
   }
 
+  publish_inflight_ = true;
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
+
+  // clean up messages that have already been sent.
+  while (!mailbox_.empty() && mailbox_.front().first <= last_sent_messsage_sequence_id_) {
+    mailbox_.pop();
+  }
+
+  int64_t max_sequence_id_sending = last_sent_messsage_sequence_id_;
+
   if (!force_noop) {
     for (int i = 0; i < publish_batch_size_ && !mailbox_.empty(); ++i) {
-      const rpc::PubMessage &msg = *mailbox_.front();
+      const auto &pair = mailbox_.front();
+      RAY_CHECK(pair.first > max_sequence_id_sending);
+      max_sequence_id_sending = pair.first;
+      const rpc::PubMessage &msg = *pair.second;
       // Avoid sending empty message to the subscriber. The message might have been
       // cleared because the subscribed entity's buffer was full.
       if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
         *long_polling_connection_->reply->add_pub_messages() = msg;
       }
-      mailbox_.pop();
     }
   }
-  long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  long_polling_connection_->send_reply_callback(
+      Status::OK(),
+      /*success*/
+      [this, max_sequence_id_sending]() {
+        RAY_CHECK(max_sequence_id_sending >= last_sent_messsage_sequence_id_);
+        last_sent_messsage_sequence_id_ = max_sequence_id_sending;
+        publish_inflight_ = false;
+      },
+      /*failure*/ [this]() { publish_inflight_ = false; });
 
   // Clean up & update metadata.
   long_polling_connection_.reset();

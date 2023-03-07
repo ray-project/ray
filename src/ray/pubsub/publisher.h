@@ -228,8 +228,17 @@ class SubscriberState {
   const SubscriberID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
-  /// Queued messages to publish.
-  std::queue<std::shared_ptr<rpc::PubMessage>> mailbox_;
+
+  /// Indicating if there is a publish message in flight.
+  std::atomic<bool> publish_inflight_ = false;
+  /// The sequence_id of last message that is known to be sent successfully.
+  std::atomic<int64_t> last_sent_messsage_sequence_id_ = -1;
+  /// The next sequence_id to enqueue in mailbox.
+  int64_t next_sequence_id_ = 0;
+  /// Queued messages to publish in the pair of <sequence_id, message>.
+  /// We guarantees the sequence_id in mailbox_ is monotonically increasing.
+  std::queue<std::pair<int64_t, std::shared_ptr<rpc::PubMessage>>> mailbox_;
+
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
