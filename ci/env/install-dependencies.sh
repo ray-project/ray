@@ -367,7 +367,6 @@ install_pip_packages() {
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    rm -rf "${SITE_PACKAGES}"/ruamel* # https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
