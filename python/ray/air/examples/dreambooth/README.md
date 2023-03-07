@@ -229,21 +229,22 @@ We expect the model loading/saving times and the worker throughput to be similar
 However, the training time should benefit from scale and decrease linearly when running with
 more workers and GPUs.
 
-| Number of workers | Number of GPUs | Model loading time |     Training time | Model saving time | Worker throughput |
-|------------------:|---------------:|-------------------:|------------------:|------------------:|------------------:|
-|                 4 |              8 |       21.95 (0.84) |     230.42 (4.02) |     162.40 (7.00) |              0.87 |
-|                 2 |              4 |       18.26 (1.58) |     393.18 (7.27) |     101.69 (5.73) |              1.02 |
+| Number of workers | Number of GPUs | Model loading time | Training time | Model saving time | Worker throughput |
+|------------------:|---------------:|-------------------:|--------------:|------------------:|------------------:|
+|                 4 |              8 |       21.95 (0.84) | 230.42 (4.02) |     162.40 (7.00) |              0.87 |
+|                 2 |              4 |       18.26 (1.58) | 393.18 (7.27) |     101.69 (5.73) |              1.02 |
+|                 1 |              2 |       17.10 (3.13) | 501.94 (1.13) |      66.23 (5.98) |              1.59 |
 
 As expected, the model loading time is relatively constant across runs. The model saving time is a bit longer
 when running on multiple nodes. Most likely there is some overhead because we saved the model on every worker.
-After changing this to only save on the rank 0 actor, the model saving time is reduced to xxx seconds, almost the same
+After changing this to only save on the rank 0 actor, the model saving time is reduced to 48 seconds, virtually the same
 time as in the 1 worker case.
 
 The worker throughput and hence the training time scales sublinearly. There is some penalty when training with
 multiple workers, most likely because of additional communication between processes and the transfer of large model
 weights.
 
-
+![DreamBooth throughput](images/dreambooth_throughput.png)
 
 ## Run the example
 
