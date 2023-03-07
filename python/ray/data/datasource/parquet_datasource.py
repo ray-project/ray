@@ -161,6 +161,13 @@ class ParquetDatasource(ParquetBaseDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
+    def get_name(self):
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `ParquetBaseDatasource` method.
+        """
+        return "Parquet"
+
     def create_reader(self, **kwargs):
         return _ParquetDatasourceReader(**kwargs)
 
