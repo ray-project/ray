@@ -101,10 +101,9 @@ def test_move_workers_with_ip_to_front(ray_start_2_cpus):
     wg._move_workers_with_ip_to_front("10.1.10.1")
     assert wg.workers[0].metadata.node_ip == "10.1.10.1"
     assert wg.workers[1].metadata.node_ip == "10.1.10.1"
-    assert set([w.metadata.node_ip for w in workers_pre_move]) == set(
+    assert sorted([w.metadata.node_ip for w in workers_pre_move]) == sorted(
         [w.metadata.node_ip for w in wg.workers]
     )
-    assert len(workers_pre_move) == len(wg.workers)
 
 
 def test_execute_single(ray_start_2_cpus):
