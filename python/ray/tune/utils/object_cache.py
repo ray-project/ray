@@ -139,13 +139,9 @@ class _ObjectCache:
 
         Objects are evicted FIFO.
 
-        If ``keep_one=True``, one (global) object is allowed to remain cached.
-
         If ``force_all=True``, all objects are evicted.
 
         Args:
-            keep_one: If True, may keep one object cached, even if the number
-                of max objects is 0 for all keys.
             force_all: If True, all objects are flushed. This takes precedence
                 over ``keep_one``.
 
