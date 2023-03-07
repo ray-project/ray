@@ -36,6 +36,7 @@ class BatchPredictor:
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
+        self._override_preprocessor_set = False
 
     def __repr__(self):
         return (
@@ -98,7 +99,7 @@ class BatchPredictor:
 
     def get_preprocessor(self) -> Preprocessor:
         """Get the preprocessor to use prior to executing predictions."""
-        if self._override_preprocessor:
+        if self._override_preprocessor_set:
             return self._override_preprocessor
 
         return self._checkpoint.get_preprocessor()
@@ -106,6 +107,7 @@ class BatchPredictor:
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._override_preprocessor = preprocessor
+        self._override_preprocessor_set = True
 
     def predict(
         self,
