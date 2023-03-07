@@ -203,15 +203,15 @@ class TestCatalog(unittest.TestCase):
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 False,
-                {"torch": TorchDiagGaussian, "tf2": TfDiagGaussian},
+                {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
             ),
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 True,
-                {"torch": TorchDeterministic, "tf2": TfDeterministic},
+                {"torch": TorchDeterministic, "tf": TfDeterministic},
             ),
             TestConfig(
-                Discrete(5), None, {"torch": TorchCategorical, "tf2": TfCategorical}
+                Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}
             ),
         ]
 
