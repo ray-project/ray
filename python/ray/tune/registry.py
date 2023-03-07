@@ -132,6 +132,10 @@ def register_env(name: str, env_creator: Callable):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
+def _unregister_envs():
+    _global_registry.unregister_all(ENV_CREATOR)
+
+
 @DeveloperAPI
 def register_input(name: str, input_creator: Callable):
     """Register a custom input api for RLlib.
@@ -146,6 +150,10 @@ def register_input(name: str, input_creator: Callable):
     _global_registry.register(RLLIB_INPUT, name, input_creator)
 
 
+def _unregister_inputs():
+    _global_registry.unregister_all(RLLIB_INPUT)
+
+
 @DeveloperAPI
 def registry_contains_input(name: str) -> bool:
     return _global_registry.contains(RLLIB_INPUT, name)
@@ -154,6 +162,12 @@ def registry_contains_input(name: str) -> bool:
 @DeveloperAPI
 def registry_get_input(name: str) -> Callable:
     return _global_registry.get(RLLIB_INPUT, name)
+
+
+def _unregister_all():
+    _unregister_inputs()
+    _unregister_envs()
+    _unregister_trainables()
 
 
 def _check_serializability(key, value):
