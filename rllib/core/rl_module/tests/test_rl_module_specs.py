@@ -138,7 +138,6 @@ class TestRLModuleSpecs(unittest.TestCase):
             spec_from_module = MultiAgentRLModuleSpec.from_module(module)
             self.assertEqual(spec, spec_from_module)
 
-
     def test_get_spec_from_module_single_agent(self):
         """Tests wether SingleAgentRLModuleSpec.from_module() works."""
         env = gym.make("CartPole-v1")
@@ -153,6 +152,7 @@ class TestRLModuleSpecs(unittest.TestCase):
             module = spec.build()
             spec_from_module = SingleAgentRLModuleSpec.from_module(module)
             self.assertEqual(spec, spec_from_module)
+
 
 if __name__ == "__main__":
     import pytest
