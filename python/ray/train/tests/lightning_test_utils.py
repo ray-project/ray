@@ -81,12 +81,10 @@ LightningMNISTModelConfig = {
 }
 
 class LightningMNISTClassifier(pl.LightningModule):
-    def __init__(self, config, data_dir=None):
+    def __init__(self, lr, layer_1, layer_2):
         super(LightningMNISTClassifier, self).__init__()
 
-        self.data_dir = data_dir or os.getcwd()
-        self.lr = config["lr"]
-        layer_1, layer_2 = config["layer_1"], config["layer_2"]
+        self.lr = lr
 
         # mnist images are (1, 28, 28) (channels, width, height)
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
@@ -169,3 +167,8 @@ class MNISTDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.mnist_test, batch_size=self.batch_size, num_workers=4)
+
+def create_checkpoint(model: pl.LightningModule, ckpt_path: str):
+    trainer = pl.Trainer(max_epochs=0)
+    trainer.fit(model)
+    trainer.save_checkpoint(ckpt_path)
