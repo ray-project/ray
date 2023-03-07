@@ -14,9 +14,11 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
 )
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader,
+    ParquetDatasource,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -927,6 +929,11 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
     ray.data.range_tensor(1000, shape=(1000,)).write_parquet(path)
     ds = ray.data.read_parquet(path, batch_size=10)
     assert ds.count() == 1000
+
+
+def test_parquet_datasource_names(ray_start_regular_shared):
+    assert ParquetBaseDatasource().get_name() == "ParquetBulk"
+    assert ParquetDatasource().get_name() == "Parquet"
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

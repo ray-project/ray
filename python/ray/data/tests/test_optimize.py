@@ -612,7 +612,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
         pipe,
         1,
         [
-            "ReadParquetBulk->MapBatches(CallableFn)->MapBatches(CallableFn)",
+            "ReadParquet->MapBatches(CallableFn)->MapBatches(CallableFn)",
         ],
     )
 
@@ -648,7 +648,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
         pipe,
         1,
         [
-            "ReadParquetBulk->MapBatches(<lambda>)->MapBatches(CallableFn)",
+            "ReadParquet->MapBatches(<lambda>)->MapBatches(CallableFn)",
         ],
     )
 
