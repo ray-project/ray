@@ -348,7 +348,7 @@ class Catalog:
         """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
-        action_dist_cls_dict. This can be overridden to build a custom action
+        action_dist_class_fn. This can be overridden to build a custom action
         distribution as a means of configuring the behavior of a PPORLModuleBase
         implementation.
 
