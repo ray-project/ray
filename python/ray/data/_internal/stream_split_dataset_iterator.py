@@ -104,6 +104,9 @@ class SplitCoordinator:
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        if location_hints:
+            # Automatically set locality with output to the specified location hints.
+            ctx.execution_options.locality_with_output = location_hints
         DatasetContext._set_current(ctx)
         self._base_dataset = dataset
         self._n = n
