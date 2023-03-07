@@ -1,5 +1,4 @@
-import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pprint
 from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
 
@@ -15,22 +14,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.utils.policy import validate_policy_id
 
 ModuleID = str
-
-
-def _get_module_configs(config: Dict[str, Any]):
-    """Constructs a mapping from module_id to module config.
-
-    It takes care of the inheritance of common configs to individual module configs.
-    See `from_multi_agent_config` for more details.
-    """
-    config = copy.deepcopy(config)
-    module_specs = config.pop("modules", {})
-    for common_spec in config:
-        for module_spec in module_specs.values():
-            if getattr(module_spec, common_spec) is None:
-                setattr(module_spec, common_spec, config[common_spec])
-
-    return module_specs
 
 
 @PublicAPI(stability="alpha")
@@ -58,7 +41,10 @@ class MultiAgentRLModule(RLModule):
     `MultiAgentRLModule`.
     """
 
-    def __init__(self, config: "MultiAgentRLModuleConfig") -> None:
+    def __init__(self, config: "MultiAgentRLModuleConfig" = None) -> None:
+        if config is None:
+            config = MultiAgentRLModuleConfig()
+
         super().__init__(config)
 
         # self.build() will abstract the construction of rl_modules
@@ -311,10 +297,11 @@ class MultiAgentRLModule(RLModule):
             A deserialized MultiAgentRLModule.
         """
         module_class = state["class"]
-        rl_modules = {}
+        module = module_class()
         for module_id, module_state in state["rl_modules"].items():
-            rl_modules[module_id] = RLModule.deserialize(module_state)
-        return module_class(rl_modules)
+            module.add_module(module_id, RLModule.deserialize(module_state))
+
+        return module
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
@@ -450,7 +437,7 @@ class MultiAgentRLModuleSpec:
 @dataclass
 class MultiAgentRLModuleConfig:
 
-    modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = None
+    modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
 
     def to_dict(self):
 

@@ -411,4 +411,6 @@ class RLModule(abc.ABC):
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        return MultiAgentRLModule({DEFAULT_POLICY_ID: self})
+        marl_module = MultiAgentRLModule()
+        marl_module.add_module(DEFAULT_POLICY_ID, self)
+        return marl_module
