@@ -75,7 +75,7 @@ class OutputSplitter(PhysicalOperator):
         return self._output_queue.pop()
 
     def get_stats(self) -> StatsDict:
-        return {"split": []}  # TODO?
+        return {"split": []}  # TODO(ekl) add split metrics?
 
     def get_metrics(self) -> Dict[str, int]:
         stats = {}
