@@ -22,7 +22,7 @@ if __name__ == "__main__":
         num_workers=6,
         use_gpu=True,
         placement_group_timeout_s=2000,
-        timeout_s=300,
+        timeout_s=120,
         kwargs={"num_epochs": 20},
     )
 
