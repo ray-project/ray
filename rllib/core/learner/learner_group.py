@@ -41,6 +41,10 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
 
 
 def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
+    """Default implemntation for is_module_trainable()
+    
+    It assumes that the module is trainable by default.
+    """
     return True
 
 

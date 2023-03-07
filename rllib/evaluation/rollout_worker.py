@@ -95,6 +95,7 @@ from ray.rllib.utils.typing import (
     PolicyState,
     SampleBatchType,
     T,
+    TensorStructType
 )
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
@@ -1300,6 +1301,35 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             The policy under the given ID (or None if not found).
         """
         return self.policy_map.get(policy_id)
+    
+
+    @DeveloperAPI
+    def add_module(
+        self,
+        module_id: str, 
+        module_spec: SingleAgentRLModuleSpec,
+        agent_to_module_map_fn: Callable[[AgentID, "Episode"], str] = N,
+        module_state: Optional[Dict[str, TensorStructType]] = None,
+    ) -> None:
+        """Adds a new RLModule to this RolloutWorker.
+
+        The RLModule will be used during the rollout collection process.
+
+        Args:
+            module_id: ID of the module to add.
+            module_spec: The RLlib module spec to use for constructing the
+                new RLModule.
+            agent_to_module_map_fn: A function that maps an agent ID to a
+                module ID.
+            module_state: Optional initial state for the module.
+            
+        """
+
+        # sampling is done via policies, so we need to add a policy that uses this RLModule  
+        pass
+
+        
+
 
     @DeveloperAPI
     def add_policy(
