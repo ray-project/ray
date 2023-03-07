@@ -74,7 +74,8 @@ class HuggingFacePredictor(Predictor):
                 "prediction will only use CPU. Please consider explicitly "
                 "setting `HuggingFacePredictor(use_gpu=True)` or "
                 "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                "enable GPU prediction."
+                "enable GPU prediction. Ignore if you have set `device` or "
+                "`device_map` arguments in the `pipeline` manually."
             )
 
         super().__init__(preprocessor)
@@ -116,13 +117,14 @@ class HuggingFacePredictor(Predictor):
                 initialization. If ``pipeline`` is None, this must contain
                 the 'task' argument. Cannot contain 'model'. Can be used
                 to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
-                True, 'device' will be set to 0 by default.
+                True, 'device' will be set to 0 by default, unless 'device_map' is
+                passed.
         """
         if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
-        if use_gpu:
+        if use_gpu and "device_map" not in pipeline_kwargs:
             # default to using the GPU with the first index
             pipeline_kwargs.setdefault("device", 0)
         pipeline_cls = pipeline_cls or pipeline_factory
