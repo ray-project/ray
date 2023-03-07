@@ -105,4 +105,4 @@ hardware failure occurs, Datasets recreates lost blocks by re-executing tasks.
 Fault tolerance isn't supported in two cases:
 
 * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
-* If ``compute=ActorPoolStrategy()`` is specified for transformations. This is because Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>`.
+* If  you specify ``compute=ActorPoolStrategy()`` for transformations. This is because Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>`.
