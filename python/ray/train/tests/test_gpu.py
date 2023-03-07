@@ -299,7 +299,7 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
         def set_env_var():
             os.environ["NCCL_SOCKET_IFNAME"] = nccl_socket_ifname
 
-        worker_group.execute(set_env_var)
+        worker_group.execute("set_env_var", set_env_var)
 
     def assert_env_var_set():
         value = nccl_socket_ifname if nccl_socket_ifname else DEFAULT_NCCL_SOCKET_IFNAME
@@ -308,7 +308,7 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     torch_backend = _TorchBackend()
     torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
 
-    worker_group.execute(assert_env_var_set)
+    worker_group.execute("assert_env_var_set", assert_env_var_set)
 
 
 def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
