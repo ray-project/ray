@@ -110,12 +110,12 @@ class ZipOperator(PhysicalOperator):
         # Check that both sides have the same number of rows.
         # TODO(Clark): Support different number of rows via user-directed
         # dropping/padding.
-        total_base_rows = sum(left_block_rows)
-        total_other_rows = sum(right_block_rows)
-        if total_base_rows != total_other_rows:
+        total_left_rows = sum(left_block_rows)
+        total_right_rows = sum(right_block_rows)
+        if total_left_rows != total_right_rows:
             raise ValueError(
                 "Cannot zip datasets of different number of rows: "
-                f"{total_base_rows}, {total_other_rows}"
+                f"{total_left_rows}, {total_right_rows}"
             )
 
         # Whether the left and right input sides are inverted
@@ -128,8 +128,8 @@ class ZipOperator(PhysicalOperator):
             # _generate_per_block_split_indices) and choosing the plan that splits
             # the least cumulative bytes.
             left_blocks_with_metadata, right_blocks_with_metadata = (
-                left_blocks_with_metadata,
                 right_blocks_with_metadata,
+                left_blocks_with_metadata,
             )
             left_block_rows, right_block_rows = right_block_rows, left_block_rows
             input_side_inverted = True
