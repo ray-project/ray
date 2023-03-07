@@ -131,12 +131,9 @@ class OutputSplitter(PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._locality_hints:
-            return (
-                f"{len(self._buffer)} buffered "
-                f"[{self.hits} locality hits {self.misses} misses]"
-            )
+            return f"[{self.hits} locality hits {self.misses} misses]"
         else:
-            return f"{len(self._buffer)} buffered [locality disabled]"
+            return "[locality disabled]"
 
     def _dispatch_bundles(self) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
