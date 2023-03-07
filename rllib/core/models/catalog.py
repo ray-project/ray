@@ -89,9 +89,28 @@ class Catalog:
         self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self.view_requirements = view_requirements
 
-        self.latent_dims = None
+        self._latent_dims = None
+
         # Overwrite this post-init hook in subclasses
         self.__post_init__()
+
+    @property
+    def latent_dims(self):
+        """Returns the latent dimensions of the encoder.
+
+        This establishes an agreement between encoder and heads about the latent
+        dimensions. Encoders can be built to output a latent tensor with
+        `latent_dims` dimensions, and heads can be built with tensors of
+        `latent_dims` dimensions as inputs.
+
+        Returns:
+            The latent dimensions of the encoder.
+        """
+        return self._latent_dims
+
+    @latent_dims.setter
+    def latent_dims(self, value):
+        self._latent_dims = value
 
     def __post_init__(self):
         """Post-init hook for subclasses to override.
@@ -111,7 +130,7 @@ class Catalog:
         # Create a function that can be called when framework is known to retrieve the
         # class type for action distributions
         self.action_dist_class_fn = functools.partial(
-            self.get_dist_cls_from_action_space, action_space=action_space
+            self.get_dist_cls_from_action_space, action_space=self.action_space
         )
 
         # The dimensions of the latent vector that is output by the encoder and fed
@@ -156,7 +175,7 @@ class Catalog:
             "By default, an action_dist_cls_dict is created in the __post_init__ "
             "method."
         )
-        return self.action_dist_cls_dict[framework]
+        return self.action_dist_class_fn(framework=framework)
 
     @classmethod
     def get_encoder_config(
@@ -389,22 +408,3 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
-
-    def get_action_dist_cls(self, framework: str):
-        """Get the action distribution class.
-
-        The default behavior is to get the action distribution from the
-        action_dist_class_fn. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
-        implementation.
-
-        Args:
-            framework: The framework to use. Either "torch" or "tf".
-
-        Returns:
-            The action distribution.
-        """
-        # TODO (Kourosh): We can probably deprecate this method in favor of
-        # get_dist_cls_from_action_space since this method is super shallow.
-        action_dist_cls = self.action_dist_class_fn(framework=framework)
-        return action_dist_cls

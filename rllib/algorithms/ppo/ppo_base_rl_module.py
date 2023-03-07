@@ -6,7 +6,6 @@ import abc
 
 import gymnasium as gym
 
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
