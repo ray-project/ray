@@ -34,6 +34,16 @@ def load_preprocessor_from_dir(
     return preprocessor
 
 
+def delete_preprocessor_in_dir(
+    parent_dir: Union[os.PathLike, str],
+) -> None:
+    """Deletes preprocessor from directory, if file exists."""
+    parent_dir = Path(parent_dir)
+    preprocessor_path = parent_dir.joinpath(PREPROCESSOR_KEY)
+    if preprocessor_path.exists():
+        os.remove(str(preprocessor_path.absolute()))
+
+
 def add_preprocessor_to_checkpoint(
     checkpoint: "Checkpoint", preprocessor: "Preprocessor"
 ) -> "Checkpoint":
