@@ -105,12 +105,15 @@ def test_basic_actors(shutdown_only, pipelined):
     # Test setting custom max inflight tasks.
     ds = ray.data.range(10, parallelism=5)
     ds = maybe_pipeline(ds, pipelined)
-    assert sorted(
-        ds.map(
-            lambda x: x + 1,
-            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
-        ).take()
-    ) == list(range(1, 11))
+    assert (
+        sorted(
+            ds.map(
+                lambda x: x + 1,
+                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
+            ).take()
+        )
+        == list(range(1, 11))
+    )
 
     # Test invalid max tasks inflight arg.
     with pytest.raises(ValueError):
@@ -4564,7 +4567,6 @@ class LoggerWarningCalled(Exception):
     pass
 
 
-"""
 def test_warning_execute_with_no_cpu(ray_start_cluster):
     Tests ExecutionPlan.execute() to ensure a warning is logged
     when no CPU resources are available.
