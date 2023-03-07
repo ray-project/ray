@@ -4,6 +4,7 @@ import torch
 from typing import Mapping
 import unittest
 
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.utils.error import NotSerializable
@@ -14,10 +15,12 @@ class TestRLModule(unittest.TestCase):
     def test_compilation(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module = DiscreteBCTorchModule(
+            config = RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         self.assertIsInstance(module, TorchRLModule)
@@ -26,10 +29,12 @@ class TestRLModule(unittest.TestCase):
 
         bsize = 1024
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module = DiscreteBCTorchModule(
+            config = RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         obs_shape = env.observation_space.shape
@@ -54,10 +59,12 @@ class TestRLModule(unittest.TestCase):
         """Test forward inference and exploration of"""
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module = DiscreteBCTorchModule(
+            config = RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         obs_shape = env.observation_space.shape
@@ -70,19 +77,23 @@ class TestRLModule(unittest.TestCase):
     def test_get_set_state(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module = DiscreteBCTorchModule(
+            config = RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
 
-        module2 = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module2 = DiscreteBCTorchModule(
+            config = RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
         state2 = module2.get_state()
         check(state, state2, false=True)
@@ -93,10 +104,12 @@ class TestRLModule(unittest.TestCase):
 
     def test_serialize_deserialize(self):
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module = DiscreteBCTorchModule(
+            config = RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         # create a new module from the old module
@@ -113,19 +126,6 @@ class TestRLModule(unittest.TestCase):
 
         # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
-
-        # check that unpickleable parameters are not allowed by the RL Module
-        # constructor
-        unpickleable_param = threading.Thread()
-
-        def bad_constructor():
-            return DiscreteBCTorchModule(
-                input_dim=unpickleable_param,
-                hidden_dim=unpickleable_param,
-                output_dim=unpickleable_param,
-            )
-
-        self.assertRaises(NotSerializable, bad_constructor)
 
 
 if __name__ == "__main__":

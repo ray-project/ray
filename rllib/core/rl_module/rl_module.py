@@ -40,49 +40,69 @@ class SingleAgentRLModuleSpec:
     """
 
     module_class: Optional[Type["RLModule"]] = None
-    module_config: Optional["RLModuleConfig"] = None
+    observation_space: Optional[gym.Space] = None
+    action_space: Optional[gym.Space] = None
+    model_config_dict: Optional[Mapping[str, Any]] = None
 
-    @property
-    def observation_space(self) -> gym.Space:
-        return self.module_config.observation_space
-
-    @observation_space.setter
-    def observation_space(self, space: gym.Space):
-        self.module_config.observation_space = space
-
-    @property
-    def action_space(self) -> gym.Space:
-        return self.module_config.action_space
-    
-    @action_space.setter
-    def action_space(self, space: gym.Space):
-        self.module_config.action_space = space
-
-    @property
-    def model_config_dict(self) -> Mapping[str, Any]:
-        return self.module_config.model_config_dict
-    
-    @model_config_dict.setter
-    def model_config_dict(self, config_dict: Mapping[str, Any]):
-        self.module_config.model_config_dict = config_dict
-
+    def get_rl_module_config(self) -> "RLModuleConfig":
+        """Returns the RLModule config for this spec."""
+        return RLModuleConfig(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config_dict=self.model_config_dict,
+        )
 
     def build(self) -> "RLModule":
-
         if self.observation_space is None:
-            raise ValueError("Observation space must be specified.")
+            raise ValueError("Observation space is not set.")
         if self.action_space is None:
-            raise ValueError("Action space must be specified.")
+            raise ValueError("Action space is not set.")
         if self.model_config_dict is None:
-            raise ValueError("Model config must be specified.")
-
-        return self.module_class(self.module_config)
+            raise ValueError("Model config is not set.")
+        
+        module_config = self.get_rl_module_config()
+        return self.module_class(module_config)
     
     @classmethod
     def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        if isinstance(module, MultiAgentRLModule):
+            raise ValueError(
+                "MultiAgentRLModule cannot be converted to SingleAgentRLModuleSpec."
+            )
+        
         return SingleAgentRLModuleSpec(
             module_class=type(module),
-            module_config=module.config,
+            observation_space=module.config.observation_space,
+            action_space=module.config.action_space,
+            model_config_dict=module.config.model_config_dict,
+        )
+    
+
+    def to_dict(self):
+        """Returns a serialized representation of the spec."""
+
+        return {
+            "module_class": self.module_class,
+            "module_config": self.get_rl_module_config().to_dict(),
+        }
+    
+    @classmethod
+    def from_dict(cls, d):
+        """Returns a single agent RLModule spec from a serialized representation."""
+        module_class = d["module_class"]
+
+        module_config = RLModuleConfig.from_dict(d["module_config"])
+        observation_space = module_config.observation_space
+        action_space = module_config.action_space
+        model_config_dict = module_config.model_config_dict
+
+        return SingleAgentRLModuleSpec(
+            module_class=module_class,
+            observation_space=observation_space,
+            action_space=action_space,
+            model_config_dict=model_config_dict,
         )
 
 
@@ -112,14 +132,15 @@ class RLModuleConfig:
             "catalog_class": self.catalog_class,
         }
     
-    def from_dict(self, d):
-        """Sets the config from a serialized representation."""
-        self.observation_space = gym_space_from_dict(d["observation_space"])
-        self.action_space = gym_space_from_dict(d["action_space"])
-        self.model_config_dict = d["model_config_dict"]
-        self.catalog_class = d["catalog_class"]
-
-
+    @classmethod
+    def from_dict(cls, d):
+        """Creates a config from a serialized representation."""
+        return cls(
+            observation_space=gym_space_from_dict(d["observation_space"]),
+            action_space=gym_space_from_dict(d["action_space"]),
+            model_config_dict=d["model_config_dict"],
+            catalog_class=d["catalog_class"],
+        )
 
 @ExperimentalAPI
 class RLModule(abc.ABC):
@@ -186,7 +207,7 @@ class RLModule(abc.ABC):
     """
 
     def __init__(self, config: RLModuleConfig):
-        self._config = config
+        self.config = config
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -373,8 +394,9 @@ class RLModule(abc.ABC):
         Returns:
             A deserialized RLModule.
         """
-        constructor = state["class"]
-        module = constructor(state["config"])
+        module_class = state["class"]
+        config = RLModuleConfig.from_dict(state["config"])
+        module = module_class(config)
         module.set_state(state["state"])
         return module
 
