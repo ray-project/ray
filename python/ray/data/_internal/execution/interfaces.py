@@ -364,7 +364,7 @@ class PhysicalOperator(Operator):
         """
         return []
 
-    def is_metadata_only() -> bool:
+    def is_metadata_only(self) -> bool:
         """Whether this operator is metadata only.
 
         This should return True for operators that only manipulate bundle metadata

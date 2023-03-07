@@ -68,7 +68,7 @@ class OutputSplitter(PhysicalOperator):
             self._locality_hints = None
             self._min_buffer_size = 0
 
-    def is_metadata_only() -> bool:
+    def is_metadata_only(self) -> bool:
         return True
 
     def has_next(self) -> bool:
