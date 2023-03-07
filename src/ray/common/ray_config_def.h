@@ -780,4 +780,4 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 
 /// Whether to crash the raylet if there is a worker leak.
-RAY_CONFIG(bool, crash_on_worker_leak, false)
+RAY_CONFIG(bool, report_worker_leak, true)

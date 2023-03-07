@@ -970,8 +970,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
   } else {
-    if (RayConfig::instance().crash_on_worker_leak()) {
-      RAY_LOG(FATAL) << "Worker not returned to the idle pool after being used. This may "
+    if (RayConfig::instance().report_worker_leak()) {
+      RAY_LOG(ERROR) << "Worker not returned to the idle pool after being used. This may "
                         "cause a worker leak, worker id:"
                      << worker->WorkerId();
     } else {
