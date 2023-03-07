@@ -56,7 +56,6 @@ void SerializeReturnObject(const ObjectID &object_id,
 }
 
 void CoreWorkerDirectTaskReceiver::Init(
-    std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
     rpc::Address rpc_address,
     std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);

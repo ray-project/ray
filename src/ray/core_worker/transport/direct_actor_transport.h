@@ -72,8 +72,7 @@ class CoreWorkerDirectTaskReceiver {
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
-            rpc::Address rpc_address,
+  void Init(rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);
 
   /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
