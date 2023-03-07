@@ -48,6 +48,7 @@ py_test_run_all_notebooks(
         "upload_to_wandb.ipynb",  # Needs credentials
         "gptj_batch_prediction.ipynb",  # Requires GPUs
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
+        "gptj_deepspeed_fine_tuning",  # Requires release test
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
