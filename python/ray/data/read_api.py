@@ -1226,7 +1226,6 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     )
 
 
-# TODO(Scott): implement this operator
 @PublicAPI
 def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.

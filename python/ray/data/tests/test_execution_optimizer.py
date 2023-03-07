@@ -9,6 +9,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
+    FromMARS,
     FromModin,
     FromPandas,
     FromPandasRefs,
@@ -646,6 +647,71 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     assert df.equals(dfds)
     # Underlying implementation uses `FromPandasRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+
+
+def test_from_mars_operator(ray_start_regular_shared, enable_optimizer):
+    import mars
+    import mars.dataframe as md
+
+    cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
+
+    n = 10000
+    df = pd.DataFrame({"a": list(range(n)), "b": list(range(n, 2 * n))})
+    mdf = md.DataFrame(df)
+
+    planner = Planner()
+    from_mars_op = FromMARS(mdf)
+    plan = LogicalPlan(from_mars_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_mars_op.name == "FromMARS"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+    cluster.stop()
+
+
+def test_from_mars_e2e(ray_start_regular_shared, enable_optimizer):
+    import mars
+    import mars.dataframe as md
+    import pyarrow as pa
+
+    cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
+
+    n = 10000
+    df = pd.DataFrame({"a": list(range(n)), "b": list(range(n, 2 * n))})
+    mdf = md.DataFrame(df)
+
+    # Convert mars dataframe to ray dataset
+    ds = ray.data.from_mars(mdf)
+    pd.testing.assert_frame_equal(ds.to_pandas(), mdf.to_pandas())
+    ds2 = ds.filter(lambda row: row["a"] % 2 == 0)
+    assert ds2.take(5) == [{"a": 2 * i, "b": n + 2 * i} for i in range(5)]
+
+    # Convert ray dataset to mars dataframe
+    mdf2 = ds2.to_mars()
+    pd.testing.assert_frame_equal(
+        mdf2.head(5).to_pandas(),
+        pd.DataFrame({"a": list(range(0, 10, 2)), "b": list(range(n, n + 10, 2))}),
+    )
+
+    # Test Arrow Dataset
+    df2 = pd.DataFrame({c: range(5) for c in "abc"})
+    ds3 = ray.data.from_arrow([pa.Table.from_pandas(df2) for _ in range(3)])
+    df3 = ds3.to_mars()
+    pd.testing.assert_frame_equal(
+        df3.head(5).to_pandas(),
+        df2,
+    )
+
+    # Test simple datasets
+    with pytest.raises(NotImplementedError):
+        ray.data.range(10).to_mars()
+
+    # Underlying implementation uses `FromPandasRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+
+    cluster.stop()
 
 
 def test_from_modin_operator(ray_start_regular_shared, enable_optimizer):

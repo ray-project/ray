@@ -8,10 +8,11 @@ if TYPE_CHECKING:
     import pandas
     import dask
     import modin
+    import mars
 
 
 class FromPandasRefs(LogicalOperator):
-    """Logical operator for `from_pandas_ref` (and `from_pandas` by extension)."""
+    """Logical operator for `from_pandas_ref`."""
 
     def __init__(
         self, dfs: List[ObjectRef["pandas.DataFrame"]], op_name: str = "FromPandasRefs"
@@ -29,6 +30,19 @@ class FromPandas(FromPandasRefs):
     ):
         super().__init__([ray.put(df) for df in dfs], "FromPandas")
         self._dfs = dfs
+
+
+class FromMARS(FromPandasRefs):
+    """Logical operator for `from_mars`."""
+
+    def __init__(
+        self,
+        df: "mars.DataFrame",
+    ):
+        from mars.dataframe.contrib.raydataset import get_chunk_refs
+
+        super().__init__(get_chunk_refs(df), "FromMARS")
+        self._df = df
 
 
 class FromDask(FromPandasRefs):
