@@ -797,13 +797,11 @@ The reasons for this are:
 3. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
    trials from job B on the same node are impacted. In practice, it's hard
    to reason about these conditions from the logs if something goes wrong.
-4. Some internal implementations in Ray Tune assume that you only have one job
-   running at a time. This can lead to conflicts.
 
-The fourth reason is especially problematic when you run concurrent tuning jobs. For instance,
-a symptom is when trials from job A use parameters specified in job B, leading to unexpected
-results.
+Previously, some internal implementations in Ray Tune assumed that you only have one job
+running at a time. A symptom was when trials from job A used parameters specified in job B,
+leading to unexpected results.
 
 Please refer to
 [this github issue](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976)
-for more context and a workaround.
+for more context and a workaround if you run into this issue.
