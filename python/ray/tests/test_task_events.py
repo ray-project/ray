@@ -3,7 +3,9 @@ from typing import Dict
 import pytest
 import threading
 import time
-
+from ray._private.state_api_test_utils import verify_failed_task
+from ray.exceptions import RuntimeEnvSetupError
+from ray.runtime_env import RuntimeEnv
 import ray
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
@@ -80,16 +82,6 @@ def test_status_task_events_metrics(shutdown_only):
         timeout=20,
         retry_interval_ms=100,
     )
-
-
-def verify_failed_task(name: str, error_type: str):
-    tasks = list_tasks(filters=[("name", "=", name)])
-    print(tasks)
-    assert len(tasks) == 1
-    t = tasks[0]
-    assert t["state"] == "FAILED"
-    assert t["error_type"] == error_type
-    return True
 
 
 def test_failed_task_error(shutdown_only):
@@ -236,6 +228,25 @@ def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
         verify_failed_task,
         name="task-pg-removed",
         error_type="TASK_PLACEMENT_GROUP_REMOVED",
+    )
+
+
+def test_failed_task_runtime_env_setup(shutdown_only):
+    @ray.remote
+    def f():
+        pass
+
+    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        match="ResolvePackageNotFound",
+    ):
+        ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-runtime-env-failed",
+        error_type="RUNTIME_ENV_SETUP_FAILED",
     )
 
 

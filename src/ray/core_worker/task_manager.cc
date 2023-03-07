@@ -837,7 +837,7 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                         task_entry.spec,
                         rpc::TaskStatus::FAILED,
                         /* include_task_info */ false,
-                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
+                        std::move(worker::TaskStatusEvent::TaskStateUpdate(error_info)));
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
@@ -848,15 +848,16 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                         /* include_task_info */ true);
 }
 
-void TaskManager::SetTaskStatus(TaskEntry &task_entry,
-                                rpc::TaskStatus status,
-                                const rpc::RayErrorInfo &error_info) {
+void TaskManager::SetTaskStatus(
+    TaskEntry &task_entry,
+    rpc::TaskStatus status,
+    const absl::optional<const rpc::RayErrorInfo> &error_info) {
   task_entry.SetStatus(status);
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
                         task_entry.spec,
                         status,
                         /* include_task_info */ false,
-                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
+                        std::move(worker::TaskStatusEvent::TaskStateUpdate(error_info)));
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,

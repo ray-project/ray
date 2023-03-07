@@ -71,7 +71,8 @@ class TaskStatusEvent : public TaskEvent {
  public:
   /// A class that contain data that will be converted to rpc::TaskStateUpdate
   struct TaskStateUpdate {
-    TaskStateUpdate(const rpc::RayErrorInfo &error_info) : error_info_(error_info) {}
+    TaskStateUpdate(const absl::optional<const rpc::RayErrorInfo> &error_info)
+        : error_info_(error_info) {}
 
     TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
         : node_id_(node_id), worker_id_(worker_id) {}
