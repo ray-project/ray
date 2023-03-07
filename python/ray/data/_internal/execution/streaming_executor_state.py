@@ -152,16 +152,24 @@ class OpState:
         """
         while True:
             try:
+                # Non-split output case.
                 if output_split_idx is None:
                     return self.outqueue.popleft()
-                else:
-                    for i in range(len(self.outqueue)):
-                        bundle = self.outqueue[i]
-                        if bundle is None:
-                            return None  # End of stream for this index!
-                        elif bundle.output_split_idx == output_split_idx:
-                            self.outqueue.remove(bundle)
-                            return bundle
+
+                # Scan the queue and look for outputs tagged for the given index.
+                for i in range(len(self.outqueue)):
+                    bundle = self.outqueue[i]
+                    if bundle is None:
+                        # End of stream for this index! Note that we
+                        # do not remove the None, so that it can act
+                        # as the termination signal for all indices.
+                        return None
+                    elif bundle.output_split_idx == output_split_idx:
+                        self.outqueue.remove(bundle)
+                        return bundle
+
+                # Didn't find any outputs matching this index, repeat the loop until
+                # we find one or hit a None.
             except IndexError:
                 pass
             time.sleep(0.01)
