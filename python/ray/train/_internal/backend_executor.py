@@ -118,7 +118,8 @@ class BackendExecutor:
         # See https://github.com/ray-project/ray/issues/33073
         # for more context.
         # TODO remove
-        self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+        if self._trial_info and self._trial_info.driver_ip:
+            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
