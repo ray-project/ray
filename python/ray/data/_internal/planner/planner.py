@@ -53,7 +53,7 @@ class Planner:
             physical_op = _plan_all_to_all_op(logical_op, physical_children[0])
         elif isinstance(logical_op, Zip):
             assert len(physical_children) == 2
-            physical_op = ZipOperator(physical_children)
+            physical_op = ZipOperator(physical_children[0], physical_children[1])
         else:
             raise ValueError(
                 f"Found unknown logical operator during planning: {logical_op}"

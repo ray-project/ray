@@ -601,7 +601,7 @@ def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     read_op1 = Read(ParquetDatasource())
     read_op2 = Read(ParquetDatasource())
-    op = Zip((read_op1, read_op2))
+    op = Zip(read_op1, read_op2)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 

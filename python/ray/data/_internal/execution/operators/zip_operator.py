@@ -20,22 +20,29 @@ from ray.data.block import (
 
 
 class ZipOperator(PhysicalOperator):
-    """An operator that zips its inputs together."""
+    """An operator that zips its inputs together.
+
+    NOTE: the implementation is bulk for now, which materializes all its inputs in
+    object store, before starting execution. Should re-implement it as a streaming
+    operator in the future.
+    """
 
     def __init__(
         self,
-        input_ops: Tuple[PhysicalOperator, PhysicalOperator],
+        left_input_op: PhysicalOperator,
+        right_input_op: PhysicalOperator,
     ):
         """Create a ZipOperator.
 
         Args:
-            input_ops: The pair of operators to zip together.
+            left_input_ops: The input operator at left hand side.
+            right_input_op: The input operator at right hand side.
         """
         self._left_buffer: List[RefBundle] = []
         self._right_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__("Zip", input_ops)
+        super().__init__("Zip", [left_input_op, right_input_op])
 
     def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
@@ -188,6 +195,13 @@ class ZipOperator(PhysicalOperator):
                 )
             )
         stats = {self._name: output_metadata}
+
+        # Clean up inputs.
+        for ref in left_input:
+            ref.destroy_if_owned()
+        for ref in right_input:
+            ref.destroy_if_owned()
+
         return output_refs, stats
 
     def _calculate_blocks_rows_and_bytes(

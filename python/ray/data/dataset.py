@@ -2102,7 +2102,7 @@ class Dataset(Generic[T]):
         logical_plan = self._logical_plan
         other_logical_plan = other._logical_plan
         if logical_plan is not None and other_logical_plan is not None:
-            op = Zip((logical_plan.dag, other_logical_plan.dag))
+            op = Zip(logical_plan.dag, other_logical_plan.dag)
             logical_plan = LogicalPlan(op)
         return Dataset(plan, self._epoch, self._lazy, logical_plan)
 

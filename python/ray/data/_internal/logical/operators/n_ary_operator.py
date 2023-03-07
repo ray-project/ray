@@ -1,5 +1,3 @@
-from typing import Tuple
-
 from ray.data._internal.logical.interfaces import LogicalOperator
 
 
@@ -8,10 +6,12 @@ class Zip(LogicalOperator):
 
     def __init__(
         self,
-        input_ops: Tuple[LogicalOperator, LogicalOperator],
+        left_input_op: LogicalOperator,
+        right_input_op: LogicalOperator,
     ):
         """
         Args:
-            input_ops: The pair of operators to zip together.
+            left_input_ops: The input operator at left hand side.
+            right_input_op: The input operator at right hand side.
         """
-        super().__init__("Zip", input_ops)
+        super().__init__("Zip", [left_input_op, right_input_op])
