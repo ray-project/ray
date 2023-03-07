@@ -139,8 +139,8 @@ class Catalog:
         """
         assert hasattr(self, "encoder_config"), (
             "You must define a `Catalog.encoder_config` attribute in your Catalog "
-            "subclass or override the `Catalog.build_encoder` method. Normally, "
-            "an encoder_config i created in the __post_init__ method."
+            "subclass or override the `Catalog.build_encoder` method. By default, "
+            "an encoder_config is created in the __post_init__ method."
         )
         return self.encoder_config.build(framework=framework)
 
@@ -148,7 +148,7 @@ class Catalog:
         """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
-        action_dist_cls_dict. This can be overridden to build a custom action
+        `Catalog.action_dist_cls_dict`. This can be overridden to build a custom action
         distribution as a means of configuring the behavior of a PPORLModuleBase
         implementation.
 
@@ -161,7 +161,8 @@ class Catalog:
         assert hasattr(self, "action_dist_cls_dict"), (
             "You must define a `Catalog.action_dist_cls_dict` attribute in your "
             "Catalog subclass or override the `Catalog.get_action_dist_cls` method. "
-            "Normally, an action_dist_cls_dict is created in the __post_init__ method."
+            "By default, an action_dist_cls_dict is created in the __post_init__ "
+            "method."
         )
         return self.action_dist_cls_dict[framework]
 
