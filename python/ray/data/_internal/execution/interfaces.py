@@ -423,7 +423,8 @@ class PhysicalOperator(Operator):
 class OutputIterator(Iterator[RefBundle]):
     """Iterator used to access the output of an Executor execution.
 
-    The default implementation wraps a simple Python iterator.
+    This is a blocking iterator, and must be thread-safe (i.e., multiple threads can
+    block on it at the same time).
     """
 
     def __init__(self, base: Iterable[RefBundle]):
