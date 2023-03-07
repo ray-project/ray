@@ -93,11 +93,14 @@ class StreamingExecutor(Executor, threading.Thread):
                     item = self._outer._output_node.get_output_blocking(
                         output_split_idx
                     )
+                    # Translate the special sentinel values for MaybeRefBundle into
+                    # exceptions.
                     if item is None:
                         raise StopIteration
                     elif isinstance(item, Exception):
                         raise item
                     else:
+                        # Otherwise return a concrete RefBundle.
                         self._outer._output_info.update(1)
                         return item
                 except Exception:
