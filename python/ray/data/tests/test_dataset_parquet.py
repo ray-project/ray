@@ -934,6 +934,7 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
+    ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
