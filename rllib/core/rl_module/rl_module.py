@@ -42,6 +42,7 @@ class SingleAgentRLModuleSpec:
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
     model_config_dict: Optional[Mapping[str, Any]] = None
+    catalog_class: Optional[Type["Catalog"]] = None
 
     def get_rl_module_config(self) -> "RLModuleConfig":
         """Returns the RLModule config for this spec."""
@@ -49,6 +50,7 @@ class SingleAgentRLModuleSpec:
             observation_space=self.observation_space,
             action_space=self.action_space,
             model_config_dict=self.model_config_dict,
+            catalog_class=self.catalog_class,
         )
 
     def build(self) -> "RLModule":
