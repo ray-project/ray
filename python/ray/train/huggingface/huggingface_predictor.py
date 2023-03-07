@@ -120,6 +120,7 @@ class HuggingFacePredictor(Predictor):
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
         if use_gpu and "device_map" not in pipeline_kwargs:
+            # default to using the GPU with the first index
             pipeline_kwargs.setdefault("device", 0)
         pipeline_cls = pipeline_cls or pipeline_factory
         preprocessor = checkpoint.get_preprocessor()
