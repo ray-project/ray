@@ -46,7 +46,7 @@ py_test_run_all_notebooks(
         "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
-        "gptj_batch_prediction.ipynb",  # Requires GPUs
+        "gptj_inference.ipynb",  # Requires GPUs
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
@@ -79,7 +79,7 @@ py_test_run_all_notebooks(
     include = [
         "huggingface_text_classification.ipynb",
         "pytorch_resnet_batch_prediction.ipynb",
-        "gptj_batch_prediction.ipynb",
+        "gptj_inference.ipynb",
         "stablediffusion_batch_prediction.ipynb",
     ],
     exclude = [],

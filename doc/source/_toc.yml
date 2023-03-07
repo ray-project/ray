@@ -74,7 +74,7 @@ parts:
               - file: ray-air/examples/batch_forecasting
               - file: ray-air/examples/pytorch_resnet_batch_prediction
               - file: ray-air/examples/stablediffusion_batch_prediction
-              - file: ray-air/examples/gptj_batch_prediction
+              - file: ray-air/examples/gptj_inference
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
