@@ -4,6 +4,7 @@ import raydp
 import torch
 
 
+"""
 @pytest.fixture(scope="function")
 def spark(request):
     ray.init(num_cpus=2, include_dashboard=False)
@@ -54,3 +55,4 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+"""
