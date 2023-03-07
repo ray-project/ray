@@ -136,7 +136,7 @@ def _autodetect_parallelism(
     return parallelism, min_safe_parallelism
 
 
-def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
+def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"] = None) -> int:
     """Estimates the available CPU parallelism for this Dataset in the cluster.
 
     If we aren't in a placement group, this is trivially the number of CPUs in the

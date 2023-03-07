@@ -1,21 +1,39 @@
+import itertools
 import logging
+import pathlib
+import os
 import re
 from typing import (
     List,
     Optional,
     Union,
-    TYPE_CHECKING,
+    Iterator,
     Tuple,
     Any,
+    TYPE_CHECKING,
 )
+
+import numpy as np
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data.datasource.file_based_datasource import _S3FileSystemWrapper
 
 from ray.data.block import BlockMetadata
+from ray.data.datasource.partitioning import Partitioning
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _estimate_avail_cpus
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+
+# We should parallelize file size fetch operations beyond this threshold.
+FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
+
+# 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
+PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
 
 @DeveloperAPI
@@ -97,7 +115,8 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         self,
         paths: List[str],
         filesystem: Optional["pyarrow.fs.FileSystem"],
-    ) -> Tuple[List[str], List[Optional[int]]]:
+        partitioning: Optional[Partitioning] = None,
+    ) -> Iterator[Tuple[str, int]]:
         """Expands all paths into concrete file paths by walking directories.
 
          Also returns a sidecar of file sizes.
@@ -112,11 +131,9 @@ class BaseFileMetadataProvider(FileMetadataProvider):
                  expanding all paths and reading their files.
 
          Returns:
-             A tuple whose first item contains the list of file paths discovered,
-             and whose second item contains the size of each file. `None` may be
-             returned if a file size is either unknown or will be fetched later
-             by `_get_block_metadata()`, but the length of both lists must be
-             equal.
+             An iterator of (file_path, file_size) pairs. None may be returned for the
+             file size if it is either unknown or will be fetched later by
+             `_get_block_metadata()`, but the length of both lists must be equal.
         """
         raise NotImplementedError
 
@@ -154,10 +171,8 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         self,
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
-    ) -> Tuple[List[str], List[Optional[int]]]:
-        from pyarrow.fs import FileType
-        from ray.data.datasource.file_based_datasource import _expand_directory
-
+        partitioning: Optional[Partitioning] = None,
+    ) -> Iterator[Tuple[str, int]]:
         if len(paths) > 1:
             logger.warning(
                 f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
@@ -165,24 +180,8 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
                 f"all point to files and never directories, try rerunning this read "
                 f"with `meta_provider=FastFileMetadataProvider()`."
             )
-        expanded_paths = []
-        file_infos = []
-        for path in paths:
-            try:
-                file_info = filesystem.get_file_info(path)
-            except OSError as e:
-                _handle_read_os_error(e, path)
-            if file_info.type == FileType.Directory:
-                paths, file_infos_ = _expand_directory(path, filesystem)
-                expanded_paths.extend(paths)
-                file_infos.extend(file_infos_)
-            elif file_info.type == FileType.File:
-                expanded_paths.append(path)
-                file_infos.append(file_info)
-            else:
-                raise FileNotFoundError(path)
-        file_sizes = [file_info.size for file_info in file_infos]
-        return expanded_paths, file_sizes
+
+        yield from _expand_paths(paths, filesystem, partitioning)
 
 
 @DeveloperAPI
@@ -201,15 +200,15 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
         self,
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
-    ) -> Tuple[List[str], List[Optional[int]]]:
+        partitioning: Optional[Partitioning] = None,
+    ) -> Iterator[Tuple[str, int]]:
         logger.warning(
             f"Skipping expansion of {len(paths)} path(s). If your paths contain "
             f"directories or if file size collection is required, try rerunning this "
             f"read with `meta_provider=DefaultFileMetadataProvider()`."
         )
-        import numpy as np
 
-        return paths, np.empty(len(paths), dtype=object)
+        yield from zip(paths, itertools.repeat(None, len(paths)))
 
 
 @DeveloperAPI
@@ -365,3 +364,162 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
         )
     else:
         raise error
+
+
+def _expand_paths(
+    paths: List[str],
+    filesystem: "pyarrow.fs.FileSystem",
+    partitioning: Optional[Partitioning],
+) -> Iterator[Tuple[str, int]]:
+    """Get the file sizes for all provided file paths."""
+    from pyarrow.fs import LocalFileSystem
+    from ray.data.datasource.file_based_datasource import (
+        _wrap_s3_serialization_workaround,
+        _unwrap_protocol,
+    )
+
+    # We break down our processing paths into a few key cases:
+    # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
+    #    serially.
+    # 2. If all paths are contained under the same parent directory (or base directory,
+    #    if using partitioning), fetch all file infos at this prefix and filter to the
+    #    provided paths on the client; this should be a single file info request.
+    # 3. If more than threshold requests required, parallelize them via Ray tasks.
+
+    # 1. Small # of paths case.
+    if (
+        len(paths) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+        # Local file systems are very fast to hit.
+        or isinstance(filesystem, LocalFileSystem)
+    ):
+        for path in paths:
+            yield from _get_file_infos(path, filesystem)
+        return
+
+    # 2. Common path prefix case.
+    # Get longest common path of all paths.
+    common_path = os.path.commonpath(paths)
+    common_path = os.path.normpath(common_path)
+    # If parent directory (or base directory, if using partitioning) is common to all
+    # paths, fetch all file infos at that prefix and filter the response to the provided
+    # paths.
+    normalized_base_dir = _unwrap_protocol(partitioning.base_dir)
+    if (partitioning is not None and common_path == normalized_base_dir) or all(
+        str(pathlib.Path(path).parent) == common_path for path in paths
+    ):
+        path_to_size = {path: 0 for path in paths}
+        for path, file_size in _get_file_infos(common_path, filesystem):
+            if path in path_to_size:
+                path_to_size[path] = file_size
+        # Dictionaries are insertion-ordered, so this path + size pairs should be
+        # yielded in the order of the original paths arg.
+        yield from path_to_size.items()
+        return
+
+    # 3. Parallelization case.
+    # Parallelize requests via Ray tasks.
+    # TODO(Clark): Group file paths by parent directory paths and do a prefix
+    # fetch + client-side filter if the number of groups is << the total number of
+    # paths?
+    # Only request 0.25 CPU since these tasks are I/O-bound.
+    num_cpus = 0.25
+    get_file_infos_remotely = cached_remote_fn(
+        _get_file_infos_remotely,
+        num_cpus=num_cpus,
+        scheduling_strategy="SPREAD",
+    )
+    available_cpus = _estimate_avail_cpus()
+    parallelism = min(
+        # Choose a parallelism that results in a # of file size fetches per task that
+        # dominates the Ray task overhead while ensuring good parallelism.
+        # Always launch at least 2 parallel fetch tasks.
+        max(len(paths) // PATHS_PER_FILE_SIZE_FETCH_TASK, 2),
+        # Oversubscribe cluster CPU by 4x since these tasks are I/O-bound.
+        round(available_cpus / num_cpus),
+    )
+    size_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    results = []
+    filesystem = _wrap_s3_serialization_workaround(filesystem)
+    for path_chunks in np.array_split(paths, parallelism):
+        if len(path_chunks) == 0:
+            continue
+        results.append(get_file_infos_remotely.remote(path_chunks, filesystem))
+    for result in size_fetch_bar.fetch_until_complete(results):
+        yield from result
+
+
+def _get_file_infos_remotely(
+    paths: List[str],
+    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
+) -> Iterator[Tuple[str, int]]:
+    """Get the file infos for all files at or under the provided paths."""
+    from ray.data.datasource.file_based_datasource import (
+        _unwrap_s3_serialization_workaround,
+    )
+
+    filesystem = _unwrap_s3_serialization_workaround(filesystem)
+    out = []
+    for path in paths:
+        out.extend(_get_file_infos(path, filesystem))
+    return out
+
+
+def _get_file_infos(
+    path: str,
+    filesystem: "pyarrow.fs.FileSystem",
+) -> Iterator[Tuple[str, int]]:
+    """Get the file info for all files at or under the provided path."""
+    from pyarrow.fs import FileType
+
+    try:
+        file_info = filesystem.get_file_info(path)
+    except OSError as e:
+        _handle_read_os_error(e, path)
+    if file_info.type == FileType.Directory:
+        yield from _expand_directory(path, filesystem)
+    elif file_info.type == FileType.File:
+        yield path, file_info.size
+    else:
+        raise FileNotFoundError(path)
+
+
+def _expand_directory(
+    path: str,
+    filesystem: "pyarrow.fs.FileSystem",
+    exclude_prefixes: Optional[List[str]] = None,
+) -> Iterator[Tuple[str, int]]:
+    """
+    Expand the provided directory path to a list of file paths.
+
+    Args:
+        path: The directory path to expand.
+        filesystem: The filesystem implementation that should be used for
+            reading these files.
+        exclude_prefixes: The file relative path prefixes that should be
+            excluded from the returned file set. Default excluded prefixes are
+            "." and "_".
+
+    Returns:
+        An iterator of (file_path, file_size) tuples.
+    """
+    if exclude_prefixes is None:
+        exclude_prefixes = [".", "_"]
+
+    from pyarrow.fs import FileSelector
+
+    selector = FileSelector(path, recursive=True)
+    files = filesystem.get_file_info(selector)
+    base_path = selector.base_dir
+    out = []
+    for file_ in files:
+        if not file_.is_file:
+            continue
+        file_path = file_.path
+        if not file_path.startswith(base_path):
+            continue
+        relative = file_path[len(base_path) :]
+        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
+            continue
+        out.append((file_path, file_.size))
+    # We sort the paths to guarantee a stable order.
+    yield from sorted(out)

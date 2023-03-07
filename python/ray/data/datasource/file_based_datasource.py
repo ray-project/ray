@@ -288,9 +288,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
-            fs = filesystem
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
+            fs = _unwrap_s3_serialization_workaround(filesystem)
             if _block_udf is not None:
                 block = _block_udf(block)
 
@@ -373,8 +371,9 @@ class _FileBasedDatasourceReader(Reader):
         self._block_udf = _block_udf
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self._paths, self._file_sizes = meta_provider.expand_paths(
-            paths, self._filesystem
+        self._paths, self._file_sizes = map(
+            list,
+            zip(*meta_provider.expand_paths(paths, self._filesystem, partitioning)),
         )
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
@@ -418,8 +417,7 @@ class _FileBasedDatasourceReader(Reader):
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
             logger.debug(f"Reading {len(read_paths)} files.")
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
+            fs = _unwrap_s3_serialization_workaround(filesystem)
             ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
@@ -672,48 +670,6 @@ def _resolve_paths_and_filesystem(
     return resolved_paths, filesystem
 
 
-def _expand_directory(
-    path: str,
-    filesystem: "pyarrow.fs.FileSystem",
-    exclude_prefixes: Optional[List[str]] = None,
-) -> List[str]:
-    """
-    Expand the provided directory path to a list of file paths.
-
-    Args:
-        path: The directory path to expand.
-        filesystem: The filesystem implementation that should be used for
-            reading these files.
-        exclude_prefixes: The file relative path prefixes that should be
-            excluded from the returned file set. Default excluded prefixes are
-            "." and "_".
-
-    Returns:
-        A list of file paths contained in the provided directory.
-    """
-    if exclude_prefixes is None:
-        exclude_prefixes = [".", "_"]
-
-    from pyarrow.fs import FileSelector
-
-    selector = FileSelector(path, recursive=True)
-    files = filesystem.get_file_info(selector)
-    base_path = selector.base_dir
-    filtered_paths = []
-    for file_ in files:
-        if not file_.is_file:
-            continue
-        file_path = file_.path
-        if not file_path.startswith(base_path):
-            continue
-        relative = file_path[len(base_path) :]
-        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
-            continue
-        filtered_paths.append((file_path, file_))
-    # We sort the paths to guarantee a stable order.
-    return zip(*sorted(filtered_paths, key=lambda x: x[0]))
-
-
 def _is_url(path) -> bool:
     return urllib.parse.urlparse(path).scheme != ""
 
@@ -750,6 +706,15 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     if isinstance(filesystem, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
     return filesystem
+
+
+def _unwrap_s3_serialization_workaround(
+    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"]
+):
+    if isinstance(filesystem, _S3FileSystemWrapper):
+        return filesystem.unwrap()
+    else:
+        return filesystem
 
 
 class _S3FileSystemWrapper:
