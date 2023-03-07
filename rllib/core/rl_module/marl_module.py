@@ -347,6 +347,7 @@ class MultiAgentRLModule(RLModule):
                 f"Available modules: {set(self.keys())}"
             )
 
+
 @PublicAPI(stability="alpha")
 @dataclass
 class MultiAgentRLModuleSpec:
