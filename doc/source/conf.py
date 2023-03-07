@@ -55,6 +55,7 @@ extensions = [
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
+    "hoverxref.extension",
 ]
 
 myst_enable_extensions = [
@@ -98,6 +99,9 @@ copybutton_prompt_is_regexp = True
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
+
+# Show tooltip on glossary term hover.
+hoverxref_roles = ["term"]
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
