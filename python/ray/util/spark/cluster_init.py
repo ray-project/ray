@@ -213,16 +213,11 @@ def _convert_ray_node_option_key(key):
 
 
 def _convert_ray_node_options(options):
-    if isinstance(options, dict):
-        return [
-            f"{_convert_ray_node_option_key(k)}" if v is None
-            else f"{_convert_ray_node_option_key(k)}={str(v)}"
-            for k, v in options.items()
-        ]
-    elif isinstance(options, list):
-        return options
-    else:
-        raise ValueError("Ray on spark additional options must be a dict, or a list of option strings")
+    return [
+        f"{_convert_ray_node_option_key(k)}" if v is None
+        else f"{_convert_ray_node_option_key(k)}={str(v)}"
+        for k, v in options.items()
+    ]
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
@@ -844,10 +839,16 @@ def setup_ray_cluster(
         head_node_options: A dict representing Ray head node extra options, these
             options will be passed to `ray start` script. Note you need to convert
             `ray start` options key from `--foo-bar` format to `foo_bar` format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
         worker_node_options: A dict representing Ray worker node extra options,
             these options will be passed to `ray start` script. Note you need to
             convert `ray start` options key from `--foo-bar` format to `foo_bar`
             format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
             created cluster will create a subdirectory
             "ray-{head_port}-{random_suffix}" beneath this path.
