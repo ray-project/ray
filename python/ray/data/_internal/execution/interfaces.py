@@ -364,6 +364,15 @@ class PhysicalOperator(Operator):
         """
         return []
 
+    def is_metadata_only() -> bool:
+        """Whether this operator is metadata only.
+
+        This should return True for operators that only manipulate bundle metadata
+        (e.g., the OutputSplitter operator). This hints to the execution engine that
+        these operators should be prioritized for execution.
+        """
+        return False
+
     def num_active_work_refs(self) -> int:
         """Return the number of active work refs.
 

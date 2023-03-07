@@ -324,9 +324,14 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and num bundles processing for backpressure.
+    # Run metadata-only operators first. After that, equally penalize outqueue length
+    # and num bundles processing for backpressure.
     return min(
-        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
+        ops,
+        key=lambda op: (
+            not op.is_metadata_only(),
+            len(topology[op].outqueue) + topology[op].num_processing(),
+        ),
     )
 
 
@@ -353,6 +358,12 @@ def _execution_allowed(
     Returns:
         Whether the op is allowed to run.
     """
+
+    # Metadata only operators are always allowed to run, as they do not consume
+    # additional resources.
+    if op.is_metadata_only():
+        return True
+
     assert isinstance(global_usage, TopologyResourceUsage), global_usage
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
