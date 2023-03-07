@@ -345,5 +345,24 @@ class WorkerGroup:
         for i in range(len(new_actors)):
             self.workers.append(Worker(actor=new_actors[i], metadata=metadata[i]))
 
+    def _move_workers_with_ip_to_front(self, ip):
+        # Hack to avoid OOMs.
+        # This is just a temporary solution for Train loading entire checkpoints
+        # into memory by ensuring that the rank 0 worker is on the same node as
+        # trainable, thus allowing for lazy checkpoint transfer to be used.
+        # See https://github.com/ray-project/ray/issues/33073
+        # for more context.
+        # TODO remove
+        workers_with_ip = []
+        indices_to_remove = []
+        for i, worker in enumerate(self.workers):
+            if worker.metadata.node_ip == ip:
+                workers_with_ip.append(worker)
+                indices_to_remove.append(i)
+        if workers_with_ip:
+            for i in indices_to_remove:
+                self.workers.pop(i)
+            self.workers = workers_with_ip + self.workers
+
     def __len__(self):
         return len(self.workers)
