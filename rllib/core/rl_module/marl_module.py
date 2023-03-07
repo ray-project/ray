@@ -347,8 +347,7 @@ class MultiAgentRLModule(RLModule):
                 f"Available modules: {set(self.keys())}"
             )
 
-
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 @dataclass
 class MultiAgentRLModuleSpec:
     """A utility spec class to make it constructing MARL modules easier.
@@ -434,6 +433,7 @@ class MultiAgentRLModuleSpec:
             )
 
 
+@ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleConfig:
 
