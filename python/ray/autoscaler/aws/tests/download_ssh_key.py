@@ -10,6 +10,9 @@ bucket_name = "oss-release-test-resources"
 key_name = "ray-autoscaler_59_us-west-2.pem"
 
 # Download the key from the S3 bucket to a local file
+if not os.path.exists(f'~/.ssh/'):
+    os.mkdirs('~/.ssh/')
+    
 local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
 s3_client.download_file(bucket_name, key_name, local_key_path)
 
