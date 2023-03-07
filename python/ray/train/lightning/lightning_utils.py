@@ -14,8 +14,9 @@ from lightning_fabric.plugins.environments.lightning import LightningEnvironment
 
 import ray
 from ray.air import session
+from torch.utils.data import IterableDataset, DataLoader
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
-
+from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -113,5 +114,36 @@ class RayEnvironment(LightningEnvironment):
     def teardown(self):
         pass
 
+class RayIterableDataset(IterableDataset):
+    def __init__(self, dataset: "Dataset", config: Dict[str, Any]) -> None:
+        super().__init__()
+        self.dataset = dataset
+        self.config = config
 
+    def __iter__(self):
+        return self.dataset.iter_torch_batches(**self.config)
+
+class RayDataModule(pl.LightningDataModule):
+    def __init__(self, 
+                train_dataset: "Dataset", 
+                val_dataset: Optional["Dataset"]=None,
+                config: Optional[Dict[str, Any]]=None) -> None:
+        super().__init__()
+        self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
+        self.config = config if config else {}
+
+    def train_dataloader(self):
+        if not self.train_dataset:
+            super().train_dataloader()
+        else:
+            ds = RayIterableDataset(self.train_dataset, self.config)
+            return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
+
+    def val_dataloader(self):
+        if not self.val_dataset:
+            super().val_dataloader()
+        else:
+            ds = RayIterableDataset(self.val_dataset, self.config)
+            return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
         

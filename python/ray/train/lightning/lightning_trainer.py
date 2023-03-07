@@ -17,15 +17,18 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
+from torch.utils.data import DataLoader
 from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment, RayModelCheckpoint
 from ray.util import PublicAPI
+import ray.train as train
+from python.ray.train.lightning.lightning_utils import RayDataModule
 
 
 LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
-LIGHTNING_DATAMODULE_KEY = "_lightning_datamodule"
-MODEL_CHECKPOINT_CONFIG = "_model_checkpoint_config"
+LIGHTNING_TRAINER_FIT_CONFIG_KEY = "_lightning_trainer_fit_config"
+MODEL_CHECKPOINT_CONFIG_KEY = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
 
 
@@ -100,6 +103,7 @@ class LightningTrainer(DataParallelTrainer):
         *,
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
+        lightning_trainer_fit_config: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
         model_checkpoint_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
@@ -107,7 +111,6 @@ class LightningTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        datamodule: Optional[pl.LightningDataModule] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -115,7 +118,12 @@ class LightningTrainer(DataParallelTrainer):
             torch_config = TorchConfig()
 
         train_loop_config = self._create_trainer_loop_config(
-            lightning_module, lightning_module_config, lightning_trainer_config, ddp_strategy_config, model_checkpoint_config, datamodule
+            lightning_module,
+            lightning_module_config,
+            lightning_trainer_config,
+            lightning_trainer_fit_config,
+            ddp_strategy_config,
+            model_checkpoint_config,
         )
 
         super(LightningTrainer, self).__init__(
@@ -136,9 +144,9 @@ class LightningTrainer(DataParallelTrainer):
         lightning_module: pl.LightningModule,
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
+        lightning_trainer_fit_config: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
         model_checkpoint_config: Optional[Dict] = None,
-        datamodule: Optional[pl.LightningDataModule] = None,
     ) -> Dict[str, Any]:
 
         trainer_loop_config = {}
@@ -163,22 +171,35 @@ class LightningTrainer(DataParallelTrainer):
             trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
 
         if model_checkpoint_config:
-            trainer_loop_config[MODEL_CHECKPOINT_CONFIG] = model_checkpoint_config
+            trainer_loop_config[MODEL_CHECKPOINT_CONFIG_KEY] = model_checkpoint_config
 
-        if datamodule:
-            trainer_loop_config[LIGHTNING_DATAMODULE_KEY] = datamodule
+        if lightning_trainer_fit_config:
+            trainer_loop_config[LIGHTNING_TRAINER_FIT_CONFIG_KEY] = lightning_trainer_fit_config
         return trainer_loop_config
 
+def _prepare_dataloaders(dataloaders: Optional[DataLoader]) -> Optional[DataLoader]:
+    if dataloaders:
+        if isinstance(dataloaders, list):
+            for i, dataloader in enumerate(dataloaders):
+                dataloaders[i] = train.torch.prepare_data_loader(dataloader)
+        else:
+            dataloaders = train.torch.prepare_data_loader(dataloaders)
+    return dataloaders
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-    datamodule = config.get(LIGHTNING_DATAMODULE_KEY, None)
-    if not datamodule:
-        # Build Datamodule with Ray Datasets
-        train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
-        eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
-        # TODO(yunxuanx): Integrate with Ray datasets
-        # datamodule = build_data_module(train_dataset, eval_dataset, ...)
+    trainer_fit_config = config.get(LIGHTNING_TRAINER_FIT_CONFIG_KEY, {})
+    datamodule = trainer_fit_config.get("datamodule", None)
+    train_dataloaders = _prepare_dataloaders(trainer_fit_config.get("train_dataloaders", None))
+    val_dataloaders = _prepare_dataloaders(trainer_fit_config.get("val_dataloaders", None))
+
+    train_ray_dataset = session.get_dataset_shard("train")
+    val_ray_dataset = session.get_dataset_shard("val")
+    if not datamodule and not train_dataloaders:
+        # TODO(yunxuanx): configuration for iter_torch_batches
+        # TODO(yunxuanx): Add error message
+        datamodule = RayDataModule(train_ray_dataset, val_ray_dataset, {})
+
 
     LightningModuleCls = config.pop(LIGHTNING_MODULE_KEY)
     module_init_config = config.get(LIGHTNING_MODULE_CONFIG_KEY, {})
@@ -202,7 +223,7 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
     # Insert RayModelCheckpoint Callback
-    model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG, {})
+    model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG_KEY, {})
     trainer_config["callbacks"] = [callback for callback in trainer_config.get(
         "callbacks", []) if not isinstance(callback, ModelCheckpoint)]
     trainer_config["callbacks"].append(RayModelCheckpoint(**model_checkpoint_config))
@@ -215,4 +236,11 @@ def _lightning_train_loop_per_worker(config):
     if checkpoint:
         with checkpoint.as_directory() as ckpt_dir:
             checkpoint_path = f"{ckpt_dir}/checkpoint.ckpt"
-    trainer.fit(lightning_module, datamodule=datamodule, ckpt_path=checkpoint_path)
+
+    trainer.fit(
+        lightning_module,
+        train_dataloaders=train_dataloaders,
+        val_dataloaders=val_dataloaders,
+        datamodule=datamodule,
+        ckpt_path=checkpoint_path
+    )
