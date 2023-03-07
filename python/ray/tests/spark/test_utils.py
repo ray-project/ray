@@ -95,7 +95,7 @@ def test_convert_ray_node_options():
     }) == [
         "--cluster-name=aBc",
         "--disable-usage-stats",
-        "include-dashboard=False"
+        "--include-dashboard=False"
     ]
 
 
