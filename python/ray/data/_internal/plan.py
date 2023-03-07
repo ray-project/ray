@@ -170,7 +170,6 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
-
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -776,6 +775,17 @@ class ExecutionPlan:
             )
         )
 
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
+
 
 def _pack_args(
     self_fn_args: Iterable[Any],
@@ -1147,7 +1157,9 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = "read"
+    name = in_blocks._read_stage_name or "Read"
+    if isinstance(name, list):
+        name = "->".join(name)
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.
