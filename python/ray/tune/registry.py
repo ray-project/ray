@@ -211,9 +211,16 @@ class _Registry:
         return self._prefix
 
     def _register_atexit(self):
-        if not self._atexit_handler_registered:
-            atexit.register(_unregister_all)
-            self._atexit_handler_registered = True
+        if self._atexit_handler_registered:
+            # Already registered
+            return
+
+        if ray._private.worker.global_worker.mode != ray.SCRIPT_MODE:
+            # Only cleanup on the driver
+            return
+
+        atexit.register(_unregister_all)
+        self._atexit_handler_registered = True
 
     def register(self, category, key, value):
         """Registers the value with the global registry.
