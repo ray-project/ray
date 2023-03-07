@@ -107,6 +107,7 @@ Here are examples for some of the commonly used trainers:
         :language: python
         :start-after: __torch_single_run_begin__
         :end-before: __torch_single_run_end__
+        :dedent:
 
     Now let's convert this to a distributed multi-worker training function!
 
@@ -128,6 +129,7 @@ Here are examples for some of the commonly used trainers:
         :language: python
         :start-after: __torch_trainer_begin__
         :end-before: __torch_trainer_end__
+        :dedent:
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
@@ -156,6 +158,7 @@ Here are examples for some of the commonly used trainers:
         :language: python
         :start-after: __tf_single_run_begin__
         :end-before: __tf_single_run_end__
+        :dedent:
 
     Now let's convert this to a distributed multi-worker training function!
     All you need to do is:
@@ -177,6 +180,7 @@ Here are examples for some of the commonly used trainers:
         :language: python
         :start-after: __tf_trainer_begin__
         :end-before: __tf_trainer_end__
+        :dedent:
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
