@@ -7,6 +7,10 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_items_operator import FromItems
+from ray.data._internal.logical.operators.from_numpy_operator import (
+    FromNumpy,
+    FromNumpyRefs,
+)
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
     FromMARS,
@@ -858,6 +862,89 @@ def test_from_pandas_e2e(
         assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
+
+
+def test_from_numpy_refs_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import numpy as np
+
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
+
+    planner = Planner()
+    from_numpy_ref_op = FromNumpyRefs([ray.put(arr1), ray.put(arr2)])
+    plan = LogicalPlan(from_numpy_ref_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_numpy_ref_op.name == "FromNumpyRefs"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
+    import numpy as np
+
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
+
+    ds = ray.data.from_numpy_refs([ray.put(arr1), ray.put(arr2)])
+    values = np.stack(ds.take(8))
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+
+    # Test from single NumPy ndarray.
+    ds = ray.data.from_numpy_refs(ray.put(arr1))
+    values = np.stack(ds.take(4))
+    np.testing.assert_array_equal(values, arr1)
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+
+
+def test_from_numpy_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import numpy as np
+
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
+
+    planner = Planner()
+    from_numpy_op = FromNumpy([arr1, arr2])
+    plan = LogicalPlan(from_numpy_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_numpy_op.name == "FromNumpy"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_numpy_e2e(ray_start_regular_shared, enable_optimizer):
+    import numpy as np
+
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
+
+    ds = ray.data.from_numpy([arr1, arr2])
+    values = np.stack(ds.take(8))
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+
+    # Test from single NumPy ndarray.
+    ds = ray.data.from_numpy(arr1)
+    values = np.stack(ds.take(4))
+    np.testing.assert_array_equal(values, arr1)
+    # Check that conversion task is included in stats.
+    assert "from_numpy_refs" in ds.stats()
+    # Underlying implementation uses `FromNumpyRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
 
 
 def test_streaming_executor(

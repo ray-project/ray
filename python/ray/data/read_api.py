@@ -10,6 +10,7 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_items_operator import FromItems
+from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.from_pandas_operator import FromPandasRefs
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
@@ -1387,6 +1388,10 @@ def from_numpy_refs(
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+
+    from_numpy_refs_op = FromNumpyRefs(ndarrays)
+    logical_plan = LogicalPlan(from_numpy_refs_op)
+
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
@@ -1395,6 +1400,7 @@ def from_numpy_refs(
         ),
         0,
         True,
+        logical_plan,
     )
 
 

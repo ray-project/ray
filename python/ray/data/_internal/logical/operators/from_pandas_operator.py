@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class FromPandasRefs(LogicalOperator):
-    """Logical operator for `from_pandas_ref`."""
+    """Logical operator for `from_pandas_refs`."""
 
     def __init__(
         self, dfs: List[ObjectRef["pandas.DataFrame"]], op_name: str = "FromPandasRefs"
@@ -29,7 +29,6 @@ class FromPandas(FromPandasRefs):
         dfs: List["pandas.DataFrame"],
     ):
         super().__init__([ray.put(df) for df in dfs], "FromPandas")
-        self._dfs = dfs
 
 
 class FromMARS(FromPandasRefs):
@@ -42,7 +41,6 @@ class FromMARS(FromPandasRefs):
         from mars.dataframe.contrib.raydataset import get_chunk_refs
 
         super().__init__(get_chunk_refs(df), "FromMARS")
-        self._df = df
 
 
 class FromDask(FromPandasRefs):
@@ -72,7 +70,6 @@ class FromDask(FromPandasRefs):
 
         refs = [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions]
         super().__init__(refs, "FromDask")
-        self._df = df
 
 
 class FromModin(FromPandasRefs):
@@ -86,4 +83,3 @@ class FromModin(FromPandasRefs):
 
         parts = unwrap_partitions(df, axis=0)
         super().__init__(parts, "FromModin")
-        self._df = df
