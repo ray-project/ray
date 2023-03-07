@@ -1268,6 +1268,14 @@ def from_pandas(
 
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
+
+    from ray.air.util.data_batch_conversion import (
+        _cast_ndarray_columns_to_tensor_extension,
+    )
+
+    context = DatasetContext.get_current()
+    if context.enable_tensor_extension_casting:
+        dfs = [_cast_ndarray_columns_to_tensor_extension(df) for df in dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 
