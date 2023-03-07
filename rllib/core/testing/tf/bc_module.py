@@ -1,14 +1,11 @@
-import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleConfig,
-    MultiAgentRLModuleSpec,
-    ModuleID,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.typing import SpecType
@@ -123,9 +120,10 @@ class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
 
         # constructing the global encoder based on the observation_space of the first
         # module
-        module_spec = next(iter(self.module_specs.values()))
+        module_specs = self.config.modules
+        module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
+        hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
         shared_encoder = tf.keras.Sequential(
             [
                 tf.keras.Input(shape=(global_dim,)),
@@ -134,10 +132,18 @@ class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
             ]
         )
 
-        for module_id, module_spec in self.module_specs.items():
+        for module_id, module_spec in module_specs.items():
             self._rl_modules[module_id] = module_spec.module_class(
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,
                 action_dim=module_spec.action_space.n,
             )
+
+    def serialize(self):
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError
+
+    def deserialize(self, data):
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError

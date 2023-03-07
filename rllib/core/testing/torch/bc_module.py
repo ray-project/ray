@@ -1,12 +1,9 @@
-import gymnasium as gym
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
     MultiAgentRLModuleConfig,
     MultiAgentRLModule,
-    ModuleID,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.models.specs.typing import SpecType
@@ -122,7 +119,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
         module_specs = self.config.modules
         module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
+        hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
         shared_encoder = nn.Sequential(
             nn.Linear(global_dim, hidden_dim),
             nn.ReLU(),
@@ -130,7 +127,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
         )
 
         rl_modules = {}
-        for module_id, module_spec in self.module_specs.items():
+        for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
@@ -141,7 +138,9 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
         self._rl_modules = rl_modules
 
     def serialize(self):
-        encoder = next(iter(self.rl_modules.values())).encoder
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError
 
     def deserialize(self, data):
-        pass
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError

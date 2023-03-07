@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 import gymnasium as gym
-from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict
+from typing import Mapping, Any, TYPE_CHECKING, Optional, Type
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -11,7 +11,6 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.serialization import check_if_args_kwargs_serializable
 
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.checker import (
