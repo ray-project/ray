@@ -118,6 +118,41 @@ class TestRLModuleSpecs(unittest.TestCase):
                 foo.data = torch.ones_like(foo.data)
                 self.assertTrue(torch.allclose(model["agent_2"].encoder[0].bias, foo))
 
+    def test_get_spec_from_module_multi_agent(self):
+        """Tests wether MultiAgentRLModuleSpec.from_module() works."""
+        env = gym.make("CartPole-v1")
+        num_agents = 2
+        for module_class in MODULES:
+            module_specs = {}
+            for i in range(num_agents):
+                module_specs[f"module_{i}"] = SingleAgentRLModuleSpec(
+                    module_class=module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
+                )
+
+            spec = MultiAgentRLModuleSpec(module_specs=module_specs)
+            module = spec.build()
+
+            spec_from_module = MultiAgentRLModuleSpec.from_module(module)
+            self.assertEqual(spec, spec_from_module)
+
+
+    def test_get_spec_from_module_single_agent(self):
+        """Tests wether SingleAgentRLModuleSpec.from_module() works."""
+        env = gym.make("CartPole-v1")
+        for module_class in MODULES:
+            spec = SingleAgentRLModuleSpec(
+                module_class=module_class,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
+
+            module = spec.build()
+            spec_from_module = SingleAgentRLModuleSpec.from_module(module)
+            self.assertEqual(spec, spec_from_module)
 
 if __name__ == "__main__":
     import pytest

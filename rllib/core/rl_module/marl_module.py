@@ -425,6 +425,25 @@ class MultiAgentRLModuleSpec:
             self.module_specs = {}
         self.module_specs.update(module_specs)
 
+    @classmethod
+    def from_module(self, module: MultiAgentRLModule) -> "MultiAgentRLModuleSpec":
+        """Creates a MultiAgentRLModuleSpec from a MultiAgentRLModule.
+
+        Args:
+            module: The MultiAgentRLModule to create the spec from.
+
+        Returns:
+            The MultiAgentRLModuleSpec.
+        """
+        module_specs = {
+            module_id: SingleAgentRLModuleSpec.from_module(rl_module)
+            for module_id, rl_module in module._rl_modules.items()
+        }
+        marl_module_class = module.__class__
+        return MultiAgentRLModuleSpec(
+            marl_module_class=marl_module_class, module_specs=module_specs
+        )
+
     def _check_before_build(self):
         if not isinstance(self.module_specs, dict):
             raise ValueError(
