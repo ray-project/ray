@@ -5,6 +5,7 @@ from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+    from ray.rllib.core.models.catalog import Catalog
 
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -22,6 +23,7 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 
 
 ModuleID = str
@@ -33,16 +35,37 @@ class SingleAgentRLModuleSpec:
     """A utility spec class to make it constructing RLModules (in single-agent case) easier.
 
     Args:
-        module_class: ...
-        observation_space: ...
-        action_space: ...
-        model_config: ...
+        module_class: The RLModule class to use.
+        module_config: The RLModule config to use.
     """
 
     module_class: Optional[Type["RLModule"]] = None
-    observation_space: Optional["gym.Space"] = None
-    action_space: Optional["gym.Space"] = None
-    model_config: Optional[Dict[str, Any]] = None
+    module_config: Optional["RLModuleConfig"] = None
+
+    @property
+    def observation_space(self) -> gym.Space:
+        return self.module_config.observation_space
+
+    @observation_space.setter
+    def observation_space(self, space: gym.Space):
+        self.module_config.observation_space = space
+
+    @property
+    def action_space(self) -> gym.Space:
+        return self.module_config.action_space
+    
+    @action_space.setter
+    def action_space(self, space: gym.Space):
+        self.module_config.action_space = space
+
+    @property
+    def model_config_dict(self) -> Mapping[str, Any]:
+        return self.module_config.model_config_dict
+    
+    @model_config_dict.setter
+    def model_config_dict(self, config_dict: Mapping[str, Any]):
+        self.module_config.model_config_dict = config_dict
+
 
     def build(self) -> "RLModule":
 
@@ -50,33 +73,52 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Observation space must be specified.")
         if self.action_space is None:
             raise ValueError("Action space must be specified.")
-        if self.model_config is None:
+        if self.model_config_dict is None:
             raise ValueError("Model config must be specified.")
 
-        return self.module_class.from_model_config(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            model_config_dict=self.model_config,
+        return self.module_class(self.module_config)
+    
+    @classmethod
+    def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
+        return SingleAgentRLModuleSpec(
+            module_class=type(module),
+            module_config=module.config,
         )
 
 
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
-    """Configuration for the PPO module.
-    # TODO (Kourosh): Whether we need this or not really depends on how the catalog
-    # design end up being.
-    Attributes:
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
-        max_seq_len: Max seq len for training an RNN model.
-        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink
-        this design?)
-    """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    max_seq_len: int = None
+    model_config_dict: Mapping[str, Any] = None
+    catalog_class: Type["Catalog"] = None
+
+    def get_catalog(self) -> "Catalog":
+        """Returns the catalog for this config."""
+        return self.catalog_class(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config_dict=self.model_config_dict,
+        )
+
+    def to_dict(self):
+        """Returns a serialized representation of the config."""
+        return {
+            "observation_space": gym_space_to_dict(self.observation_space),
+            "action_space": gym_space_to_dict(self.action_space),
+            "model_config_dict": self.model_config_dict,
+            "catalog_class": self.catalog_class,
+        }
+    
+    def from_dict(self, d):
+        """Sets the config from a serialized representation."""
+        self.observation_space = gym_space_from_dict(d["observation_space"])
+        self.action_space = gym_space_from_dict(d["action_space"])
+        self.model_config_dict = d["model_config_dict"]
+        self.catalog_class = d["catalog_class"]
+
 
 
 @ExperimentalAPI
@@ -143,9 +185,8 @@ class RLModule(abc.ABC):
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
-    def __init__(self, *args, **kwargs):
-        check_if_args_kwargs_serializable(args, kwargs)
-        self._args_and_kwargs = {"args": args, "kwargs": kwargs}
+    def __init__(self, config: RLModuleConfig):
+        self._config = config
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -186,58 +227,6 @@ class RLModule(abc.ABC):
         self._output_specs_inference = convert_to_canonical_format(
             self.output_specs_inference()
         )
-
-    @classmethod
-    def from_model_config(
-        cls,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        *,
-        model_config: Mapping[str, Any],
-    ) -> "RLModule":
-        """Creates a RLModule instance from a model config dict and spaces.
-
-        The model config dict is the same as the one passed to the AlgorithmConfig
-        object that contains global model configurations parameters.
-
-        This method can also be used to create a config dict for the module constructor
-        so it can be re-used to create multiple instances of the module.
-
-        Example:
-
-        .. code-block:: python
-
-            class MyModule(RLModule):
-                def __init__(self, input_dim, output_dim):
-                    self.input_dim, self.output_dim = input_dim, output_dim
-
-                @classmethod
-                def from_model_config(
-                    cls,
-                    observation_space: gym.Space,
-                    action_space: gym.Space,
-                    model_config: Mapping[str, Any],
-                ):
-                    return cls(
-                        input_dim=observation_space.shape[0],
-                        output_dim=action_space.n
-                    )
-
-            module = MyModule.from_model_config(
-                observation_space=gym.spaces.Box(low=0, high=1, shape=(4,)),
-                action_space=gym.spaces.Discrete(2),
-                model_config={},
-            )
-
-
-        Args:
-            observation_space: The observation space of the env.
-            action_space: The action space of the env.
-            model_config: The model config dict.
-        """
-        raise NotImplementedError
-
-    # TODO: (Artur) Add a method `from_catalog` that creates RLModule from Catalog
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -365,8 +354,7 @@ class RLModule(abc.ABC):
         """Return the serialized state of the module."""
         return {
             "class": self.__class__,
-            "args": self._args_and_kwargs["args"],
-            "kwargs": self._args_and_kwargs["kwargs"],
+            "config": self.config.to_dict(),
             "state": self.get_state(),
         }
 
@@ -385,14 +373,8 @@ class RLModule(abc.ABC):
         Returns:
             A deserialized RLModule.
         """
-        for key in ["class", "args", "kwargs", "state"]:
-            if key not in state:
-                raise ValueError(
-                    "By default, the serialized state must contain the following "
-                    f"keys: 'class', 'args', 'args', and 'kwargs'. Got: {state.keys()}"
-                )
         constructor = state["class"]
-        module = constructor(*state["args"], **state["kwargs"])
+        module = constructor(state["config"])
         module.set_state(state["state"])
         return module
 
