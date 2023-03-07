@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import _StatsActor, DatasetStats
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
 
@@ -918,6 +919,47 @@ Dataset iterator time breakdown:
 * Total time: T
 """
     )
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
+def test_stats_actor_cap_num_stats(ray_start_cluster):
+    actor = _StatsActor.remote(3)
+    metadatas = []
+    task_idx = 0
+    for uuid in range(3):
+        metadatas.append(
+            BlockMetadata(
+                num_rows=uuid,
+                size_bytes=None,
+                schema=None,
+                input_files=None,
+                exec_stats=None,
+            )
+        )
+        num_stats = uuid + 1
+        actor.record_start.remote(uuid)
+        assert ray.get(actor._get_stats_dict_size.remote()) == (
+            num_stats,
+            num_stats - 1,
+            num_stats - 1,
+        )
+        actor.record_task.remote(uuid, task_idx, [metadatas[-1]])
+        assert ray.get(actor._get_stats_dict_size.remote()) == (
+            num_stats,
+            num_stats,
+            num_stats,
+        )
+    for uuid in range(3):
+        assert ray.get(actor.get.remote(uuid))[0][task_idx] == [metadatas[uuid]]
+    # Add the fourth stats to exceed the limit.
+    actor.record_start.remote(3)
+    # The first stats (with uuid=0) should have been purged.
+    assert ray.get(actor.get.remote(0))[0] == {}
+    # The start_time has 3 entries because we just added it above with record_start().
+    assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
 
 
 if __name__ == "__main__":
