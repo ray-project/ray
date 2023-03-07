@@ -35,7 +35,10 @@ class SingleAgentRLModuleSpec:
 
     Args:
         module_class: The RLModule class to use.
-        module_config: The RLModule config to use.
+        observation_space: The observation space of the RLModule.
+        action_space: The action space of the RLModule.
+        model_config_dict: The model config dict to use.
+        catalog_class: The Catalog class to use.
     """
 
     module_class: Optional[Type["RLModule"]] = None
