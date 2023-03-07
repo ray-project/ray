@@ -222,16 +222,7 @@ class RuntimeContext(object):
         return actor_id.hex() if not actor_id.is_nil() else None
 
     @property
-    @Deprecated(message="Use get_namespace() instead", warning=True)
     def namespace(self):
-        """Get the current namespace of this worker.
-
-        Returns:
-            The current namespace of this worker.
-        """
-        return self.worker.namespace
-
-    def get_namespace(self):
         """Get the current namespace of this worker.
 
         Returns:
