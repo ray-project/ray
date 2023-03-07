@@ -1,3 +1,4 @@
+import atexit
 import logging
 from functools import partial
 from types import FunctionType
@@ -201,12 +202,18 @@ class _Registry:
         self._to_flush = {}
         self._prefix = prefix
         self._registered = set()
+        self._atexit_handler_registered = False
 
     @property
     def prefix(self):
         if not self._prefix:
             self._prefix = ray.get_runtime_context().get_job_id()
         return self._prefix
+
+    def _register_atexit(self):
+        if not self._atexit_handler_registered:
+            atexit.register(_unregister_all)
+            self._atexit_handler_registered = True
 
     def register(self, category, key, value):
         """Registers the value with the global registry.
@@ -258,6 +265,7 @@ class _Registry:
             return pickle.loads(self._to_flush[(category, key)])
 
     def flush_values(self):
+        self._register_atexit()
         for (category, key), value in self._to_flush.items():
             _internal_kv_put(
                 _make_key(self.prefix, category, key), value, overwrite=True
