@@ -648,14 +648,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         executor._stage_and_update_status([trial1, trial2, trial3])
         executor.pause_trial(trial1)  # Caches the PG
 
-        assert (
-            len(
-                executor._resource_request_to_cached_actors[
-                    trial1.placement_group_factory
-                ]
-            )
-            == 1
-        )
+        assert executor._actor_cache.num_cached_objects == 1
 
         # Second trial remains staged, it will only be removed from staging when it
         # is started
