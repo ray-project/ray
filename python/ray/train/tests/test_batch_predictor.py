@@ -504,6 +504,18 @@ def test_get_and_set_preprocessor():
         12.0,
     ]
 
+    # Remove preprocessor
+    batch_predictor.set_preprocessor(None)
+    assert batch_predictor.get_preprocessor() is None
+
+    output_ds = batch_predictor.predict(test_dataset)
+    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
+        2.0,
+        4.0,
+        6.0,
+    ]
+
 
 def test_batch_prediction_large_predictor_kwarg():
     class StubPredictor(Predictor):
