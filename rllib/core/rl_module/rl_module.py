@@ -108,7 +108,7 @@ class SingleAgentRLModuleSpec:
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,
-            catalog_class=catalog_class
+            catalog_class=catalog_class,
         )
 
 

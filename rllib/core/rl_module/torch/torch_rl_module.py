@@ -43,7 +43,7 @@ class TorchRLModule(nn.Module, RLModule):
 class TorchDDPRLModule(nn.parallel.DistributedDataParallel, RLModule):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
-        # we do not want to call RLModule.__init__ here because it will all we need is
+        # we do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
 
     @override(RLModule)
