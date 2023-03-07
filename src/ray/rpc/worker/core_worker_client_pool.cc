@@ -17,40 +17,54 @@
 namespace ray {
 namespace rpc {
 
-optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(
+std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetByID(
     ray::WorkerID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {
-    return {};
+    return nullptr;
   }
-  return it->second;
+  auto cli = it->second.lock();
+  if (cli) {
+    return cli;
+  }
+  auto addr = address_map_[id];
+  cli = client_factory_(addr);
+  it->second = cli;
+  return cli;
 }
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
+std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
     const Address &addr_proto) {
   RAY_CHECK(addr_proto.worker_id() != "");
   absl::MutexLock lock(&mu_);
   auto id = WorkerID::FromBinary(addr_proto.worker_id());
   auto it = client_map_.find(id);
+  std::shared_ptr<CoreWorkerClientInterface> cli;
   if (it != client_map_.end()) {
-    return it->second;
+    cli = it->second.lock();
   }
-  auto connection = client_factory_(addr_proto);
-  client_map_[id] = connection;
+
+  if (cli) {
+    return cli;
+  }
+
+  if (it == client_map_.end()) {
+    address_map_[id] = addr_proto;
+  }
+
+  cli = client_factory_(addr_proto);
+  client_map_[id] = cli;
 
   RAY_LOG(DEBUG) << "Connected to " << addr_proto.ip_address() << ":"
                  << addr_proto.port();
-  return connection;
+  return cli;
 }
 
 void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   absl::MutexLock lock(&mu_);
-  auto it = client_map_.find(id);
-  if (it == client_map_.end()) {
-    return;
-  }
-  client_map_.erase(it);
+  client_map_.erase(id);
+  address_map_.erase(id);
 }
 
 }  // namespace rpc

@@ -213,10 +213,14 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     /// \param actor_id ID of the actor associated with this leased worker.
     explicit GcsLeasedWorker(rpc::Address address,
                              std::vector<rpc::ResourceMapEntry> resources,
-                             const ActorID &actor_id)
+                             const ActorID &actor_id,
+                             std::shared_ptr<ray::rpc::CoreWorkerClientInterface> client)
         : address_(std::move(address)),
           resources_(std::move(resources)),
-          assigned_actor_id_(actor_id) {}
+          assigned_actor_id_(actor_id),
+          rpc_client_(client) {
+      RAY_CHECK(rpc_client_);
+    }
     virtual ~GcsLeasedWorker() = default;
 
     /// Get the Address of this leased worker.
@@ -242,6 +246,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       return resources_;
     }
 
+    std::shared_ptr<ray::rpc::CoreWorkerClientInterface> GetClient() const {
+      return rpc_client_;
+    }
+
    protected:
     /// The address of the remote leased worker.
     rpc::Address address_;
@@ -249,6 +257,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     std::vector<rpc::ResourceMapEntry> resources_;
     /// Id of the actor assigned to this worker.
     ActorID assigned_actor_id_;
+    std::shared_ptr<ray::rpc::CoreWorkerClientInterface> rpc_client_;
   };
 
   /// Lease a worker from the specified node for the specified actor.

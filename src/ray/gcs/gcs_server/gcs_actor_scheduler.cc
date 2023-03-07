@@ -175,7 +175,8 @@ void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         actor->GetAddress(),
         VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),
-        actor->GetActorID());
+        actor->GetActorID(),
+        core_worker_clients_.GetOrConnect(actor->GetAddress()));
     auto iter_node = node_to_workers_when_creating_.find(actor->GetNodeID());
     if (iter_node != node_to_workers_when_creating_.end()) {
       if (0 == iter_node->second.count(leased_worker->GetWorkerID())) {
@@ -397,17 +398,16 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
       actor->GetMutableActorTableData()->add_resource_mapping()->CopyFrom(resource);
     }
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
-        worker_address, std::move(resources), actor->GetActorID());
+        worker_address,
+        std::move(resources),
+        actor->GetActorID(),
+        core_worker_clients_.GetOrConnect(worker_address));
     auto node_id = leased_worker->GetNodeID();
     RAY_CHECK(node_to_workers_when_creating_[node_id]
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
-    // Make sure to connect to the client before persisting actor info to GCS.
-    // Without this, there could be a possible race condition. Related issues:
-    // https://github.com/ray-project/ray/pull/9215/files#r449469320
-    core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
                                       actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
@@ -453,8 +453,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
     resources.Add(std::move(resource));
   }
   request->mutable_resource_mapping()->CopyFrom(resources);
-
-  auto client = core_worker_clients_.GetOrConnect(worker->GetAddress());
+  auto client = worker->GetClient();
   client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {

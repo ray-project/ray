@@ -20,9 +20,6 @@
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
-using absl::optional;
-using std::shared_ptr;
-
 namespace ray {
 namespace rpc {
 
@@ -40,17 +37,15 @@ class CoreWorkerClientPool {
 
   /// Returns an existing Interface if one exists, or an empty optional
   /// otherwise.
-  /// Any returned pointer is borrowed, and expected to be used briefly.
-  optional<shared_ptr<CoreWorkerClientInterface>> GetByID(ray::WorkerID id);
+  /// Release the pointer if no longer needed to disconnect.
+  std::shared_ptr<CoreWorkerClientInterface> GetByID(ray::WorkerID id);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
-  /// if it does not. The returned pointer is borrowed, and expected to be used
-  /// briefly.
-  shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
+  /// if it does not.
+  /// Release the pointer if no longer needed to disconnect.
+  std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
-  /// Removes a connection to the worker from the pool, if one exists. Since the
-  /// shared pointer will no longer be retained in the pool, the connection will
-  /// be open until it's no longer used, at which time it will disconnect.
+  /// Removes a connection to the worker from the pool explicitly.
   void Disconnect(ray::WorkerID id);
 
  private:
@@ -72,8 +67,9 @@ class CoreWorkerClientPool {
 
   /// A pool of open connections by WorkerID. Clients can reuse the connection
   /// objects in this pool by requesting them.
-  absl::flat_hash_map<ray::WorkerID, shared_ptr<CoreWorkerClientInterface>> client_map_
+  absl::flat_hash_map<ray::WorkerID, std::weak_ptr<CoreWorkerClientInterface>> client_map_
       GUARDED_BY(mu_);
+  absl::flat_hash_map<ray::WorkerID, Address> address_map_ GUARDED_BY(mu_);
 };
 
 }  // namespace rpc

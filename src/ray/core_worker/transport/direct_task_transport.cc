@@ -752,12 +752,12 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     }
     // Looks for an RPC handle for the worker executing the task.
     auto maybe_client = client_cache_->GetByID(rpc_client->second.worker_id);
-    if (!maybe_client.has_value()) {
+    if (!maybe_client) {
       // If we don't have a connection to that worker, we can't cancel it.
       // This case is reached for tasks that have unresolved dependencies.
       return Status::OK();
     }
-    client = maybe_client.value();
+    client = maybe_client;
   }
 
   RAY_CHECK(client != nullptr);
@@ -814,12 +814,11 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill,
                                                        bool recursive) {
-  auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
+  auto client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
 
-  if (!maybe_client.has_value()) {
+  if (!client) {
     return Status::Invalid("No remote worker found");
   }
-  auto client = maybe_client.value();
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
