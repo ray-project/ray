@@ -199,7 +199,8 @@ class ExecutionOptions:
     # streaming executor. The bulk executor always preserves order.
     preserve_order: bool = False
 
-    # Whether to enable locality-aware task dispatch to actors (on by default).
+    # Whether to enable locality-aware task dispatch to actors (on by default). This
+    # applies to both ActorPoolStrategy map and streaming_split operations.
     actor_locality_enabled: bool = True
 
 

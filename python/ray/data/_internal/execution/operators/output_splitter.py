@@ -60,6 +60,13 @@ class OutputSplitter(PhysicalOperator):
         self.hits = 0
         self.misses = 0
 
+    def start(self, options: ExecutionOptions) -> None:
+        super().start(options)
+        # Force disable locality optimization.
+        if not options.actor_locality_enabled:
+            self._locality_hints = None
+            self._min_buffer_size = 0
+
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
 
@@ -135,7 +142,7 @@ class OutputSplitter(PhysicalOperator):
     def _dispatch_bundles(self) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
-        while self._buffer and len(self._buffer) > self._min_buffer_size:
+        while self._buffer and len(self._buffer) >= self._min_buffer_size:
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
@@ -159,7 +166,6 @@ class OutputSplitter(PhysicalOperator):
         return i
 
     def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
-        # TODO also check the actor locality enabled flag
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
