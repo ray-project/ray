@@ -81,6 +81,7 @@ class SingleAgentRLModuleSpec:
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
             model_config_dict=module.config.model_config_dict,
+            catalog_class=module.config.catalog_class,
         )
 
     def to_dict(self):
@@ -100,12 +101,14 @@ class SingleAgentRLModuleSpec:
         observation_space = module_config.observation_space
         action_space = module_config.action_space
         model_config_dict = module_config.model_config_dict
+        catalog_class = module_config.catalog_class
 
         return SingleAgentRLModuleSpec(
             module_class=module_class,
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,
+            catalog_class=catalog_class
         )
 
 
