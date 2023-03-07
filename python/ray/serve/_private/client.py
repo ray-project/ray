@@ -135,7 +135,7 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            deployment_statuses = self.get_serve_status().deployment_statuses
+            deployment_statuses = self.get_all_deployment_statuses()
             if len(deployment_statuses) == 0:
                 break
             else:
@@ -273,6 +273,7 @@ class ServeControllerClient:
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
+                    docs_path=deployment["docs_path"],
                 )
             )
 
@@ -350,7 +351,19 @@ class ServeControllerClient:
                     return
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
             else:
-                raise TimeoutError(f"Deployment {names} wasn't deleted after 60s.")
+                raise TimeoutError(
+                    f"Some of these applications weren't deleted after 60s: {names}"
+                )
+
+    @_ensure_connected
+    def delete_all_apps(self, blocking: bool = True):
+        """Delete all applications"""
+        all_apps = []
+        for status_bytes in ray.get(self._controller.list_serve_statuses.remote()):
+            proto = StatusOverviewProto.FromString(status_bytes)
+            status = StatusOverview.from_proto(proto)
+            all_apps.append(status.name)
+        self.delete_apps(all_apps, blocking)
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
@@ -393,6 +406,16 @@ class ServeControllerClient:
             ray.get(self._controller.get_serve_status.remote(name))
         )
         return StatusOverview.from_proto(proto)
+
+    @_ensure_connected
+    def get_all_deployment_statuses(self) -> List[DeploymentStatusInfo]:
+        statuses_bytes = ray.get(self._controller.get_all_deployment_statuses.remote())
+        return [
+            DeploymentStatusInfo.from_proto(
+                DeploymentStatusInfoProto.FromString(status_bytes)
+            )
+            for status_bytes in statuses_bytes
+        ]
 
     @_ensure_connected
     def get_handle(
@@ -471,6 +494,7 @@ class ServeControllerClient:
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         is_driver_deployment: Optional[str] = None,
+        docs_path: Optional[str] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -526,6 +550,7 @@ class ServeControllerClient:
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "is_driver_deployment": is_driver_deployment,
+            "docs_path": docs_path,
         }
 
         return controller_deploy_args

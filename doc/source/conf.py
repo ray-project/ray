@@ -204,6 +204,14 @@ linkcheck_ignore = [
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
     r"^http:/$",  # Ignore incomplete links
+    # 403 Client Error: Forbidden for url.
+    # They ratelimit bots.
+    "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
+    # 403 Client Error: Forbidden for url.
+    # They ratelimit bots.
+    "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+    # Returning 522s intermittently.
+    "https://lczero.org/",
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -324,55 +332,6 @@ nb_render_priority = {
 }
 
 tag_mapping = {
-    # Tags for use-cases gallery
-    "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
-    "batchActorPool": "Prediction",
-    "batchCore": "Prediction",
-    "nycTaxiData": "Prediction",
-    "batchOcr": "Preprocessing",
-    "millionModels": "Regression,Training,Sklearn",
-    "batchTrainingCore": "Regression,Training,Sklearn",
-    "batchTrainingDatasets": "Regression,Training,Sklearn",
-    "tuneBasicParallel": "Regression,Training,Sklearn",
-    "tuneBatch": "Regression,Training,Tuning,Sklearn",
-    "instacartFulfillment": "Training,Prediction",
-    "productionizingMLServe": "Serving",
-    "simplifyMLOpsServe": "Serving",
-    "gettingStartedServe": "Serving",
-    "compositionServe": "Serving",
-    "examplesServe": "Serving",
-    "useCasesServe": "Serving",
-    "gettingStartedTune": "Tuning",
-    "distributeHPOTune": "Tuning",
-    "simpleDistributedHPO": "Tuning",
-    "HPOTransformers": "Tuning,PyTorch,Classification",
-    "examplesTune": "Tuning",
-    "useCasesTune": "Tuning",
-    "pyTorchTrain": "Training,PyTorch",
-    "xgboostTrain": "Training,XGBoost",
-    "gettingStartedTrain": "Training",
-    "trainingTransformers": "Training,PyTorch,Classification,Prediction",
-    "examplesTrain": "Training",
-    "useCasesTrain": "Training",
-    "appliedRLCourse": "Reinforcement Learning",
-    "introRLlib": "Reinforcement Learning",
-    "gettingStartedRLlib": "Reinforcement Learning",
-    "riotRL": "Reinforcement Learning",
-    "examplesRL": "Reinforcement Learning",
-    "useCasesRL": "Reinforcement Learning",
-    "merlin": "Preprocessing,Training,Prediction",
-    "uberScaleDL": "Preprocessing,Training,Prediction,Tuning,XGBoost,"
-    "TensorFlow,PyTorch",
-    "instacartMLPlatformTripled": "Preprocessing,Prediction,Training,Tuning",
-    "predibase": "Preprocessing,Training,Prediction,Tuning,PyTorch",
-    "GKEMLPlatform": "Preprocessing,Training,Prediction,Tuning,TensorFlow,Serving",
-    "summitMLPlatform": "Preprocessing,Prediction,Training,Tuning,Serving",
-    "torchImageExample": "Preprocessing,Prediction,Training,PyTorch,Classification",
-    "feastExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
-    "xgboostExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
-    "timeSeriesAutoML": "Regression,Sklearn,Tuning",
-    "AIRExamples": "Regression,Classification,Training,Tuning,Prediction,"
-    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn",
     # Tags for Ray Train examples gallery
     "trainTorchFashionMnist": "PyTorch,Training",
     "trainTransformers": "PyTorch,Training,HuggingFace",

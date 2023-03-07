@@ -281,14 +281,6 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_iterator",
-    size = "small",
-    srcs = ["tests/test_dataset_iterator.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
@@ -541,7 +533,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune.py"],
     tags = ["team:ml", "exclusive", "tune"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -582,6 +574,18 @@ py_test(
     srcs = ["tests/test_xgboost_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_trainer_restore",
+    size = "medium",
+    srcs = ["tests/test_trainer_restore.py"],
+    tags = [
+        "exclusive",
+        "ray_air",
+        "team:ml",
+    ],
+    deps = [":train_lib"],
 )
 
 # This is a dummy test dependency that causes the above tests to be
