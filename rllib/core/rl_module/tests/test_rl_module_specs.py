@@ -61,7 +61,7 @@ class TestRLModuleSpecs(unittest.TestCase):
             module = spec.build()
             self.assertIsInstance(module, MultiAgentRLModule)
 
-    def test_customized_multi_agent_spec(self):
+    def test_customized_multi_agent_module(self):
         """Tests creating a customized MARL BC module that owns a shared encoder."""
 
         global_dim = 10
