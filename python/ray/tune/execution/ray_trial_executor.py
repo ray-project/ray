@@ -235,7 +235,7 @@ class RayTrialExecutor:
         # Actor re-use.
         # For details, see docstring of `_maybe_cache_trial_actor()`
         self._reuse_actors = reuse_actors
-        self._actor_cache = _ObjectCache(eager_caching=True)
+        self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # Trials for which we requested resources
         self._staged_trials = set()  # Staged trials

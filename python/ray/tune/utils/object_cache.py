@@ -17,24 +17,24 @@ class _ObjectCache:
     If the max number of cached objects for a grouping key is reached,
     no more objects for this group will be cached.
 
-    However, if eager caching is enabled, one object (globally across all grouping
+    However, if `may_keep_one=True`, one object (globally across all grouping
     keys) may be cached, even if the max number of objects is 0. This is to
     allow to cache an object if the max number of objects of this key
     will increase shortly after (as is the case e.g. in the Ray Tune control
     loop).
 
     Args:
-        eager_caching: If True, one object (globally) may be cached even if
-            the number of max objects for this key is 0.
+        may_keep_one: If True, one object (globally) may be cached if no desired
+            maximum objects are defined.
 
     """
 
-    def __init__(self, eager_caching: bool = True):
+    def __init__(self, may_keep_one: bool = True):
         self._num_cached_objects: int = 0
         self._cached_objects: Dict[T, List[U]] = defaultdict(list)
         self._max_num_objects: Counter[T] = Counter()
 
-        self._eager_caching = eager_caching
+        self._may_keep_one = may_keep_one
 
     @property
     def num_cached_objects(self):
@@ -76,7 +76,7 @@ class _ObjectCache:
         of cached objects for this key is less than the number of
         max objects for this key.
 
-        An exception is made if eager caching is enaabled and no other
+        An exception is made if `max_keep_one=True` and no other
         objects are cached globally. In that case, the object can
         still be cached.
 
@@ -86,11 +86,12 @@ class _ObjectCache:
 
         Returns:
             True if the object has been cached. False otherwise.
+
         """
         # If we have more objects cached already than we desire
         if len(self._cached_objects[key]) >= self._max_num_objects[key]:
-            # If eager caching is disabled, never cache
-            if not self._eager_caching:
+            # If may_keep_one is False, never cache
+            if not self._may_keep_one:
                 return False
 
             # If we have more than one other cached object, don't cache
@@ -134,7 +135,7 @@ class _ObjectCache:
         cached objects for a given key, objects are evicted until
         the numbers are equal.
 
-        If eager caching is enabled (and ``force_all=False``), one cached object
+        If `max_keep_one=True` (and ``force_all=False``), one cached object
         may be retained.
 
         Objects are evicted FIFO.
@@ -150,7 +151,7 @@ class _ObjectCache:
 
         """
         # If force_all=True, don't keep one.
-        keep_one = self._eager_caching and not force_all
+        keep_one = self._may_keep_one and not force_all
 
         for key, objs in self._cached_objects.items():
             max = self._max_num_objects[key] if not force_all else 0

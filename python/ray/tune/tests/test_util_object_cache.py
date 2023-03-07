@@ -4,14 +4,14 @@ from ray.tune.utils.object_cache import _ObjectCache
 
 
 @pytest.mark.parametrize("eager", [False, True])
-def test_no_eager_caching(eager):
+def test_no_may_keep_one(eager):
     """Test object caching.
 
     - After init, no objects are cached (as max cached is 0), except when eager caching
     - After increasing max to 2, up to 2 objects are cached
     - Decreasing max objects will evict them on flush
     """
-    cache = _ObjectCache(eager_caching=eager)
+    cache = _ObjectCache(may_keep_one=eager)
 
     # max(A) = 0, so we we only cache when eager caching
     assert cache.cache_object("A", 1) == eager
@@ -50,7 +50,7 @@ def test_no_eager_caching(eager):
 @pytest.mark.parametrize("eager", [False, True])
 def test_multi(eager):
     """Test caching with multiple objects"""
-    cache = _ObjectCache(eager_caching=eager)
+    cache = _ObjectCache(may_keep_one=eager)
 
     # max(A) = 0, so we we only cache when eager caching
     assert cache.cache_object("A", 1) == eager
@@ -95,7 +95,7 @@ def test_multi_eager_other():
     - Remove expectation for A object
     - Try to cache object B --> get's cached
     """
-    cache = _ObjectCache(eager_caching=True)
+    cache = _ObjectCache(may_keep_one=True)
 
     cache.increase_max("A", 1)
     assert not cache.cache_object("B", 2)
@@ -107,7 +107,7 @@ def test_multi_eager_other():
 @pytest.mark.parametrize("eager", [False, True])
 def test_force_all(eager):
     """Assert that force_all=True will always evict all object."""
-    cache = _ObjectCache(eager_caching=eager)
+    cache = _ObjectCache(may_keep_one=eager)
 
     cache.increase_max("A", 2)
 
