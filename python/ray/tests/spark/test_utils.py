@@ -7,8 +7,8 @@ from ray.util.spark.utils import (
     get_spark_task_assigned_physical_gpus,
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
-    _convert_ray_node_options,
 )
+from ray.util.spark.cluster_init import _convert_ray_node_options
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
