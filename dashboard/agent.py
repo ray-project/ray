@@ -243,7 +243,7 @@ class DashboardAgent:
                                     error = True
                         except Exception as e:
                             msg += f"Failed to read Raylet logs at {log_path}: {e}!"
-                            logger.exception()
+                            logger.exception(msg)
                             error = True
                         if error:
                             logger.error(msg)

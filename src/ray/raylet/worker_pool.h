@@ -513,9 +513,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// All workers that have registered but is about to disconnect. They shouldn't be
-    /// popped anymore.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
     /// A map from the startup tokens of worker processes, assigned by the raylet, to
     /// the extra information of the process. Note that the shim process PID is the
     /// same with worker process PID, except worker process in container.
