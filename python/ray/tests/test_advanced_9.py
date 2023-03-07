@@ -256,20 +256,6 @@ assert ray.get_runtime_context().get_job_id() == '02000000'
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
 
 
-def test_gcs_connections(ray_start_regular):
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-
-    def get_gcs_connections():
-        import psutil
-
-        p = psutil.Process(gcs_server_pid)
-        return p.num_fds()
-
-    print(get_gcs_connections())
-
-
 if __name__ == "__main__":
     import pytest
     import os
