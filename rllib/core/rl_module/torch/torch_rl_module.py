@@ -40,7 +40,7 @@ class TorchRLModule(nn.Module, RLModule):
         return False
 
 
-class TorchDDPRLModule(nn.parallel.DistributedDataParallel, RLModule):
+class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
         # we do not want to call RLModule.__init__ here because all we need is
