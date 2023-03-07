@@ -21,7 +21,13 @@ from ray.data.dataset import Dataset
 logger = logging.getLogger(__name__)
 
 class RayModelCheckpoint(ModelCheckpoint):
-    """AIR customized ModelCheckpoint callback """
+    """
+    AIR customized ModelCheckpoint callback.
+    
+    A subclass of ``pytorch_lightning.callbacks.ModelCheckpoint``.
+    This callback function reports the latest metrics to the AIR session and 
+    creates an AIR checkpoint when a lightning checkpoint is saved.
+    """
 
     def setup(self, *args, **kwargs) -> None:
         super().setup(*args, **kwargs)
@@ -43,18 +49,15 @@ class RayModelCheckpoint(ModelCheckpoint):
         """Report latest metrics dict and checkpoint to AIR training session."""
         kwargs = {}
 
+        # Report latest logged metrics
         metrics = self._monitor_candidates(trainer)
         for k, v in metrics.items():
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.cpu().numpy()
         kwargs["metrics"] = metrics
 
+        # Report updated checkpoint
         new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
-        if len(new_checkpoint) > 1:
-            logger.warning(
-                "Multiple checkpoints were created between two training steps, but only one of them will be reported."
-            )
-
         if len(new_checkpoint) == 1:
             filepath = new_checkpoint.pop()
             if trainer.global_rank == 0:
@@ -134,16 +137,12 @@ class RayDataModule(pl.LightningDataModule):
         self.config = config if config else {}
 
     def train_dataloader(self):
-        if not self.train_dataset:
-            super().train_dataloader()
-        else:
-            ds = RayIterableDataset(self.train_dataset, self.config)
-            return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
+        ds = RayIterableDataset(self.train_dataset, self.config)
+        return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
 
     def val_dataloader(self):
-        if not self.val_dataset:
-            super().val_dataloader()
-        else:
+        if self.val_dataset:
             ds = RayIterableDataset(self.val_dataset, self.config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
-        
+        else:
+            raise RuntimeError("val_dataset is None for RayDataModule.")

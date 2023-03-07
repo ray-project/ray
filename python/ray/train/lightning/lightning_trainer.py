@@ -1,5 +1,6 @@
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+import logging
 
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union, Type, Any
 from inspect import isclass
@@ -18,16 +19,18 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 from torch.utils.data import DataLoader
-from ray.train.lightning.lightning_utils import RayDDPStrategy, RayEnvironment, RayModelCheckpoint
+from ray.train.lightning.lightning_utils import (
+    RayDDPStrategy, RayEnvironment, RayModelCheckpoint, RayDataModule
+)
 from ray.util import PublicAPI
 import ray.train as train
-from python.ray.train.lightning.lightning_utils import RayDataModule
 
+logger = logging.getLogger(__name__)
 
 LIGHTNING_MODULE_KEY = "_lightning_module"
 LIGHTNING_MODULE_CONFIG_KEY = "_lightning_module_config"
 LIGHTNING_TRAINER_CONFIG_KEY = "_lightning_trainer_config"
-LIGHTNING_TRAINER_FIT_CONFIG_KEY = "_lightning_trainer_fit_config"
+LIGHTNING_TRAINER_FIT_PARAMS_KEY = "_lightning_trainer_fit_params"
 MODEL_CHECKPOINT_CONFIG_KEY = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
 
@@ -60,13 +63,16 @@ class LightningTrainer(DataParallelTrainer):
 
     Args:
         lightning_module: A subclass of ``pytorch_lightning.LightningModule``
-            that defines define your training logic.
+            that defines your model and training logic.
         lightning_module_config: Configurations to pass into
             ``lightning_module.__init__`` as kwargs.
         lightning_trainer_config: Configurations to pass into
             ``pytorch_lightning.Trainer.__init__`` as kwargs. For valid arguments to
             pass, see
             https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
+        lightning_trainer_fit_params: Paramters to pass into
+            ``pytorch_lightning.Trainer.fit``. Specifically, LightningTrainer extracts and 
+            feeds `train_dataloaders`, `val_dataloaders`, and `datamodule` into `Trainer.fit()`. 
         ddp_strategy_config: Configurations to pass into
             ``pytorch_lightning.strategies.DDPStrategy.__init__`` as kwargs. Most users
             should only set this to ``{"find_unused_parameters": False}`` or leave this
@@ -87,7 +93,7 @@ class LightningTrainer(DataParallelTrainer):
             the key "train" to denote which dataset is the training
             dataset and (optionally) key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
-            and up to one extra dataset to be used for evaluation.
+            and up to one extra dataset to be used for evaluation with key "val".
             If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
@@ -98,11 +104,11 @@ class LightningTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        lightning_module: pl.LightningModule,
+        lightning_module: Type[pl.LightningModule],
         *,
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
-        lightning_trainer_fit_config: Optional[Dict] = None,
+        lightning_trainer_fit_params: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
         model_checkpoint_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
@@ -120,7 +126,7 @@ class LightningTrainer(DataParallelTrainer):
             lightning_module,
             lightning_module_config,
             lightning_trainer_config,
-            lightning_trainer_fit_config,
+            lightning_trainer_fit_params,
             ddp_strategy_config,
             model_checkpoint_config,
         )
@@ -143,7 +149,7 @@ class LightningTrainer(DataParallelTrainer):
         lightning_module: pl.LightningModule,
         lightning_module_config: Optional[Dict] = None,
         lightning_trainer_config: Optional[Dict] = None,
-        lightning_trainer_fit_config: Optional[Dict] = None,
+        lightning_trainer_fit_params: Optional[Dict] = None,
         ddp_strategy_config: Optional[Dict] = None,
         model_checkpoint_config: Optional[Dict] = None,
     ) -> Dict[str, Any]:
@@ -159,22 +165,18 @@ class LightningTrainer(DataParallelTrainer):
                 "'pytorch_lightning.LightningModule'"
             )
         trainer_loop_config[LIGHTNING_MODULE_KEY] = lightning_module
+        trainer_loop_config[LIGHTNING_MODULE_CONFIG_KEY] = lightning_module_config
+        trainer_loop_config[LIGHTNING_TRAINER_CONFIG_KEY] = lightning_trainer_config
+        trainer_loop_config[LIGHTNING_TRAINER_FIT_PARAMS_KEY] = lightning_trainer_fit_params
+        trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
+        trainer_loop_config[MODEL_CHECKPOINT_CONFIG_KEY] = model_checkpoint_config
 
-        if lightning_module_config:
-            trainer_loop_config[LIGHTNING_MODULE_CONFIG_KEY] = lightning_module_config
+        for key, config in trainer_loop_config.items():
+            if not config:
+                trainer_loop_config[key] = {}
 
-        if lightning_trainer_config:
-            trainer_loop_config[LIGHTNING_TRAINER_CONFIG_KEY] = lightning_trainer_config
-
-        if ddp_strategy_config:
-            trainer_loop_config[DDP_STRATEGY_CONFIG_KEY] = ddp_strategy_config
-
-        if model_checkpoint_config:
-            trainer_loop_config[MODEL_CHECKPOINT_CONFIG_KEY] = model_checkpoint_config
-
-        if lightning_trainer_fit_config:
-            trainer_loop_config[LIGHTNING_TRAINER_FIT_CONFIG_KEY] = lightning_trainer_fit_config
         return trainer_loop_config
+
 
 def _prepare_dataloaders(dataloaders: Optional[DataLoader]) -> Optional[DataLoader]:
     if dataloaders:
@@ -185,12 +187,17 @@ def _prepare_dataloaders(dataloaders: Optional[DataLoader]) -> Optional[DataLoad
             dataloaders = train.torch.prepare_data_loader(dataloaders)
     return dataloaders
 
+
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-    trainer_fit_config = config.get(LIGHTNING_TRAINER_FIT_CONFIG_KEY, {})
+    trainer_fit_config = config.pop(LIGHTNING_TRAINER_FIT_PARAMS_KEY)
+
+    # Prepare data
     datamodule = trainer_fit_config.get("datamodule", None)
-    train_dataloaders = _prepare_dataloaders(trainer_fit_config.get("train_dataloaders", None))
-    val_dataloaders = _prepare_dataloaders(trainer_fit_config.get("val_dataloaders", None))
+    train_dataloaders = _prepare_dataloaders(
+        trainer_fit_config.get("train_dataloaders", None))
+    val_dataloaders = _prepare_dataloaders(
+        trainer_fit_config.get("val_dataloaders", None))
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
@@ -199,14 +206,14 @@ def _lightning_train_loop_per_worker(config):
         # TODO(yunxuanx): Add error message
         datamodule = RayDataModule(train_ray_dataset, val_ray_dataset, {})
 
-
+    # Prepare Lightning Module
     LightningModuleCls = config.pop(LIGHTNING_MODULE_KEY)
-    module_init_config = config.get(LIGHTNING_MODULE_CONFIG_KEY, {})
-    lightning_module = LightningModuleCls(**module_init_config)
+    lightning_module_init_config = config.pop(LIGHTNING_MODULE_CONFIG_KEY)
+    lightning_module = LightningModuleCls(**lightning_module_init_config)
 
-    trainer_config = config.get(LIGHTNING_TRAINER_CONFIG_KEY, {})
+    # Prepare Lightning Trainer
+    trainer_config = config.pop(LIGHTNING_TRAINER_CONFIG_KEY)
     trainer_config["enable_progress_bar"] = False
-    trainer_config["enable_checkpointing"] = True
 
     # Setup trainer's parallel devices
     current_device = ray.train.torch.get_device()
@@ -218,14 +225,28 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["plugins"].append(RayEnvironment())
 
     # Setup ddp strategy for ray orchestration
-    ddp_strategy_config = config.get(DDP_STRATEGY_CONFIG_KEY, {})
+    ddp_strategy_config = config.pop(DDP_STRATEGY_CONFIG_KEY)
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
-    # Insert RayModelCheckpoint Callback
-    model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG_KEY, {})
-    trainer_config["callbacks"] = [callback for callback in trainer_config.get(
-        "callbacks", []) if not isinstance(callback, ModelCheckpoint)]
-    trainer_config["callbacks"].append(RayModelCheckpoint(**model_checkpoint_config))
+    # Prepare RayModelCheckpoint Callback
+    callbacks = trainer_config.get("callbacks", [])
+    trainer_config["callbacks"] = list(
+        filter(lambda callback: not isinstance(callback, ModelCheckpoint), callbacks))
+    if len(trainer_config["callbacks"]) < len(callbacks):
+        logger.warning(
+            "LightningTrainer only initialized one ModelCheckpoint callback based on"
+            " `model_checkpoint_config`. All other checkpoint callbacks are ignored."
+        )
+
+    model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG_KEY)
+    if model_checkpoint_config:
+        # TODO(yunxuanx): Align with AIR Checkpoint Config
+        trainer_config["enable_checkpointing"] = True
+        ray_model_checkpoint = RayModelCheckpoint(**model_checkpoint_config)
+        trainer_config["callbacks"].append(ray_model_checkpoint)
+    else:
+        # No checkpoint config provided, disable checkpointing by default
+        trainer_config["enable_checkpointing"] = False
 
     trainer = pl.Trainer(**trainer_config)
 

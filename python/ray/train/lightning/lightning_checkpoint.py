@@ -1,44 +1,35 @@
 import os
+import logging
 import pytorch_lightning as pl
 
 from inspect import isclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
 class LightningCheckpoint(Checkpoint):
     """A :class:`~ray.air.checkpoint.Checkpoint` with Lightning-specific functionality.
 
-    Create this from a generic :class:`~ray.air.checkpoint.Checkpoint` by calling
-    ``LightningCheckpoint.from_checkpoint(ckpt)``.
+    LightningCheckpoint only support file based checkpoint loading. Create this by calling
+    ``LightningCheckpoint.from_directory(ckpt_dir)`` or ``LightningCheckpoint.from_uri(uri)``.
 
-    The users will have no access to model in LightningTrainer. We only support file-based checkpoint.
+    LightningCheckpoint loads file ``checkpoint.ckpt`` under the specified directory.
     """
-
-    # TODO(yunxuanx): We cannot directly disable from_bytes() and from_dict(), the base Checkpoint class still needs them.
-    #                 How to warn users not to use LightningCheckpoint.from_dict()?
-    # @classmethod
-    # def from_bytes(cls, data: bytes) -> "Checkpoint":
-    #     raise NotImplementedError(
-    #         "LightningCheckpoint doesn't support loading from_bytes()! Please use from_directory() or from_uri() instead.")
-
-    # @classmethod
-    # def from_dict(cls, data: dict) -> "Checkpoint":
-    #     raise NotImplementedError(
-    #         "LightningCheckpoint doesn't support loading from_dict()! Please use from_directory() or from_uri() instead.")
 
     def get_model(self, model_class: Type[pl.LightningModule], model_init_config: Dict["str", Any] = {}) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
 
         Args:
-            model_class: A class object (not a class instance) that is a subclass of ``pytorch_lightning.LightningModule``.
+            model_class: A subclass of ``pytorch_lightning.LightningModule`` that defines your model and training logic.
             model_init_config: Configurations to pass into ``model_class.__init__`` as kwargs.
 
         Returns:
-            A :py:class:`pl.LightningModule` instance containing the loaded model.
+            pl.LightningModule: An instance of the loaded model.
         """
         if not isclass(model_class):
             raise ValueError(

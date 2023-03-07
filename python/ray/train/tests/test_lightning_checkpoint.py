@@ -20,10 +20,11 @@ class Net(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         return self.forward(batch)
-    
+
     def configure_optimizers(self):
         return torch.optim.SGD(self.parameters(), lr=0.1)
-    
+
+
 def test_from_directory():
     CHECKPOINT_TMP_DIR = "./tmp"
     model = Net()
@@ -31,9 +32,10 @@ def test_from_directory():
     # Define a simple dataset
     data = np.random.rand(10, 3)
     dataloader = DataLoader(data, batch_size=2)
-    
+
     # Train one epoch and save a checkpoint
-    trainer = pl.Trainer(max_epochs=1, enable_progress_bar=False, enable_checkpointing=False)
+    trainer = pl.Trainer(max_epochs=1, enable_progress_bar=False,
+                         enable_checkpointing=False)
     trainer.fit(model=model, train_dataloaders=dataloader)
     trainer.save_checkpoint(f"{CHECKPOINT_TMP_DIR}/checkpoint.ckpt")
 
