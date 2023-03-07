@@ -9,7 +9,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
-# Type alias for a node id. TODO: explain this
+# Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
 
 
@@ -81,6 +81,10 @@ class RefBundle:
         return self.size_bytes() if should_free else 0
 
     def get_cached_location(self) -> Optional[NodeIdStr]:
+        """Return a location for this bundle's data, if possible.
+
+        Caches the resolved location so multiple calls to this are efficient.
+        """
         if self._cached_location is None:
             # Only consider the first block in the bundle for now. TODO(ekl) consider
             # taking into account other blocks.
@@ -417,10 +421,24 @@ class PhysicalOperator(Operator):
 
 
 class OutputIterator(Iterator[RefBundle]):
+    """Iterator used to access the output of an Executor execution.
+
+    The default implementation wraps a simple Python iterator.
+    """
+
     def __init__(self, base: Iterable[RefBundle]):
         self._it = iter(base)
 
     def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        """Can be used to pull outputs by a specified output index.
+
+        This is used to support the streaming_split() API, where the output of a
+        streaming execution is to be consumed by multiple processes.
+
+        Args:
+            output_split_idx: The output split index to get results for. This arg is
+                only allowed for iterators created by `Dataset.streaming_split()`.
+        """
         if output_split_idx is not None:
             raise NotImplementedError()
         return next(self._it)

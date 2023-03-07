@@ -67,7 +67,13 @@ def execute_to_legacy_bundle_iterator(
     dataset_uuid: str,
     dag_rewrite=None,
 ) -> Iterator[RefBundle]:
-    """Same as execute_to_legacy_block_iterator but returning bundles."""
+    """Same as execute_to_legacy_block_iterator but returning bundles.
+
+    Args:
+        dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
+            This is currently used as a legacy hack to inject the OutputSplit operator
+            for `Dataset.streaming_split()`.
+    """
 
     if DatasetContext.get_current().optimizer_enabled:
         dag, stats = get_execution_plan(plan._logical_plan).dag, None
