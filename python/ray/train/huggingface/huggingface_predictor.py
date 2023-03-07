@@ -98,6 +98,11 @@ class HuggingFacePredictor(Predictor):
 
         The checkpoint is expected to be a result of ``HuggingFaceTrainer``.
 
+        Note that the Transformers ``pipeline`` used internally expects to
+        recieve raw text. If you have any Preprocessors in Checkpoint
+        that tokenize the data, remove them by calling
+        ``Checkpoint.set_preprocessor(None)`` beforehand.
+
         Args:
             checkpoint: The checkpoint to load the model, tokenizer and
                 preprocessor from. It is expected to be from the result of a
