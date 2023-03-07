@@ -1,4 +1,5 @@
 import copy
+import logging
 from typing import (
     List,
     Literal,
@@ -22,6 +23,8 @@ from ray.types import ObjectRef
 if TYPE_CHECKING:
     import pyarrow
     from ray.data import Dataset
+
+logger = logging.getLogger(__name__)
 
 
 class StreamSplitDatasetIterator(DatasetIterator):
@@ -104,9 +107,10 @@ class SplitCoordinator:
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
-        if location_hints:
+        if locality_hints:
             # Automatically set locality with output to the specified location hints.
-            ctx.execution_options.locality_with_output = location_hints
+            ctx.execution_options.locality_with_output = locality_hints
+            logger.info(f"Auto configuring locality_with_output={locality_hints}")
         DatasetContext._set_current(ctx)
         self._base_dataset = dataset
         self._n = n
