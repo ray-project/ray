@@ -216,8 +216,9 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["enable_progress_bar"] = False
 
     # Setup trainer's parallel devices
-    current_device = ray.train.torch.get_device()
-    trainer_config["devices"] = [current_device.index]
+    if trainer_config.get("accelerator", None) == "gpu":
+        current_device = ray.train.torch.get_device()
+        trainer_config["devices"] = [current_device.index]
 
     # Setup ray cluster environment info
     trainer_config["plugins"] = [plugin for plugin in trainer_config.get(

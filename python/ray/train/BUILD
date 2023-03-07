@@ -596,6 +596,31 @@ py_test(
     deps = [":train_lib"],
 )
 
+py_test(
+    name = "test_lightning_checkpoint",
+    size = "small",
+    srcs = ["tests/test_lightning_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_lightning_trainer",
+    size = "medium",
+    srcs = ["tests/test_lightning_trainer.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_lightning_predictor",
+    size = "medium",
+    srcs = ["tests/test_lightning_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib", ":conftest"]
+)
+
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
