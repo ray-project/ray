@@ -34,6 +34,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
 from ray.data.context import DatasetContext
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
@@ -169,7 +170,6 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
-
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -501,7 +501,8 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor.get_stats(), executor
+        self._snapshot_stats = executor.get_stats()
+        return block_iter, self._snapshot_stats, executor
 
     def execute(
         self,
@@ -522,22 +523,31 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         if not ray.available_resources().get("CPU"):
-            logger.get_logger().warning(
-                "Warning: The Ray cluster currently does not have "
-                "any available CPUs. The Dataset job will hang unless more CPUs "
-                "are freed up. A common reason is that cluster resources are "
-                "used by Actors or Tune trials; see the following link "
-                "for more details: "
-                "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
-            )
+            if log_once("cpu_warning"):
+                logger.get_logger().warning(
+                    "Warning: The Ray cluster currently does not have "
+                    "any available CPUs. The Dataset job will hang unless more CPUs "
+                    "are freed up. A common reason is that cluster resources are "
+                    "used by Actors or Tune trials; see the following link "
+                    "for more details: "
+                    "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+                )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
+                )
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
 
-                executor = BulkExecutor(copy.deepcopy(context.execution_options))
+                if context.use_streaming_executor:
+                    executor = StreamingExecutor(
+                        copy.deepcopy(context.execution_options)
+                    )
+                else:
+                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -599,6 +609,10 @@ class ExecutionPlan:
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
         self._in_blocks.clear()
+        self._clear_snapshot()
+
+    def _clear_snapshot(self) -> None:
+        """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
@@ -609,13 +623,16 @@ class ExecutionPlan:
         self._stages_before_snapshot = []
 
     def stats(self) -> DatasetStats:
-        """Return stats for this plan, forcing execution if needed."""
-        self.execute()
+        """Return stats for this plan.
+
+        If the plan isn't executed, an empty stats object will be returned.
+        """
+        if not self._snapshot_stats:
+            return DatasetStats(stages={}, parent=None)
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
-        self.execute()
-        return self._snapshot_stats.to_summary()
+        return self.stats().to_summary()
 
     def _should_clear_input_blocks(
         self,
@@ -677,7 +694,7 @@ class ExecutionPlan:
                 stats = self._snapshot_stats
                 # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
                 # snapshot block memory after the first stage is done executing.
-                self._snapshot_blocks = None
+                self._clear_snapshot()
             else:
                 # Snapshot exists but has been cleared, so we need to recompute from the
                 # source (input blocks).
@@ -747,8 +764,27 @@ class ExecutionPlan:
                 not self.is_read_stage_equivalent()
                 or trailing_randomize_block_order_stage
             )
-            and self._stages_after_snapshot
+            and (
+                self._stages_after_snapshot
+                # If snapshot is cleared, we'll need to recompute from the source.
+                or (
+                    self._snapshot_blocks is not None
+                    and self._snapshot_blocks.is_cleared()
+                    and self._stages_before_snapshot
+                )
+            )
         )
+
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
 
 
 def _pack_args(
@@ -1121,7 +1157,9 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = "read"
+    name = in_blocks._read_stage_name or "Read"
+    if isinstance(name, list):
+        name = "->".join(name)
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.

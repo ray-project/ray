@@ -24,6 +24,10 @@ from ray._raylet import ObjectRefGenerator
 # Type alias for a node id.
 NodeIdStr = str
 
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool."""
@@ -88,7 +92,8 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        actor = self._cls.remote()
+        ctx = DatasetContext.get_current()
+        actor = self._cls.remote(ctx, src_fn_name=self.name)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -117,7 +122,7 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic").remote(
+            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
                 self._transform_fn_ref, ctx, *input_blocks
             )
             self._next_task_idx += 1
@@ -279,6 +284,10 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
+    def __init__(self, ctx: DatasetContext, src_fn_name: str):
+        DatasetContext._set_current(ctx)
+        self.src_fn_name: str = src_fn_name
+
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
@@ -289,6 +298,9 @@ class _MapWorker:
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(fn, ctx, *blocks)
+
+    def __repr__(self):
+        return f"MapWorker({self.src_fn_name})"
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
@@ -304,7 +316,7 @@ class AutoscalingConfig:
     # Maximum number of tasks that can be in flight for a single worker.
     # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
     # prefetching has been ported to this new actor pool.
-    max_tasks_in_flight: int = 2
+    max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT
     # Minimum ratio of ready workers to the total number of workers. If the pool is
     # above this ratio, it will be allowed to be scaled up.
     ready_to_total_workers_ratio: float = 0.8
@@ -335,7 +347,8 @@ class AutoscalingConfig:
         return cls(
             min_workers=compute_strategy.min_size,
             max_workers=compute_strategy.max_size,
-            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor,
+            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
+            or DEFAULT_MAX_TASKS_IN_FLIGHT,
             ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
         )
 

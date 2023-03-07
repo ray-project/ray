@@ -1,5 +1,6 @@
 -r requirements_dl.txt
 
+aim==3.16.1
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.2.4; python_version >= '3.7'
 bayesian-optimization==1.2.0
@@ -15,10 +16,10 @@ h5py==3.7.0
 hpbandster==0.7.4
 HEBO==0.3.2
 hyperopt==0.2.5
-jupyter==1.0.0
+jupyterlab==3.6.1
 lightgbm==3.2.1
 matplotlib!=3.4.3
-mlflow==1.21.0
+mlflow==1.30.0
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
 optuna==2.10.0
@@ -26,7 +27,7 @@ optuna==2.10.0
 pymoo==0.5.0
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
-protobuf==3.20.1
+protobuf==3.19.6
 pytorch-lightning==1.6.5
 shortuuid==1.0.1
 scikit-optimize==0.9.0

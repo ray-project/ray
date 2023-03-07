@@ -159,19 +159,22 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_dataset_cont
     ctx.execution_options.resource_limits.object_store_memory = 10000
 
     # Only take the first item from the iterator.
-    it = iter(
-        ray.data.range(100000, parallelism=100)
-        .map_batches(func, batch_size=None)
-        .iter_batches(batch_size=None)
-    )
+    ds = ray.data.range(100000, parallelism=100).map_batches(func, batch_size=None)
+    it = iter(ds.iter_batches(batch_size=None))
     next(it)
     num_finished = ray.get(counter.get.remote())
     assert num_finished < 5, num_finished
+    # Check intermediate stats reporting.
+    stats = ds.stats()
+    assert "100/100 blocks executed" not in stats, stats
 
     # Check we can get the rest.
     for rest in it:
         pass
     assert ray.get(counter.get.remote()) == 100
+    # Check final stats reporting.
+    stats = ds.stats()
+    assert "100/100 blocks executed" in stats, stats
 
 
 def test_e2e_liveness_with_output_backpressure_edge_case(

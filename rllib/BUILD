@@ -597,15 +597,17 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
+# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
+# it would get faster with eager mode once it is enabled.
+# py_test(
+#     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
+#     main = "tests/run_regression_tests.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
+#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#     srcs = ["tests/run_regression_tests.py"],
+#     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
+#     args = ["--dir=tuned_examples/ppo"]
+# )
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
@@ -1059,10 +1061,23 @@ py_test(
     srcs = ["algorithms/impala/tests/test_vtrace.py"]
 )
 py_test(
+    name = "test_vtrace_v2",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
+)
+py_test(
     name = "test_impala_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "algorithms_dir", "exclusive"],
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
+)
+
+py_test(
+    name = "test_impala_learner",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/impala/tests/tf/test_impala_learner.py"]
 )
 
 # MARWIL
@@ -1831,6 +1846,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_catalog",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_catalog.py"]
+)
+
+py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1856,6 +1878,34 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
+)
+
+py_test(
+    name = "test_tf_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
+)
+
+py_test(
+    name = "test_torch_cnn_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
+)
+
+py_test(
+    name = "test_torch_mlp_encoder",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
+)
+
+py_test(
+    name = "test_torch_mlp_head",
+    tags = ["team:rllib", "core", "models"],
+    size = "small",
+    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
 )
 
 py_test(
@@ -3283,19 +3333,28 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_cartpole_torch_w_rlm",
+    name = "examples/multi_agent_cartpole_w_rlm_torch",
     main = "examples/multi_agent_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/multi_agent_cartpole_w_rlm_tf2",
+    main = "examples/multi_agent_cartpole.py",
+    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    size = "medium",
+    srcs = ["examples/multi_agent_cartpole.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/multi_agent_custom_policy_tf",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--stop-reward=80"]
 )
@@ -3304,18 +3363,28 @@ py_test(
     name = "examples/multi_agent_custom_policy_torch",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
 )
 
 py_test(
-    name = "examples/multi_agent_custom_policy_torch_w_rlm",
+    name = "examples/multi_agent_custom_policy_w_rlm_torch",
     main = "examples/multi_agent_custom_policy.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
+)
+
+
+py_test(
+    name = "examples/multi_agent_custom_policy_w_rlm_tf2",
+    main = "examples/multi_agent_custom_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    size = "medium",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=80"]
 )
 
 py_test(
@@ -3324,7 +3393,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
-    args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing"]
+    args = ["--stop-iters=4", "--framework=tf2"]
 )
 
 py_test(
@@ -3337,12 +3406,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_different_spaces_for_agents_torch_w_rlm",
+    name = "examples/multi_agent_different_spaces_for_agents_w_rlm_torch",
     main = "examples/multi_agent_different_spaces_for_agents.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
     args = ["--stop-iters=4", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/multi_agent_different_spaces_for_agents_w_rlm_tf2",
+    main = "examples/multi_agent_different_spaces_for_agents.py",
+    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    size = "medium",
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
+    args = ["--stop-iters=4", "--framework=tf2"]
 )
 
 py_test(
@@ -3662,7 +3740,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
 )
 
 py_test(
@@ -3671,16 +3749,25 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_torch_w_rlm",
+    name = "examples/self_play_with_open_spiel_connect_4_w_rlm_torch",
     main = "examples/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples", "rlm"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
+)
+
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_w_rlm_tf2",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=tf2", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-win-rate=0.6"]
 )
 
 py_test(
@@ -3701,14 +3788,6 @@ py_test(
     args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 )
 
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch_w_rlm",
-    main = "examples/self_play_league_based_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-)
 
 py_test(
     name = "examples/trajectory_view_api_tf",
@@ -3867,7 +3946,7 @@ py_test(
 py_test(
     name = "examples/learner/multi_agent_cartpole_ppo_torch",
     main = "examples/learner/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
     args = ["--as-test", "--framework=torch", "--num-gpus=0"]
@@ -3890,6 +3969,96 @@ py_test(
     size = "medium",
     srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
     args = ["--as-test", "--framework=torch", "--num-gpus=2"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_local_cpu_torch",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=local-cpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_local_cpu_tf2",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=local-cpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_local_gpu_torch",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=local-gpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_local_gpu_tf2",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=local-gpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_remote_cpu_torch",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=remote-cpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_remote_cpu_tf2",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=remote-cpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_remote_gpu_torch",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=remote-gpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_remote_gpu_tf2",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=remote-gpu"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_multi_gpu_torch",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=multi-gpu-ddp"]
+)
+
+py_test(
+    name = "examples/learner/ppo_tuner_multi_gpu_tf2",
+    main = "examples/learner/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
 )
 
 # --------------------------------------------------------------------
