@@ -279,25 +279,12 @@ class CoreWorkerDirectTaskSubmitter {
   /// (7) The task id used to obtain the worker lease.
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
-    int64_t lease_expiration_time;
-    bool is_busy = false;
+    std::shared_ptr<rpc::CoreWorkerClientInterface> worker_client;
+    int64_t lease_expiration_time = 0;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
-    SchedulingKey scheduling_key;
-    TaskID task_id;
-
-    LeaseEntry(
-        std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
-        int64_t lease_expiration_time = 0,
-        google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
-            google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
-        SchedulingKey scheduling_key =
-            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0),
-        TaskID task_id = TaskID::Nil())
-        : lease_client(lease_client),
-          lease_expiration_time(lease_expiration_time),
-          assigned_resources(assigned_resources),
-          scheduling_key(scheduling_key),
-          task_id(task_id) {}
+    SchedulingKey scheduling_key{0, std::vector<ObjectID>(), ActorID::Nil(), 0};
+    TaskID task_id = TaskID::Nil();
+    bool is_busy = false;
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.

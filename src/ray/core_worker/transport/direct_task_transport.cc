@@ -131,10 +131,13 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
     const SchedulingKey &scheduling_key,
     const TaskID &task_id) {
-  client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  LeaseEntry new_lease_entry = LeaseEntry(
-      std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
+  LeaseEntry new_lease_entry{std::move(lease_client),
+                             client_cache_->GetOrConnect(addr.ToProto()),
+                             expiration,
+                             assigned_resources,
+                             scheduling_key,
+                             task_id};
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -197,7 +200,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       ReturnWorker(addr, was_error, worker_exiting, scheduling_key);
     }
   } else {
-    auto &client = *client_cache_->GetOrConnect(addr.ToProto());
+    auto &client = *lease_entry.worker_client;
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();

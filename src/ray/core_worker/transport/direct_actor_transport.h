@@ -112,8 +112,6 @@ class CoreWorkerDirectTaskReceiver {
   instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
-  /// Shared pool for producing new core worker clients.
-  std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.

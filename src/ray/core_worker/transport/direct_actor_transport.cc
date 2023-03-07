@@ -61,7 +61,6 @@ void CoreWorkerDirectTaskReceiver::Init(
     std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
-  client_pool_ = client_pool;
 }
 
 void CoreWorkerDirectTaskReceiver::HandleTask(
