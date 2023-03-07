@@ -24,15 +24,15 @@ class RuntimeContext(object):
             dict: Dictionary of the current context.
         """
         context = {
-            "job_id": self.job_id,
-            "node_id": self.node_id,
-            "namespace": self.namespace,
+            "job_id": self.get_job_id(),
+            "node_id": self.get_node_id(),
+            "namespace": self.get_namespace(),
         }
         if self.worker.mode == ray._private.worker.WORKER_MODE:
-            if self.task_id is not None:
-                context["task_id"] = self.task_id
-            if self.actor_id is not None:
-                context["actor_id"] = self.actor_id
+            if self.get_task_id() is not None:
+                context["task_id"] = self.get_task_id()
+            if self.get_actor_id() is not None:
+                context["actor_id"] = self.get_actor_id()
 
         return context
 
@@ -222,7 +222,16 @@ class RuntimeContext(object):
         return actor_id.hex() if not actor_id.is_nil() else None
 
     @property
+    @Deprecated(message="Use get_namespace() instead", warning=True)
     def namespace(self):
+        """Get the current namespace of this worker.
+
+        Returns:
+            The current namespace of this worker.
+        """
+        return self.worker.namespace
+
+    def get_namespace(self):
         """Get the current namespace of this worker.
 
         Returns:
