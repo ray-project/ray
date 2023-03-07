@@ -1,5 +1,8 @@
+import time
+
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -7,6 +10,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource
+from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import ReadTask, Reader
 
 from ray.tests.conftest import *  # noqa
@@ -45,6 +49,46 @@ class RandomBytesReader(Reader):
                 ),
             )
         ]
+
+
+class SlowCSVDatasource(CSVDatasource):
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+            time.sleep(3)
+            yield block
+
+
+# Tests that we don't block on exponential rampup when doing bulk reads.
+# https://github.com/ray-project/ray/issues/20625
+@pytest.mark.parametrize("block_split", [False, True])
+def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    # Defensively shutdown Ray for the first test here to make sure there
+    # is no existing Ray cluster.
+    ray.shutdown()
+
+    ray.init(num_cpus=8)
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    try:
+        original = ctx.block_splitting_enabled
+
+        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+        if not block_split:
+            # Setting infinite block size effectively disables block splitting.
+            ctx.target_max_block_size = float("inf")
+        ds = ray.data.read_datasource(
+            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
+        )
+
+        start = time.time()
+        ds.map(lambda x: x)
+        delta = time.time() - start
+
+        print("full read time", delta)
+        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+        assert delta < 8, delta
+    finally:
+        ctx.block_splitting_enabled = original
 
 
 def test_enable_in_ray_client(ray_start_cluster_enabled):
