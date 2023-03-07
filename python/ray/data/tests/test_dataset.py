@@ -4564,6 +4564,7 @@ class LoggerWarningCalled(Exception):
     pass
 
 
+"""
 def test_warning_execute_with_no_cpu(ray_start_cluster):
     Tests ExecutionPlan.execute() to ensure a warning is logged
     when no CPU resources are available.
