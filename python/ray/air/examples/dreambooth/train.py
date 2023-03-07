@@ -191,12 +191,13 @@ def train_fn(config):
             session.report(results)
 
     # Create pipeline using the trained modules and save it.
-    pipeline = DiffusionPipeline.from_pretrained(
-        config["model_dir"],
-        text_encoder=text_encoder.module,
-        unet=unet.module,
-    )
-    pipeline.save_pretrained(config["output_dir"])
+    if session.get_world_rank() == 0:
+        pipeline = DiffusionPipeline.from_pretrained(
+            config["model_dir"],
+            text_encoder=text_encoder.module,
+            unet=unet.module,
+        )
+        pipeline.save_pretrained(config["output_dir"])
 
 
 if __name__ == "__main__":

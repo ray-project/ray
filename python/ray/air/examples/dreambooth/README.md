@@ -203,6 +203,48 @@ If you're running multi-node training, you should make sure that all nodes have 
 storage (e.g. via NFS or EFS). In the example script below, you can adjust this location with the
 `DATA_PREFIX` environment variable.
 
+#### Training throughput
+
+We ran training using 1, 2, and 4 actors (and 2, 4 and GPUs, respectively) to compare throughput.
+
+Setup:
+- 2 x g5.12xlarge nodes with 4 A10G GPUs each
+- Model as configured below
+- Data from this example
+- 200 regularization images
+- Training for 4 epochs (800 steps)
+- Use a mounted External File System to share data between nodes
+- 3 runs per configuration
+
+Because network storage can be slow, we divided the collected metrics into three parts: Model loading (from EFS),
+training time (in memory), and model saving (to EFS).
+
+Specifically, the metrics we compare:
+- **Model loading time**: This is the time until we receive the first result (i.e. it includes the first training iteration)
+- **Training time**: Time between receiving the first result and the last
+- **Model saving time**: Time after receiving the last result until model has been written
+- **Worker throughput**: Number of iterations processed per worker per second
+
+We expect the model loading/saving times and the worker throughput to be similar across runs.
+However, the training time should benefit from scale and decrease linearly when running with
+more workers and GPUs.
+
+| Number of workers | Number of GPUs | Model loading time |     Training time | Model saving time | Worker throughput |
+|------------------:|---------------:|-------------------:|------------------:|------------------:|------------------:|
+|                 4 |              8 |       21.95 (0.84) |     230.42 (4.02) |     162.40 (7.00) |              0.87 |
+|                 2 |              4 |       18.26 (1.58) |     393.18 (7.27) |     101.69 (5.73) |              1.02 |
+
+As expected, the model loading time is relatively constant across runs. The model saving time is a bit longer
+when running on multiple nodes. Most likely there is some overhead because we saved the model on every worker.
+After changing this to only save on the rank 0 actor, the model saving time is reduced to xxx seconds, almost the same
+time as in the 1 worker case.
+
+The worker throughput and hence the training time scales sublinearly. There is some penalty when training with
+multiple workers, most likely because of additional communication between processes and the transfer of large model
+weights.
+
+
+
 ## Run the example
 
 First, we download the pre-trained stable diffusion model as a starting point.
