@@ -129,12 +129,19 @@ class TfCategorical(TfDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return (space.n,)
+        return (int(space.n),)
 
     @override(TfDistribution)
     def _rsample(self, sample_shape=()):
         # TODO (Kourosh) Implement Categorical sampling using grrad-passthrough trick.
         raise NotImplementedError
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TfCategorical":
+        return TfCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
@@ -195,13 +202,20 @@ class TfDiagGaussian(TfDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
 
     @override(TfDistribution)
     def _rsample(self, sample_shape=()):
         """Implements reparameterization trick."""
         eps = tf.random.normal(sample_shape)
         return self._dist.loc + eps * self._dist.scale
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDiagGaussian":
+        loc, log_std = tf.split(logits, num_or_size_splits=2, axis=1)
+        scale = tf.math.exp(log_std)
+        return TfDiagGaussian(loc=loc, scale=scale)
 
 
 @DeveloperAPI
@@ -269,4 +283,9 @@ class TfDeterministic(Distribution):
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
-        return tuple(np.prod(space.shape, dtype=np.int32))
+        return (int(np.prod(space.shape, dtype=np.int32)),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
+        return TfDeterministic(loc=logits)
