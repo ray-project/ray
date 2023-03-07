@@ -214,7 +214,8 @@ def _convert_ray_node_option_key(key):
 
 def _convert_ray_node_options(options):
     return [
-        f"{_convert_ray_node_option_key(k)}" if v is None
+        f"{_convert_ray_node_option_key(k)}"
+        if v is None
         else f"{_convert_ray_node_option_key(k)}={str(v)}"
         for k, v in options.items()
     ]

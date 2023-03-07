@@ -88,15 +88,13 @@ def test_get_avail_mem_per_ray_worker_node(monkeypatch):
 
 
 def test_convert_ray_node_options():
-    assert _convert_ray_node_options({
-        "cluster_name": "aBc",
-        "disable_usage_stats": None,
-        "include_dashboard": False,
-    }) == [
-        "--cluster-name=aBc",
-        "--disable-usage-stats",
-        "--include-dashboard=False"
-    ]
+    assert _convert_ray_node_options(
+        {
+            "cluster_name": "aBc",
+            "disable_usage_stats": None,
+            "include_dashboard": False,
+        }
+    ) == ["--cluster-name=aBc", "--disable-usage-stats", "--include-dashboard=False"]
 
 
 if __name__ == "__main__":
