@@ -7,6 +7,7 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
+    ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
 )
