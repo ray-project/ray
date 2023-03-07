@@ -354,15 +354,17 @@ class WorkerGroup:
         # for more context.
         # TODO remove
         workers_with_ip = []
-        indices_to_remove = []
+        indices_to_remove = set()
         for i, worker in enumerate(self.workers):
             if worker.metadata.node_ip == ip:
                 workers_with_ip.append(worker)
-                indices_to_remove.append(i)
+                indices_to_remove.add(i)
         if workers_with_ip:
-            for i in indices_to_remove:
-                self.workers.pop(i)
-            self.workers = workers_with_ip + self.workers
+            self.workers = workers_with_ip + [
+                worker
+                for i, worker in enumerate(self.workers)
+                if i not in indices_to_remove
+            ]
 
     def __len__(self):
         return len(self.workers)
