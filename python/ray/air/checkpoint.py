@@ -17,7 +17,6 @@ from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import (
     load_preprocessor_from_dir,
     save_preprocessor_to_dir,
-    delete_preprocessor_in_dir,
 )
 from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.remote_storage import (
@@ -543,11 +542,8 @@ class Checkpoint:
 
         self._save_checkpoint_metadata_in_directory(path)
 
-        if self._override_preprocessor_set:
-            if self._override_preprocessor:
-                save_preprocessor_to_dir(self._override_preprocessor, path)
-            else:
-                delete_preprocessor_in_dir(path)
+        if self._override_preprocessor_set and self._override_preprocessor:
+            save_preprocessor_to_dir(self._override_preprocessor, path)
 
     def _to_directory_safe(self, path: str, move_instead_of_copy: bool = False) -> None:
         try:
