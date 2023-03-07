@@ -24,7 +24,7 @@ class ParquetBaseDatasource(FileBasedDatasource):
     def get_name(self):
         """Return a human-readable name for this datasource.
         This will be used as the names of the read tasks.
-        Note: overrides the base `Datasource` method.
+        Note: overrides the base `FileBasedDatasource` method.
         """
         return "ParquetBulk"
 
