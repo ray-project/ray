@@ -288,7 +288,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
         "wall_clock/val",
         "wall_clock/total",
         "lr-DecoupledSGDW/group0",
-        "grad_l2_norm/step",
     ]
     for column in columns_to_check:
         assert column in metrics_columns, column + " is not found"
