@@ -246,14 +246,28 @@ def assert_base_partitioned_ds():
         assert ds.schema() is not None
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-        assert (
-            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
-        assert (
-            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
+
+        # For Datasets with long string representations, the format will include
+        # whitespace and newline characters, which is difficult to generalize
+        # without implementing the formatting logic again (from
+        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
+        # characters to test the string contents regardless of the string repr length.
+        def _remove_whitespace(ds_str):
+            for c in ["\n", "\t", " "]:
+                ds_str = ds_str.replace(c, "")
+            return ds_str
+
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(str(ds)), ds
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(repr(ds)), ds
+
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
