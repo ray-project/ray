@@ -92,8 +92,6 @@ class OutputSplitter(PhysicalOperator):
     def inputs_done(self) -> None:
         super().inputs_done()
         if not self._equal:
-            # There shouldn't be any buffered data if we're not in equal split mode.
-            assert not self._buffer
             return
 
         # Otherwise:
