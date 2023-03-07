@@ -4,7 +4,12 @@ import tensorflow_probability as tfp
 from typing import Any, Mapping, Optional
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, MultiAgentRLModuleConfig, MultiAgentRLModuleSpec, ModuleID
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleConfig,
+    MultiAgentRLModuleSpec,
+    ModuleID,
+)
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -70,7 +75,6 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy.set_weights(state["policy"])
 
 
-
 class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
     def __init__(self, encoder, local_dim, hidden_dim, action_dim):
         super().__init__()
@@ -114,7 +118,6 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
 
 class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-
     def __init__(self, config: MultiAgentRLModuleConfig) -> None:
         super().__init__(config)
 

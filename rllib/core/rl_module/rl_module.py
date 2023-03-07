@@ -59,10 +59,10 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Action space is not set.")
         if self.model_config_dict is None:
             raise ValueError("Model config is not set.")
-        
+
         module_config = self.get_rl_module_config()
         return self.module_class(module_config)
-    
+
     @classmethod
     def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -71,14 +71,13 @@ class SingleAgentRLModuleSpec:
             raise ValueError(
                 "MultiAgentRLModule cannot be converted to SingleAgentRLModuleSpec."
             )
-        
+
         return SingleAgentRLModuleSpec(
             module_class=type(module),
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
             model_config_dict=module.config.model_config_dict,
         )
-    
 
     def to_dict(self):
         """Returns a serialized representation of the spec."""
@@ -87,7 +86,7 @@ class SingleAgentRLModuleSpec:
             "module_class": self.module_class,
             "module_config": self.get_rl_module_config().to_dict(),
         }
-    
+
     @classmethod
     def from_dict(cls, d):
         """Returns a single agent RLModule spec from a serialized representation."""
@@ -131,7 +130,7 @@ class RLModuleConfig:
             "model_config_dict": self.model_config_dict,
             "catalog_class": self.catalog_class,
         }
-    
+
     @classmethod
     def from_dict(cls, d):
         """Creates a config from a serialized representation."""
@@ -141,6 +140,7 @@ class RLModuleConfig:
             model_config_dict=d["model_config_dict"],
             catalog_class=d["catalog_class"],
         )
+
 
 @ExperimentalAPI
 class RLModule(abc.ABC):

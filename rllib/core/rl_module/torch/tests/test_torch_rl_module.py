@@ -16,7 +16,7 @@ class TestRLModule(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
-            config = RLModuleConfig(
+            config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
@@ -30,7 +30,7 @@ class TestRLModule(unittest.TestCase):
         bsize = 1024
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
-            config = RLModuleConfig(
+            config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
@@ -60,7 +60,7 @@ class TestRLModule(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
-            config = RLModuleConfig(
+            config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
@@ -78,7 +78,7 @@ class TestRLModule(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
-            config = RLModuleConfig(
+            config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
@@ -89,7 +89,7 @@ class TestRLModule(unittest.TestCase):
         self.assertIsInstance(state, dict)
 
         module2 = DiscreteBCTorchModule(
-            config = RLModuleConfig(
+            config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
@@ -105,7 +105,7 @@ class TestRLModule(unittest.TestCase):
     def test_serialize_deserialize(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
-            config = RLModuleConfig(
+            config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},

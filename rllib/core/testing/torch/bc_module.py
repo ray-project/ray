@@ -2,7 +2,12 @@ import gymnasium as gym
 from typing import Any, Mapping, Optional
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, MultiAgentRLModuleConfig, MultiAgentRLModule, ModuleID
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModuleConfig,
+    MultiAgentRLModule,
+    ModuleID,
+)
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
@@ -109,7 +114,6 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
 
 
 class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-
     def __init__(self, config: MultiAgentRLModuleConfig) -> None:
         super().__init__(config)
 
@@ -124,7 +128,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
-        
+
         rl_modules = {}
         for module_id, module_spec in self.module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
@@ -132,9 +136,9 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,
                 action_dim=module_spec.action_space.n,
-            )   
+            )
 
-        self._rl_modules = rl_modules     
+        self._rl_modules = rl_modules
 
     def serialize(self):
         encoder = next(iter(self.rl_modules.values())).encoder
