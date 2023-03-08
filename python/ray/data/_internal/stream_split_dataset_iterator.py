@@ -114,6 +114,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
 
 @ray.remote(num_cpus=0)
 class SplitCoordinator:
+    """Coordinator actor for routing blocks to output splits.
+
+    This actor runs a streaming executor locally on its main thread. Clients can
+    retrieve results via actor calls running on other threads.
+    """
+
     def __init__(
         self,
         ctx: DatasetContext,
@@ -126,12 +132,14 @@ class SplitCoordinator:
         if locality_hints:
             ctx.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
+
         DatasetContext._set_current(ctx)
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
         self._finished = False
+        self._next_block = None
 
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
@@ -147,8 +155,17 @@ class SplitCoordinator:
         )
 
     def get(self, output_split_idx: int) -> ObjectRef[Block]:
-        # TODO handle multi blocks
+        """Blocking get operation.
+
+        This is intended to be called concurrently from multiple clients. To avoid
+        deadlock, the concurrency on this actor must be set to at least |nclients|.
+        """
         try:
-            return self._output_iterator.get_next(output_split_idx).blocks[0][0]
+            if not self._next_block:
+                self._next_block = self._output_iterator.get_next(output_split_idx)
+            block = self._next_block.blocks.pop()[0]
+            if not self._next_block.blocks:
+                self._next_block = None
+            return block
         except StopIteration:
             return None
