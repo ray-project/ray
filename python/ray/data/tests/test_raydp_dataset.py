@@ -4,6 +4,7 @@ import torch
 from ray.data.tests.conftest import *  # noqa
 
 
+# RayDP tests require Ray Java. Make sure ray jar is built before running this test.
 def test_raydp_roundtrip(spark):
     spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
     rows = [(r.one, r.two) for r in spark_df.take(3)]
