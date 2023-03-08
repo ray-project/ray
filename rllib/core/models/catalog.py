@@ -169,10 +169,10 @@ class Catalog:
         Returns:
             The action distribution.
         """
-        assert hasattr(self, "action_dist_cls_dict"), (
-            "You must define a `Catalog.action_dist_cls_dict` attribute in your "
-            "Catalog subclass or override the `Catalog.get_action_dist_cls` method. "
-            "By default, an action_dist_cls_dict is created in the __post_init__ "
+        assert hasattr(self, "action_dist_class_fn"), (
+            "You must define a `Catalog.action_dist_class_fn` attribute in your "
+            "Catalog subclass or override the `Catalog.action_dist_class_fn` method. "
+            "By default, an action_dist_class_fn is created in the __post_init__ "
             "method."
         )
         return self.action_dist_class_fn(framework=framework)
