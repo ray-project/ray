@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import copy
 from dataclasses import dataclass
 import itertools
 from typing import List, Iterator, Any, Dict, Optional, Union
@@ -46,6 +47,7 @@ class MapOperator(PhysicalOperator, ABC):
 
         self._transform_fn = transform_fn
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
+        self._ray_remote_args_factory = None
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
@@ -132,14 +134,30 @@ class MapOperator(PhysicalOperator, ABC):
             self._output_queue = _OrderedOutputQueue()
         else:
             self._output_queue = _UnorderedOutputQueue()
+
         if options.locality_with_output:
-            # Try to schedule tasks locally.
-            self._ray_remote_args[
-                "scheduling_strategy"
-            ] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=True,
-            )
+            if isinstance(options.locality_with_output, list):
+                locs = options.locality_with_output
+            else:
+                locs = [ray.get_runtime_context().get_node_id()]
+
+            class RoundRobinAssign:
+                def __init__(self, locs):
+                    self.locs = locs
+                    self.i = 0
+
+                def __call__(self, args):
+                    args = copy.deepcopy(args)
+                    args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                        self.locs[self.i],
+                        soft=True,
+                    )
+                    self.i += 1
+                    self.i %= len(self.locs)
+                    return args
+
+            self._ray_remote_args_factory = RoundRobinAssign(locs)
+
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._transform_fn_ref = ray.put(self._transform_fn)
@@ -158,6 +176,11 @@ class MapOperator(PhysicalOperator, ABC):
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
+
+    def _get_runtime_ray_remote_args(self) -> Dict[str, Any]:
+        if self._ray_remote_args_factory:
+            return self._ray_remote_args_factory(self._ray_remote_args)
+        return self._ray_remote_args
 
     @abstractmethod
     def _add_bundled_input(self, refs: RefBundle):
