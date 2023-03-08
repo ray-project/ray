@@ -67,7 +67,8 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
 
     def _do_check(alg, config, a_name, o_name):
         if alg == "PPO":
-            # We need to copy here so that this validation does not affect the actual validation method.
+            # We need to copy here so that this validation does not affect the actual
+            # validation method.
             config_copy = config.copy()
             config_copy.validate()
             # If RLModules are enabled, we need to skip a few tests for now:
