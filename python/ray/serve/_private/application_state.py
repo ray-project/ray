@@ -7,10 +7,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
-from ray.serve.schema import (
-    DeploymentDetails,
-    _deployment_info_to_schema,
-)
+from ray.serve.schema import DeploymentDetails
 import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 import logging
@@ -215,19 +212,8 @@ class ApplicationState:
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in this application."""
-        replicas = self.deployment_state_manager.get_running_replica_infos()
-        status_info = {info.name: info for info in self.get_deployments_statuses()}
-
         return {
-            name: DeploymentDetails(
-                name=name,
-                num_running_replicas=len(replicas[name]),
-                deployment_status=status_info[name].status,
-                message=status_info[name].message,
-                deployment_config=_deployment_info_to_schema(
-                    name, self.deployment_state_manager.get_deployment(name)
-                ),
-            )
+            name: self.deployment_state_manager.get_deployment_details(name)
             for name in self.get_all_deployments()
         }
 
