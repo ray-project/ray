@@ -329,7 +329,7 @@ def select_operator_to_run(
     return min(
         ops,
         key=lambda op: (
-            not op.is_metadata_only(),
+            not op.throttling_disabled(),
             len(topology[op].outqueue) + topology[op].num_processing(),
         ),
     )
@@ -359,9 +359,7 @@ def _execution_allowed(
         Whether the op is allowed to run.
     """
 
-    # Metadata only operators are always allowed to run, as they do not consume
-    # additional resources.
-    if op.is_metadata_only():
+    if op.throttling_disabled():
         return True
 
     assert isinstance(global_usage, TopologyResourceUsage), global_usage

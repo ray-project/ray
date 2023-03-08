@@ -19,10 +19,12 @@ class OutputSplitter(PhysicalOperator):
 
     The output bundles of this operator will have a `bundle.output_split_idx` attr
     set to an integer from [0..n-1]. This operator tries to divide the rows evenly
-    across output splits.
+    across output splits. If the `equal` option is set, the operator will furthermore
+    guarantee an exact split of rows across outputs, truncating the Dataset as needed.
 
-    If the `equal` option is set, the operator will furthermore guarantee an exact
-    split of rows across outputs, truncating the Dataset as needed.
+    Implementation wise, this operator keeps an internal buffer of bundles. The buffer
+    has a minimum size calculated to enable a good locality hit rate, as well as ensure
+    we can satisfy the `equal` requirement.
 
     OutputSplitter does not provide any ordering guarantees.
     """
@@ -58,8 +60,8 @@ class OutputSplitter(PhysicalOperator):
             self._min_buffer_size = 2 * n
         else:
             self._min_buffer_size = 0
-        self.hits = 0
-        self.misses = 0
+        self._locality_hits = 0
+        self._locality_misses = 0
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -68,7 +70,13 @@ class OutputSplitter(PhysicalOperator):
             self._locality_hints = None
             self._min_buffer_size = 0
 
-    def is_metadata_only(self) -> bool:
+    def throttling_disabled(self) -> bool:
+        """Disables resource-based throttling.
+
+        It doesn't make sense to throttle the inputs to this operator, since all that
+        would do is lower the buffer size and prevent us from emitting outputs /
+        reduce the locality hit rate.
+        """
         return True
 
     def has_next(self) -> bool:
@@ -131,7 +139,9 @@ class OutputSplitter(PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._locality_hints:
-            return f"[{self.hits} locality hits {self.misses} misses]"
+            return (
+                f"[{self._locality_hits} locality hits {self._locality_misses} misses]"
+            )
         else:
             return "[locality disabled]"
 
@@ -148,9 +158,9 @@ class OutputSplitter(PhysicalOperator):
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
                     if target_bundle.get_cached_location() == preferred_loc:
-                        self.hits += 1
+                        self._locality_hits += 1
                     else:
-                        self.misses += 1
+                        self._locality_misses += 1
             else:
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)

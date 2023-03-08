@@ -364,12 +364,12 @@ class PhysicalOperator(Operator):
         """
         return []
 
-    def is_metadata_only(self) -> bool:
-        """Whether this operator is metadata only.
+    def throttling_disabled(self) -> bool:
+        """Whether to disable resource throttling for this operator.
 
         This should return True for operators that only manipulate bundle metadata
         (e.g., the OutputSplitter operator). This hints to the execution engine that
-        these operators should be prioritized for execution.
+        these operators should not be throttled based on resource usage.
         """
         return False
 
