@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class StreamSplitDatasetIterator(DatasetIterator):
+    """Implements a collection of iterators over a shared data stream."""
+
     @staticmethod
     def create(
         base_dataset: "Dataset",
@@ -35,6 +37,10 @@ class StreamSplitDatasetIterator(DatasetIterator):
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDatasetIterator"]:
+        """Create a split iterator from the given base Dataset and options.
+
+        See also: `Dataset.streaming_split`.
+        """
         ctx = DatasetContext.get_current()
         coord_actor = SplitCoordinator.options(max_concurrency=n).remote(
             ctx, base_dataset, n, equal, locality_hints
@@ -53,12 +59,6 @@ class StreamSplitDatasetIterator(DatasetIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
 
-    def stats(self) -> str:
-        return self._base_dataset.stats()
-
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
-        return self._base_dataset.schema()
-
     def iter_batches(
         self,
         *,
@@ -70,11 +70,20 @@ class StreamSplitDatasetIterator(DatasetIterator):
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
+        """Implements DatasetIterator."""
 
-        block_iterator = self._gen_blocks()
+        def gen_blocks() -> Iterator[ObjectRef[Block]]:
+            future = self._coord_actor.get.remote(self._output_split_idx)
+            while True:
+                block = ray.get(future)
+                if not block:
+                    break
+                else:
+                    future = self._coord_actor.get.remote(self._output_split_idx)
+                    yield block
 
         yield from batch_block_refs(
-            block_iterator,
+            gen_blocks(),
             stats=None,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -85,15 +94,13 @@ class StreamSplitDatasetIterator(DatasetIterator):
             shuffle_seed=local_shuffle_seed,
         )
 
-    def _gen_blocks(self) -> Iterator[ObjectRef[Block]]:
-        future = self._coord_actor.get.remote(self._output_split_idx)
-        while True:
-            block = ray.get(future)
-            if not block:
-                break
-            else:
-                future = self._coord_actor.get.remote(self._output_split_idx)
-                yield block
+    def stats(self) -> str:
+        """Implements DatasetIterator."""
+        return self._base_dataset.stats()
+
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        """Implements DatasetIterator."""
+        return self._base_dataset.schema()
 
 
 # TODO schedule on same node
