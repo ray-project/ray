@@ -35,6 +35,8 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
 from ray.rllib.utils.test_utils import check_learning_achieved
 
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
 # The new RLModule / Learner API
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
@@ -257,7 +259,8 @@ if __name__ == "__main__":
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     # This will grab the default from the PPOConfig (it's empty)
-                    "main": SingleAgentRLModuleSpec(),
+                    # TODO (Kourosh) We should not have to specify the catalog
+                    "main": SingleAgentRLModuleSpec(catalog_class=PPOCatalog),
                     "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
                 }
             )

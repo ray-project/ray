@@ -1303,30 +1303,30 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         return self.policy_map.get(policy_id)
     
 
-    @DeveloperAPI
-    def add_module(
-        self,
-        module_id: str, 
-        module_spec: SingleAgentRLModuleSpec,
-        agent_to_module_map_fn: Callable[[AgentID, "Episode"], str] = N,
-        module_state: Optional[Dict[str, TensorStructType]] = None,
-    ) -> None:
-        """Adds a new RLModule to this RolloutWorker.
+    # @DeveloperAPI
+    # def add_module(
+    #     self,
+    #     module_id: str, 
+    #     module_spec: SingleAgentRLModuleSpec,
+    #     agent_to_module_map_fn: Callable[[AgentID, "Episode"], str] = None,
+    #     module_state: Optional[Dict[str, TensorStructType]] = None,
+    # ) -> None:
+    #     """Adds a new RLModule to this RolloutWorker.
 
-        The RLModule will be used during the rollout collection process.
+    #     The RLModule will be used during the rollout collection process.
 
-        Args:
-            module_id: ID of the module to add.
-            module_spec: The RLlib module spec to use for constructing the
-                new RLModule.
-            agent_to_module_map_fn: A function that maps an agent ID to a
-                module ID.
-            module_state: Optional initial state for the module.
+    #     Args:
+    #         module_id: ID of the module to add.
+    #         module_spec: The RLlib module spec to use for constructing the
+    #             new RLModule.
+    #         agent_to_module_map_fn: A function that maps an agent ID to a
+    #             module ID.
+    #         module_state: Optional initial state for the module.
             
-        """
+    #     """
 
-        # sampling is done via policies, so we need to add a policy that uses this RLModule  
-        pass
+    #     # sampling is done via policies, so we need to add a policy that uses this RLModule  
+    #     pass
 
         
 
