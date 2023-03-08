@@ -153,6 +153,60 @@ class TestRLModuleSpecs(unittest.TestCase):
             spec_from_module = SingleAgentRLModuleSpec.from_module(module)
             self.assertEqual(spec, spec_from_module)
 
+    def test_update_specs(self):
+        """Tests wether SingleAgentRLModuleSpec.update() works."""
+        env = gym.make("CartPole-v0")
+
+        # Test if SingleAgentRLModuleSpec.update() works.
+        module_spec_1 = SingleAgentRLModuleSpec(
+            module_class=DiscreteBCTorchModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict="Update me!",
+        )
+        module_spec_2 = SingleAgentRLModuleSpec(
+            model_config_dict={"fcnet_hiddens": [32]}
+        )
+        assert module_spec_1.model_config_dict == "Update me!"
+        module_spec_1.update(module_spec_2)
+        assert module_spec_1.model_config_dict == {"fcnet_hiddens": [32]}
+
+        # Test if updating a SingleAgentRLModuleSpec in MultiAgentRLModuleSpec works.
+        module_spec_1 = SingleAgentRLModuleSpec(
+            module_class=DiscreteBCTorchModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict="Update me!",
+        )
+        marl_spec_1 = MultiAgentRLModuleSpec(
+            marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
+            module_specs={"agent_1": module_spec_1},
+        )
+        marl_spec_2 = MultiAgentRLModuleSpec(
+            marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
+            module_specs={"agent_1": module_spec_2},
+        )
+        assert marl_spec_1.module_specs["agent_1"].model_config_dict == "Update me!"
+        marl_spec_1.update(marl_spec_2)
+        assert marl_spec_1.module_specs["agent_1"].model_config_dict == {
+            "fcnet_hiddens": [32]
+        }
+
+        # Test if updating with an additional SingleAgentRLModuleSpec works.
+        module_spec_3 = SingleAgentRLModuleSpec(
+            module_class=DiscreteBCTorchModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict="I'm new!",
+        )
+        marl_spec_3 = MultiAgentRLModuleSpec(
+            marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
+            module_specs={"agent_2": module_spec_3},
+        )
+        assert marl_spec_1.module_specs.get("agent_2") is None
+        marl_spec_1.update(marl_spec_3)
+        assert marl_spec_1.module_specs["agent_2"].model_config_dict == "I'm new!"
+
 
 if __name__ == "__main__":
     import pytest

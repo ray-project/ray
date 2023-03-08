@@ -116,6 +116,15 @@ def _resolve_class_path(module) -> Type:
         return getattr(module, class_name)
 
 
+def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
+    if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
+        raise ValueError(
+            "rl_module_spec must be an instance of "
+            "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+            f"Got {type(module_spec)} instead."
+        )
+
+
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
@@ -901,17 +910,23 @@ class AlgorithmConfig(_Config):
                 # compatibility for now. User only needs to set num_rollout_workers.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
-        # resolve rl_module_spec class
-        if self._enable_rl_module_api and self.rl_module_spec is None:
-            self.rl_module_spec = self.get_default_rl_module_spec()
-            if not isinstance(
-                self.rl_module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)
-            ):
-                raise ValueError(
-                    "rl_module_spec must be an instance of "
-                    "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
-                    f"Got {type(self.rl_module_spec)} instead."
-                )
+        if self._enable_rl_module_api:
+            if self.rl_module_spec is not None:
+                # Merge provided RL Module spec class with defaults
+                _check_rl_module_spec(self.rl_module_spec)
+                default_rl_module_spec = self.get_default_rl_module_spec()
+                # We can only merge if we have SingleAgentRLModuleSpecs.
+                # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
+                if (
+                    type(default_rl_module_spec) is SingleAgentRLModuleSpec
+                    and type(self.rl_module_spec) is SingleAgentRLModuleSpec
+                ):
+                    _check_rl_module_spec(default_rl_module_spec)
+                    default_rl_module_spec.update(self.rl_module_spec)
+                    self.rl_module_spec = default_rl_module_spec
+            else:
+                self.rl_module_spec = self.get_default_rl_module_spec()
+                _check_rl_module_spec(self.rl_module_spec)
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:

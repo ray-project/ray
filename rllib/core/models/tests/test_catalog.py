@@ -272,11 +272,7 @@ class TestCatalog(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(
-                    module_class=PPOTorchRLModule, catalog_class=MyCatalog
-                )
-            )
+            .rl_module(rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog))
             .framework("torch")
         )
 

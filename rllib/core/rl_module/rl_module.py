@@ -57,14 +57,14 @@ class SingleAgentRLModuleSpec:
         )
 
     def build(self) -> "RLModule":
+        if self.module_class is None:
+            raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
             raise ValueError("Observation space is not set.")
         if self.action_space is None:
             raise ValueError("Action space is not set.")
         if self.model_config_dict is None:
             raise ValueError("Model config is not set.")
-        if self.catalog_class is None:
-            raise ValueError("Catalog is not set.")
 
         module_config = self.get_rl_module_config()
         return self.module_class(module_config)
@@ -112,6 +112,16 @@ class SingleAgentRLModuleSpec:
             model_config_dict=model_config_dict,
             catalog_class=catalog_class,
         )
+
+    def update(self, other):
+        """Updates this spec with the given other spec. Works like dict.update()."""
+        assert type(other) is SingleAgentRLModuleSpec
+
+        self.module_class = other.module_class or self.module_class
+        self.observation_space = other.observation_space or self.observation_space
+        self.action_space = other.action_space or self.action_space
+        self.model_config_dict = other.model_config_dict or self.model_config_dict
+        self.catalog_class = other.catalog_class or self.catalog_class
 
 
 @ExperimentalAPI
