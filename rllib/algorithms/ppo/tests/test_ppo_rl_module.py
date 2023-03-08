@@ -6,17 +6,18 @@ import numpy as np
 import tensorflow as tf
 import torch
 import tree
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
 import ray
 from ray.rllib import SampleBatch
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
