@@ -618,6 +618,11 @@ class TestServeApplicationSchema:
         with pytest.raises(AssertionError):
             config.remove_app_name_from_deployment_names()
 
+    def test_serve_application_import_path_required(self):
+        # If no import path is specified, this should not parse successfully
+        with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
+
 
 class TestServeDeploySchema:
     def test_serve_application_to_deploy_config(self):
