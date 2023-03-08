@@ -2917,6 +2917,15 @@ py_test(
     args = ["--stop-iters=3 --num-cpus=3"]
 )
 
+
+py_test(
+    name = "examples/coin_game_env",
+    tags = ["team:rllib", "examples"],
+    size = "small",
+    srcs = ["examples/coin_game_env.py"],
+    args = ["--stop-iters=2"]
+)
+
 py_test(
     name = "examples/complex_struct_space_tf",
     main = "examples/complex_struct_space.py",
@@ -3243,6 +3252,7 @@ py_test(
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
 )
+
 
 py_test(
     name = "examples/export/cartpole_dqn_export",
@@ -4118,7 +4128,6 @@ py_test_module_list(
     "tests/test_perf.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
-    "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
