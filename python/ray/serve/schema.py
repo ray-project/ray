@@ -606,10 +606,10 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
-    host: str = Field(
+    host: Optional[str] = Field(
         description="The host on which the HTTP server is listening for requests."
     )
-    port: int = Field(
+    port: Optional[int] = Field(
         description="The port on which the HTTP server is listening for requests."
     )
     application_details: Dict[str, ApplicationDetails] = Field(
@@ -620,13 +620,10 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     def get_empty_schema_dict() -> Dict:
         """Empty Serve instance details dictionary.
 
-        Represents a Serve instance with no applications deployed.
+        Represents no Serve instance running on the cluster.
         """
 
-        return {
-            "application_configs": {},
-            "application_details": {},
-        }
+        return {"application_details": {}}
 
 
 @PublicAPI(stability="beta")

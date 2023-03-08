@@ -82,6 +82,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         controller = await self.get_serve_controller()
 
         if controller is None:
+            # If no serve instance is running, return a dict that represents that.
             details = ServeInstanceDetails.get_empty_schema_dict()
         else:
             try:
