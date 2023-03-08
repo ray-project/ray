@@ -392,11 +392,18 @@ class Policy(metaclass=ABCMeta):
                 "bug, please file a github issue."
             )
 
-        module_spec = self.config["__marl_module_spec"]
-        if isinstance(module_spec, SingleAgentRLModuleSpec):
-            module = module_spec.build()
+        spec = self.config["__marl_module_spec"]
+        if isinstance(spec, SingleAgentRLModuleSpec):
+            module = spec.build()
         else:
-            module = module_spec.build(module_id=self.__policy_id)
+            # filter the module_spec to only contain the policy_id of this policy
+            marl_spec = type(spec)(
+                marl_module_class=spec.marl_module_class,
+                module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
+            )
+            marl_module = marl_spec.build()
+            module = marl_module[self.__policy_id]
+
         return module
 
     @DeveloperAPI
