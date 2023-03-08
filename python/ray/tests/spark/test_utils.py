@@ -8,6 +8,7 @@ from ray.util.spark.utils import (
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
 )
+from ray.util.spark.cluster_init import _convert_ray_node_options
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -84,6 +85,16 @@ def test_get_avail_mem_per_ray_worker_node(monkeypatch):
         num_gpus_per_node=4,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
+
+
+def test_convert_ray_node_options():
+    assert _convert_ray_node_options(
+        {
+            "cluster_name": "aBc",
+            "disable_usage_stats": None,
+            "include_dashboard": False,
+        }
+    ) == ["--cluster-name=aBc", "--disable-usage-stats", "--include-dashboard=False"]
 
 
 if __name__ == "__main__":
