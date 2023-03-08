@@ -71,30 +71,21 @@ class PPOCatalog(Catalog):
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
         self.pi_head_config = MLPHeadConfig(
-            input_dim=self.encoder_config.output_dim,
+            input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=None,  # We don't know the output dimension yet, because it
+            output_dims=None,  # We don't know the output dimension yet, because it
             # depends on the action distribution input dimension
         )
 
         self.vf_head_config = MLPHeadConfig(
-            input_dim=self.encoder_config.output_dim,
+            input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=1,
+            output_dims=[1],
         )
-
-        # Set input- and output dimensions to fit PPO's needs.
-        self.encoder_config.input_dim = observation_space.shape[0]
-        self.pi_head_config.input_dim = self.encoder_config.output_dim
-        if isinstance(action_space, gym.spaces.Discrete):
-            self.pi_head_config.output_dim = int(action_space.n)
-        else:
-            self.pi_head_config.output_dim = int(action_space.shape[0] * 2)
-        self.vf_head_config.output_dim = 1
 
     def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
         """Builds the ActorCriticEncoder.
@@ -136,10 +127,10 @@ class PPOCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        self.pi_head_config.output_dim = (
+        self.pi_head_config.output_dims = (
             action_distribution_cls.required_model_output_shape(
                 space=self.action_space, model_config=self.model_config_dict
-            )[0]
+            )
         )
         return self.pi_head_config.build(framework=framework)
 
