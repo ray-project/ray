@@ -246,6 +246,9 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
 
 def _get_gitignore(path: Path) -> Optional[Callable]:
+    if os.environ.get("RAY_RUNTIME_ENV_SKIP_GITIGNORE"):
+        return None
+
     path = path.absolute()
     ignore_file = path / ".gitignore"
     if ignore_file.is_file():
