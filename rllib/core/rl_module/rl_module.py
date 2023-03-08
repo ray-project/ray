@@ -63,6 +63,8 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Action space is not set.")
         if self.model_config_dict is None:
             raise ValueError("Model config is not set.")
+        if self.catalog_class is None:
+            raise ValueError("Catalog is not set.")
 
         module_config = self.get_rl_module_config()
         return self.module_class(module_config)

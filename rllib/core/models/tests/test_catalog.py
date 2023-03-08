@@ -1,15 +1,21 @@
 import itertools
 import unittest
+import functools
+from collections import namedtuple
 
 import gymnasium as gym
 import numpy as np
 import tree
 from gymnasium.spaces import Box, Discrete
-from collections import namedtuple
 
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.core.models.base import ModelConfig, Encoder
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
-from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.core.models.catalog import Catalog
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
@@ -255,6 +261,85 @@ class TestCatalog(unittest.TestCase):
                 assert isinstance(dist, expected_cls_dict[framework])
                 actions = dist.sample()
                 assert action_space.contains(actions.numpy()[0])
+
+    def test_catalog_and_algorithm_config(self):
+        """Test if we can pass catalog to algorithm config and it ends up inside
+        RLModule and is used to build models there."""
+
+        class MyCatalog(PPOCatalog):
+            pass
+
+        config = (
+            PPOConfig()
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(
+                    module_class=PPOTorchRLModule, catalog_class=MyCatalog
+                )
+            )
+            .framework("torch")
+        )
+
+        algo = config.build(env="CartPole-v0")
+        assert algo.get_policy("default_policy").model.config.catalog_class == MyCatalog
+
+    def test_custom_catalog(self):
+        """Test if we can pass custom catalog to algorithm config and train with it."""
+
+        class MyTorchCatalog(PPOCatalog):
+            def build_vf_head(self, framework):
+                return torch.nn.Linear(self.latent_dims[0], 1)
+
+        config = (
+            PPOConfig()
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(
+                    module_class=PPOTorchRLModule, catalog_class=MyTorchCatalog
+                )
+            )
+            .framework("torch")
+        )
+
+        algo = config.build(env="CartPole-v0")
+        algo.train()
+
+    def test_post_init_overwrite(self):
+        """Test if we can overwrite post_init method of a catalog class and
+        construct some custom encoders."""
+        env = gym.make("CartPole-v0")
+
+        class MyCostumTorchEncoderConfig(ModelConfig):
+            def build(self, framework):
+                return MyCostumTorchEncoder({})
+
+        class MyCostumTorchEncoder(Encoder):
+            def _forward(self, input_dict, **kwargs):
+                return {
+                    ENCODER_OUT: torch.nn.Linear(env.observation_space.shape[0], 10)(
+                        input_dict["obs"]
+                    ),
+                    STATE_OUT: None,
+                }
+
+        class MyCustomCatalog(PPOCatalog):
+            def __post_init__(self):
+                self.action_dist_class_fn = functools.partial(
+                    self.get_dist_cls_from_action_space, action_space=self.action_space
+                )
+                self.latent_dims = (10,)
+                self.encoder_config = MyCostumTorchEncoderConfig(
+                    input_dims=self.observation_space.shape,
+                    output_dims=self.latent_dims,
+                )
+
+        PPOTorchRLModule(
+            config=SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule,
+                catalog_class=MyCustomCatalog,
+                model_config_dict=MODEL_DEFAULTS,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+            ).get_rl_module_config()
+        )
 
 
 if __name__ == "__main__":
