@@ -7,17 +7,26 @@ python:
   pip_packages:
     - pytest
     - awscli
-    - alpa
     - cupy-cuda113
     - numpy==1.21.0
     - protobuf==3.20.0
   conda_packages: []
 
 post_build_cmds:
+  # Install nightly wheel.
   - pip3 install --upgrade pip
   - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip3 install jaxlib==0.3.22+cuda113.cudnn820 -f https://alpa-projects.github.io/wheels.html
+  # Install Alpa from source for now.
+  # TODO(jungong) : pip install alpa after next release.
+  - git clone https://github.com/alpa-projects/alpa.git
+  - pip3 install -e alpa
+  # Install custom built jaxlib.
+  # TODO(jungong) : revisit after next release.
+  - pip3 install https://air-example-data-2.s3.us-west-2.amazonaws.com/alpa/jaxlib-0.3.22-cp38-cp38-manylinux2014_x86_64.whl
+  # Install nvidia dependencies.
   - pip3 install --no-cache-dir nvidia-pyindex
   - pip3 install --no-cache-dir nvidia-tensorrt==7.2.3.4
+  # Huggingface transformers.
   - pip3 install -U transformers
+  # Sanity check.
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

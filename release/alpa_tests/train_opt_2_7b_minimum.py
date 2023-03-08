@@ -35,7 +35,7 @@ import numpy as np
 from tqdm import tqdm
 
 import alpa
-from alpa.model.model_util import TrainState
+from alpa.model.model_util import DynamicScale, TrainState
 import jax
 import jax.numpy as jnp
 import optax
@@ -80,7 +80,7 @@ class TrainingArguments:
         },
     )
     per_device_train_batch_size: int = field(
-        default=8, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
+        default=1, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
     )
     num_micro_batches: int = field(
         default=1,
@@ -95,14 +95,14 @@ class TrainingArguments:
     learning_rate: float = field(
         default=5e-5, metadata={"help": "The initial learning rate for AdamW."}
     )
-    num_train_epochs: float = field(
-        default=3.0, metadata={"help": "Total number of training epochs to perform."}
+    num_train_epochs: int = field(
+        default=1, metadata={"help": "Total number of training epochs to perform."}
     )
     logging_steps: int = field(
         default=10, metadata={"help": "Log every X updates steps."}
     )
     save_steps: int = field(
-        default=5, metadata={"help": "Save checkpoint every X updates steps."}
+        default=100, metadata={"help": "Save checkpoint every X updates steps."}
     )
 
 
@@ -221,32 +221,26 @@ def train_step(state, batch):
         return loss
 
     dynamic_scale = state.dynamic_scale
-    if dynamic_scale:
-        grad_fn = dynamic_scale.value_and_grad(compute_loss)
-        dynamic_scale, is_fin, loss, grads = grad_fn(state.params)
-    else:
-        grad_fn = alpa.value_and_grad(compute_loss)
-        loss, grads = grad_fn(state.params)
+    grad_fn = dynamic_scale.value_and_grad(compute_loss)
+    dynamic_scale, is_fin, loss, grads = grad_fn(state.params)
 
     new_state = state.apply_gradients(grads=grads)
-
-    if dynamic_scale:
-        new_state = new_state.replace(
-            opt_state=jax.tree_map(
-                functools.partial(jnp.where, is_fin),
-                new_state.opt_state,
-                state.opt_state,
-            ),
-            params=jax.tree_map(
-                functools.partial(jnp.where, is_fin), new_state.params, state.params
-            ),
-            master_copy=jax.tree_map(
-                functools.partial(jnp.where, is_fin),
-                new_state.master_copy,
-                state.master_copy,
-            ),
-            dynamic_scale=dynamic_scale,
-        )
+    new_state = new_state.replace(
+        opt_state=jax.tree_map(
+            functools.partial(jnp.where, is_fin),
+            new_state.opt_state,
+            state.opt_state,
+        ),
+        params=jax.tree_map(
+            functools.partial(jnp.where, is_fin), new_state.params, state.params
+        ),
+        master_copy=jax.tree_map(
+            functools.partial(jnp.where, is_fin),
+            new_state.master_copy,
+            state.master_copy,
+        ),
+        dynamic_scale=dynamic_scale,
+    )
 
     metrics = {"loss": loss}
 
@@ -274,12 +268,7 @@ def main():
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    if (
-        os.path.exists(training_args.output_dir)
-        and os.listdir(training_args.output_dir)
-        and training_args.do_train
-        and not training_args.overwrite_output_dir
-    ):
+    if os.path.exists(training_args.output_dir) and os.listdir(training_args.output_dir):
         raise ValueError(
             f"Directory ({training_args.output_dir}) already exists and is not empty."
         )
@@ -301,7 +290,7 @@ def main():
     model = FlaxAutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         config=config,
-        dtype=getattr(jnp, "bfloat16"),
+        dtype=getattr(jnp, "float16"),
         use_auth_token=None,
     )
 
@@ -343,9 +332,6 @@ def main():
         num_proc=data_args.preprocessing_num_workers,
         load_from_cache_file=False,
     )
-
-    if "train" not in tokenized_datasets:
-        raise ValueError("--do_train requires a train dataset")
     train_dataset = lm_datasets["train"]
     if data_args.max_train_samples is not None:
         max_train_samples = min(len(train_dataset), data_args.max_train_samples)
@@ -354,8 +340,11 @@ def main():
     # Adjust batch size and num_micro_batches for small datasets
     num_devices = alpa.get_global_num_devices()
     # Store some constant
-    num_epochs = int(training_args.num_train_epochs)
-    train_batch_size = int(training_args.per_device_train_batch_size) * num_devices
+    num_epochs = training_args.num_train_epochs
+    data_parallel = num_devices // (
+        training_args.operator_parallel * training_args.pipeline_parallel
+    )
+    train_batch_size = training_args.per_device_train_batch_size * data_parallel
     steps_per_epoch = len(train_dataset) // train_batch_size
     total_train_steps = steps_per_epoch * num_epochs
 
@@ -365,13 +354,17 @@ def main():
         optax.adamw(learning_rate=training_args.learning_rate),
     )
 
+    # Fix a bug in huggingface's transformers implementation
+    # (https://github.com/huggingface/transformers/pull/18462)
+    alpa.global_config.flax_always_use_fp16_embedding = True
+
     # Setup train state
     state = TrainState.create(
         apply_fn=model.__call__,
         params=model.params,
         tx=optimizer,
-        dynamic_scale=None,
-        use_master_copy=None,
+        dynamic_scale=DynamicScale(),
+        use_master_copy=True,
     )
 
     # Create parallel version of the train and eval step
@@ -447,7 +440,6 @@ def main():
                 epochs.write(
                     f"Step... {cur_step} | "
                     f"Loss: {train_metric['loss'].mean():.4f}, "
-                    f"Learning Rate: {train_metric['learning_rate'].mean():.5f}, "
                     f"Throughput: {throughput_tokens:.2f} token/s, "
                     f"{throughput_tflops:.2f} TFLOP/s"
                 )
