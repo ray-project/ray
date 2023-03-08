@@ -54,6 +54,7 @@ parts:
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/torch_image_example
+              - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
               - file: ray-air/examples/convert_existing_tf_code_to_ray_air
               - file: ray-air/examples/tfx_tabular_train_to_serve
