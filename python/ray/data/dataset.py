@@ -1145,7 +1145,11 @@ class Dataset(Generic[T]):
 
         return self.map_batches(process_batch)
 
-    @ConsumptionAPI
+    @ConsumptionAPI(
+        delegate=(
+            "Calling any of the consumption methods on the returned iterators"
+        )
+    )
     def streaming_split(
         self,
         n: int,
@@ -1162,6 +1166,13 @@ class Dataset(Generic[T]):
         The returned iterators are Ray-serializable and can be freely passed to any
         Ray task or actor.
 
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_batches(): # doctest: +SKIP
+            ...     print(batch) # doctest: +SKIP
+
         Args:
             n: Number of output iterators to return.
             equal: If True, each output iterator will see an exactly equal number
@@ -1170,6 +1181,9 @@ class Dataset(Generic[T]):
             locality_hints: Specify the node ids corresponding to each iterator
                 location. Datasets will try to minimize data movement based on the
                 iterator output locations. This list must have length ``n``.
+
+        Returns:
+            The output iterator splits.
         """
         return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
 
