@@ -15,6 +15,7 @@ from filelock import FileLock
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+    RAY_RUNTIME_ENV_SKIP_GITIGNORE,
 )
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
@@ -246,7 +247,8 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
 
 def _get_gitignore(path: Path) -> Optional[Callable]:
-    if os.environ.get("RAY_RUNTIME_ENV_SKIP_GITIGNORE"):
+    skip_gitignore = os.environ.get(RAY_RUNTIME_ENV_SKIP_GITIGNORE, "0") == "1"
+    if skip_gitignore:
         return None
 
     path = path.absolute()
