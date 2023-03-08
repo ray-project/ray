@@ -58,13 +58,9 @@ class EntityState {
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
 
  protected:
-  int64_t GetNextSequenceId() { return ++sequence_id; }
-
   // Subscribers of this entity.
   // The underlying SubscriberState is owned by Publisher.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
-
-  int64_t sequence_id = 0;
 };
 
 /// The two implementations of EntityState are BasicEntityState and CappedEntityState.
@@ -268,7 +264,7 @@ class PublisherInterface {
   ///
   /// \param pub_message The message to publish.
   /// Required to contain channel_type and key_id fields.
-  virtual void Publish(const rpc::PubMessage &pub_message) = 0;
+  virtual void Publish(rpc::PubMessage pub_message) = 0;
 
   /// Publish to the subscriber that the given key id is not available anymore.
   /// It will invoke the failure callback on the subscriber side.
@@ -359,7 +355,7 @@ class Publisher : public PublisherInterface {
   ///
   /// \param pub_message The message to publish.
   /// Required to contain channel_type and key_id fields.
-  void Publish(const rpc::PubMessage &pub_message) override;
+  void Publish(rpc::PubMessage pub_message) override;
 
   /// Publish to the subscriber that the given key id is not available anymore.
   /// It will invoke the failure callback on the subscriber side.
@@ -465,7 +461,7 @@ class Publisher : public PublisherInterface {
   /// The maximum number of objects to publish for each publish calls.
   int publish_batch_size_;
 
-  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<rpc::ChannelType, int64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
 };
 
 }  // namespace pubsub

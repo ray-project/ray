@@ -56,15 +56,13 @@ class PublisherTest : public ::testing::Test {
   int64_t GetNextSequenceId() { return ++sequence_id_; }
 
   const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id,
-                                           int64_t sequence_id = -1) {
+                                           int64_t sequence_id = 0) {
     rpc::PubMessage pub_message;
     auto *object_eviction_msg = pub_message.mutable_worker_object_eviction_message();
     object_eviction_msg->set_object_id(object_id.Binary());
     pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    if (sequence_id == -1) {
-      sequence_id = GetNextSequenceId();
-    }
+    RAY_LOG(INFO) << "message sequence_id is" << sequence_id;
     pub_message.set_sequence_id(sequence_id);
     return pub_message;
   }
@@ -352,8 +350,9 @@ TEST_F(PublisherTest, TestSubscriber) {
   absl::flat_hash_set<ObjectID> published_objects;
   // Make sure publishing one object works as expected.
   auto oid = ObjectID::FromRandom();
-  subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)),
-                           /*try_publish=*/false);
+  subscriber->QueueMessage(
+      std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())),
+      /*try_publish=*/false);
   published_objects.emplace(oid);
   ASSERT_TRUE(subscriber->PublishIfPossible());
   ASSERT_TRUE(object_ids_published.contains(oid));
@@ -363,8 +362,9 @@ TEST_F(PublisherTest, TestSubscriber) {
   // Add 3 oids and see if it works properly.
   for (int i = 0; i < 3; i++) {
     oid = ObjectID::FromRandom();
-    subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)),
-                             /*try_publish=*/false);
+    subscriber->QueueMessage(
+        std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())),
+        /*try_publish=*/false);
     published_objects.emplace(oid);
   }
   // Since there's no connection, objects won't be published.
@@ -408,8 +408,9 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   for (int i = 0; i < 10; i++) {
     auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
-    subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)),
-                             /*try_publish=*/false);
+    subscriber->QueueMessage(
+        std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())),
+        /*try_publish=*/false);
     published_objects.emplace(oid);
   }
 
@@ -477,7 +478,8 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   // A message is published, so the connection is refreshed.
   auto oid = ObjectID::FromRandom();
-  subscriber->QueueMessage(std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid)));
+  subscriber->QueueMessage(
+      std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
   ASSERT_EQ(reply_cnt, 2);
@@ -613,7 +615,7 @@ TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   publisher_->ConnectToSubscriber(request_, &reply, send_reply_callback);
   publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
-  publisher_->Publish(GeneratePubMessage(oid));
+  publisher_->Publish(GeneratePubMessage(oid, 0));
   ASSERT_EQ(batched_ids[0], oid);
 }
 
@@ -710,9 +712,7 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
 
   // Check all of nodes are publishing objects properly.
   for (int i = 0; i < num_nodes; i++) {
-    RAY_LOG(INFO) << "crashed here?";
     publisher_->ConnectToSubscriber(request_, &reply, send_reply_callback);
-    RAY_LOG(INFO) << "or here?";
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
     ASSERT_EQ(oid_test, published_oid);
@@ -1073,6 +1073,7 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   rpc::PubMessage pub_message;
   pub_message.set_key_id(job_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  pub_message.set_sequence_id(GetNextSequenceId());
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
 
   // Buffer is available.
@@ -1080,10 +1081,12 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
 
   // Buffer is still available.
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
+  pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(pub_message));
 
   // Buffer is full.
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
+  pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(pub_message));
 
   // Subscriber receives the last two messages. 1st message is dropped.
@@ -1096,6 +1099,7 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
 
   // A message larger than the buffer limit can still be published.
   pub_message.mutable_error_info_message()->set_error_message(std::string(14000, 'd'));
+  pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(pub_message));
   reply = FlushSubscriber(subscriber);
   ASSERT_EQ(reply.pub_messages().size(), 1);
@@ -1115,6 +1119,7 @@ TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   pub_message.set_key_id("aaa");
   pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
+  pub_message.set_sequence_id(GetNextSequenceId());
 
   // Buffer is available.
   EXPECT_TRUE(subscription_index.Publish(pub_message));
@@ -1122,11 +1127,13 @@ TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   // Buffer is still available.
   pub_message.set_key_id("bbb");
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
+  pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(pub_message));
 
   // Buffer is full.
   pub_message.set_key_id("ccc");
   pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
+  pub_message.set_sequence_id(GetNextSequenceId());
   EXPECT_TRUE(subscription_index.Publish(pub_message));
 
   auto reply = FlushSubscriber(subscriber);

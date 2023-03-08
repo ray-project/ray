@@ -27,7 +27,6 @@ bool BasicEntityState::Publish(const rpc::PubMessage &pub_message) {
     return false;
   }
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
-  msg->set_sequence_id(GetNextSequenceId());
   for (auto &[id, subscriber] : subscribers_) {
     subscriber->QueueMessage(msg);
   }
@@ -79,7 +78,6 @@ bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
   }
 
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
-  msg->set_sequence_id(GetNextSequenceId());
   pending_messages_.push(msg);
   total_size_ += message_size;
   message_sizes_.push(message_size);
@@ -253,8 +251,8 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
-    RAY_LOG(DEBUG) << "removing " << max_processed_sequence_id << " : "
-                   << mailbox_.front()->sequence_id();
+    RAY_LOG(INFO) << "removing " << max_processed_sequence_id << " : "
+                  << mailbox_.front()->sequence_id();
     mailbox_.pop_front();
   }
 
@@ -274,7 +272,7 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
-  RAY_LOG(DEBUG) << "enqueue: " << pub_message->sequence_id();
+  RAY_LOG(INFO) << "enqueue: " << pub_message->sequence_id();
   mailbox_.push_back(pub_message);
   if (try_publish) {
     PublishIfPossible();
@@ -377,14 +375,16 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
 }
 
-void Publisher::Publish(const rpc::PubMessage &pub_message) {
+void Publisher::Publish(rpc::PubMessage pub_message) {
+  RAY_CHECK(pub_message.sequence_id() == 0) << "sequence_id should not be set;";
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
+  int64_t sequence_id = ++cum_pub_message_cnt_[channel_type];
+  pub_message.set_sequence_id(sequence_id);
   subscription_index.Publish(pub_message);
-  cum_pub_message_cnt_[channel_type]++;
 }
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,
