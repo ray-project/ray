@@ -1,8 +1,9 @@
+import logging
 import time
-
-from gymnasium.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete, MultiBinary
-import numpy as np
 import unittest
+
+import numpy as np
+from gymnasium.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete, MultiBinary
 
 import ray
 from ray.rllib.algorithms.a3c import A3CConfig
@@ -26,12 +27,12 @@ from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNet
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
+logger = logging.getLogger(__name__)
+
 ACTION_SPACES_TO_TEST = {
     # Test discrete twice here until we support multi_binary action spaces
-    "discrete": Discrete(5),  # TODO: (Artur) Support "multi_binary"
-    "discrete2": Discrete(5),
+    "discrete": Discrete(5),
     "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
-    "vector2d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple([Discrete(2), Discrete(3), Box(-1.0, 1.0, (5,), dtype=np.float32)]),
@@ -60,6 +61,14 @@ OBSERVATION_SPACES_TO_TEST = {
     ),
 }
 
+# The action spaces that we test RLModules with
+RLMODULE_SUPPORTED_ACTION_SPACES = ["discrete", "vector1d"]
+
+# The observation spaces that we test RLModules with
+RLMODULE_SUPPORTED_OBSERVATION_SPACES = ["discrete", "vector1d", "image"]
+
+DEFAULT_OBSERVATION_SPACE = DEFAULT_ACTION_SPACE = "discrete"
+
 
 def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["log_level"] = "ERROR"
@@ -68,41 +77,26 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     def _do_check(alg, config, a_name, o_name):
         if alg == "PPO":
             # We need to copy here so that this validation does not affect the actual
-            # validation method.
+            # validation method call further down the line.
             config_copy = config.copy()
             config_copy.validate()
             # If RLModules are enabled, we need to skip a few tests for now:
             if config_copy._enable_rl_module_api:
                 # Skip PPO cases in which RLModules don't support the given spaces yet.
-                new_a_name = a_name
-                a_name_changed = False
-                new_o_name = o_name
-                o_name_changed = False
-                if a_name in [
-                    "int_actions",
-                    "multidiscrete",
-                    "tuple",
-                    "dict",
-                    "vector2d",
-                ]:
-                    # TODO(Artur): Implement support for these spaces and test with
-                    #  RLModules.
-                    new_a_name = "discrete"
-                    a_name_changed = True
-                if o_name in ["multi_binary", "tuple", "dict", "vector2d"]:
-                    # TODO(Artur): Implement support for these spaces and test with
-                    #  RLModules.
-                    new_o_name = "discrete"
-                    o_name_changed = True
-                if a_name_changed or o_name_changed:
-                    print(
-                        f"Skipping PPO test case: Action space {a_name}, obs space "
-                        f"{o_name}. Testing action space {new_a_name}, obs space"
-                        f" {new_o_name} "
-                        f"instead."
+                if o_name not in RLMODULE_SUPPORTED_OBSERVATION_SPACES:
+                    logger.warning(
+                        "Skipping PPO test with RLModules for obs space {}".format(
+                            o_name
+                        )
                     )
-                    a_name = new_a_name
-                    o_name = new_o_name
+                    return
+                if a_name not in RLMODULE_SUPPORTED_ACTION_SPACES:
+                    logger.warning(
+                        "Skipping PPO test with RLModules for action space {}".format(
+                            a_name
+                        )
+                    )
+                    return
 
         fw = config["framework"]
         action_space = ACTION_SPACES_TO_TEST[a_name]
@@ -169,18 +163,15 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     if tf2:
         frameworks += ("tf2",)
     for _ in framework_iterator(config, frameworks=frameworks):
-        # Zip through action- and obs-spaces.
-        for a_name, o_name in zip(
-            ACTION_SPACES_TO_TEST.keys(), OBSERVATION_SPACES_TO_TEST.keys()
-        ):
+        # Test all action spaces first.
+        for a_name in ACTION_SPACES_TO_TEST.keys():
+            o_name = DEFAULT_OBSERVATION_SPACE
             _do_check(alg, config, a_name, o_name)
-        # Do the remaining obs spaces.
-        assert len(OBSERVATION_SPACES_TO_TEST) >= len(ACTION_SPACES_TO_TEST)
-        fixed_action_key = next(iter(ACTION_SPACES_TO_TEST.keys()))
-        for i, o_name in enumerate(OBSERVATION_SPACES_TO_TEST.keys()):
-            if i < len(ACTION_SPACES_TO_TEST):
-                continue
-            _do_check(alg, config, fixed_action_key, o_name)
+
+        # Now test all observation spaces.
+        for o_name in OBSERVATION_SPACES_TO_TEST.keys():
+            a_name = DEFAULT_ACTION_SPACE
+            _do_check(alg, config, a_name, o_name)
 
 
 class TestSupportedSpacesIMPALAAPPO(unittest.TestCase):
