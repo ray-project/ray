@@ -35,6 +35,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -2101,7 +2102,13 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(ZipStage(other))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        other_logical_plan = other._logical_plan
+        if logical_plan is not None and other_logical_plan is not None:
+            op = Zip(logical_plan.dag, other_logical_plan.dag)
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset[T]":
