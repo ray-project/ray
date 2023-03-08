@@ -171,6 +171,7 @@ class TrainableUtil:
                     f"excluded from analysis. Consider deleting the directory. "
                     f"Full path: {basename}"
                 )
+                continue
             elif len(metadata_file) > 1:
                 raise ValueError(
                     f"The checkpoint {basename} contains more than one metadata file. "
