@@ -151,7 +151,8 @@ class RaySyncer {
   ///
   /// \param from_node_id Where the message was sent.
   /// \param message The message to be broadcasted.
-  void BroadcastMessage(const std::string& from_node_id, std::shared_ptr<const RaySyncMessage> message);
+  void BroadcastMessage(const std::string &from_node_id,
+                        std::shared_ptr<const RaySyncMessage> message);
 
   /// io_context for this thread
   instrumented_io_context &io_context_;
@@ -162,7 +163,9 @@ class RaySyncer {
   /// Manage connections. Here the key is the NodeID in binary form.
   absl::flat_hash_map<std::string, RaySyncerBidiReactor *> sync_reactors_;
 
-  std::array<absl::flat_hash_map<std::string, std::shared_ptr<int64_t>>, kComponentArraySize> message_versions_;
+  std::array<absl::flat_hash_map<std::string, std::shared_ptr<int64_t>>,
+             kComponentArraySize>
+      message_versions_;
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
 

@@ -314,9 +314,8 @@ void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> me
   BroadcastMessage(GetLocalNodeID(), std::move(message));
 }
 
-void RaySyncer::BroadcastMessage(
-    const std::string& from_node_id,
-    std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncer::BroadcastMessage(const std::string &from_node_id,
+                                 std::shared_ptr<const RaySyncMessage> message) {
   io_context_.dispatch(
       [this, from_node_id, message] {
         // The message is stale. Just skip this one.
@@ -326,13 +325,13 @@ void RaySyncer::BroadcastMessage(
         if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
-        auto& ver = message_versions_[message->message_type()][message->node_id()];
-        if(ver == nullptr) {
+        auto &ver = message_versions_[message->message_type()][message->node_id()];
+        if (ver == nullptr) {
           ver = std::make_shared<int64_t>(message->version());
         }
 
         for (auto &reactor : sync_reactors_) {
-          if(reactor.first == from_node_id) {
+          if (reactor.first == from_node_id) {
             continue;
           }
 

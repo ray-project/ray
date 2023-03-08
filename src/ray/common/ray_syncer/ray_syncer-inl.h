@@ -226,14 +226,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
 
     while (!sending_queue_.empty()) {
-      auto& sending_message = sending_queue_.front();
+      auto &sending_message = sending_queue_.front();
       auto message = sending_message.message.lock();
       auto version = std::move(sending_message.version);
       sending_queue_.pop();
-      if(!message) {
+      if (!message) {
         continue;
       }
-      if(version &&  message->version() < *version) {
+      if (version && message->version() < *version) {
         continue;
       }
 
@@ -309,7 +309,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
  private:
-
   /// Buffering all the updates. Sending will be done in an async way.
   std::queue<SyncerMessage> sending_queue_;
   bool sending_ = false;
