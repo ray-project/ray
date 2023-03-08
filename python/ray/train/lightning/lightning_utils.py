@@ -58,11 +58,18 @@ class RayModelCheckpoint(ModelCheckpoint):
                 metrics[k] = v.cpu().numpy()
         kwargs["metrics"] = metrics
 
-        # Report updated checkpoint
-        new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
-        if len(new_checkpoint) == 1:
-            filepath = new_checkpoint.pop()
+        filepath = None
+        if self.monitor:
+            # Metric-based top-k checkpoint
+            new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
+            if new_checkpoint:
+                filepath = new_checkpoint.pop()
+        else:
+            # Frequency-based checkpoint
+            filepath = self.best_model_path
 
+        # Report updated checkpoint
+        if filepath:
             # AIR only takes the checkpoint of rank 0. Report a dummy checkpoint on other workers.
             if trainer.global_rank == 0:
                 kwargs["checkpoint"] = LightningCheckpoint.from_directory(

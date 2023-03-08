@@ -135,6 +135,10 @@ class LightningTrainer(DataParallelTrainer):
             datasets_iter_config,
         )
 
+        run_config.checkpoint_config = self._create_air_checkpoint_config(
+            model_checkpoint_config=model_checkpoint_config
+        )
+
         super(LightningTrainer, self).__init__(
             train_loop_per_worker=_lightning_train_loop_per_worker,
             train_loop_config=train_loop_config,
@@ -182,25 +186,33 @@ class LightningTrainer(DataParallelTrainer):
                 trainer_loop_config[key] = {}
 
         return trainer_loop_config
-    
-    def _align_checkpoint_configs(self, model_checkpoint_config: Optional[Dict] = None):
-        if model_checkpoint_config is None:
-            # If no checkpoint config provided, always save the last checkpoint
-            model_checkpoint_config = {
-                "monitor": "epoch",
-                "mode": "max",
-                "save_top_k": 1
-            }
-            air_checkpoint_config = CheckpointConfig(
-                num_to_keep=1,
-            )
-        else:
-            air_checkpoint_config = CheckpointConfig(
-                num_to_keep=model_checkpoint_config.get("save_top_k", 1),
-                checkpoint_score_attribute=model_checkpoint_config.get("monitor", "epoch"),
-                checkpoint_score_order=model_checkpoint_config.get("mode", "max"),
-            )
-        return model_checkpoint_config, air_checkpoint_config
+
+    def _create_air_checkpoint_config(self, model_checkpoint_config: Optional[Dict] = None) -> CheckpointConfig:
+        """
+        Generate AIR CheckpointConfig based on provided Lightning checkpoint config.
+
+        PTL checkpointing logic:
+            no monitor + no save_top_k:  default = 1, only save last one
+            no monitor +    save_top_k:  if save_top_k != 1, save all
+               monitor + no save_top_k:  default = 1, save the best checkpoint
+               monitor +    save_top_k:  n/a
+        """
+
+        if not model_checkpoint_config:
+            model_checkpoint_config = {}
+
+        mode = model_checkpoint_config.get("mode", "min")
+        monitor = model_checkpoint_config.get("monitor", None)
+        num_to_keep = model_checkpoint_config.get("save_top_k", 1)
+        if not monitor and num_to_keep != 1:
+            num_to_keep = None
+
+        air_checkpoint_config = CheckpointConfig(
+            num_to_keep=num_to_keep,
+            checkpoint_score_attribute=monitor,
+            checkpoint_score_order=mode,
+        )
+        return air_checkpoint_config
 
 
 def _prepare_dataloaders(dataloaders: Optional[DataLoader]) -> Optional[DataLoader]:
@@ -246,9 +258,8 @@ def _lightning_train_loop_per_worker(config):
 
     # Prepare Lightning Trainer
     trainer_config = config.pop(LIGHTNING_TRAINER_CONFIG_KEY)
-    trainer_config["enable_progress_bar"] = False 
-    
-    
+    trainer_config["enable_progress_bar"] = False
+
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
         current_device = ray.train.torch.get_device()
@@ -274,7 +285,7 @@ def _lightning_train_loop_per_worker(config):
         )
 
     # We always need a checkpoint callback to report metrics
-    trainer_config["enable_checkpointing"] = True 
+    trainer_config["enable_checkpointing"] = True
     # TODO(yunxuanx): Align with AIR Checkpoint Config
     model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG_KEY)
     ray_model_checkpoint = RayModelCheckpoint(**model_checkpoint_config)
