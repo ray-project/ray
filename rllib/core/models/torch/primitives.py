@@ -60,8 +60,10 @@ class TorchMLP(nn.Module):
         self.output_dim = dims[-1]
         self.mlp = nn.Sequential(*layers)
 
+        self.expected_input_dtype = torch.float32
+
     def forward(self, x):
-        return self.mlp(x)
+        return self.mlp(x.type(self.expected_input_dtype))
 
 
 class TorchCNN(nn.Module):
@@ -152,7 +154,9 @@ class TorchCNN(nn.Module):
         # Create the cnn that potentially includes a flattened layer
         self.cnn = nn.Sequential(*layers)
 
+        self.expected_input_dtype = torch.float32
+
     def forward(self, x):
         # Permute b/c data comes in as [B, dim, dim, channels]:
         inputs = x.permute(0, 3, 1, 2)
-        return self.cnn(inputs)
+        return self.cnn(inputs.type(self.expected_input_dtype))
