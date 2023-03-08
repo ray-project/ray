@@ -406,10 +406,10 @@ def _expand_paths(
     # If parent directory (or base directory, if using partitioning) is common to all
     # paths, fetch all file infos at that prefix and filter the response to the provided
     # paths.
-    normalized_base_dir = _unwrap_protocol(partitioning.base_dir)
-    if (partitioning is not None and common_path == normalized_base_dir) or all(
-        str(pathlib.Path(path).parent) == common_path for path in paths
-    ):
+    if (
+        partitioning is not None
+        and common_path == _unwrap_protocol(partitioning.base_dir)
+    ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
         path_to_size = {path: 0 for path in paths}
         for path, file_size in _get_file_infos(common_path, filesystem):
             if path in path_to_size:
