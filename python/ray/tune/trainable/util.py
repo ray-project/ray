@@ -169,14 +169,15 @@ class TrainableUtil:
                     f"This usually means that the training process was interrupted "
                     f"while the checkpoint was being written. The checkpoint will be "
                     f"excluded from analysis. Consider deleting the directory. "
-                    f"Full path: {basename}"
+                    f"Full path: {chkpt_dir}"
                 )
                 continue
             elif len(metadata_file) > 1:
                 raise ValueError(
                     f"The checkpoint {basename} contains more than one metadata file. "
                     f"If this happened without manual intervention, please file an "
-                    f"issue at https://github.com/ray-project/ray/issues"
+                    f"issue at https://github.com/ray-project/ray/issues."
+                    f"Full path: {chkpt_dir}"
                 )
 
             metadata_file = metadata_file[0]
