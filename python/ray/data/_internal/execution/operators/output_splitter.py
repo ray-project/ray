@@ -103,6 +103,8 @@ class OutputSplitter(PhysicalOperator):
     def inputs_done(self) -> None:
         super().inputs_done()
         if not self._equal:
+            self._dispatch_bundles(dispatch_all=True)
+            assert not self._buffer, "Should have dispatched all bundles."
             return
 
         # Otherwise:
@@ -140,15 +142,17 @@ class OutputSplitter(PhysicalOperator):
     def progress_str(self) -> str:
         if self._locality_hints:
             return (
-                f"[{self._locality_hits} locality hits {self._locality_misses} misses]"
+                f"[{self._locality_hits} locality hits, {self._locality_misses} misses]"
             )
         else:
             return "[locality disabled]"
 
-    def _dispatch_bundles(self) -> None:
+    def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
-        while self._buffer and len(self._buffer) >= self._min_buffer_size:
+        while self._buffer and (
+            dispatch_all or len(self._buffer) >= self._min_buffer_size
+        ):
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
@@ -157,7 +161,7 @@ class OutputSplitter(PhysicalOperator):
                 self._output_queue.append(target_bundle)
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
-                    if target_bundle.get_cached_location() == preferred_loc:
+                    if self._get_location(target_bundle) == preferred_loc:
                         self._locality_hits += 1
                     else:
                         self._locality_misses += 1
@@ -175,7 +179,7 @@ class OutputSplitter(PhysicalOperator):
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
-                if bundle.get_cached_location() == preferred_loc:
+                if self._get_location(bundle) == preferred_loc:
                     self._buffer.remove(bundle)
                     return bundle
         return self._buffer.pop(0)
@@ -213,6 +217,16 @@ class OutputSplitter(PhysicalOperator):
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
         return output
+
+    def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
+        """Ask Ray for the node id of the given bundle.
+
+        This method may be overriden for testing.
+
+        Returns:
+            A node id associated with the bundle, or None if unknown.
+        """
+        return bundle.get_cached_location()
 
 
 def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):

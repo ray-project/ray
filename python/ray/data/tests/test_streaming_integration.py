@@ -92,25 +92,34 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
     def get_lengths(*iterators):
         lengths = []
         for it in iterators:
-            l = 0
+            x = 0
             for batch in it.iter_batches():
-                l += len(batch)
-            lengths.append(l)
+                x += len(batch)
+            lengths.append(x)
         lengths.sort()
         return lengths
 
     ds = ray.data.range(1000)
-    i1, i2, = ds.streaming_split(2, equal=True)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
     lengths = get_lengths(i1, i2)
     assert lengths == [500, 500], lengths
 
     ds = ray.data.range(1)
-    i1, i2, = ds.streaming_split(2, equal=True)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
     lengths = get_lengths(i1, i2)
     assert lengths == [0, 0], lengths
 
     ds = ray.data.range(1)
-    i1, i2, = ds.streaming_split(2, equal=False)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=False)
     lengths = get_lengths(i1, i2)
     assert lengths == [0, 1], lengths
 
