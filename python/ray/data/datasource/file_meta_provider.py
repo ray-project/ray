@@ -421,8 +421,8 @@ def _expand_paths(
     # TODO(Clark): Group file paths by parent directory paths and do a prefix
     # fetch + client-side filter if the number of groups is << the total number of
     # paths?
-    # Only request 0.25 CPU since these tasks are I/O-bound.
-    num_cpus = 0.25
+    # Only request 0.5 CPU since these tasks are I/O-bound.
+    num_cpus = 0.5
     get_file_infos_remotely = cached_remote_fn(
         _get_file_infos_remotely,
         num_cpus=num_cpus,
@@ -434,7 +434,7 @@ def _expand_paths(
         # dominates the Ray task overhead while ensuring good parallelism.
         # Always launch at least 2 parallel fetch tasks.
         max(len(paths) // PATHS_PER_FILE_SIZE_FETCH_TASK, 2),
-        # Oversubscribe cluster CPU by 4x since these tasks are I/O-bound.
+        # Oversubscribe cluster CPU by 2x since these tasks are I/O-bound.
         round(available_cpus / num_cpus),
     )
     size_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
