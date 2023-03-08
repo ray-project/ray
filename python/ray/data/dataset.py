@@ -1145,7 +1145,7 @@ class Dataset(Generic[T]):
 
         return self.map_batches(process_batch)
 
-    # @ConsumptionAPI
+    @ConsumptionAPI
     def streaming_split(
         self,
         n: int,
@@ -1153,6 +1153,24 @@ class Dataset(Generic[T]):
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
     ) -> List[DatasetIterator]:
+        """Returns ``n`` :class:`~ray.data.DatasetIterator`s that can be used to read
+        disjoint subsets of the dataset in parallel.
+
+        This method is the recommended way to consume Datasets from multiple processes
+        (e.g., for distributed training). It requires streaming execution mode.
+
+        The returned iterators are Ray-serializable and can be freely passed to any
+        Ray task or actor.
+
+        Args:
+            n: Number of output iterators to return.
+            equal: If True, each output iterator will see an exactly equal number
+                of rows, dropping data if necessary. If False, some iterators may see
+                slightly more or less rows than other, but no data will be dropped.
+            locality_hints: Specify the node ids corresponding to each iterator
+                location. Datasets will try to minimize data movement based on the
+                iterator output locations. This list must have length ``n``.
+        """
         return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
@@ -1175,7 +1193,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
-        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             n: Number of child datasets to return.
@@ -1376,7 +1395,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             indices: List of sorted integers which indicate where the dataset
