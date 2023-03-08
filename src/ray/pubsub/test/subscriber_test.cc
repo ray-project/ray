@@ -52,6 +52,8 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
     return r;
   }
 
+  int64_t GetNextSequenceId() { return ++sequence_id_; }
+
   bool ReplyLongPolling(rpc::ChannelType channel_type,
                         std::vector<ObjectID> &object_ids,
                         Status status = Status::OK()) {
@@ -65,6 +67,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       auto *new_pub_message = reply.add_pub_messages();
       new_pub_message->set_key_id(object_id.Binary());
       new_pub_message->set_channel_type(channel_type);
+      new_pub_message->set_sequence_id(GetNextSequenceId());
     }
     callback(status, reply);
     long_polling_callbacks.pop_front();
@@ -85,6 +88,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       new_pub_message->set_key_id(object_id.Binary());
       new_pub_message->set_channel_type(channel_type);
       new_pub_message->mutable_failure_message();
+      new_pub_message->set_sequence_id(GetNextSequenceId());
     }
     callback(Status::OK(), reply);
     long_polling_callbacks.pop_front();
@@ -98,6 +102,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
   std::deque<rpc::ClientCallback<rpc::PubsubCommandBatchReply>> command_batch_callbacks;
   std::queue<rpc::PubsubCommandBatchRequest> requests_;
+  int64_t sequence_id_ = 0;
 };
 
 namespace pubsub {

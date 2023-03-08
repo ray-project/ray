@@ -381,8 +381,10 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
       const auto &key_id = msg.key_id();
+      RAY_CHECK(msg.sequence_id() > 0)
+          << "message's sequence_id is invalid " << msg.sequence_id();
       if (msg.sequence_id() <= processed_sequences_[publisher_id]) {
-        RAY_LOG_EVERY_MS(ERROR, 10000)
+        RAY_LOG_EVERY_MS(WARNING, 10000)
             << "Received message out of order, proccessed_sequence_id: "
             << processed_sequences_[publisher_id] << ", received message sequence_id "
             << msg.sequence_id();
@@ -487,7 +489,7 @@ bool Subscriber::CheckNoLeaks() const {
     }
   }
   return !leaks && publishers_connected_.empty() && command_batch_sent_.empty() &&
-         commands_.empty();
+         commands_.empty() && processed_sequences_.empty();
 }
 
 std::string Subscriber::DebugString() const {

@@ -490,7 +490,13 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
-  // ASSERT_TRUE(subscriber->CheckNoLeaks());
+  // There is one message to be GCed.
+  ASSERT_FALSE(subscriber->CheckNoLeaks());
+
+  // Notify that message 1 is safe to be GCed.
+  request_.set_max_processed_sequence_id(1);
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
+  ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriberDisconnected) {
