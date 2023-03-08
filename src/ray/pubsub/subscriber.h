@@ -491,6 +491,9 @@ class Subscriber : public SubscriberInterface {
   /// Mapping of channel type to channels.
   absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<SubscriberChannel>> channels_
       GUARDED_BY(mutex_);
+
+  ///
+  absl::flat_hash_map<PublisherID, int64_t> processed_sequences_ GUARDED_BY(mutex_);
 };
 
 }  // namespace pubsub

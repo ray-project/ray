@@ -58,9 +58,13 @@ class EntityState {
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
 
  protected:
+  int64_t GetNextSequenceId() { return sequence_id++; }
+
   // Subscribers of this entity.
   // The underlying SubscriberState is owned by Publisher.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
+
+  int64_t sequence_id = 0;
 };
 
 /// The two implementations of EntityState are BasicEntityState and CappedEntityState.
@@ -230,15 +234,8 @@ class SubscriberState {
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
 
-  /// Indicating if there is a publish message in flight.
-  std::atomic<bool> publish_inflight_ = false;
-  /// The sequence_id of last message that is known to be sent successfully.
-  std::atomic<int64_t> last_sent_messsage_sequence_id_ = -1;
-  /// The next sequence_id to enqueue in mailbox.
-  int64_t next_sequence_id_ = 0;
-  /// Queued messages to publish in the pair of <sequence_id, message>.
-  /// We guarantees the sequence_id in mailbox_ is monotonically increasing.
-  std::deque<std::pair<int64_t, std::shared_ptr<rpc::PubMessage>>> mailbox_;
+  /// Queued messages to publish.
+  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
 
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;

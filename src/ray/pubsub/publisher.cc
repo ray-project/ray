@@ -27,6 +27,7 @@ bool BasicEntityState::Publish(const rpc::PubMessage &pub_message) {
     return false;
   }
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
+  msg->set_sequence_id(GetNextSequenceId());
   for (auto &[id, subscriber] : subscribers_) {
     subscriber->QueueMessage(msg);
   }
@@ -78,6 +79,7 @@ bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
   }
 
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
+  msg->set_sequence_id(GetNextSequenceId());
   pending_messages_.push(msg);
   total_size_ += message_size;
   message_sizes_.push(message_size);
@@ -246,6 +248,14 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  auto max_processed_sequence_id = request.max_processed_sequence_id();
+
+  // clean up messages that have already been processed.
+  while (!mailbox_.empty() &&
+         mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
+    mailbox_.pop_front();
+  }
+
   if (long_polling_connection_) {
     // Because of the new long polling request, flush the current polling request with an
     // empty reply.
@@ -262,42 +272,29 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
-  mailbox_.push_back(std::make_pair(next_sequence_id_, pub_message));
-  RAY_LOG(INFO) << "message inserted: " << next_sequence_id_;
-  next_sequence_id_++;
+  mailbox_.push_back(pub_message);
   if (try_publish) {
     PublishIfPossible();
   }
 }
 
 bool SubscriberState::PublishIfPossible(bool force_noop) {
-  if (!long_polling_connection_ || publish_inflight_.load()) {
+  if (!long_polling_connection_) {
     return false;
   }
   if (!force_noop && mailbox_.empty()) {
     return false;
   }
 
-  publish_inflight_ = true;
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
-
-  // clean up messages that have already been sent.
-  while (!mailbox_.empty() && mailbox_.front().first <= last_sent_messsage_sequence_id_) {
-    mailbox_.pop_front();
-  }
-
-  int64_t max_sequence_id_sending = last_sent_messsage_sequence_id_;
 
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
       if (long_polling_connection_->reply->pub_messages().size() >= publish_batch_size_) {
         break;
       }
-      RAY_LOG(INFO) << "message info: " << it->first << ":" <<max_sequence_id_sending;
-      RAY_CHECK(it->first > max_sequence_id_sending);
-      max_sequence_id_sending = it->first;
-      const rpc::PubMessage &msg = *it->second;
+      const rpc::PubMessage &msg = **it;
       // Avoid sending empty message to the subscriber. The message might have been
       // cleared because the subscribed entity's buffer was full.
       if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
@@ -306,15 +303,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
     }
   }
 
-  long_polling_connection_->send_reply_callback(
-      Status::OK(),
-      /*success*/
-      [this, max_sequence_id_sending]() {
-        RAY_CHECK(max_sequence_id_sending >= last_sent_messsage_sequence_id_);
-        last_sent_messsage_sequence_id_ = max_sequence_id_sending;
-        publish_inflight_ = false;
-      },
-      /*failure*/ [this]() { publish_inflight_ = false; });
+  long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Clean up & update metadata.
   long_polling_connection_.reset();

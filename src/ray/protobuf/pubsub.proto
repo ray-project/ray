@@ -77,6 +77,7 @@ message PubMessage {
     // The message that indicates the given key id is not available anymore.
     FailureMessage failure_message = 6;
   }
+  int64 sequence_id = 16;
 }
 
 message WorkerObjectEvictionMessage {
@@ -202,6 +203,8 @@ message WorkerObjectLocationsSubMessage {
 message PubsubLongPollingRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
+  /// 
+  int64 max_processed_sequence_id = 2;
 }
 
 message PubsubLongPollingReply {

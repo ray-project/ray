@@ -693,7 +693,9 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
 
   // Check all of nodes are publishing objects properly.
   for (int i = 0; i < num_nodes; i++) {
+    RAY_LOG(INFO) << "crashed here?";
     publisher_->ConnectToSubscriber(request_, &reply, send_reply_callback);
+    RAY_LOG(INFO) << "or here?";
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
     ASSERT_EQ(oid_test, published_oid);
