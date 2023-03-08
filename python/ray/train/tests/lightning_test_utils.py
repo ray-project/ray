@@ -53,10 +53,6 @@ class LitAutoEncoder(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
-
-    def training_epoch_end(self, outputs) -> None:
-        loss = sum(output["loss"] for output in outputs) / len(outputs)
-        self.log_dict({"epoch_end_metric": 123})
     
     def validation_step(self, batch, batch_idx):
         x, y = batch
@@ -152,12 +148,12 @@ class MNISTDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         # split data into train and val sets
         if stage == 'fit' or stage is None:
-            mnist = MNIST(self.data_dir, train=True, transform=self.transform)
+            mnist = MNIST(self.data_dir, train=True, download=True, transform=self.transform)
             self.mnist_train, self.mnist_val = random_split(mnist, [55000, 5000])
 
         # assign test set for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
+            self.mnist_test = MNIST(self.data_dir, train=False, download=True, transform=self.transform)
 
     def train_dataloader(self):
         return DataLoader(self.mnist_train, batch_size=self.batch_size, num_workers=4)

@@ -1,7 +1,6 @@
 import os
 os.environ['RAY_ML_DEV'] = "1"
 
-import pytorch_lightning as pl
 from ray.train.lightning import LightningTrainer
 from torchvision.datasets import MNIST
 from torchvision import transforms
@@ -13,7 +12,7 @@ import torch.nn.functional as F
 from ray.tune.syncer import SyncConfig
 from ray.air.config import CheckpointConfig, ScalingConfig, RunConfig
 import ray.train as train
-from ray.train.tests.lightning_test_utils import LitAutoEncoder, LightningMNISTClassifier, MNISTDataModule
+from ray.train.tests.lightning_test_utils import LightningMNISTClassifier, MNISTDataModule
 from torchmetrics import Accuracy
 
 LightningMNISTModelConfig = {

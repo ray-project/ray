@@ -9,7 +9,7 @@ from pytorch_lightning.plugins.environments import ClusterEnvironment
 import ray
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
 from ray.data.preprocessor import Preprocessor
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
@@ -34,6 +34,7 @@ LIGHTNING_TRAINER_FIT_PARAMS_KEY = "_lightning_trainer_fit_params"
 MODEL_CHECKPOINT_CONFIG_KEY = "_model_checkpoint_config"
 DDP_STRATEGY_CONFIG_KEY = "_ddp_strategy_config"
 RAY_DATASET_ITER_CONFIG_KEY = "_ray_dataset_iter_config"
+
 
 @PublicAPI(stability="alpha")
 class LightningTrainer(DataParallelTrainer):
@@ -181,6 +182,25 @@ class LightningTrainer(DataParallelTrainer):
                 trainer_loop_config[key] = {}
 
         return trainer_loop_config
+    
+    def _align_checkpoint_configs(self, model_checkpoint_config: Optional[Dict] = None):
+        if model_checkpoint_config is None:
+            # If no checkpoint config provided, always save the last checkpoint
+            model_checkpoint_config = {
+                "monitor": "epoch",
+                "mode": "max",
+                "save_top_k": 1
+            }
+            air_checkpoint_config = CheckpointConfig(
+                num_to_keep=1,
+            )
+        else:
+            air_checkpoint_config = CheckpointConfig(
+                num_to_keep=model_checkpoint_config.get("save_top_k", 1),
+                checkpoint_score_attribute=model_checkpoint_config.get("monitor", "epoch"),
+                checkpoint_score_order=model_checkpoint_config.get("mode", "max"),
+            )
+        return model_checkpoint_config, air_checkpoint_config
 
 
 def _prepare_dataloaders(dataloaders: Optional[DataLoader]) -> Optional[DataLoader]:
@@ -206,14 +226,18 @@ def _lightning_train_loop_per_worker(config):
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
-    ray_dataset_iter_config = config.pop(RAY_DATASET_ITER_CONFIG_KEY)
+    dataset_iter_config = config.pop(RAY_DATASET_ITER_CONFIG_KEY)
     if train_ray_dataset:
         if datamodule or train_dataloaders:
             logger.warning(
                 "Using Ray Dataset as primary datasource, datamodule and dataloaders "
                 "specified in lightning_trainer_fit_params will be ignored."
             )
-        datamodule = RayDataModule(train_ray_dataset, val_ray_dataset, ray_dataset_iter_config)
+        datamodule = RayDataModule(
+            train_dataset=train_ray_dataset,
+            val_dataset=val_ray_dataset,
+            dataset_iter_config=dataset_iter_config
+        )
 
     # Prepare Lightning Module
     LightningModuleCls = config.pop(LIGHTNING_MODULE_KEY)
@@ -222,8 +246,9 @@ def _lightning_train_loop_per_worker(config):
 
     # Prepare Lightning Trainer
     trainer_config = config.pop(LIGHTNING_TRAINER_CONFIG_KEY)
-    trainer_config["enable_progress_bar"] = False
-
+    trainer_config["enable_progress_bar"] = False 
+    
+    
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
         current_device = ray.train.torch.get_device()
@@ -248,15 +273,12 @@ def _lightning_train_loop_per_worker(config):
             " `model_checkpoint_config`. All other checkpoint callbacks are ignored."
         )
 
+    # We always need a checkpoint callback to report metrics
+    trainer_config["enable_checkpointing"] = True 
+    # TODO(yunxuanx): Align with AIR Checkpoint Config
     model_checkpoint_config = config.get(MODEL_CHECKPOINT_CONFIG_KEY)
-    if model_checkpoint_config:
-        # TODO(yunxuanx): Align with AIR Checkpoint Config
-        trainer_config["enable_checkpointing"] = True
-        ray_model_checkpoint = RayModelCheckpoint(**model_checkpoint_config)
-        trainer_config["callbacks"].append(ray_model_checkpoint)
-    else:
-        # No checkpoint config provided, disable checkpointing by default
-        trainer_config["enable_checkpointing"] = False
+    ray_model_checkpoint = RayModelCheckpoint(**model_checkpoint_config)
+    trainer_config["callbacks"].append(ray_model_checkpoint)
 
     trainer = pl.Trainer(**trainer_config)
 
