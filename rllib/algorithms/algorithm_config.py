@@ -2299,10 +2299,8 @@ class AlgorithmConfig(_Config):
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model_config is
-                not
-                specified
-                it will be inferred from the env and other parts of the algorithm
-                config object.
+                not specified it will be inferred from the env and other parts of the
+                algorithm config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
