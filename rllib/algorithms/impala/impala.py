@@ -14,6 +14,7 @@ from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -429,7 +430,9 @@ class ImpalaConfig(AlgorithmConfig):
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 

@@ -2833,8 +2833,8 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
-            if module_spec.model_config is None:
-                module_spec.model_config = policy_spec.config.get("model", {})
+            if module_spec.model_config_dict is None:
+                module_spec.model_config_dict = policy_spec.config.get("model", {})
 
         return marl_module_spec
 

@@ -135,7 +135,7 @@ class Learner:
             module_class=MyModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config = {"hidden": [128, 128]}
+            model_config_dict = {"hidden": [128, 128]}
         )
 
         # create a learner instance that will train the module
@@ -154,7 +154,7 @@ class Learner:
                 module_class=NewPlayerModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config = {"hidden": [128, 128]}
+                model_config_dict = {"hidden": [128, 128]}
             )
         )
 

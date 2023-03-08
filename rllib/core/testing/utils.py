@@ -61,7 +61,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         module_class=get_module_class(framework),
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config={"fcnet_hiddens": [32]},
+        model_config_dict={"fcnet_hiddens": [32]},
     )
 
     if is_multi_agent:

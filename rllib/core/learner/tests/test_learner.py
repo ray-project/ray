@@ -23,7 +23,7 @@ def get_learner() -> Learner:
             module_class=DiscreteBCTFModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config_dict={"fcnet_hiddens": [32]},
         ),
         optimizer_config={"lr": 1e-3},
         learner_scaling_config=LearnerGroupScalingConfig(),
@@ -128,7 +128,7 @@ class TestLearner(unittest.TestCase):
                 module_class=DiscreteBCTFModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": [16]},
+                model_config_dict={"fcnet_hiddens": [16]},
             ),
             set_optimizer_fn=set_optimizer_fn,
         )
