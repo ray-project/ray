@@ -286,7 +286,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -801,7 +801,11 @@ class Dataset(Generic[T]):
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64, col3: int64})
+            +- Dataset(
+                num_blocks=10,
+                num_rows=10,
+                schema={col1: int64, col2: int64, col3: int64}
+            )
 
 
         Time complexity: O(dataset size / parallelism)
@@ -2029,7 +2033,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
