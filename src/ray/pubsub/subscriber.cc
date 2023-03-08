@@ -17,9 +17,6 @@
 namespace ray {
 
 namespace pubsub {
-namespace {
-const int64_t kNullSequenceId = -1;
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// SubscriberChannel
@@ -352,12 +349,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   auto subscriber_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
-  int64_t max_processed_sequence_id = kNullSequenceId;
-  auto it = processed_sequences_.find(publisher_id);
-  if (it != processed_sequences_.end()) {
-    max_processed_sequence_id = it->second;
-  }
-  long_polling_request.set_max_processed_sequence_id(max_processed_sequence_id);
+  long_polling_request.set_max_processed_sequence_id(processed_sequences_[publisher_id]);
   subscriber_client->PubsubLongPolling(
       long_polling_request,
       [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {

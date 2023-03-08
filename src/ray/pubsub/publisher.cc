@@ -253,6 +253,8 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
+    RAY_LOG(INFO) << max_processed_sequence_id << " : "
+                  << mailbox_.front()->sequence_id();
     mailbox_.pop_front();
   }
 
@@ -272,6 +274,7 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
+  RAY_LOG(INFO) << " insert " << pub_message->sequence_id();
   mailbox_.push_back(pub_message);
   if (try_publish) {
     PublishIfPossible();
@@ -313,6 +316,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
 bool SubscriberState::CheckNoLeaks() const {
   // If all message in the mailbox has been replied, consider there is no leak.
+  RAY_LOG(INFO) << !long_polling_connection_ << " : " << mailbox_.empty();
   return !long_polling_connection_ && mailbox_.empty();
 }
 

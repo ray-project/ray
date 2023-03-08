@@ -51,12 +51,21 @@ class PublisherTest : public ::testing::Test {
 
   void TearDown() {}
 
-  const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id) {
+  void ResetSequenceId() { sequence_id_ = 1; }
+
+  int64_t GetNextSequenceId() { return sequence_id_++; }
+
+  const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id,
+                                           int64_t sequence_id = -1) {
     rpc::PubMessage pub_message;
     auto *object_eviction_msg = pub_message.mutable_worker_object_eviction_message();
     object_eviction_msg->set_object_id(object_id.Binary());
     pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+    if (sequence_id == -1) {
+      sequence_id = GetNextSequenceId();
+    }
+    pub_message.set_sequence_id(sequence_id);
     return pub_message;
   }
 
@@ -107,6 +116,7 @@ class PublisherTest : public ::testing::Test {
   const SubscriberID subscriber_id_ = SubscriberID::FromRandom();
   rpc::PubsubLongPollingRequest request_;
   std::vector<std::unique_ptr<SubscriberState>> subscribers_;
+  int64_t sequence_id_ = 1;
 };
 
 TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
@@ -363,6 +373,8 @@ TEST_F(PublisherTest, TestSubscriber) {
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.contains(oid));
   }
+  request_.set_max_processed_sequence_id(sequence_id_);
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 

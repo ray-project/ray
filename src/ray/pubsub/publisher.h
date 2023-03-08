@@ -64,7 +64,7 @@ class EntityState {
   // The underlying SubscriberState is owned by Publisher.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
 
-  int64_t sequence_id = 0;
+  int64_t sequence_id = 1;
 };
 
 /// The two implementations of EntityState are BasicEntityState and CappedEntityState.
@@ -233,10 +233,8 @@ class SubscriberState {
   const SubscriberID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
-
   /// Queued messages to publish.
   std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
-
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
