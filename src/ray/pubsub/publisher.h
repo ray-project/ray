@@ -58,13 +58,13 @@ class EntityState {
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
 
  protected:
-  int64_t GetNextSequenceId() { return sequence_id++; }
+  int64_t GetNextSequenceId() { return ++sequence_id; }
 
   // Subscribers of this entity.
   // The underlying SubscriberState is owned by Publisher.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
 
-  int64_t sequence_id = 1;
+  int64_t sequence_id = 0;
 };
 
 /// The two implementations of EntityState are BasicEntityState and CappedEntityState.
