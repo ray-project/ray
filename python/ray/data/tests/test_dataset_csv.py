@@ -25,6 +25,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     FileExtensionFilter,
     _unwrap_protocol,
 )
@@ -281,7 +282,8 @@ def test_csv_read_many_files_basic(
 
     paths = []
     dfs = []
-    for i in range(64):
+    num_dfs = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    for i in range(num_dfs):
         df = pd.DataFrame({"one": list(range(i * 3, (i + 1) * 3))})
         dfs.append(df)
         path = os.path.join(data_path, f"test_{i}.csv")
@@ -323,7 +325,7 @@ def test_csv_read_many_files_partitioned(
     )
     paths = []
     dfs = []
-    num_dfs = 16
+    num_dfs = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     num_rows = 6 * num_dfs
     num_files = 2 * num_dfs
     for i in range(num_dfs):
@@ -395,7 +397,7 @@ def test_csv_read_many_files_diff_dirs(
 
     paths = []
     dfs = []
-    num_dfs = 32
+    num_dfs = 2 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     for i, dir_path in enumerate([dir1, dir2]):
         for j in range(num_dfs * i, num_dfs * (i + 1)):
             df = pd.DataFrame({"one": list(range(3 * j, 3 * (j + 1)))})

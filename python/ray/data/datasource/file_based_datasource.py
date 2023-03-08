@@ -1,3 +1,4 @@
+import itertools
 import logging
 import pathlib
 import posixpath
@@ -13,13 +14,22 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    TypeVar,
 )
+
+import numpy as np
 
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _resolve_custom_scheme,
+    _estimate_available_parallelism,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
@@ -43,6 +53,13 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+# We should parallelize file size fetch operations beyond this threshold.
+FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
+
+# 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
+PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
 
 @DeveloperAPI
@@ -757,3 +774,37 @@ def _resolve_kwargs(
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
     return kwargs
+
+
+Uri = TypeVar("Uri")
+Meta = TypeVar("Meta")
+
+
+def _fetch_metadata_parallel(
+    uris: List[Uri],
+    fetch_func: Callable[[List[Uri]], List[Meta]],
+    desired_uris_per_task: int,
+    **ray_remote_args,
+) -> Iterator[Meta]:
+    """Fetch file metadata in parallel using Ray tasks."""
+    num_cpus = 0.5
+    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=num_cpus)
+    if ray_remote_args:
+        remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
+    available_cpus = _estimate_available_parallelism()
+    parallelism = min(
+        # Choose a parallelism that results in a # of metadata fetches per task that
+        # dominates the Ray task overhead while ensuring good parallelism.
+        # Always launch at least 2 parallel fetch tasks.
+        max(len(uris) // desired_uris_per_task, 2),
+        # Oversubscribe cluster CPU by 2x since these tasks are I/O-bound.
+        round(available_cpus / num_cpus),
+    )
+    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    fetch_tasks = []
+    for uri_chunk in np.array_split(uris, parallelism):
+        if len(uri_chunk) == 0:
+            continue
+        fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
+    results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
+    yield from itertools.chain.from_iterable(results)

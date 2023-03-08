@@ -13,27 +13,14 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import numpy as np
-
 if TYPE_CHECKING:
     import pyarrow
-    from ray.data.datasource.file_based_datasource import _S3FileSystemWrapper
 
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _estimate_avail_cpus
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-
-# We should parallelize file size fetch operations beyond this threshold.
-FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
-
-# 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
-PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
 
 @DeveloperAPI
@@ -321,12 +308,25 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
-            _fetch_metadata_remotely,
+            PIECES_PER_META_FETCH,
+            _SerializedPiece,
+            _fetch_metadata_serialization_wrapper,
             _fetch_metadata,
         )
+        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            return _fetch_metadata_remotely(pieces, **ray_remote_args)
+            # Wrap Parquet fragments in serialization workaround.
+            pieces = [_SerializedPiece(piece) for piece in pieces]
+            # Fetch Parquet metadata in parallel using Ray tasks.
+            return list(
+                _fetch_metadata_parallel(
+                    pieces,
+                    _fetch_metadata_serialization_wrapper,
+                    PIECES_PER_META_FETCH,
+                    **ray_remote_args,
+                )
+            )
         else:
             return _fetch_metadata(pieces)
 
@@ -374,8 +374,11 @@ def _expand_paths(
     """Get the file sizes for all provided file paths."""
     from pyarrow.fs import LocalFileSystem
     from ray.data.datasource.file_based_datasource import (
+        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+        PATHS_PER_FILE_SIZE_FETCH_TASK,
         _wrap_s3_serialization_workaround,
         _unwrap_protocol,
+        _fetch_metadata_parallel,
     )
 
     # We break down our processing paths into a few key cases:
@@ -421,47 +424,24 @@ def _expand_paths(
     # TODO(Clark): Group file paths by parent directory paths and do a prefix
     # fetch + client-side filter if the number of groups is << the total number of
     # paths?
-    # Only request 0.5 CPU since these tasks are I/O-bound.
-    num_cpus = 0.5
-    get_file_infos_remotely = cached_remote_fn(
-        _get_file_infos_remotely,
-        num_cpus=num_cpus,
-        scheduling_strategy="SPREAD",
-    )
-    available_cpus = _estimate_avail_cpus()
-    parallelism = min(
-        # Choose a parallelism that results in a # of file size fetches per task that
-        # dominates the Ray task overhead while ensuring good parallelism.
-        # Always launch at least 2 parallel fetch tasks.
-        max(len(paths) // PATHS_PER_FILE_SIZE_FETCH_TASK, 2),
-        # Oversubscribe cluster CPU by 2x since these tasks are I/O-bound.
-        round(available_cpus / num_cpus),
-    )
-    size_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    results = []
+
+    # Capture the filesystem in the fetcher func closure, but wrap it in our
+    # serialization workaround to make sure that the pickle roundtrip works as expected.
     filesystem = _wrap_s3_serialization_workaround(filesystem)
-    for path_chunks in np.array_split(paths, parallelism):
-        if len(path_chunks) == 0:
-            continue
-        results.append(get_file_infos_remotely.remote(path_chunks, filesystem))
-    for result in size_fetch_bar.fetch_until_complete(results):
-        yield from result
 
+    def _file_infos_fetcher(paths: List[str]) -> List[Tuple[str, int]]:
+        from ray.data.datasource.file_based_datasource import (
+            _unwrap_s3_serialization_workaround,
+        )
 
-def _get_file_infos_remotely(
-    paths: List[str],
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
-) -> Iterator[Tuple[str, int]]:
-    """Get the file infos for all files at or under the provided paths."""
-    from ray.data.datasource.file_based_datasource import (
-        _unwrap_s3_serialization_workaround,
+        fs = _unwrap_s3_serialization_workaround(filesystem)
+        return list(
+            itertools.chain.from_iterable(_get_file_infos(path, fs) for path in paths)
+        )
+
+    yield from _fetch_metadata_parallel(
+        paths, _file_infos_fetcher, PATHS_PER_FILE_SIZE_FETCH_TASK
     )
-
-    filesystem = _unwrap_s3_serialization_workaround(filesystem)
-    out = []
-    for path in paths:
-        out.extend(_get_file_infos(path, filesystem))
-    return out
 
 
 def _get_file_infos(
