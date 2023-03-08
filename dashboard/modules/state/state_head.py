@@ -385,7 +385,12 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id, timeout, glob_filter=glob_filter
             )
         except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+            return self._reply(
+                success=False, 
+                error_message=str(e), 
+                result=None,
+                reason=str(e),
+            )
 
         return self._reply(success=True, error_message="", result=result)
 
