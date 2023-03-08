@@ -2672,10 +2672,7 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
