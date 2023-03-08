@@ -8,6 +8,7 @@ import torch
 import tree
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
+from ray.rllib.models.preprocessors import get_preprocessor
 
 import ray
 from ray.rllib import SampleBatch
@@ -124,9 +125,9 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_rollouts(self):
-        # TODO: Add ALE/Breakout-v5 to cover a 3D obs space
+        # TODO: Add FrozenLake-v1 to cover LSTM case.
         frameworks = ["torch", "tf2"]
-        env_names = ["CartPole-v1", "Pendulum-v1"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         fwd_fns = ["forward_exploration", "forward_inference"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
@@ -136,15 +137,26 @@ class TestPPO(unittest.TestCase):
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
+            if env_name == "ALE/Breakout-v5" and fw == "tf2":
+                # TODO(Artur): Implement CNN in TF2.
+                continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
-            env = gym.make(env_name)
+            if env_name.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=env_name)
+            else:
+                env = gym.make(env_name)
+
+            preprocessor_cls = get_preprocessor(env.observation_space)
+            preprocessor = preprocessor_cls(env.observation_space)
+
             module = _get_ppo_module(
                 framework=fw,
                 env=env,
                 lstm=lstm,
-                observation_space=env.observation_space,
+                observation_space=preprocessor.observation_space,
             )
             obs, _ = env.reset()
+            obs = preprocessor.transform(obs)
 
             batch = _get_input_batch_from_obs(fw, obs)
 
@@ -162,9 +174,9 @@ class TestPPO(unittest.TestCase):
                 module.forward_inference(batch)
 
     def test_forward_train(self):
-        # TODO: Add ALE/Breakout-v5 to cover a 3D obs space
+        # TODO: Add FrozenLake-v1 to cover LSTM case.
         frameworks = ["torch", "tf2"]
-        env_names = ["CartPole-v1", "Pendulum-v1"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
         config_combinations = [frameworks, env_names, lstm]
@@ -174,21 +186,29 @@ class TestPPO(unittest.TestCase):
                 # LSTM not implemented in TF2 yet
                 continue
             if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # CNN not implement in TF2 yet
+                # TODO(Artur): Implement CNN in TF2.
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
-            env = gym.make(env_name)
+            # TODO(Artur): Figure out why this is needed and fix it.
+            if env_name.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=env_name)
+            else:
+                env = gym.make(env_name)
+
+            preprocessor_cls = get_preprocessor(env.observation_space)
+            preprocessor = preprocessor_cls(env.observation_space)
 
             module = _get_ppo_module(
                 framework=fw,
                 env=env,
                 lstm=lstm,
-                observation_space=env.observation_space,
+                observation_space=preprocessor.observation_space,
             )
 
             # collect a batch of data
             batches = []
             obs, _ = env.reset()
+            obs = preprocessor.transform(obs)
             tstep = 0
             # TODO (Artur): Un-uncomment once Policy supports RNN
             # state_in = module.get_initial_state()
@@ -206,6 +226,7 @@ class TestPPO(unittest.TestCase):
                 fwd_out = module.forward_exploration(input_batch)
                 action = convert_to_numpy(fwd_out["action_dist"].sample()[0])
                 new_obs, reward, terminated, truncated, _ = env.step(action)
+                new_obs = preprocessor.transform(new_obs)
                 output_batch = {
                     SampleBatch.OBS: obs,
                     SampleBatch.NEXT_OBS: new_obs,
