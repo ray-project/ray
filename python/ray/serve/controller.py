@@ -667,7 +667,14 @@ class ServeController:
         return deployment_route_list.SerializeToString()
 
     def get_serve_instance_details(self) -> Dict:
-        """Some description."""
+        """Gets details on all applications on the cluster and system-level info.
+
+        The information includes application and deployment statuses, config options,
+        error messages, etc.
+
+        Returns:
+            Dict that follows the format of the schema ServeInstanceDetails.
+        """
 
         http_config = self.get_http_config()
         application_details = {}

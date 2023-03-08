@@ -214,6 +214,7 @@ class ApplicationState:
         )
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in this application."""
         replicas = self.deployment_state_manager.get_running_replica_infos()
         status_info = {info.name: info for info in self.get_deployments_statuses()}
 
@@ -314,6 +315,7 @@ class ApplicationStateManager:
         }
 
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:
             return {}
         return self._application_states[name].list_deployment_details()

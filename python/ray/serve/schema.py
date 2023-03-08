@@ -15,8 +15,7 @@ from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
-@DeveloperAPI
-def route_prefix_format(cls, v):
+def _route_prefix_format(cls, v):
     """
     The route_prefix
     1. must start with a / character
@@ -233,7 +232,7 @@ class DeploymentSchema(
         return values
 
     _route_prefix_format = validator("route_prefix", allow_reuse=True)(
-        route_prefix_format
+        _route_prefix_format
     )
 
     def get_user_configured_option_names(self) -> Set[str]:
@@ -247,8 +246,7 @@ class DeploymentSchema(
         }
 
 
-@DeveloperAPI
-def deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
+def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
     """Converts a DeploymentInfo object to DeploymentSchema.
 
     Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
@@ -602,7 +600,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
     )
 
     _route_prefix_format = validator("route_prefix", allow_reuse=True)(
-        route_prefix_format
+        _route_prefix_format
     )
 
 
