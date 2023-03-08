@@ -611,6 +611,9 @@ def test_streaming_executor(
         result.extend(batch)
     assert sorted(result) == list(range(1, 100)), result
 
+    # TODO(Scott): add tests for stats here
+    # check that stats are preserved after limit/union
+
 
 if __name__ == "__main__":
     import sys

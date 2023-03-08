@@ -89,11 +89,8 @@ def execute_to_legacy_block_list(
     """
     if DatasetContext.get_current().optimizer_enabled:
         dag = get_execution_plan(plan._logical_plan).dag
-        if plan._snapshot_blocks is not None:
-            if not plan._snapshot_blocks.is_cleared():
-                stats = plan._snapshot_stats
-            else:
-                stats = plan._in_stats
+        if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
+            stats = plan._snapshot_stats
         else:
             stats = plan._in_stats
     else:
