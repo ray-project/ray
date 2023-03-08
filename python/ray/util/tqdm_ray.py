@@ -148,9 +148,9 @@ class _BarManager:
 
     def process_state_update(self, state: _ProgressState) -> None:
         if state["ip"] == self.ip:
-            prefix = "pid={}: ".format(state["pid"])
+            prefix = "(pid={}): ".format(state["pid"])
         else:
-            prefix = "ip={}, pid={}: ".format(state["ip"], state["pid"])
+            prefix = "(ip={}, pid={}): ".format(state["ip"], state["pid"])
         state["desc"] = prefix + state["desc"]
         process = self.get_or_allocate_process(state)
         if process.has_bar(state["uuid"]):
