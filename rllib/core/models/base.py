@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Union, Tuple
 
 from ray.rllib import SampleBatch
 from ray.rllib.models.specs.specs_base import Spec
@@ -30,7 +30,14 @@ class ModelConfig(abc.ABC):
     It is therefore a means of configuration for RLModules. However, ModelConfigs are
     not restricted to be used only with Catalog or RLModules.
     A usage Example together with a Model can be found in the Model.
+
+    Args:
+        input_dims: The input dimensions of the network
+        output_dims: The output dimensions of the network.
     """
+
+    input_dims: Union[List, Tuple] = None
+    output_dims: Union[List, Tuple] = None
 
     @abc.abstractmethod
     def build(self, framework: str):
@@ -195,7 +202,8 @@ class Encoder(Model, abc.ABC):
     Similarly, their output_spec contains the latent space dimensions.
     Encoders can be recurrent, in which case the state should be part of input- and
     output_specs. The latents that are produced by an encoder are fed into subsequent
-    heads.
+    heads. Any implementation of Encoder should also be callable. This should be done
+    by also inheriting from a framework-specific model base-class, s.a. TorchModel.
 
     Abstract illustration of typical flow of tensors:
 

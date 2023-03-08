@@ -6,7 +6,6 @@ import abc
 
 import gymnasium as gym
 
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
@@ -20,8 +19,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
     def __init__(self, config: RLModuleConfig):
         super().__init__(config)
         catalog = self.config.get_catalog()
-
-        assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
 
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)

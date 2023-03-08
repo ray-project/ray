@@ -71,19 +71,19 @@ class MLPHeadConfig(ModelConfig):
 
     The configured MLP encodes 1D-observations into a latent space.
     The stack of layers is composed of a sequence of linear layers. The first layer
-    has `input_dim` inputs and the last layer has `output_dim` outputs. The number of
+    has `input_dims` inputs and the last layer has `output_dims` outputs. The number of
     units inbetween is determined by `hidden_layer_dims`. If `hidden_layer_dims` is
-    None, there is only one linear layer with `input_dim` inputs and `output_dim`
+    None, there is only one linear layer with `input_dims` inputs and `output_dims`
     outputs. Each layer is followed by an activation function as per this config.
     See ModelConfig for usage details.
 
     Example:
 
         Configuration:
-        input_dim = 4
+        input_dims = [4]
         hidden_layer_dims = [8, 8]
         hidden_layer_activation = "relu"
-        output_dim = 2
+        output_dims = [2]
         output_activation = "linear"
 
         Resulting stack in pseudocode:
@@ -94,19 +94,15 @@ class MLPHeadConfig(ModelConfig):
         Linear(8, 2)
 
     Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         output_activation: The activation function to use for the output layer.
-        output_dim: The output dimension of the network.
     """
 
-    input_dim: int = None
     hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
     hidden_layer_activation: str = "relu"
     output_activation: str = "linear"
-    output_dim: int = None
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
@@ -137,7 +133,7 @@ class CNNEncoderConfig(ModelConfig):
     The stack of layers is composed of a sequence of convolutional layers.
     `input_dims` describes the shape of the input tensor. Beyond that, each layer
     specified by `filter_specifiers` is followed by an activation function according
-    to `filter_activation`. The `output_dim` is reached by flattening a final
+    to `filter_activation`. `output_dims` is reached by flattening a final
     convolutional layer and applying a linear layer with `output_activation`.
     See ModelConfig for usage details.
 
@@ -150,7 +146,7 @@ class CNNEncoderConfig(ModelConfig):
             [32, [4, 4], 2],
         ]
         filter_activation = "relu"
-        output_dim = 256
+        output_dims = [256]
         output_activation = "linear"
 
         Resulting stack in pseudocode:
@@ -172,9 +168,6 @@ class CNNEncoderConfig(ModelConfig):
         filter_layer_activation: The activation function to use after each layer (
             except for the output).
         output_activation: The activation function to use for the output layer.
-        output_dim: The output dimension. We append a final convolutional layer
-            depth-only filters that is flattened and a final linear layer to achieve
-            this dimension regardless of the previous filters.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
@@ -183,7 +176,6 @@ class CNNEncoderConfig(ModelConfig):
     )
     filter_layer_activation: str = "relu"
     output_activation: str = "linear"
-    output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
@@ -263,7 +255,6 @@ class LSTMEncoderConfig(ModelConfig):
     action_space: gym.Space = None
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
-    output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
