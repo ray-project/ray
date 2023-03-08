@@ -196,6 +196,7 @@ std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
 
 void RaySyncer::Connect(const std::string &node_id,
                         std::shared_ptr<grpc::Channel> channel) {
+  using namespace std::placeholders;
   io_context_.dispatch(
       [=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
@@ -203,7 +204,8 @@ void RaySyncer::Connect(const std::string &node_id,
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
-            /* message_processor */ [this](auto msg) { BroadcastRaySyncMessage(msg); },
+            /* message_processor */
+            std::bind(&RaySyncer::BroadcastMessage, this, node_id, _1),
             /* cleanup_cb */
             [this, channel](const std::string &node_id, bool restart) {
               sync_reactors_.erase(node_id);
@@ -232,11 +234,16 @@ void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
             if (!message) {
               continue;
             }
+
+            if (message->node_id() == reactor->GetRemoteNodeID()) {
+              continue;
+            }
+
             RAY_LOG(DEBUG) << "Push init view from: "
                            << NodeID::FromBinary(GetLocalNodeID()) << " to "
                            << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
                            << NodeID::FromBinary(message->node_id());
-            reactor->PushToSendingQueue(message);
+            reactor->PushToSendingQueue({message, nullptr});
           }
         }
       },
@@ -297,20 +304,21 @@ void RaySyncer::Register(MessageType message_type,
 bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
   auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
-    RAY_CHECK(msg->node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    BroadcastMessage(msg->node_id(), std::make_shared<RaySyncMessage>(std::move(*msg)));
     return true;
   }
   return false;
 }
 
 void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message) {
-  BroadcastMessage(std::move(message));
+  BroadcastMessage(GetLocalNodeID(), std::move(message));
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncer::BroadcastMessage(
+    const std::string& from_node_id,
+    std::shared_ptr<const RaySyncMessage> message) {
   io_context_.dispatch(
-      [this, message] {
+      [this, from_node_id, message] {
         // The message is stale. Just skip this one.
         RAY_LOG(DEBUG) << "Receive message from: "
                        << NodeID::FromBinary(message->node_id()) << " to "
@@ -318,19 +326,29 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
         if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
+        auto& ver = message_versions_[message->message_type()][message->node_id()];
+        if(ver == nullptr) {
+          ver = std::make_shared<int64_t>(message->version());
+        }
+
         for (auto &reactor : sync_reactors_) {
-          reactor.second->PushToSendingQueue(message);
+          if(reactor.first == from_node_id) {
+            continue;
+          }
+
+          reactor.second->PushToSendingQueue({message, ver});
         }
       },
       "RaySyncer.BroadcastMessage");
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
+  using namespace std::placeholders;
   auto reactor = new RayServerBidiReactor(
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
-      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      std::bind(&RaySyncer::BroadcastMessage, &syncer_, syncer_.GetLocalNodeID(), _1),
       [this](const std::string &node_id, bool reconnect) mutable {
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);

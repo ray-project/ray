@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <queue>
+
 namespace ray {
 namespace syncer {
 
@@ -117,6 +119,11 @@ class NodeState {
 // clang-format on
 class RaySyncerBidiReactor {
  public:
+  struct SyncerMessage {
+    std::weak_ptr<const RaySyncMessage> message;
+    std::shared_ptr<int64_t> version;
+  };
+
   RaySyncerBidiReactor(const std::string &remote_node_id)
       : remote_node_id_(remote_node_id) {}
 
@@ -130,7 +137,7 @@ class RaySyncerBidiReactor {
   /// \param message The message to be sent.
   ///
   /// \return true if push to queue successfully.
-  virtual bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) = 0;
+  virtual bool PushToSendingQueue(SyncerMessage message) = 0;
 
   /// Return the remote node id of this connection.
   const std::string &GetRemoteNodeID() const { return remote_node_id_; }
@@ -177,28 +184,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         io_context_(io_context),
         message_processor_(std::move(message_processor)) {}
 
-  bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
+  bool PushToSendingQueue(SyncerMessage message) override {
     if (IsDisconnected()) {
       return false;
     }
 
-    // Try to filter out the messages the target node already has.
-    // Usually it'll be the case when the message is generated from the
-    // target node or it's sent from the target node.
-    // No need to resend the message sent from a node back.
-    if (message->node_id() == GetRemoteNodeID()) {
-      // Skip the message when it's about the node of this connection.
-      return false;
-    }
+    sending_queue_.push(message);
+    StartSend();
 
-    auto &node_versions = GetNodeComponentVersions(message->node_id());
-    if (node_versions[message->message_type()] < message->version()) {
-      node_versions[message->message_type()] = message->version();
-      sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-          std::move(message);
-      StartSend();
-      return true;
-    }
     return false;
   }
 
@@ -219,22 +212,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   ///
   /// \param messages The message received.
   void ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message) {
-    auto &node_versions = GetNodeComponentVersions(message->node_id());
-    RAY_LOG(DEBUG) << "Receive update: "
-                   << " message_type=" << message->message_type()
-                   << ", message_version=" << message->version()
-                   << ", local_message_version="
-                   << node_versions[message->message_type()];
-    if (node_versions[message->message_type()] < message->version()) {
-      node_versions[message->message_type()] = message->version();
-      message_processor_(message);
-    } else {
-      RAY_LOG_EVERY_N(WARNING, 100)
-          << "Drop message received from " << NodeID::FromBinary(message->node_id())
-          << " because the message version " << message->version()
-          << " is older than the local version " << node_versions[message->message_type()]
-          << ". Message type: " << message->message_type();
-    }
+    message_processor_(message);
   }
 
   void SendNext() {
@@ -247,12 +225,21 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       return;
     }
 
-    if (sending_buffer_.size() != 0) {
-      auto iter = sending_buffer_.begin();
-      auto msg = std::move(iter->second);
-      sending_buffer_.erase(iter);
-      Send(std::move(msg), sending_buffer_.empty());
+    while (!sending_queue_.empty()) {
+      auto& sending_message = sending_queue_.front();
+      auto message = sending_message.message.lock();
+      auto version = std::move(sending_message.version);
+      sending_queue_.pop();
+      if(!message) {
+        continue;
+      }
+      if(version &&  message->version() < *version) {
+        continue;
+      }
+
+      Send(std::move(message), sending_queue_.empty());
       sending_ = true;
+      break;
     }
   }
 
@@ -318,32 +305,13 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
   friend struct SyncerServerTest;
 
-  std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
-      const std::string &node_id) {
-    auto iter = node_versions_.find(node_id);
-    if (iter == node_versions_.end()) {
-      iter = node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>())
-                 .first;
-      iter->second.fill(-1);
-    }
-    return iter->second;
-  }
-
   /// Handler of a message update.
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
  private:
+
   /// Buffering all the updates. Sending will be done in an async way.
-  absl::flat_hash_map<std::pair<std::string, MessageType>,
-                      std::shared_ptr<const RaySyncMessage>>
-      sending_buffer_;
-
-  /// Keep track of the versions of components in the remote node.
-  /// This field will be udpated when messages are received or sent.
-  /// We'll filter the received or sent messages when the message is stale.
-  absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
-      node_versions_;
-
+  std::queue<SyncerMessage> sending_queue_;
   bool sending_ = false;
 };
 
