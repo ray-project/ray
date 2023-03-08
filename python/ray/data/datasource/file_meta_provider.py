@@ -375,10 +375,7 @@ def _expand_paths(
     from pyarrow.fs import LocalFileSystem
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-        PATHS_PER_FILE_SIZE_FETCH_TASK,
-        _wrap_s3_serialization_workaround,
         _unwrap_protocol,
-        _fetch_metadata_parallel,
     )
 
     # We break down our processing paths into a few key cases:
@@ -395,45 +392,71 @@ def _expand_paths(
         # Local file systems are very fast to hit.
         or isinstance(filesystem, LocalFileSystem)
     ):
-        for path in paths:
-            yield from _get_file_infos(path, filesystem)
-        return
+        yield from _get_file_infos_serial(paths, filesystem)
+    else:
+        # 2. Common path prefix case.
+        # Get longest common path of all paths.
+        common_path = os.path.commonpath(paths)
+        common_path = os.path.normpath(common_path)
+        # If parent directory (or base directory, if using partitioning) is common to
+        # all paths, fetch all file infos at that prefix and filter the response to the
+        # provided paths.
+        if (
+            partitioning is not None
+            and common_path == _unwrap_protocol(partitioning.base_dir)
+        ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
+            yield from _get_file_infos_common_path_prefix(
+                paths, common_path, filesystem
+            )
+        # 3. Parallelization case.
+        else:
+            # Parallelize requests via Ray tasks.
+            # TODO(Clark): Group file paths by parent directory paths and do a prefix
+            # fetch + client-side filter if the number of groups is << the total number
+            # of paths?
+            yield from _get_file_infos_parallel(paths, filesystem)
 
-    # 2. Common path prefix case.
-    # Get longest common path of all paths.
-    common_path = os.path.commonpath(paths)
-    common_path = os.path.normpath(common_path)
-    # If parent directory (or base directory, if using partitioning) is common to all
-    # paths, fetch all file infos at that prefix and filter the response to the provided
-    # paths.
-    if (
-        partitioning is not None
-        and common_path == _unwrap_protocol(partitioning.base_dir)
-    ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
-        path_to_size = {path: 0 for path in paths}
-        for path, file_size in _get_file_infos(common_path, filesystem):
-            if path in path_to_size:
-                path_to_size[path] = file_size
-        # Dictionaries are insertion-ordered, so this path + size pairs should be
-        # yielded in the order of the original paths arg.
-        yield from path_to_size.items()
-        return
 
-    # 3. Parallelization case.
-    # Parallelize requests via Ray tasks.
-    # TODO(Clark): Group file paths by parent directory paths and do a prefix
-    # fetch + client-side filter if the number of groups is << the total number of
-    # paths?
+def _get_file_infos_serial(
+    paths: List[str],
+    filesystem: "pyarrow.fs.FileSystem",
+) -> Iterator[Tuple[str, int]]:
+    for path in paths:
+        yield from _get_file_infos(path, filesystem)
+
+
+def _get_file_infos_common_path_prefix(
+    paths: List[str],
+    common_path: str,
+    filesystem: "pyarrow.fs.FileSystem",
+) -> Iterator[Tuple[str, int]]:
+    path_to_size = {path: None for path in paths}
+    for path, file_size in _get_file_infos(common_path, filesystem):
+        if path in path_to_size:
+            path_to_size[path] = file_size
+    # Dictionaries are insertion-ordered, so this path + size pairs should be
+    # yielded in the order of the original paths arg.
+    for path, size in path_to_size.items():
+        assert size is not None
+        yield path, size
+
+
+def _get_file_infos_parallel(
+    paths: List[str],
+    filesystem: "pyarrow.fs.FileSystem",
+) -> Iterator[Tuple[str, int]]:
+    from ray.data.datasource.file_based_datasource import (
+        PATHS_PER_FILE_SIZE_FETCH_TASK,
+        _wrap_s3_serialization_workaround,
+        _unwrap_s3_serialization_workaround,
+        _fetch_metadata_parallel,
+    )
 
     # Capture the filesystem in the fetcher func closure, but wrap it in our
     # serialization workaround to make sure that the pickle roundtrip works as expected.
     filesystem = _wrap_s3_serialization_workaround(filesystem)
 
     def _file_infos_fetcher(paths: List[str]) -> List[Tuple[str, int]]:
-        from ray.data.datasource.file_based_datasource import (
-            _unwrap_s3_serialization_workaround,
-        )
-
         fs = _unwrap_s3_serialization_workaround(filesystem)
         return list(
             itertools.chain.from_iterable(_get_file_infos(path, fs) for path in paths)
