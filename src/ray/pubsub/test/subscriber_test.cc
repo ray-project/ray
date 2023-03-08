@@ -27,6 +27,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   void PubsubLongPolling(
       const rpc::PubsubLongPollingRequest &request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) override {
+    max_processed_sequence_id_ = request.max_processed_sequence_id();
     long_polling_callbacks.push_back(callback);
   }
 
@@ -57,6 +58,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   }
 
   int64_t GetNextSequenceId() { return ++sequence_id_; }
+  int64_t GetReportedMaxProcessedSequenceId() { return max_processed_sequence_id_; }
 
   bool ReplyLongPolling(rpc::ChannelType channel_type,
                         std::vector<ObjectID> &object_ids,
@@ -111,6 +113,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   std::deque<rpc::ClientCallback<rpc::PubsubCommandBatchReply>> command_batch_callbacks;
   std::queue<rpc::PubsubCommandBatchRequest> requests_;
   int64_t sequence_id_ = 0;
+  int64_t max_processed_sequence_id_ = 0;
 };
 
 namespace pubsub {
@@ -266,6 +269,7 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   objects_batched.push_back(object_id1);
   // Make sure the long polling batch works as expected.
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
   for (const auto &object_id : objects_batched) {
     ASSERT_TRUE(object_subscribed_[object_id] == 1);
@@ -274,6 +278,7 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   // By resetting the sequence_id, the message now come out of order,
   // and the subscriber should ignore out of order message.
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, {1, 2}));
+  ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
@@ -285,6 +290,7 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, {4, 3}));
   ASSERT_TRUE(object_subscribed_[object_id] == 2);
   ASSERT_TRUE(object_subscribed_[object_id1] == 1);
+  ASSERT_EQ(4, owner_client->GetReportedMaxProcessedSequenceId());
 }
 
 TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
