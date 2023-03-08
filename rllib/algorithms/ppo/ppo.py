@@ -17,6 +17,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -129,11 +130,15 @@ class PPOConfig(PGConfig):
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(module_class=PPOTorchRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
+            )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 

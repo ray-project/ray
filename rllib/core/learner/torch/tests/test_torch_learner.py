@@ -114,7 +114,7 @@ class TestLearner(unittest.TestCase):
                 module_class=DiscreteBCTorchModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": [16]},
+                model_config_dict={"fcnet_hiddens": [16]},
             ),
             set_optimizer_fn=set_optimizer_fn,
         )

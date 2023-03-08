@@ -31,7 +31,7 @@ class TfDistribution(Distribution, abc.ABC):
         self._dist = self._get_tf_distribution(*args, **kwargs)
 
     @abc.abstractmethod
-    def _get_tf_distribution(self, *args, **kwargs) -> tfp.distributions.Distribution:
+    def _get_tf_distribution(self, *args, **kwargs) -> "tfp.distributions.Distribution":
         """Returns the tfp.distributions.Distribution object to use."""
 
     @override(Distribution)
@@ -118,7 +118,7 @@ class TfCategorical(TfDistribution):
         probs: tf.Tensor = None,
         logits: tf.Tensor = None,
         temperature: float = 1.0,
-    ) -> tfp.distributions.Distribution:
+    ) -> "tfp.distributions.Distribution":
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
@@ -179,7 +179,7 @@ class TfDiagGaussian(TfDistribution):
         super().__init__(loc=loc, scale=scale)
 
     @override(TfDistribution)
-    def _get_tf_distribution(self, loc, scale=None) -> tfp.distributions.Distribution:
+    def _get_tf_distribution(self, loc, scale=None) -> "tfp.distributions.Distribution":
         if scale is None:
             loc, log_scale = tf.split(loc, num_or_size_splits=2, axis=-1)
             scale = tf.exp(log_scale)

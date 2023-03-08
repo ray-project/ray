@@ -186,7 +186,7 @@ class TestCatalog(unittest.TestCase):
         # TODO(Artur): Add support for composite spaces and test here
         # Today, Catalog does not handle composite spaces, so we can't test them
 
-    def test_get_action_dist_cls_dict(self):
+    def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.
 
         Action distributions are created from the base catalog class. Things this
@@ -229,15 +229,18 @@ class TestCatalog(unittest.TestCase):
                 action_space=action_space,
                 model_config_dict=MODEL_DEFAULTS.copy(),
             )
-            dist_dict = catalog.get_action_dist_cls_dict(
-                action_space=action_space,
-                deterministic=deterministic,
-            )
 
             for framework in framework_iterator(frameworks=["tf2", "torch"]):
+
                 if framework == "tf2":
                     framework = "tf"
-                dist_cls = dist_dict[framework]
+
+                dist_cls = catalog.get_dist_cls_from_action_space(
+                    action_space=action_space,
+                    deterministic=deterministic,
+                    framework=framework,
+                )
+
                 # Check if we can query the required input dimensions
                 input_shape = expected_cls_dict[framework].required_model_output_shape(
                     action_space, model_config=MODEL_DEFAULTS.copy()
