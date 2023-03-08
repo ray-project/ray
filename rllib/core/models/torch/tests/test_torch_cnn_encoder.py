@@ -30,7 +30,7 @@ class TestTorchCNNEncoder(unittest.TestCase):
 
         filter_layer_activation = [None, "linear", "relu"]
 
-        output_dims = [1, 100]
+        output_dims_configs = [[1], [100]]
 
         output_activations = filter_layer_activation
 
@@ -38,7 +38,7 @@ class TestTorchCNNEncoder(unittest.TestCase):
             inputs_dimss,
             filter_layer_activation,
             output_activations,
-            output_dims,
+            output_dims_configs,
         ):
             (
                 inputs_dims,
@@ -63,7 +63,7 @@ class TestTorchCNNEncoder(unittest.TestCase):
                 filter_specifiers=filter_specifiers,
                 filter_layer_activation=filter_layer_activation,
                 output_activation=output_activation,
-                output_dim=output_dims,
+                output_dims=output_dims,
             )
 
             model = config.build(framework="torch")
@@ -77,7 +77,7 @@ class TestTorchCNNEncoder(unittest.TestCase):
                 {SampleBatch.OBS: obs, SampleBatch.SEQ_LENS: seq_lens, STATE_IN: state}
             )
 
-            self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims))
+            self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
             self.assertEqual(outputs[STATE_OUT], None)
 
 
