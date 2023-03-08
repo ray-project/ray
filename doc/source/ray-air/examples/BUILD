@@ -46,6 +46,7 @@ py_test_run_all_notebooks(
         "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
+        "torch_detection.ipynb",  # Requires GPUs
         "gptj_batch_prediction.ipynb",  # Requires GPUs
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
     ],
@@ -79,6 +80,7 @@ py_test_run_all_notebooks(
     include = [
         "huggingface_text_classification.ipynb",
         "pytorch_resnet_batch_prediction.ipynb",
+        "torch_detection.ipynb",
         "gptj_batch_prediction.ipynb",
         "stablediffusion_batch_prediction.ipynb",
     ],
