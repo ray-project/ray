@@ -50,7 +50,7 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
+from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -2823,7 +2823,7 @@ class Dataset(Generic[T]):
             It is recommended to use ``DatasetIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return BulkDatasetIterator(self)
+        return DatasetIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:

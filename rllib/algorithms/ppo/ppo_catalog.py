@@ -55,7 +55,8 @@ class PPOCatalog(Catalog):
 
         assert len(observation_space.shape) in (
             1,
-        ), "This simple PPO Module only supports 1D observation spaces."
+            3,
+        ), "This simple PPO Module only supports 1D and 3D observation spaces."
 
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPO Module only supports Discrete and Box action spaces.",
