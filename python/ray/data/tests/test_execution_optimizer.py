@@ -26,6 +26,7 @@ from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.data import Dataset
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
@@ -594,6 +595,28 @@ def test_aggregate_e2e(
         assert row.as_pydict() == {"value": idx, "count()": 1}
 
 
+def test_plan_initial_stats(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds: Dataset = ray.data.range(100)
+    ds2: Dataset = ray.data.range(200)
+    ds_union = ds.union(ds2).fully_executed()
+    ds_union_stats_summary = ds_union._plan.stats_summary()
+
+    assert len(ds_union_stats_summary.stages_stats) == 1
+
+    ds_union_stage_stats = ds_union_stats_summary.stages_stats[0]
+    assert ds_union_stage_stats.stage_name == "union"
+    assert ds_union_stage_stats.time_total_s > 0
+
+    ds_union_parent_stats = ds_union_stats_summary.parents
+    assert len(ds_union_parent_stats) == 2
+    assert ds_union_parent_stats[0] == ds._plan.stats_summary()
+    assert ds_union_parent_stats[1] == ds2._plan.stats_summary()
+
+
 def test_streaming_executor(
     ray_start_regular_shared,
     enable_optimizer,
@@ -610,9 +633,6 @@ def test_streaming_executor(
         assert len(batch) == 3, batch
         result.extend(batch)
     assert sorted(result) == list(range(1, 100)), result
-
-    # TODO(Scott): add tests for stats here
-    # check that stats are preserved after limit/union
 
 
 if __name__ == "__main__":
