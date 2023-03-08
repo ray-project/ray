@@ -1145,11 +1145,7 @@ class Dataset(Generic[T]):
 
         return self.map_batches(process_batch)
 
-    @ConsumptionAPI(
-        delegate=(
-            "Calling any of the consumption methods on the returned iterators"
-        )
-    )
+    @ConsumptionAPI
     def streaming_split(
         self,
         n: int,
@@ -1168,10 +1164,10 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> for batch in ray.data.range(
-            ...     1000000
-            ... ).iterator().iter_batches(): # doctest: +SKIP
-            ...     print(batch) # doctest: +SKIP
+            >>> ds = ray.data.range(1000000)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
+            >>> list(it1.iter_batches())  # doctest: +SKIP
+            >>> list(it2.iter_batches())  # doctest: +SKIP
 
         Args:
             n: Number of output iterators to return.
