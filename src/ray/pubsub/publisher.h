@@ -463,6 +463,11 @@ class Publisher : public PublisherInterface {
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
 
+  /// The monotonically increasings sequence_id for this publishter.
+  /// The publisher will add this sequence_id to every message to be published.
+  /// The sequence_id is used for handling failures: the publisher will not delete
+  /// a message from the sending queue until the subscriber has acknowledge
+  /// it has processed beyond the message's sequence_id.
   int64_t next_sequence_id_ GUARDED_BY(mutex_) = 0;
 };
 
