@@ -408,25 +408,3 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
-<<<<<<< HEAD
-
-    def get_action_dist_cls(self, framework: str):
-        """Get the action distribution class.
-
-        The default behavior is to get the action distribution from the
-        action_dist_class_fn. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
-        implementation.
-
-        Args:
-            framework: The framework to use. Either "torch" or "tf".
-
-        Returns:
-            The action distribution.
-        """
-        # TODO (Kourosh): We can probably deprecate this method in favor of
-        # get_dist_cls_from_action_space since this method is super shallow.
-        action_dist_cls = self.action_dist_class_fn(framework=framework)
-        return action_dist_cls
-=======
->>>>>>> ac2230fd28f642e4523422a1e1eb15ab92f63943

@@ -90,9 +90,11 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm):
+def _get_ppo_module(framework, env, lstm, observation_space):
     model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(env, model_config_dict=model_config_dict)
+    config = get_expected_module_config(
+        env, model_config_dict=model_config_dict, observation_space=observation_space
+    )
     if framework == "torch":
         module = PPOTorchRLModule(config)
     else:
