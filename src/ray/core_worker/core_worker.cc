@@ -3121,7 +3121,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     pub_message.mutable_worker_object_eviction_message()->set_object_id(
         object_id.Binary());
 
-    object_info_publisher_->Publish(pub_message);
+    object_info_publisher_->Publish(std::move(pub_message));
   };
 
   const auto object_id = ObjectID::FromBinary(message.object_id());

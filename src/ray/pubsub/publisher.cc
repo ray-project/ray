@@ -22,24 +22,22 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool BasicEntityState::Publish(const rpc::PubMessage &pub_message) {
+bool BasicEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
   if (subscribers_.empty()) {
     return false;
   }
-  const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
   for (auto &[id, subscriber] : subscribers_) {
     subscriber->QueueMessage(msg);
   }
   return true;
 }
 
-bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
+bool CappedEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
   if (subscribers_.empty()) {
     return false;
   }
 
-  const int64_t message_size = pub_message.ByteSizeLong();
-
+  const int64_t message_size = msg->ByteSizeLong();
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -77,7 +75,6 @@ bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
     message_sizes_.pop();
   }
 
-  const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
   pending_messages_.push(msg);
   total_size_ += message_size;
   message_sizes_.push(message_size);
@@ -104,10 +101,10 @@ const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscri
 SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type)
     : channel_type_(channel_type), subscribers_to_all_(CreateEntityState()) {}
 
-bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
+bool SubscriptionIndex::Publish(std::shared_ptr<rpc::PubMessage> pub_message) {
   const bool publish_to_all = subscribers_to_all_->Publish(pub_message);
   bool publish_to_entity = false;
-  auto it = entities_.find(pub_message.key_id());
+  auto it = entities_.find(pub_message->key_id());
   if (it != entities_.end()) {
     publish_to_entity = it->second->Publish(pub_message);
   }
@@ -383,7 +380,7 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
   pub_message.set_sequence_id(++next_sequence_id_);
-  subscription_index.Publish(pub_message);
+  subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)));
   cum_pub_message_cnt_[channel_type]++;
 }
 

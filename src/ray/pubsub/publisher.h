@@ -48,7 +48,7 @@ class EntityState {
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  virtual bool Publish(const rpc::PubMessage &pub_message) = 0;
+  virtual bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) = 0;
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -78,14 +78,14 @@ class EntityState {
 /// Publishes the message to all subscribers, without size cap on buffered messages.
 class BasicEntityState : public EntityState {
  public:
-  bool Publish(const rpc::PubMessage &pub_message) override;
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) override;
 };
 
 /// Publishes the message to all subscribers, and enforce a total size cap on buffered
 /// messages.
 class CappedEntityState : public EntityState {
  public:
-  bool Publish(const rpc::PubMessage &pub_message) override;
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) override;
 
  private:
   // Tracks inflight messages. The messages have shared ownership by
@@ -111,7 +111,7 @@ class SubscriptionIndex {
   /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the entity key of the message,
   /// returns false otherwise.
-  bool Publish(const rpc::PubMessage &pub_message);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
