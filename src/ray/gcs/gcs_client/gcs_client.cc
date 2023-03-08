@@ -49,6 +49,7 @@ void GcsSubscriberClient::PubsubLongPolling(
     const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
   rpc::GcsSubscriberPollRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   rpc_client_->GcsSubscriberPoll(
       req,
       [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {

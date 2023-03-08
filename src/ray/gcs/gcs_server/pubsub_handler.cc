@@ -63,6 +63,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
   }
   rpc::PubsubLongPollingRequest pubsub_req;
   pubsub_req.set_subscriber_id(request.subscriber_id());
+  pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
   auto pubsub_reply_ptr = pubsub_reply.get();
   gcs_publisher_->GetPublisher()->ConnectToSubscriber(

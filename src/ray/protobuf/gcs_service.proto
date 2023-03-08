@@ -525,6 +525,9 @@ message GcsPublishReply {
 message GcsSubscriberPollRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
+  /// Tha max squence_id that has been processed by the subscriber. The Publisher
+  /// will drop queued messages with smaller sequence_id for this subscriber.
+  int64 max_processed_sequence_id = 2;
 }
 
 message GcsSubscriberPollReply {
