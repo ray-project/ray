@@ -25,6 +25,8 @@ class tqdm:
         desc: Optional[str] = None,
         total: Optional[int] = None,
         position: Optional[int] = 0,
+        _ray_ip: Optional[str] = None,
+        _ray_pid: Optional[int] = None,
     ):
         if position is None:
             raise NotImplementedError
@@ -32,8 +34,8 @@ class tqdm:
         self._desc = desc
         self._total = total
         self._position = position
-        self._ip = services.get_node_ip_address()
-        self._pid = os.getpid()
+        self._ip = _ray_ip or services.get_node_ip_address()
+        self._pid = _ray_pid or os.getpid()
         self._pos = position
         self._uuid = uuid.uuid4().hex
         self._x = 0
@@ -90,9 +92,8 @@ class _Bar:
     def update_offset(self, pos_offset: int) -> None:
         if pos_offset != self.pos_offset:
             self.pos_offset = pos_offset
-            self.bar.clear()
             self.bar.pos = -(pos_offset + self.state["pos"])
-            self.bar.update(0)
+            self.bar.refresh()
 
 
 class _Process:
