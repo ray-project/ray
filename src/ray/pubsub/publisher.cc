@@ -251,7 +251,7 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
-    RAY_LOG(INFO) << "removing " << max_processed_sequence_id << " : "
+    RAY_LOG(DEBUG) << "removing " << max_processed_sequence_id << " : "
                   << mailbox_.front()->sequence_id();
     mailbox_.pop_front();
   }
@@ -272,7 +272,7 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
-  RAY_LOG(INFO) << "enqueue: " << pub_message->sequence_id();
+  RAY_LOG(DEBUG) << "enqueue: " << pub_message->sequence_id();
   mailbox_.push_back(pub_message);
   if (try_publish) {
     PublishIfPossible();
