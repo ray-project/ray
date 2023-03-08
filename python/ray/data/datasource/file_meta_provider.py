@@ -397,7 +397,6 @@ def _expand_paths(
         # 2. Common path prefix case.
         # Get longest common path of all paths.
         common_path = os.path.commonpath(paths)
-        common_path = os.path.normpath(common_path)
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
@@ -411,9 +410,6 @@ def _expand_paths(
         # 3. Parallelization case.
         else:
             # Parallelize requests via Ray tasks.
-            # TODO(Clark): Group file paths by parent directory paths and do a prefix
-            # fetch + client-side filter if the number of groups is << the total number
-            # of paths?
             yield from _get_file_infos_parallel(paths, filesystem)
 
 
