@@ -478,9 +478,7 @@ class BackendExecutor:
             session = _get_session("pause_reporting")
             return session.pause_reporting()
 
-        futures = self.worker_group.execute_async(
-            "pause_session_reporting", pause_session_reporting
-        )
+        futures = self.worker_group.execute_async(pause_session_reporting)
         self.get_with_failure_handling(futures)
 
     def finish_training(self):
