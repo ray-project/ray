@@ -9,7 +9,7 @@ from ray.serve._private.common import (
 )
 from ray.serve.schema import (
     DeploymentDetails,
-    deployment_info_to_schema,
+    _deployment_info_to_schema,
 )
 import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
@@ -224,7 +224,7 @@ class ApplicationState:
                 num_running_replicas=len(replicas[name]),
                 deployment_status=status_info[name].status,
                 message=status_info[name].message,
-                deployment_config=deployment_info_to_schema(
+                deployment_config=_deployment_info_to_schema(
                     name, self.deployment_state_manager.get_deployment(name)
                 ),
             )
