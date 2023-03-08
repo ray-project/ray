@@ -6,15 +6,15 @@ import os
 import random
 import time
 import traceback
-from collections import deque, defaultdict, Counter
+from collections import deque
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
-from typing import Callable, Dict, Iterable, List, Optional, Set, Union, Tuple
+from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.air import Checkpoint, AcquiredResources, ResourceRequest
+from ray.air import Checkpoint, AcquiredResources
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import (
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
@@ -35,6 +35,7 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
 from ray.tune.experiment.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
+from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.trainable.util import TrainableUtil
 from ray.util import log_once
@@ -234,13 +235,10 @@ class RayTrialExecutor:
         # Actor re-use.
         # For details, see docstring of `_maybe_cache_trial_actor()`
         self._reuse_actors = reuse_actors
-        self._resource_request_to_cached_actors: Dict[
-            ResourceRequest, List[Tuple[ray.actor.ActorHandle, AcquiredResources]]
-        ] = defaultdict(list)
+        self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # Trials for which we requested resources
         self._staged_trials = set()  # Staged trials
-        self._staged_resources = Counter()  # Resources of staged trials
         self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
@@ -261,7 +259,7 @@ class RayTrialExecutor:
     def setup(
         self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
     ) -> None:
-        if len(self._resource_request_to_cached_actors) > 0:
+        if self._actor_cache.num_cached_objects:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
                 "during a run."
@@ -327,7 +325,7 @@ class RayTrialExecutor:
             resource_request = trial.placement_group_factory
 
             self._staged_trials.add(trial)
-            self._staged_resources[trial.placement_group_factory] += 1
+            self._actor_cache.increase_max(resource_request)
             self._resource_manager.request_resources(resource_request=resource_request)
 
         self._resource_manager.update_state()
@@ -344,7 +342,7 @@ class RayTrialExecutor:
         for trial in self._staged_trials:
             resource_request = trial.placement_group_factory
             # If we have a cached actor for these resources, return
-            if self._resource_request_to_cached_actors[resource_request]:
+            if self._actor_cache.has_cached_object(resource_request):
                 return trial
 
             # If the resources are available from the resource manager, return
@@ -360,12 +358,13 @@ class RayTrialExecutor:
             return None
 
         resource_request = trial.placement_group_factory
-        if not self._resource_request_to_cached_actors[resource_request]:
+
+        if not self._actor_cache.has_cached_object(resource_request):
             return None
 
-        actor, acquired_resources = self._resource_request_to_cached_actors[
+        actor, acquired_resources = self._actor_cache.pop_cached_object(
             resource_request
-        ].pop(0)
+        )
 
         logger.debug(f"Trial {trial}: Reusing cached actor " f"{actor}")
 
@@ -541,7 +540,7 @@ class RayTrialExecutor:
         # Case 1: The trial we started was staged. Just remove it
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
-            self._staged_resources[trial.placement_group_factory] -= 1
+            self._actor_cache.decrease_max(trial.placement_group_factory)
             return
 
         # Case 2: We staged a trial "A" with the same resources, but our trial "B"
@@ -560,7 +559,7 @@ class RayTrialExecutor:
 
         if candidate_trial:
             self._staged_trials.remove(candidate_trial)
-            self._staged_resources[candidate_trial.placement_group_factory] -= 1
+            self._actor_cache.decrease_max(candidate_trial.placement_group_factory)
             return
 
         raise RuntimeError(
@@ -593,16 +592,8 @@ class RayTrialExecutor:
         acquired_resources = self._trial_to_acquired_resources[trial]
         cached_resource_request = acquired_resources.resource_request
 
-        staged_resource_count = self._count_staged_resources()
-        if (
-            # If we have at least one cached actor already
-            any(v for v in self._resource_request_to_cached_actors.values())
-            # and we haven't requested resources for an actor with the
-            # same resources as the actor we want to cache
-            and len(self._resource_request_to_cached_actors[cached_resource_request])
-            >= staged_resource_count[cached_resource_request]
-            # then we don't have an immediate need for the actor and don't
-            # want to cache it.
+        if not self._actor_cache.cache_object(
+            cached_resource_request, (trial.runner, acquired_resources)
         ):
             logger.debug(
                 f"Could not cache actor of trial {trial} for "
@@ -613,9 +604,6 @@ class RayTrialExecutor:
 
         logger.debug(f"Caching actor of trial {trial} for re-use")
 
-        self._resource_request_to_cached_actors[cached_resource_request].append(
-            (trial.runner, acquired_resources)
-        )
         self._trial_to_acquired_resources.pop(trial)
 
         trial.set_runner(None)
@@ -833,7 +821,7 @@ class RayTrialExecutor:
 
         return (
             trial in self._staged_trials
-            or self._resource_request_to_cached_actors[resource_request]
+            or self._actor_cache.has_cached_object(resource_request)
             or len(self._staged_trials) < self._max_staged_actors
             or self._resource_manager.has_resources_ready(resource_request)
         )
@@ -860,9 +848,6 @@ class RayTrialExecutor:
     def on_step_end(self, search_ended: bool = False) -> None:
         self._cleanup_cached_actors(search_ended=search_ended)
         self._do_force_trial_cleanup()
-
-    def _count_staged_resources(self):
-        return self._staged_resources
 
     def _cleanup_cached_actors(
         self, search_ended: bool = False, force_all: bool = False
@@ -902,21 +887,16 @@ class RayTrialExecutor:
             # (if the search ended).
             return
 
-        staged_resources = self._count_staged_resources()
-
-        for resource_request, actors in self._resource_request_to_cached_actors.items():
-            while len(actors) > staged_resources.get(resource_request, 0) or (
-                force_all and len(actors)
-            ):
-                actor, acquired_resources = actors[-1]
-                actors.pop()
-                future = actor.stop.remote()
-                self._futures[future] = (
-                    _ExecutorEventType.STOP_RESULT,
-                    acquired_resources,
-                )
-                if self._trial_cleanup:  # force trial cleanup within a deadline
-                    self._trial_cleanup.add(future)
+        for (actor, acquired_resources) in self._actor_cache.flush_cached_objects(
+            force_all=force_all
+        ):
+            future = actor.stop.remote()
+            self._futures[future] = (
+                _ExecutorEventType.STOP_RESULT,
+                acquired_resources,
+            )
+            if self._trial_cleanup:  # force trial cleanup within a deadline
+                self._trial_cleanup.add(future)
 
     def _resolve_stop_event(
         self,
@@ -1196,18 +1176,12 @@ class RayTrialExecutor:
             # when next_trial_exists and there are cached resources
             ###################################################################
             # There could be existing PGs from either
-            # `self._resource_request_to_cached_actors`
+            # `self._actor_cache`
             # or from ready trials. If so and if there is indeed
             # a next trial to run, we return `PG_READY` future for trial
             # runner. The next trial can then be scheduled on this PG.
             if next_trial_exists:
-                if (
-                    sum(
-                        len(cached)
-                        for cached in self._resource_request_to_cached_actors.values()
-                    )
-                    > 0
-                ):
+                if self._actor_cache.num_cached_objects > 0:
                     return _ExecutorEvent(_ExecutorEventType.PG_READY)
                 # TODO(xwjiang): Expose proper API when we decide to do
                 #  ActorPool abstraction.
