@@ -6,6 +6,10 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.from_arrow_operator import (
+    FromArrow,
+    FromArrowRefs,
+)
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import (
     FromNumpy,
@@ -945,6 +949,106 @@ def test_from_numpy_e2e(ray_start_regular_shared, enable_optimizer):
     assert "from_numpy_refs" in ds.stats()
     # Underlying implementation uses `FromNumpyRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+
+
+def test_from_arrow_refs_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import pyarrow as pa
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
+    planner = Planner()
+    from_arrow_refs_op = FromArrowRefs(
+        [
+            ray.put(pa.Table.from_pandas(df1)),
+            ray.put(pa.Table.from_pandas(df2)),
+        ]
+    )
+    plan = LogicalPlan(from_arrow_refs_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_arrow_refs_op.name == "FromArrowRefs"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
+    import pyarrow as pa
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.Table.from_pandas(df1)), ray.put(pa.Table.from_pandas(df2))]
+    )
+
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+    # Check that conversion task is included in stats.
+    assert "from_arrow_refs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+
+
+def test_from_arrow_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import pyarrow as pa
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
+    planner = Planner()
+    from_arrow_op = FromArrow(
+        [
+            pa.Table.from_pandas(df1),
+            pa.Table.from_pandas(df2),
+        ]
+    )
+    plan = LogicalPlan(from_arrow_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_arrow_op.name == "FromArrow"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_arrow_e2e(ray_start_regular_shared, enable_optimizer):
+    import pyarrow as pa
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_arrow([pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)])
+
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ds.stats()
+    # Underlying implementation uses `FromArrowRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+    # Check that conversion task is included in stats.
+    assert "from_arrow_refs" in ds.stats()
+    # Underlying implementation uses `FromArrowRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
 
 def test_streaming_executor(

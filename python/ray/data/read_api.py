@@ -9,6 +9,7 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.from_pandas_operator import FromPandasRefs
@@ -1453,6 +1454,10 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
+
+    from_arrow_refs_op = FromArrowRefs(tables)
+    logical_plan = LogicalPlan(from_arrow_refs_op)
+
     return Dataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
@@ -1461,9 +1466,11 @@ def from_arrow_refs(
         ),
         0,
         True,
+        logical_plan,
     )
 
 
+# TODO(Scott)
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
@@ -1485,6 +1492,7 @@ def from_spark(
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
+# TODO(Scott)
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
@@ -1519,6 +1527,7 @@ def from_huggingface(
         )
 
 
+# TODO(Scott)
 @PublicAPI
 def from_tf(
     dataset: "tf.data.Dataset",
@@ -1572,6 +1581,7 @@ def from_tf(
     return from_items(list(dataset.as_numpy_iterator()))
 
 
+# TODO(Scott)
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
