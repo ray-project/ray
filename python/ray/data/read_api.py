@@ -1491,7 +1491,6 @@ def from_spark(
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
-# TODO(Scott)
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
@@ -1526,7 +1525,6 @@ def from_huggingface(
         )
 
 
-# TODO(Scott)
 @PublicAPI
 def from_tf(
     dataset: "tf.data.Dataset",
@@ -1580,7 +1578,6 @@ def from_tf(
     return from_items(list(dataset.as_numpy_iterator()))
 
 
-# TODO(Scott)
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",

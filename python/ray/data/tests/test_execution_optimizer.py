@@ -12,7 +12,11 @@ from ray.data._internal.logical.operators.from_arrow_operator import (
     FromHuggingFace,
     FromSpark,
 )
-from ray.data._internal.logical.operators.from_items_operator import FromItems
+from ray.data._internal.logical.operators.from_items_operator import (
+    FromItems,
+    FromTF,
+    FromTorch,
+)
 from ray.data._internal.logical.operators.from_numpy_operator import (
     FromNumpy,
     FromNumpyRefs,
@@ -75,6 +79,10 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.from_items(data)
     ds = ds.map_batches(lambda s: s)
     assert ds.take_all() == data, ds
+
+    # Check that metadata fetch is included in stats.
+    assert "from_items" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromItems"
 
 
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
@@ -1127,6 +1135,78 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert "from_arrow_refs" in ray_dataset.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromArrowRefs"
+
+
+def test_from_tf_operator(ray_start_regular_shared, enable_optimizer):
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
+
+    planner = Planner()
+    from_tf_op = FromTF(tf_dataset)
+    plan = LogicalPlan(from_tf_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_tf_op.name == "FromTF"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
+
+    ray_dataset = ray.data.from_tf(tf_dataset)
+
+    actual_data = ray_dataset.take_all()
+    expected_data = list(tf_dataset)
+    assert len(actual_data) == len(expected_data)
+    for (expected_features, expected_label), (actual_features, actual_label) in zip(
+        expected_data, actual_data
+    ):
+        tf.debugging.assert_equal(expected_features, actual_features)
+        tf.debugging.assert_equal(expected_label, actual_label)
+
+    # Check that metadata fetch is included in stats.
+    assert "from_items" in ray_dataset.stats()
+    # Underlying implementation uses `FromItems` operator
+    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
+
+
+def test_from_torch_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
+    import torchvision
+
+    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+
+    planner = Planner()
+    from_torch_op = FromTorch(torch_dataset)
+    plan = LogicalPlan(from_torch_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_torch_op.name == "FromTorch"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
+    import torchvision
+
+    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+
+    ray_dataset = ray.data.from_torch(torch_dataset)
+
+    expected_data = list(torch_dataset)
+    actual_data = list(ray_dataset.take_all())
+    assert actual_data == expected_data
+
+    # Check that metadata fetch is included in stats.
+    assert "from_items" in ray_dataset.stats()
+    # Underlying implementation uses `FromItems` operator
+    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
 
 
 def test_streaming_executor(
