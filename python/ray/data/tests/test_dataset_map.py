@@ -301,7 +301,10 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_c
         ).take()
 
 
-def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+def test_map_batches_extra_args(shutdown_only, tmp_path):
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
     def put(x):
         # We only support automatic deref in the legacy backend.
         if DatasetContext.get_current().new_execution_backend:
@@ -577,7 +580,9 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
         ).take()
 
 
-def test_map_batches_actors_preserves_order(ray_start_regular_shared):
+def test_map_batches_actors_preserves_order(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
     assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
