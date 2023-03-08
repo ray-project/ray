@@ -207,7 +207,12 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
         self,
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
+        ignore_missing_paths: bool = False,
     ) -> Tuple[List[str], List[Optional[int]]]:
+        if ignore_missing_paths:
+            raise ValueError(
+                "`ignore_missing_paths` cannot be set when used with `FastFileMetadataProvider`. All paths must exist when using `FastFileMetadataProvider`."
+            )
         logger.warning(
             f"Skipping expansion of {len(paths)} path(s). If your paths contain "
             f"directories or if file size collection is required, try rerunning this "

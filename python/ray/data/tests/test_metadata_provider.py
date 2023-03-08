@@ -220,6 +220,12 @@ def test_fast_file_metadata_provider(caplog, fs, data_path, endpoint_url):
     assert meta.schema is None
 
 
+def test_fast_file_metadata_provider_ignore_missing():
+    meta_provider = FastFileMetadataProvider()
+    with pytest.raises(ValueError):
+        meta_provider.expand_paths([], None, ignore_missing_paths=True)
+
+
 if __name__ == "__main__":
     import sys
 
