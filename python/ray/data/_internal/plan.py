@@ -271,12 +271,11 @@ class ExecutionPlan:
                         )
                     schema_str.append(f"{col_str}")
                 schema_str = ",\n".join(schema_str)
-                schema_str = "{\n" + schema_str + "\n{INDENT_STR}}"
+                schema_str = "{\n" + schema_str + f"\n{INDENT_STR}"
             dataset_str = (
-                "Dataset(\n{INDENT_STR}num_blocks={},\n{INDENT_STR}"
-                "num_rows={},\n{INDENT_STR}schema={}\n)".format(
-                    num_blocks, count, schema_str
-                )
+                f"Dataset(\n{INDENT_STR}num_blocks={num_blocks},"
+                f"\n{INDENT_STR}num_rows={count},"
+                f"\n{INDENT_STR}schema={schema_str}\n)"
             )
 
         if num_stages == 0:
