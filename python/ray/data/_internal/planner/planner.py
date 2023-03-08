@@ -1,12 +1,14 @@
 from typing import Dict
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
     PhysicalPlan,
 )
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
@@ -49,6 +51,9 @@ class Planner:
         elif isinstance(logical_op, AbstractAllToAll):
             assert len(physical_children) == 1
             physical_op = _plan_all_to_all_op(logical_op, physical_children[0])
+        elif isinstance(logical_op, Zip):
+            assert len(physical_children) == 2
+            physical_op = ZipOperator(physical_children[0], physical_children[1])
         else:
             raise ValueError(
                 f"Found unknown logical operator during planning: {logical_op}"
