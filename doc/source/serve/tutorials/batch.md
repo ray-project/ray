@@ -200,7 +200,7 @@ TypeError: Descriptors cannot not be created directly.
      2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
 ```
 
-You can downgrade the protobuf package to 3.20.x or lower by using a [runtime environment](runtime-environments).
+You can downgrade the protobuf package to 3.20.x or lower in your Docker image, or tell Ray to do it at runtime by specifying a [runtime environment](runtime-environments):
 
 Open a new YAML file called `batch_env.yaml` for runtime environment.
 
