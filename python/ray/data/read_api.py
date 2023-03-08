@@ -1470,7 +1470,6 @@ def from_arrow_refs(
     )
 
 
-# TODO(Scott)
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None

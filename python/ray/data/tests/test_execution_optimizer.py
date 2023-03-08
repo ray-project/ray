@@ -9,6 +9,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrow,
     FromArrowRefs,
+    FromHuggingFace,
     FromSpark,
 )
 from ray.data._internal.logical.operators.from_items_operator import FromItems
@@ -1080,6 +1081,52 @@ def test_from_spark_e2e(enable_optimizer, spark):
     assert "from_arrow_refs" in ds.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+
+
+def test_from_huggingface_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import datasets
+
+    data = datasets.load_dataset("tweet_eval", "emotion")
+    assert isinstance(data, datasets.DatasetDict)
+
+    planner = Planner()
+    from_huggingface_op = FromHuggingFace(data)
+    plan = LogicalPlan(from_huggingface_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_huggingface_op.name == "FromHuggingFace"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
+    import datasets
+
+    data = datasets.load_dataset("tweet_eval", "emotion")
+    assert isinstance(data, datasets.DatasetDict)
+
+    ray_datasets = ray.data.from_huggingface(data)
+    assert isinstance(ray_datasets, dict)
+    assert ray.get(ray_datasets["train"].to_arrow_refs())[0].equals(
+        data["train"].data.table
+    )
+    for ds in ray_datasets.values():
+        assert isinstance(ds, ray.data.Dataset)
+        ds.fully_executed()
+        assert "from_arrow_refs" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+
+    ray_dataset = ray.data.from_huggingface(data["train"]).fully_executed()
+    assert isinstance(ray_dataset, ray.data.Dataset)
+    assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
+
+    # Check that metadata fetch is included in stats.
+    assert "from_arrow_refs" in ray_dataset.stats()
+    # Underlying implementation uses `FromArrowRefs` operator
+    assert ray_dataset._plan._logical_plan.dag.name == "FromArrowRefs"
 
 
 def test_streaming_executor(
