@@ -7,10 +7,10 @@ import tensorflow as tf
 import torch
 import tree
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_rl_module_config import PPOModuleConfig
 
 import ray
 from ray.rllib import SampleBatch
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
@@ -24,8 +24,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 def get_expected_module_config(
     env: gym.Env,
     model_config_dict: dict,
-    observation_space: gym.Space,
-) -> PPOModuleConfig:
+) -> RLModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
@@ -36,17 +35,14 @@ def get_expected_module_config(
     Returns:
          A PPOModuleConfig containing the relevant configs to build PPORLModule
     """
-    catalog = PPOCatalog(
-        observation_space=observation_space,
-        action_space=env.action_space,
-        model_config_dict=model_config_dict,
-    )
-
-    return PPOModuleConfig(
+    config = RLModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        catalog=catalog,
+        model_config_dict=model_config_dict,
+        catalog_class=PPOCatalog,
     )
+
+    return config
 
 
 def dummy_torch_ppo_loss(batch, fwd_out):
@@ -92,11 +88,9 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm, observation_space):
+def _get_ppo_module(framework, env, lstm):
     model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(
-        env, model_config_dict=model_config_dict, observation_space=observation_space
-    )
+    config = get_expected_module_config(env, model_config_dict=model_config_dict)
     if framework == "torch":
         module = PPOTorchRLModule(config)
     else:
@@ -142,7 +136,6 @@ class TestPPO(unittest.TestCase):
                 framework=fw,
                 env=env,
                 lstm=lstm,
-                observation_space=env.observation_space,
             )
             obs, _ = env.reset()
 
@@ -183,7 +176,6 @@ class TestPPO(unittest.TestCase):
                 framework=fw,
                 env=env,
                 lstm=lstm,
-                observation_space=env.observation_space,
             )
 
             # collect a batch of data

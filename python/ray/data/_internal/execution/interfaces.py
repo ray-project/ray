@@ -432,8 +432,8 @@ class PhysicalOperator(Operator):
 class OutputIterator(Iterator[RefBundle]):
     """Iterator used to access the output of an Executor execution.
 
-    This is a blocking iterator, and must be thread-safe (i.e., multiple threads can
-    block on it at the same time).
+    This is a blocking iterator. Datasets guarantees that all its iterators are
+    thread-safe (i.e., multiple threads can block on them at the same time).
     """
 
     def __init__(self, base: Iterable[RefBundle]):
