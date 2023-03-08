@@ -222,14 +222,10 @@ class WorkerGroup:
         logger.debug("Shutdown successful.")
         self.workers = []
 
-    def execute_async(
-        self, name: str, func: Callable[..., T], *args, **kwargs
-    ) -> List[ObjectRef]:
+    def execute_async(self, func: Callable[..., T], *args, **kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
 
         Args:
-            name: Allows customized task name to be used rather than
-                `_RayTrainWorker__execute`.
             func: A function to call on each worker.
             args, kwargs: Passed directly into func.
 
@@ -248,17 +244,15 @@ class WorkerGroup:
 
         return [
             w.actor._RayTrainWorker__execute.options(
-                name=f"_RayTrainWorker__execute.{name}"
+                name=f"_RayTrainWorker__execute.{func.__name__}"
             ).remote(func, *args, **kwargs)
             for w in self.workers
         ]
 
-    def execute(self, name: str, func: Callable[..., T], *args, **kwargs) -> List[T]:
+    def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
-            name: Allows customized task name to be used rather than
-                `_RayTrainWorker__execute`.
             func: A function to call on each worker.
             args, kwargs: Passed directly into func.
 
@@ -267,16 +261,14 @@ class WorkerGroup:
                 worker. The order is the same as ``self.workers``.
 
         """
-        return ray.get(self.execute_async(name, func, *args, **kwargs))
+        return ray.get(self.execute_async(func, *args, **kwargs))
 
     def execute_single_async(
-        self, name: str, worker_index: int, func: Callable[..., T], *args, **kwargs
+        self, worker_index: int, func: Callable[..., T], *args, **kwargs
     ) -> ObjectRef:
         """Execute ``func`` on worker ``worker_index`` and return futures.
 
         Args:
-            name: Allows customized task name to be used rather than
-                `_RayTrainWorker__execute`.
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
             args, kwargs: Passed directly into func.
@@ -293,19 +285,17 @@ class WorkerGroup:
         return (
             self.workers[worker_index]
             .actor._RayTrainWorker__execute.options(
-                name=f"_RayTrainWorker__execute.{name}"
+                name=f"_RayTrainWorker__execute.{func.__name__}"
             )
             .remote(func, *args, **kwargs)
         )
 
     def execute_single(
-        self, name: str, worker_index: int, func: Callable[..., T], *args, **kwargs
+        self, worker_index: int, func: Callable[..., T], *args, **kwargs
     ) -> T:
         """Execute ``func`` on worker with index ``worker_index``.
 
         Args:
-            name: Allows customized task name to be used rather than
-                `_RayTrainWorker__execute`.
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
             args, kwargs: Passed directly into func.
@@ -315,9 +305,7 @@ class WorkerGroup:
 
         """
 
-        return ray.get(
-            self.execute_single_async(name, worker_index, func, *args, **kwargs)
-        )
+        return ray.get(self.execute_single_async(worker_index, func, *args, **kwargs))
 
     def remove_workers(self, worker_indexes: List[int]):
         """Removes the workers with the specified indexes.

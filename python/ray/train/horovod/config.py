@@ -94,7 +94,6 @@ class _HorovodBackend(Backend):
             worker_node_id = worker_group.workers[rank].metadata.node_id
             setup_futures.append(
                 worker_group.execute_single_async(
-                    "init_env_vars",
                     rank,
                     _init_env_vars,
                     rank,
@@ -121,7 +120,7 @@ class _HorovodBackend(Backend):
         for rank, local_cross_env_var in all_info.items():
             setup_futures.append(
                 worker_group.execute_single_async(
-                    "update_env_ars", rank, update_env_vars, local_cross_env_var
+                    rank, update_env_vars, local_cross_env_var
                 )
             )
         ray.get(setup_futures)
@@ -143,7 +142,7 @@ class _HorovodBackend(Backend):
         )
         coordinator_envs.update(nics_to_env_var(nics))
 
-        worker_group.execute("update_env_vars", update_env_vars, coordinator_envs)
+        worker_group.execute(update_env_vars, coordinator_envs)
 
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint):
@@ -190,11 +189,6 @@ class _HorovodWorkerWrapper:
         class ExecuteHandle:
             def remote(self, func, *args, **kwargs):
                 _ = None
-                # Unfortunately the name is not as detailed.
-                # This is to avoid changes needed in Horovod repository.
-                # See: https://github.com/horovod/horovod/blob/v0.23.0/horovod/ray/driver_service.py#L13 # noqa: E501
-                return w.actor._RayTrainWorker__execute.remote(
-                    "_RayTrainWorker__execute", func, _, *args, **kwargs
-                )
+                return w.actor._RayTrainWorker__execute.remote(func, _, *args, **kwargs)
 
         return ExecuteHandle()

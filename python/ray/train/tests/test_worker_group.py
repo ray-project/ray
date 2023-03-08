@@ -45,7 +45,7 @@ def test_worker_shutdown(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
 
     with pytest.raises(RuntimeError):
-        wg.execute("test", lambda: 1)
+        wg.execute(lambda: 1)
 
 
 def test_worker_restart(ray_start_2_cpus):
@@ -56,12 +56,12 @@ def test_worker_restart(ray_start_2_cpus):
     time.sleep(1)
     wg.shutdown(0)
     wg.start()
-    wg.execute("test", lambda: 1)
+    wg.execute(lambda: 1)
 
 
 def test_execute_async(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
-    futures = wg.execute_async("test", lambda: 1)
+    futures = wg.execute_async(lambda: 1)
     assert len(futures) == 2
     outputs = ray.get(futures)
     assert all(o == 1 for o in outputs)
@@ -69,14 +69,14 @@ def test_execute_async(ray_start_2_cpus):
 
 def test_execute(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
-    outputs = wg.execute("test", lambda: 1)
+    outputs = wg.execute(lambda: 1)
     assert len(outputs) == 2
     assert all(o == 1 for o in outputs)
 
 
 def test_execute_args(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
-    outputs = wg.execute("test", lambda x: x, 1)
+    outputs = wg.execute(lambda x: x, 1)
     assert len(outputs) == 2
     assert all(o == 1 for o in outputs)
 
@@ -89,14 +89,14 @@ def test_execute_single(ray_start_2_cpus):
 
         os.environ["TEST"] = "1"
 
-    wg.execute_single("test", 1, f)
+    wg.execute_single(1, f)
 
     def check():
         import os
 
         return os.environ.get("TEST", "0")
 
-    assert wg.execute("check", check) == ["0", "1"]
+    assert wg.execute(check) == ["0", "1"]
 
 
 def test_bad_resources(ray_start_2_cpus):

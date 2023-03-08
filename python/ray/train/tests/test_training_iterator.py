@@ -33,13 +33,13 @@ def ray_start_4_cpus():
 
 
 def gen_execute_single_async_special(special_f):
-    def execute_single_async_special(self, name: str, i, f, *args, **kwargs):
+    def execute_single_async_special(self, i, f, *args, **kwargs):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
         return (
             self.workers[i]
-            .actor._RayTrainWorker__execute.options(name=name)
+            .actor._RayTrainWorker__execute.options(name=f.__name__)
             .remote(f, *args, **kwargs)
         )
 
