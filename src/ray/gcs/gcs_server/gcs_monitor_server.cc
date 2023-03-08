@@ -14,18 +14,54 @@
 
 #include "ray/gcs/gcs_server/gcs_monitor_server.h"
 
+#include <boost/range/adaptor/transformed.hpp>
+
 #include "ray/common/constants.h"
 
 namespace ray {
 namespace gcs {
 
+static const rpc::ResourceRequest_ResourceRequestType
+    PLACEMENT_STRATEGY_TO_REQUEST_TYPE[rpc::PlacementStrategy_ARRAYSIZE] = {
+        rpc::ResourceRequest_ResourceRequestType::
+            ResourceRequest_ResourceRequestType_PACK_RESERVATION,
+        rpc::ResourceRequest_ResourceRequestType::
+            ResourceRequest_ResourceRequestType_SPREAD_RESERVATION,
+        rpc::ResourceRequest_ResourceRequestType::
+            ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION,
+        rpc::ResourceRequest_ResourceRequestType::
+            ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION};
+
+void GcsPlacementGroupToResourceRequest(const GcsPlacementGroup &gcs_placement_group,
+                                        rpc::ResourceRequest &resource_request) {
+  rpc::ResourceRequest_ResourceRequestType request_type =
+      PLACEMENT_STRATEGY_TO_REQUEST_TYPE[gcs_placement_group.GetStrategy()];
+
+  // A defensive check in case to ensure we handle new strategies. 0 is the
+  // default value, and corresponds to TASK_RESERVATION so it should never be a
+  // correct request type for placement groups.
+  RAY_CHECK((int)request_type != 0)
+      << "Unknown placement strategy encountered. " << gcs_placement_group.DebugString();
+
+  resource_request.set_resource_request_type(request_type);
+  resource_request.set_count(1);
+
+  for (const auto &bundle : gcs_placement_group.GetUnplacedBundles()) {
+    const auto &resource_map = bundle->GetRequiredResources().ToResourceMap();
+    resource_request.add_bundles()->mutable_resources()->insert(resource_map.begin(),
+                                                                resource_map.end());
+  }
+}
+
 GcsMonitorServer::GcsMonitorServer(
     std::shared_ptr<GcsNodeManager> gcs_node_manager,
     ClusterResourceManager &cluster_resource_manager,
-    std::shared_ptr<GcsResourceManager> gcs_resource_manager)
+    std::shared_ptr<GcsResourceManager> gcs_resource_manager,
+    std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager)
     : gcs_node_manager_(gcs_node_manager),
       cluster_resource_manager_(cluster_resource_manager),
-      gcs_resource_manager_(gcs_resource_manager) {}
+      gcs_resource_manager_(gcs_resource_manager),
+      gcs_placement_group_manager_(gcs_placement_group_manager) {}
 
 void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
                                            rpc::GetRayVersionReply *reply,
@@ -112,12 +148,42 @@ void GcsMonitorServer::PopulateResourceDemands(
   }
 }
 
+void GcsMonitorServer::PopulatePlacementGroupDemands(
+    rpc::GetSchedulingStatusReply *reply) const {
+  auto add_gcs_pgs_to_reply = [reply](const std::shared_ptr<GcsPlacementGroup> &gcs_pg) {
+    auto new_resource_request_ptr = reply->add_resource_requests();
+
+    RAY_CHECK(gcs_pg != nullptr) << "GcsPlacementGroup not found.";
+    RAY_CHECK(new_resource_request_ptr != nullptr)
+        << "Failed to allocate resource request.";
+    GcsPlacementGroupToResourceRequest(*gcs_pg, *new_resource_request_ptr);
+  };
+  {
+    auto extract_pg_from_pending_value =
+        [](const absl::btree_multimap<
+            int64_t,
+            std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>::
+               value_type &value) { return value.second.second; };
+    auto pending_pg_range = gcs_placement_group_manager_->GetPendingPlacementGroups() |
+                            boost::adaptors::transformed(extract_pg_from_pending_value);
+
+    std::for_each(pending_pg_range.begin(), pending_pg_range.end(), add_gcs_pgs_to_reply);
+  }
+  {
+    auto infeasible_pg_range =
+        gcs_placement_group_manager_->GetInfeasiblePlacementGroups();
+    std::for_each(
+        infeasible_pg_range.begin(), infeasible_pg_range.end(), add_gcs_pgs_to_reply);
+  }
+}
+
 void GcsMonitorServer::HandleGetSchedulingStatus(
     rpc::GetSchedulingStatusRequest request,
     rpc::GetSchedulingStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   PopulateNodeStatuses(reply);
   PopulateResourceDemands(reply);
+  PopulatePlacementGroupDemands(reply);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
