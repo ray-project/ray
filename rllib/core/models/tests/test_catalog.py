@@ -9,6 +9,7 @@ import tree
 from gymnasium.spaces import Box, Discrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.base import ModelConfig, Encoder
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -309,14 +310,16 @@ class TestCatalog(unittest.TestCase):
 
         class MyCostumTorchEncoderConfig(ModelConfig):
             def build(self, framework):
-                return MyCostumTorchEncoder({})
+                return MyCostumTorchEncoder()
 
-        class MyCostumTorchEncoder(Encoder):
+        class MyCostumTorchEncoder(TorchModel, Encoder):
+            def __init__(self):
+                super().__init__({})
+                self.net = torch.nn.Linear(env.observation_space.shape[0], 10)
+
             def _forward(self, input_dict, **kwargs):
                 return {
-                    ENCODER_OUT: torch.nn.Linear(env.observation_space.shape[0], 10)(
-                        input_dict["obs"]
-                    ),
+                    ENCODER_OUT: (self.net(input_dict["obs"])),
                     STATE_OUT: None,
                 }
 
@@ -331,7 +334,7 @@ class TestCatalog(unittest.TestCase):
                     output_dims=self.latent_dims,
                 )
 
-        PPOTorchRLModule(
+        module = PPOTorchRLModule(
             config=SingleAgentRLModuleSpec(
                 module_class=PPOTorchRLModule,
                 catalog_class=MyCustomCatalog,
@@ -339,6 +342,10 @@ class TestCatalog(unittest.TestCase):
                 observation_space=env.observation_space,
                 action_space=env.action_space,
             ).get_rl_module_config()
+        )
+
+        module.forward_inference(
+            input_data={"obs": torch.ones((32, *env.observation_space.shape))}
         )
 
 
