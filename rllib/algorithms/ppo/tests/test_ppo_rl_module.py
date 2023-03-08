@@ -25,6 +25,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 def get_expected_module_config(
     env: gym.Env,
     model_config_dict: dict,
+    observation_space: gym.spaces.Space,
 ) -> RLModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
@@ -37,7 +38,7 @@ def get_expected_module_config(
          A PPOModuleConfig containing the relevant configs to build PPORLModule
     """
     config = RLModuleConfig(
-        observation_space=env.observation_space,
+        observation_space=observation_space,
         action_space=env.action_space,
         model_config_dict=model_config_dict,
         catalog_class=PPOCatalog,
@@ -89,9 +90,11 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm):
+def _get_ppo_module(framework, env, lstm, observation_space):
     model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(env, model_config_dict=model_config_dict)
+    config = get_expected_module_config(
+        env, model_config_dict=model_config_dict, observation_space=observation_space
+    )
     if framework == "torch":
         module = PPOTorchRLModule(config)
     else:
@@ -147,6 +150,7 @@ class TestPPO(unittest.TestCase):
                 framework=fw,
                 env=env,
                 lstm=lstm,
+                observation_space=preprocessor.observation_space,
             )
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
@@ -195,6 +199,7 @@ class TestPPO(unittest.TestCase):
                 framework=fw,
                 env=env,
                 lstm=lstm,
+                observation_space=preprocessor.observation_space,
             )
 
             # collect a batch of data
