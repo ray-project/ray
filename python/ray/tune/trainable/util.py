@@ -176,7 +176,7 @@ class TrainableUtil:
                 raise ValueError(
                     f"The checkpoint {basename} contains more than one metadata file. "
                     f"If this happened without manual intervention, please file an "
-                    f"issue at https://github.com/ray-project/ray/issues."
+                    f"issue at https://github.com/ray-project/ray/issues. "
                     f"Full path: {chkpt_dir}"
                 )
 
