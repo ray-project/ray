@@ -1,4 +1,6 @@
+import gc
 import os
+import platform
 import tracemalloc
 from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
@@ -427,12 +429,14 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
+        gc.collect()
         snapshot = tracemalloc.take_snapshot()
         top_stats = snapshot.statistics("lineno")
 
         for stat in top_stats[:10]:
             count = stat.count
-            size = stat.size
+            # Convert total size from Bytes to KiB.
+            size = stat.size / 1024
 
             trace = str(stat.traceback)
 
@@ -441,10 +445,12 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
         process = psutil.Process(os.getpid())
         worker_rss = process.memory_info().rss
-        worker_data = process.memory_info().data
         worker_vms = process.memory_info().vms
+        if platform.system() == "Linux":
+            # This is only available on Linux
+            worker_data = process.memory_info().data
+            episode.custom_metrics["tracemalloc/worker/data"] = worker_data
         episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
-        episode.custom_metrics["tracemalloc/worker/data"] = worker_data
         episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
 
 

@@ -11,7 +11,7 @@ from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.specs.checker import (
-    _convert_to_canonical_format,
+    convert_to_canonical_format,
     check_input_specs,
     check_output_specs,
 )
@@ -275,18 +275,18 @@ class TestCheckSpecs(unittest.TestCase):
 
         # Case: input is a list of strs
         self.assertDictEqual(
-            _convert_to_canonical_format(["foo", "bar"]).asdict(),
+            convert_to_canonical_format(["foo", "bar"]).asdict(),
             SpecDict({"foo": None, "bar": None}).asdict(),
         )
 
         # Case: input is a list of strs and nested strs
         self.assertDictEqual(
-            _convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
+            convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
             SpecDict({"foo": None, "bar": {"jar": None}}).asdict(),
         )
 
         # Case: input is a Nested Mapping
-        returned = _convert_to_canonical_format(
+        returned = convert_to_canonical_format(
             {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int, "car": None}}
         )
         self.assertIsInstance(returned, SpecDict)
@@ -301,7 +301,7 @@ class TestCheckSpecs(unittest.TestCase):
         )
 
         # Case: input is a SpecDict already
-        returned = _convert_to_canonical_format(
+        returned = convert_to_canonical_format(
             SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}})
         )
         self.assertIsInstance(returned, SpecDict)

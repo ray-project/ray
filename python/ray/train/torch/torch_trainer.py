@@ -182,7 +182,7 @@ class TorchTrainer(DataParallelTrainer):
                 # Iterate over epochs and batches
                 for epoch in range(num_epochs):
                     for batches in dataset_shard.iter_torch_batches(batch_size=32,
-                                dtypes=torch.float, device=train.torch.get_device()):
+                                dtypes=torch.float):
 
                         # Add batch or unsqueeze as an additional dimension [32, x]
                         inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]

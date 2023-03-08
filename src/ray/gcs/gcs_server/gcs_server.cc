@@ -594,7 +594,11 @@ void GcsServer::InitGcsTaskManager() {
 }
 
 void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(gcs_node_manager_);
+  monitor_server_ = std::make_unique<GcsMonitorServer>(
+      gcs_node_manager_,
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      gcs_resource_manager_,
+      gcs_placement_group_manager_);
   monitor_grpc_service_.reset(
       new rpc::MonitorGrpcService(main_service_, *monitor_server_));
   rpc_server_.RegisterService(*monitor_grpc_service_);
@@ -755,6 +759,8 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "GcsTaskManager Event stats:\n\n"
+                  << gcs_task_manager_->GetIoContext().stats().StatsString() << "\n\n";
   }
 }
 

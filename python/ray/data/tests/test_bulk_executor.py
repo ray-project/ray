@@ -31,7 +31,18 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     return output
 
 
-@pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize(
+    "preserve_order",
+    [
+        True,
+        pytest.param(
+            False,
+            marks=pytest.mark.skip(
+                reason="Bulk executor currently always preserves order"
+            ),
+        ),
+    ],
+)
 def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
     executor = BulkExecutor(ExecutionOptions(preserve_order=preserve_order))
     inputs = make_ref_bundles([[x] for x in range(20)])
@@ -64,7 +75,7 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
 
 def test_basic_stats(ray_start_10_cpus_shared):
     executor = BulkExecutor(ExecutionOptions())
-    prev_stats = ray.data.range(10)._plan.stats()
+    prev_stats = ray.data.range(10).fully_executed()._plan.stats()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
@@ -114,6 +125,7 @@ def test_actor_strategy(ray_start_10_cpus_shared):
 
 def test_new_execution_backend_invocation(ray_start_10_cpus_shared):
     DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = False
     # Read-only: will use legacy executor for now.
     ds = ray.data.range(10)
     assert ds.take_all() == list(range(10))

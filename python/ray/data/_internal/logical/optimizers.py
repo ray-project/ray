@@ -6,7 +6,11 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     PhysicalPlan,
 )
-from ray.data._internal.logical.rules import OperatorFusionRule
+from ray.data._internal.logical.rules import (
+    OperatorFusionRule,
+    ReorderRandomizeBlocksRule,
+)
+from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.planner.planner import Planner
 
 
@@ -15,8 +19,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        # TODO: Add logical optimizer rules.
-        return []
+        return [ReorderRandomizeBlocksRule()]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -35,6 +38,9 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
+    # Record usage of logical operators.
+    record_operators_usage(logical_plan.dag)
+
     logical_plan = LogicalOptimizer().optimize(logical_plan)
     physical_plan = Planner().plan(logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)

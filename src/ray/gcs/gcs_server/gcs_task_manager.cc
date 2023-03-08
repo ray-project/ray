@@ -252,12 +252,13 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
     // Update the events.
     if (events_by_task.has_task_info() && !existing_events.has_task_info()) {
-      num_tasks_by_type_[events_by_task.task_info().type()]++;
+      stats_counter_.Increment(
+          kTaskTypeToCounterType.at(events_by_task.task_info().type()));
     }
 
-    num_bytes_task_events_ -= existing_events.ByteSizeLong();
+    stats_counter_.Decrement(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
     existing_events.MergeFrom(events_by_task);
-    num_bytes_task_events_ += existing_events.ByteSizeLong();
+    stats_counter_.Increment(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
 
     MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
     return absl::nullopt;
@@ -267,7 +268,8 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
   // Bump the task counters by type.
   if (events_by_task.has_task_info() && events_by_task.attempt_number() == 0) {
-    num_tasks_by_type_[events_by_task.task_info().type()]++;
+    stats_counter_.Increment(
+        kTaskTypeToCounterType.at(events_by_task.task_info().type()));
   }
 
   // If limit enforced, replace one.
@@ -280,8 +282,9 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
            "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
            "store more.";
 
-    num_bytes_task_events_ -= task_events_[next_idx_to_overwrite_].ByteSizeLong();
-    num_bytes_task_events_ += events_by_task.ByteSizeLong();
+    stats_counter_.Decrement(kNumTaskEventsBytesStored,
+                             task_events_[next_idx_to_overwrite_].ByteSizeLong());
+    stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
 
     // Change the underlying storage.
     auto &to_replaced = task_events_.at(next_idx_to_overwrite_);
@@ -341,6 +344,9 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   job_to_task_attempt_index_[job_id].insert(task_attempt);
   task_to_task_attempt_index_[task_id].insert(task_attempt);
   // Add a new task events.
+  stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
+  stats_counter_.Increment(kNumTaskEventsStored);
+
   task_events_.push_back(std::move(events_by_task));
 
   MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
@@ -351,7 +357,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
-  absl::MutexLock lock(&mutex_);
 
   // Select candidate events by indexing.
   std::vector<rpc::TaskEvents> task_events;
@@ -398,10 +403,10 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   // TODO(rickyx): We will need to revisit the data loss semantics, to report data loss
   // on a single task retry(attempt) rather than the actual events.
   // https://github.com/ray-project/ray/issues/31280
-  reply->set_num_profile_task_events_dropped(total_num_profile_task_events_dropped_ +
-                                             num_profile_event_limit);
-  reply->set_num_status_task_events_dropped(total_num_status_task_events_dropped_ +
-                                            num_status_event_limit);
+  reply->set_num_profile_task_events_dropped(
+      stats_counter_.Get(kTotalNumProfileTaskEventsDropped) + num_profile_event_limit);
+  reply->set_num_status_task_events_dropped(
+      stats_counter_.Get(kTotalNumStatusTaskEventsDropped) + num_status_event_limit);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
@@ -410,15 +415,15 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  absl::MutexLock lock(&mutex_);
-  // Dispatch to the handler
   auto data = std::move(request.data());
   // Update counters.
-  total_num_profile_task_events_dropped_ += data.num_profile_task_events_dropped();
-  total_num_status_task_events_dropped_ += data.num_status_task_events_dropped();
+  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                           data.num_profile_task_events_dropped());
+  stats_counter_.Increment(kTotalNumStatusTaskEventsDropped,
+                           data.num_status_task_events_dropped());
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
-    total_num_task_events_reported_++;
+    stats_counter_.Increment(kTotalNumTaskEventsReported);
     // TODO(rickyx): add logic to handle too many profile events for a single task
     // attempt.  https://github.com/ray-project/ray/issues/31279
 
@@ -430,11 +435,11 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
         // TODO(rickyx): should we un-flatten the status updates into a list of
         // StatusEvents? so that we could get an accurate number of status change
         // events being dropped like profile events.
-        total_num_status_task_events_dropped_++;
+        stats_counter_.Increment(kTotalNumStatusTaskEventsDropped);
       }
       if (replaced_task_events->has_profile_events()) {
-        total_num_profile_task_events_dropped_ +=
-            replaced_task_events->profile_events().events_size();
+        stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                                 replaced_task_events->profile_events().events_size());
       }
     }
   }
@@ -444,57 +449,52 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 }
 
 std::string GcsTaskManager::DebugString() {
-  absl::MutexLock lock(&mutex_);
   std::ostringstream ss;
+  auto counters = stats_counter_.GetAll();
   ss << "GcsTaskManager: "
-     << "\n-Total num task events reported: " << total_num_task_events_reported_
+     << "\n-Total num task events reported: " << counters[kTotalNumTaskEventsReported]
      << "\n-Total num status task events dropped: "
-     << total_num_status_task_events_dropped_
-     << "\n-Total num profile events dropped: " << total_num_profile_task_events_dropped_
+     << counters[kTotalNumStatusTaskEventsDropped]
+     << "\n-Total num profile events dropped: "
+     << counters[kTotalNumProfileTaskEventsDropped]
      << "\n-Total num bytes of task event stored: "
-     << 1.0 * task_event_storage_->GetTaskEventsBytes() / 1024 / 1024 << "MiB"
-     << "\n-Current num of task events stored: "
-     << task_event_storage_->GetTaskEventsCount()
-     << "\n-Total num of actor creation tasks: "
-     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_CREATION_TASK]
-     << "\n-Total num of actor tasks: "
-     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_TASK]
-     << "\n-Total num of normal tasks: "
-     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::NORMAL_TASK]
-     << "\n-Total num of driver tasks: "
-     << task_event_storage_->num_tasks_by_type_[rpc::TaskType::DRIVER_TASK];
+     << 1.0 * counters[kNumTaskEventsBytesStored] / 1024 / 1024 << "MiB"
+     << "\n-Current num of task events stored: " << counters[kNumTaskEventsStored]
+     << "\n-Total num of actor creation tasks: " << counters[kTotalNumActorCreationTask]
+     << "\n-Total num of actor tasks: " << counters[kTotalNumActorTask]
+     << "\n-Total num of normal tasks: " << counters[kTotalNumNormalTask]
+     << "\n-Total num of driver tasks: " << counters[kTotalNumDriverTask];
 
   return ss.str();
 }
 
 void GcsTaskManager::RecordMetrics() {
-  absl::MutexLock lock(&mutex_);
+  auto counters = stats_counter_.GetAll();
   ray::stats::STATS_gcs_task_manager_task_events_reported.Record(
-      total_num_task_events_reported_);
+      counters[kTotalNumTaskEventsReported]);
 
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      total_num_status_task_events_dropped_, ray::stats::kGcsTaskStatusEventDropped);
+      counters[kTotalNumStatusTaskEventsDropped], ray::stats::kGcsTaskStatusEventDropped);
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      total_num_profile_task_events_dropped_, ray::stats::kGcsProfileEventDropped);
+      counters[kTotalNumProfileTaskEventsDropped], ray::stats::kGcsProfileEventDropped);
 
   ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
-      task_event_storage_->GetTaskEventsCount());
+      counters[kNumTaskEventsStored]);
   ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
-      task_event_storage_->GetTaskEventsBytes());
+      counters[kNumTaskEventsBytesStored]);
 
-  if (usage_stats_client_) {
-    usage_stats_client_->RecordExtraUsageCounter(
-        usage::TagKey::NUM_ACTOR_CREATION_TASKS,
-        task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_CREATION_TASK]);
-    usage_stats_client_->RecordExtraUsageCounter(
-        usage::TagKey::NUM_ACTOR_TASKS,
-        task_event_storage_->num_tasks_by_type_[rpc::TaskType::ACTOR_TASK]);
-    usage_stats_client_->RecordExtraUsageCounter(
-        usage::TagKey::NUM_NORMAL_TASKS,
-        task_event_storage_->num_tasks_by_type_[rpc::TaskType::NORMAL_TASK]);
-    usage_stats_client_->RecordExtraUsageCounter(
-        usage::TagKey::NUM_DRIVERS,
-        task_event_storage_->num_tasks_by_type_[rpc::TaskType::DRIVER_TASK]);
+  {
+    absl::MutexLock lock(&mutex_);
+    if (usage_stats_client_) {
+      usage_stats_client_->RecordExtraUsageCounter(
+          usage::TagKey::NUM_ACTOR_CREATION_TASKS, counters[kTotalNumActorCreationTask]);
+      usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_ACTOR_TASKS,
+                                                   counters[kTotalNumActorTask]);
+      usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_NORMAL_TASKS,
+                                                   counters[kTotalNumNormalTask]);
+      usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_DRIVERS,
+                                                   counters[kTotalNumDriverTask]);
+    }
   }
 }
 
@@ -513,7 +513,6 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
           // timer canceled or aborted.
           return;
         }
-        absl::MutexLock lock(&mutex_);
         // If there are any non-terminated tasks from the job, mark them failed since all
         // workers associated with the job will be killed.
         task_event_storage_->MarkTasksFailed(job_id, job_finish_time_ms * 1000 * 1000);

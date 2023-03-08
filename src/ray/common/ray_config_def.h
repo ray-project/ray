@@ -440,7 +440,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, false)
+RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -469,9 +469,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-/// For now, avg size of task event is 200Bytes, 1M task events would incur 200MiB
-/// overhead.
-RAY_CONFIG(uint64_t, task_events_max_num_task_events_in_buffer, 1 * 1000 * 1000)
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 10 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -777,3 +775,6 @@ RAY_CONFIG(int64_t,
 /// the mapped plasma pages.
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
+
+/// Whether to kill idle workers of a terminated job.
+RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)

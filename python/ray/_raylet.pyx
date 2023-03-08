@@ -134,8 +134,10 @@ from ray.util.scheduling_strategies import (
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
+from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.signature import DUMMY_TYPE
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
@@ -167,6 +169,13 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
+
+# The cached serialized dummy arg b`__RAY_DUMMY__`.
+cdef dummy_type_serialized_arg = None
+# The type of DUMMY_TYPE.
+cdef dummy_type_type = type(DUMMY_TYPE)
+# The value of DUMMY_TYPE, cdef DUMMY_TYPE to avoid global lookup.
+cdef dummy_type_value = DUMMY_TYPE
 
 
 class ObjectRefGenerator:
@@ -455,20 +464,35 @@ cdef prepare_args_internal(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    arg.call_site())))
+                    (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function
 
         else:
-            try:
-                serialized_arg = worker.get_serialization_context(
-                ).serialize(arg)
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the argument "
-                    f"{repr(arg)} for a task or actor "
-                    f"{function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                    "for more information.")
-                raise TypeError(msg) from e
+            # The type check is because some custom types may not implement __eq__
+            # well. So, we only handle the args which type and value are exactly match
+            # the DUMMY_TYPE.
+            # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the
+            # DUMMY_TYPE None.
+            # https://github.com/ray-project/ray/pull/32478/
+            if type(arg) is dummy_type_type and arg == dummy_type_value:
+                global dummy_type_serialized_arg
+                if dummy_type_serialized_arg is None:
+                    # Cache the serialized dummy arg.
+                    dummy_type_serialized_arg = serialized_arg = \
+                        worker.get_serialization_context().serialize(arg)
+                else:
+                    serialized_arg = dummy_type_serialized_arg
+            else:
+                try:
+                    serialized_arg = worker.get_serialization_context(
+                    ).serialize(arg)
+                except TypeError as e:
+                    msg = (
+                        "Could not serialize the argument "
+                        f"{repr(arg)} for a task or actor "
+                        f"{function_descriptor.repr}. Check "
+                        "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                        "for more information.")
+                    raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
                 metadata_fields = metadata.split(b",")
@@ -774,10 +798,17 @@ cdef void execute_task(
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=inspect.iscoroutinefunction)) == 0:
+                    error_message = (
+                        "Failed to create actor. The failure reason "
+                        "is that you set the async flag, but the actor does not "
+                        "have any coroutine functions.")
                     raise RayActorError(
-                        f"Failed to create the actor {core_worker.get_actor_id()}. "
-                        "The failure reason is that you set the async flag, "
-                        "but the actor has no any coroutine function.")
+                        ActorDiedErrorContext(
+                            error_message=error_message,
+                            actor_id=core_worker.get_actor_id(),
+                            class_name=class_name
+                            )
+                        )
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
@@ -1953,18 +1984,19 @@ cdef class CoreWorker:
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
-        try:
-            serialized_retry_exception_allowlist = ray_pickle.dumps(
-                retry_exception_allowlist,
-            )
-        except TypeError as e:
-            msg = (
-                "Could not serialize the retry exception allowlist"
-                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
-                "Check "
-                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                "for more information.")
-            raise TypeError(msg) from e
+        if retry_exception_allowlist:
+            try:
+                serialized_retry_exception_allowlist = ray_pickle.dumps(
+                    retry_exception_allowlist,
+                )
+            except TypeError as e:
+                msg = (
+                    "Could not serialize the retry exception allowlist"
+                    f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
+                    "Check "
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                    "for more information.")
+                raise TypeError(msg) from e
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
