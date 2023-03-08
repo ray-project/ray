@@ -249,7 +249,8 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 def _get_gitignore(path: Path) -> Optional[Callable]:
     """Returns a function that returns True if the path should be excluded.
 
-    Returns None if there is no .gitignore file in the path.
+    Returns None if there is no .gitignore file in the path, or if the
+    RAY_RUNTIME_ENV_SKIP_GITIGNORE environment variable is set to 1.
 
     Args:
         path: The path to the directory to check for a .gitignore file.
