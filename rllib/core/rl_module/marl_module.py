@@ -1,5 +1,4 @@
-import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pprint
 from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
 
@@ -15,22 +14,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.utils.policy import validate_policy_id
 
 ModuleID = str
-
-
-def _get_module_configs(config: Dict[str, Any]):
-    """Constructs a mapping from module_id to module config.
-
-    It takes care of the inheritance of common configs to individual module configs.
-    See `from_multi_agent_config` for more details.
-    """
-    config = copy.deepcopy(config)
-    module_specs = config.pop("modules", {})
-    for common_spec in config:
-        for module_spec in module_specs.values():
-            if getattr(module_spec, common_spec) is None:
-                setattr(module_spec, common_spec, config[common_spec])
-
-    return module_specs
 
 
 @PublicAPI(stability="alpha")
@@ -58,79 +41,21 @@ class MultiAgentRLModule(RLModule):
     `MultiAgentRLModule`.
     """
 
-    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        super().__init__()
-        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
+    def __init__(self, config: "MultiAgentRLModuleConfig" = None) -> None:
+        if config is None:
+            config = MultiAgentRLModuleConfig()
 
-    @classmethod
-    def from_multi_agent_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
-        """Creates a MultiAgentRLModule from a multi-agent config.
+        super().__init__(config)
 
-        The input config should contain "modules" key that is a mapping from module_id
-        to the module spec for each RLModule which is a SingleAgentRLModuleSpec object.
-        If there are multiple modules that do share the same
-        `observation_space`, `action_space`, or `model_config`, you can specify these
-        keys at the top level of the config, and the module spec will inherit the
-        values from the top level config.
+        # self.build() will abstract the construction of rl_modules
+        self._rl_modules = {}
+        self.build()
 
-        Examples:
-
-        .. code-block:: python
-
-            config = {
-                "modules": {
-                    "module_1": SingleAgentRLModuleSpec(
-                        module_class="RLModule1",
-                        observation_space=gym.spaces.Box(...),
-                        action_space=gym.spaces.Discrete(...),
-                        model_config={hidden_dim: 256}
-                    )
-                    "module_2": SingleAgentRLModuleSpec(
-                        module_class="RLModule2",
-                        observation_space=gym.spaces.Box(...),
-                    )
-                },
-                "action_space": gym.spaces.Box(...),
-                "model_config": {hidden_dim: 32}
-            }
-
-            # This is equivalent to the following config:
-
-            config = {
-                "modules": {
-                    "module_1": SingleAgentRLModuleSpec(
-                        module_class="RLModule1",
-                        observation_space=gym.spaces.Box(...),
-                        action_space=gym.spaces.Discrete(...),
-                        model_config={hidden_dim: 256}
-                    )
-                    "module_2": SingleAgentRLModuleSpec(
-                        module_class="RLModule2",
-                        observation_space=gym.spaces.Box(...),
-                        action_space=gym.spaces.Box(...), # Inherited
-                        model_config={hidden_dim: 32} # Inherited
-                    }
-                },
-            }
-
-        Args:
-            config: A config dict that contains the module configs. See above for the
-                format required.
-
-            Returns:
-                The MultiAgentRLModule.
-        """
-
-        module_configs: Dict[ModuleID, Any] = _get_module_configs(config)
-        cls.__check_module_configs(module_configs)
-
-        multiagent_module = cls()
-
-        for module_id, module_spec in module_configs.items():
-            module = module_spec.build()
-            multiagent_module.add_module(module_id, module)
-
-        return multiagent_module
+    def build(self):
+        """Builds the underlying RLModules."""
+        self.__check_module_configs(self.config.modules)
+        for module_id, module_spec in self.config.modules.items():
+            self._rl_modules[module_id] = module_spec.build()
 
     @classmethod
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
@@ -371,10 +296,12 @@ class MultiAgentRLModule(RLModule):
         Returns:
             A deserialized MultiAgentRLModule.
         """
-        rl_modules = {}
+        module_class = state["class"]
+        module = module_class()
         for module_id, module_state in state["rl_modules"].items():
-            rl_modules[module_id] = RLModule.deserialize(module_state)
-        return cls(rl_modules)
+            module.add_module(module_id, RLModule.deserialize(module_state))
+
+        return module
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
@@ -421,7 +348,7 @@ class MultiAgentRLModule(RLModule):
             )
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 @dataclass
 class MultiAgentRLModuleSpec:
     """A utility spec class to make it constructing MARL modules easier.
@@ -454,6 +381,9 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpecs for each individual module."
             )
 
+    def get_marl_config(self) -> "MultiAgentRLModuleConfig":
+        return MultiAgentRLModuleConfig(modules=self.module_specs)
+
     def build(
         self, module_id: Optional[ModuleID] = None
     ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:
@@ -478,9 +408,9 @@ class MultiAgentRLModuleSpec:
 
         if module_id:
             return self.module_specs[module_id].build()
-        return self.marl_module_class.from_multi_agent_config(
-            {"modules": self.module_specs}
-        )
+
+        module_config = self.get_marl_config()
+        return self.marl_module_class(module_config)
 
     def add_modules(
         self, module_specs: Dict[ModuleID, SingleAgentRLModuleSpec]
@@ -495,10 +425,54 @@ class MultiAgentRLModuleSpec:
             self.module_specs = {}
         self.module_specs.update(module_specs)
 
+    @classmethod
+    def from_module(self, module: MultiAgentRLModule) -> "MultiAgentRLModuleSpec":
+        """Creates a MultiAgentRLModuleSpec from a MultiAgentRLModule.
+
+        Args:
+            module: The MultiAgentRLModule to create the spec from.
+
+        Returns:
+            The MultiAgentRLModuleSpec.
+        """
+        module_specs = {
+            module_id: SingleAgentRLModuleSpec.from_module(rl_module)
+            for module_id, rl_module in module._rl_modules.items()
+        }
+        marl_module_class = module.__class__
+        return MultiAgentRLModuleSpec(
+            marl_module_class=marl_module_class, module_specs=module_specs
+        )
+
     def _check_before_build(self):
         if not isinstance(self.module_specs, dict):
             raise ValueError(
-                f"When build() is called on {self.__class__} the module_specs "
+                f"When build() is called on {self.__class__}, the module_specs "
                 "should be a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
+
+
+@ExperimentalAPI
+@dataclass
+class MultiAgentRLModuleConfig:
+
+    modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
+
+    def to_dict(self):
+
+        return {
+            "modules": {
+                module_id: module_spec.to_dict()
+                for module_id, module_spec in self.modules.items()
+            }
+        }
+
+    @classmethod
+    def from_dict(cls, d) -> "MultiAgentRLModuleConfig":
+        return cls(
+            modules={
+                module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
+                for module_id, module_spec in d["modules"].items()
+            }
+        )

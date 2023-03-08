@@ -4,15 +4,16 @@ import gymnasium as gym
 import ray
 from ray.rllib.core.testing.torch.bc_module import (
     DiscreteBCTorchModule,
-    BCTorchMultiAgentSpec,
     BCTorchRLModuleWithSharedGlobalEncoder,
+    BCTorchMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.testing.tf.bc_module import (
     DiscreteBCTFModule,
-    BCTfMultiAgentSpec,
     BCTfRLModuleWithSharedGlobalEncoder,
+    BCTfMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -79,16 +80,18 @@ class TestLearner(unittest.TestCase):
 
         for fw in ["torch"]:
             if fw == "torch":
-                spec = BCTorchMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTorchRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
             else:
-                spec = BCTfMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTfMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTfRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
 
             policies = {"policy_1", "policy_2"}
