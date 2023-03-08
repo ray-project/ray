@@ -361,6 +361,7 @@ class _FileBasedDatasourceReader(Reader):
         partitioning: Partitioning = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        ignore_missing_paths: bool = False,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -371,11 +372,16 @@ class _FileBasedDatasourceReader(Reader):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._block_udf = _block_udf
+        self._ignore_missing_paths = ignore_missing_paths
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = meta_provider.expand_paths(
-            paths, self._filesystem
+            paths, self._filesystem, ignore_missing_paths=ignore_missing_paths
         )
+
+        if ignore_missing_paths and len(self._paths) <= 0:
+            raise ValueError("None of the provided paths exist.")
+
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(self._paths, self._file_sizes))
@@ -459,7 +465,14 @@ class _FileBasedDatasourceReader(Reader):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with open_input_source(fs, read_path, **open_stream_args) as f:
+                try:
+                    opened_file = open_input_source(fs, read_path, **open_stream_args)
+                except FileNotFoundError:
+                    if self._ignore_missing_paths:
+                        continue
+                    else:
+                        raise
+                with opened_file as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = convert_block_to_tabular_block(data, column_name)

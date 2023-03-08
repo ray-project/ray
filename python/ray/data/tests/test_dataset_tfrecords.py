@@ -10,7 +10,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 
-def test_read_tfrecords(ray_start_regular_shared, tmp_path):
+def _write_tf_record_file(base_path) -> str:
     import tensorflow as tf
 
     features = tf.train.Features(
@@ -33,9 +33,14 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
         }
     )
     example = tf.train.Example(features=features)
-    path = os.path.join(tmp_path, "data.tfrecords")
+    path = os.path.join(base_path, "data.tfrecords")
     with tf.io.TFRecordWriter(path=path) as writer:
         writer.write(example.SerializeToString())
+    return path
+
+
+def test_read_tfrecords(ray_start_regular_shared, tmp_path):
+    path = _write_tf_record_file(tmp_path)
 
     ds = ray.data.read_tfrecords(path)
 
@@ -64,6 +69,28 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     assert list(df["bytes"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
     assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
+
+
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_read_tfrecords_ignore_missing_paths(
+    ray_start_regular_shared, tmp_path, ignore_missing_paths
+):
+    path = _write_tf_record_file(tmp_path)
+
+    paths = [
+        path,
+        "missing.tfrecords",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_tfrecords(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.count() == 1
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_tfrecords(
+                paths, ignore_missing_paths=ignore_missing_paths
+            )
+            ds.fully_executed()
 
 
 def test_write_tfrecords(ray_start_regular_shared, tmp_path):

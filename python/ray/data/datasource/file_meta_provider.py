@@ -97,6 +97,7 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         self,
         paths: List[str],
         filesystem: Optional["pyarrow.fs.FileSystem"],
+        ignore_missing_paths: bool = False,
     ) -> Tuple[List[str], List[Optional[int]]]:
         """Expands all paths into concrete file paths by walking directories.
 
@@ -110,6 +111,8 @@ class BaseFileMetadataProvider(FileMetadataProvider):
                  given filesystem.
              filesystem: The filesystem implementation that should be used for
                  expanding all paths and reading their files.
+             ignore_missing_paths: If True, ignores any file paths in ``paths`` that
+                are not found. Defaults to False.
 
          Returns:
              A tuple whose first item contains the list of file paths discovered,
@@ -154,6 +157,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         self,
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
+        ignore_missing_paths: bool = False,
     ) -> Tuple[List[str], List[Optional[int]]]:
         from pyarrow.fs import FileType
         from ray.data.datasource.file_based_datasource import _expand_directory
@@ -179,6 +183,8 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             elif file_info.type == FileType.File:
                 expanded_paths.append(path)
                 file_infos.append(file_info)
+            elif ignore_missing_paths:
+                continue
             else:
                 raise FileNotFoundError(path)
         file_sizes = [file_info.size for file_info in file_infos]
@@ -194,7 +200,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
     negligible for local filesystems, it can be substantial for cloud storage service
     providers.
 
-    This should only be used when all input paths are known to be files.
+    This should only be used when all input paths exist and are known to be files.
     """
 
     def expand_paths(

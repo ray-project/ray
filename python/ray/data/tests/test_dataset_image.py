@@ -38,6 +38,23 @@ class TestReadImages:
         )
         assert ds.count() == 2
 
+    @pytest.mark.parametrize("ignore_missing_paths", [True, False])
+    def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
+        paths = [
+            "example://image-datasets/simple/image1.jpg",
+            "example://missing.jpg",
+        ]
+
+        if ignore_missing_paths:
+            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
+            assert ds.count() == 1
+        else:
+            with pytest.raises(FileNotFoundError):
+                ds = ray.data.read_images(
+                    paths, ignore_missing_paths=ignore_missing_paths
+                )
+                ds.fully_executed()
+
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
         ds = ray.data.read_images("example://image-datasets/different-extensions")
