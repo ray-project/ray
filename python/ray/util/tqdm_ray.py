@@ -19,6 +19,7 @@ class tqdm:
 
     Supports a limited subset of tqdm args.
     """
+
     def __init__(
         self,
         iterable: Optional[Iterable] = None,  # TODO
@@ -55,7 +56,8 @@ class tqdm:
 
     def _dump_state(self) -> None:
         _manager.process_state_update(self._get_state())
-#        print(json.dumps(self._get_state()))
+
+    #        print(json.dumps(self._get_state()))
 
     def _get_state(self) -> _ProgressState:
         return {
@@ -76,22 +78,29 @@ class _Bar:
         self.state = state
         self.pos_offset = pos_offset
         self.bar = real_tqdm.tqdm(
-            desc=state["desc"], total=state["total"], position=pos_offset + state["pos"]
+            desc=state["desc"] + " " + str(state["pos"]),
+            total=state["total"],
+            position=pos_offset + state["pos"],
+            leave=False,
         )
         if state["x"]:
             self.bar.update(state["x"])
 
     def update(self, state: _ProgressState) -> None:
         if state["desc"] != self.state["desc"]:
-            self.bar.set_description(state["desc"])
+            self.bar.set_description(state["desc"] + " " + str(state["pos"]))
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
         self.state = state
 
+    def close(self):
+        self.bar.close()
+
     def update_offset(self, pos_offset: int) -> None:
         if pos_offset != self.pos_offset:
             self.pos_offset = pos_offset
+            self.bar.clear()
             self.bar.pos = -(pos_offset + self.state["pos"])
             self.bar.refresh()
 
@@ -113,7 +122,14 @@ class _Process:
         bar = self.bars_by_uuid[state["uuid"]]
         bar.update(state)
 
+    def close_bar(self, state: _ProgressState) -> None:
+        bar = self.bars_by_uuid[state["uuid"]]
+        bar.close()
+        del self.bars_by_uuid[state["uuid"]]
+
     def max_pos(self):
+        if not self.bars_by_uuid:
+            return 0
         return max(bar.state["pos"] for bar in self.bars_by_uuid.values())
 
     def update_offset(self, offset: int) -> None:
@@ -138,7 +154,11 @@ class _BarManager:
         state["desc"] = prefix + state["desc"]
         process = self.get_or_allocate_process(state)
         if process.has_bar(state["uuid"]):
-            process.update_bar(state)
+            if state["closed"]:
+                process.close_bar(state)
+                self.update_offsets()
+            else:
+                process.update_bar(state)
         else:
             process.allocate_bar(state)
             self.update_offsets()
@@ -158,3 +178,30 @@ class _BarManager:
 
 
 _manager = _BarManager()
+
+
+if __name__ == "__main__":
+    import random
+    import time
+
+    bars = []
+
+    for i in range(1000):
+        if random.random() > 0.9:
+            ray_ip = random.choice(["10.0.0.1", "2.3.3.3", "192.168.1.254"])
+            pos = []
+            for bar in bars:
+                if bar._ip == ray_ip:
+                    pos.append(bar._pos)
+            i = 0
+            while i in pos:
+                i += 1
+            t1 = tqdm(desc="foo", total=100, position=i, _ray_ip=ray_ip, _ray_pid=1000)
+            bars.append(t1)
+        time.sleep(0.1)
+        for bar in bars:
+            bar.update(1)
+        for b in bars.copy():
+            if b._x >= 100:
+                b.close()
+                bars.remove(b)
