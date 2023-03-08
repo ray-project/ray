@@ -94,4 +94,9 @@ enum TagKey {
   NUM_ACTOR_TASKS = 306;
   NUM_NORMAL_TASKS = 307;
   NUM_DRIVERS = 308;
+
+  // Data
+  // Logical operators, stored in JSON format with operator name and count.
+  // Example: {"MapBatches": 2, "Filter": 1}
+  DATA_LOGICAL_OPS = 400;
 }
