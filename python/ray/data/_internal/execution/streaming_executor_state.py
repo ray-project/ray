@@ -159,7 +159,7 @@ class OpState:
                 # Scan the queue and look for outputs tagged for the given index.
                 for i in range(len(self.outqueue)):
                     bundle = self.outqueue[i]
-                    if bundle is None or isinstance(bundle, BaseException):
+                    if bundle is None or isinstance(bundle, Exception):
                         # End of stream for this index! Note that we
                         # do not remove the None, so that it can act
                         # as the termination signal for all indices.

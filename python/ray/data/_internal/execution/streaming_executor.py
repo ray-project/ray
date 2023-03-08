@@ -97,7 +97,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     # exceptions.
                     if item is None:
                         raise StopIteration
-                    elif isinstance(item, BaseException):
+                    elif isinstance(item, Exception):
                         raise item
                     else:
                         # Otherwise return a concrete RefBundle.
