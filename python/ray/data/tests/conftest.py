@@ -150,6 +150,21 @@ def local_fs():
 
 
 @pytest.fixture(scope="function")
+def spark(request):
+    import raydp
+
+    ray.init(num_cpus=2, include_dashboard=False)
+    spark_session = raydp.init_spark("test", 1, 1, "500M")
+
+    def stop_all():
+        raydp.stop_spark()
+        ray.shutdown()
+
+    request.addfinalizer(stop_all)
+    return spark_session
+
+
+@pytest.fixture(scope="function")
 def test_block_write_path_provider():
     class TestBlockWritePathProvider(BlockWritePathProvider):
         def _get_write_path_for_block(

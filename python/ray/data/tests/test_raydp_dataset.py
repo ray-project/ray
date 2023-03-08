@@ -1,20 +1,7 @@
 import pytest
 import ray
-import raydp
 import torch
-
-
-@pytest.fixture(scope="function")
-def spark(request):
-    ray.init(num_cpus=2, include_dashboard=False)
-    spark_session = raydp.init_spark("test", 1, 1, "500M")
-
-    def stop_all():
-        raydp.stop_spark()
-        ray.shutdown()
-
-    request.addfinalizer(stop_all)
-    return spark_session
+from ray.data.tests.conftest import *  # noqa
 
 
 def test_raydp_roundtrip(spark):

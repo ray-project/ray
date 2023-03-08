@@ -9,6 +9,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrow,
     FromArrowRefs,
+    FromSpark,
 )
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import (
@@ -1046,6 +1047,36 @@ def test_from_arrow_e2e(ray_start_regular_shared, enable_optimizer):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that conversion task is included in stats.
+    assert "from_arrow_refs" in ds.stats()
+    # Underlying implementation uses `FromArrowRefs` operator
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+
+
+def test_from_spark_operator(
+    enable_optimizer,
+    spark,
+):
+    spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
+
+    planner = Planner()
+    from_spark_op = FromSpark(spark_df)
+    plan = LogicalPlan(from_spark_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_spark_op.name == "FromSpark"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_spark_e2e(enable_optimizer, spark):
+    spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
+
+    rows = [(r.one, r.two) for r in spark_df.take(3)]
+    ds = ray.data.from_spark(spark_df)
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    assert values == rows
+
+    # Check that metadata fetch is included in stats.
     assert "from_arrow_refs" in ds.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
