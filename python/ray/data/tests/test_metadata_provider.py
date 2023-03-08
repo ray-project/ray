@@ -145,7 +145,7 @@ def test_default_file_metadata_provider(caplog, fs, data_path, endpoint_url):
 
     meta_provider = DefaultFileMetadataProvider()
     with caplog.at_level(logging.WARNING):
-        file_paths, file_sizes = meta_provider.expand_paths(paths, fs)
+        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
@@ -202,7 +202,7 @@ def test_fast_file_metadata_provider(caplog, fs, data_path, endpoint_url):
 
     meta_provider = FastFileMetadataProvider()
     with caplog.at_level(logging.WARNING):
-        file_paths, file_sizes = meta_provider.expand_paths(paths, fs)
+        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     assert "meta_provider=DefaultFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     assert len(file_sizes) == len(file_paths)
