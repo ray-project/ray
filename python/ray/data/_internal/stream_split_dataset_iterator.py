@@ -12,13 +12,19 @@ from typing import (
 )
 
 import ray
+
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.execution.legacy_compat import (
+    execute_to_legacy_bundle_iterator,
+)
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr
 from ray.types import ObjectRef
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
@@ -42,9 +48,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
         See also: `Dataset.streaming_split`.
         """
         ctx = DatasetContext.get_current()
-        coord_actor = SplitCoordinator.options(max_concurrency=n).remote(
-            ctx, base_dataset, n, equal, locality_hints
-        )
+        coord_actor = SplitCoordinator.options(
+            max_concurrency=n,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            ),
+        ).remote(ctx, base_dataset, n, equal, locality_hints)
         return [
             StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
         ]
@@ -103,7 +112,6 @@ class StreamSplitDatasetIterator(DatasetIterator):
         return self._base_dataset.schema()
 
 
-# TODO schedule on same node
 @ray.remote(num_cpus=0)
 class SplitCoordinator:
     def __init__(
@@ -114,8 +122,8 @@ class SplitCoordinator:
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        # Automatically set locality with output to the specified location hints.
         if locality_hints:
-            # Automatically set locality with output to the specified location hints.
             ctx.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
         DatasetContext._set_current(ctx)
@@ -124,13 +132,6 @@ class SplitCoordinator:
         self._equal = equal
         self._locality_hints = locality_hints
         self._finished = False
-
-        from ray.data._internal.execution.streaming_executor import (
-            StreamingExecutor,
-        )
-        from ray.data._internal.execution.legacy_compat import (
-            execute_to_legacy_bundle_iterator,
-        )
 
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
