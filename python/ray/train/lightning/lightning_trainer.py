@@ -13,6 +13,7 @@ from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingCo
 from ray.data.preprocessor import Preprocessor
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
+from ray.train.torch import TorchTrainer
 from ray.train.trainer import GenDataset
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
@@ -37,7 +38,7 @@ RAY_DATASET_ITER_CONFIG_KEY = "_ray_dataset_iter_config"
 
 
 @PublicAPI(stability="alpha")
-class LightningTrainer(DataParallelTrainer):
+class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 
     This Trainer runs the ``pytorch_lightning.Trainer.fit()`` method on multiple
@@ -64,7 +65,8 @@ class LightningTrainer(DataParallelTrainer):
 
     Args:
         lightning_module: A subclass of ``pytorch_lightning.LightningModule``
-            that defines your model and training logic.
+            that defines your model and training logic. Note that this is a 
+            class definition instead of a class instance.
         lightning_module_config: Configurations to pass into
             ``lightning_module.__init__`` as kwargs.
         lightning_trainer_config: Configurations to pass into
@@ -122,9 +124,6 @@ class LightningTrainer(DataParallelTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not torch_config:
-            torch_config = TorchConfig()
-
         train_loop_config = self._create_trainer_loop_config(
             lightning_module,
             lightning_module_config,
@@ -135,6 +134,9 @@ class LightningTrainer(DataParallelTrainer):
             datasets_iter_config,
         )
 
+        if not run_config:
+            run_config = RunConfig()
+
         run_config.checkpoint_config = self._create_air_checkpoint_config(
             model_checkpoint_config=model_checkpoint_config
         )
@@ -142,7 +144,7 @@ class LightningTrainer(DataParallelTrainer):
         super(LightningTrainer, self).__init__(
             train_loop_per_worker=_lightning_train_loop_per_worker,
             train_loop_config=train_loop_config,
-            backend_config=torch_config,
+            torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
             run_config=run_config,
@@ -215,26 +217,14 @@ class LightningTrainer(DataParallelTrainer):
         return air_checkpoint_config
 
 
-def _prepare_dataloaders(dataloaders: Optional[DataLoader]) -> Optional[DataLoader]:
-    if dataloaders:
-        if isinstance(dataloaders, list):
-            for i, dataloader in enumerate(dataloaders):
-                dataloaders[i] = train.torch.prepare_data_loader(dataloader)
-        else:
-            dataloaders = train.torch.prepare_data_loader(dataloaders)
-    return dataloaders
-
-
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
     trainer_fit_config = config.pop(LIGHTNING_TRAINER_FIT_PARAMS_KEY)
 
     # Prepare data
     datamodule = trainer_fit_config.get("datamodule", None)
-    train_dataloaders = _prepare_dataloaders(
-        trainer_fit_config.get("train_dataloaders", None))
-    val_dataloaders = _prepare_dataloaders(
-        trainer_fit_config.get("val_dataloaders", None))
+    train_dataloaders = trainer_fit_config.get("train_dataloaders", None)
+    val_dataloaders = trainer_fit_config.get("val_dataloaders", None)
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")

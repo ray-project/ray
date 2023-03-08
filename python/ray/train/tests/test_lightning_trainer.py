@@ -70,7 +70,7 @@ def test_trainer_with_native_dataloader():
     assert "loss" in results.metrics
 
 
-def test_trainer_with_ray_data():
+def test_trainer_with_ray_data(ray_start_4_cpus):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
@@ -110,9 +110,10 @@ def test_trainer_with_ray_data():
     # assert isinstance(results.checkpoint, LightningCheckpoint)
 
 if __name__ == "__main__":
-    import sys
+    test_trainer_with_native_dataloader()
+    # import sys
 
-    import pytest
+    # import pytest
 
-    sys.exit(pytest.main(["-v", "-x", __file__]))
+    # sys.exit(pytest.main(["-v", "-x", __file__]))
     

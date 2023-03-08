@@ -1,5 +1,6 @@
 import os
 import logging
+from ray.air.constants import MODEL_KEY
 import torch
 from torch import Tensor
 from typing import Any, Dict, Optional
@@ -40,12 +41,10 @@ class RayModelCheckpoint(ModelCheckpoint):
         """
         Ensure different checkpoint files saved in seperate folders to align with AIR checkpoint format.
 
-        e.g. './epoch=2-validation_loss=0.12.ckpt' -> './epoch=2-validation_loss=0.12/checkpoint.ckpt'
+        e.g. './epoch=2-validation_loss=0.12.ckpt' -> './epoch=2-validation_loss=0.12.ckpt/model'
         """
         filepath = super().format_checkpoint_name(metrics, filename, ver)
-        filepath = filepath.replace(
-            self.FILE_EXTENSION, f"/checkpoint{self.FILE_EXTENSION}")
-        return filepath
+        return f"{filepath}/{MODEL_KEY}"
 
     def _session_report(self, trainer: "pl.Trainer"):
         """Report latest metrics dict and checkpoint to AIR training session."""
