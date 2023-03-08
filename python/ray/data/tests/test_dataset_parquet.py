@@ -448,13 +448,15 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert (
         str(ds) == "Dataset(\n    num_blocks=2,\n    num_rows=6,"
-        "\n    schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n)"
+        "\n    schema={\n        two: string,\n        "
+        "one: dictionary<values=int32, indices=int32, ordered=0>"
+        "\n    }\n)"
     ), ds
     assert (
         repr(ds) == "Dataset(\n    num_blocks=2,\n    num_rows=6,"
-        "\n    schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n)"
+        "\n    schema={\n        two: string,\n        "
+        "one: dictionary<values=int32, indices=int32, ordered=0>"
+        "\n    }\n)"
     ), ds
     check_num_computed(ds, 1, 1)
 
