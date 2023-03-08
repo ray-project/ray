@@ -52,9 +52,9 @@ class TaskPoolMapOperator(MapOperator):
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         input_blocks = [block for block, _ in bundle.blocks]
         ctx = TaskContext(task_idx=self._next_task_idx)
-        ref = map_task.options(**self._ray_remote_args, name=self.name).remote(
-            self._transform_fn_ref, ctx, *input_blocks
-        )
+        ref = map_task.options(
+            **self._get_runtime_ray_remote_args(), name=self.name
+        ).remote(self._transform_fn_ref, ctx, *input_blocks)
         self._next_task_idx += 1
         task = _TaskState(bundle)
         self._tasks[ref] = task

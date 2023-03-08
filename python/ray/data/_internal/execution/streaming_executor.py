@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
     ExecutionResources,
+    OutputIterator,
     RefBundle,
     PhysicalOperator,
 )
@@ -83,18 +84,30 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: OpState = self._topology[dag]
         self.start()
 
-        # Drain items from the runner thread until completion.
-        try:
-            item = self._output_node.get_output_blocking()
-            while item is not None:
-                if isinstance(item, Exception):
-                    raise item
-                else:
-                    self._output_info.update(1)
-                    yield item
-                item = self._output_node.get_output_blocking()
-        finally:
-            self.shutdown()
+        class StreamIterator(OutputIterator):
+            def __init__(self, outer: Executor):
+                self._outer = outer
+
+            def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+                try:
+                    item = self._outer._output_node.get_output_blocking(
+                        output_split_idx
+                    )
+                    # Translate the special sentinel values for MaybeRefBundle into
+                    # exceptions.
+                    if item is None:
+                        raise StopIteration
+                    elif isinstance(item, Exception):
+                        raise item
+                    else:
+                        # Otherwise return a concrete RefBundle.
+                        self._outer._output_info.update(1)
+                        return item
+                except Exception:
+                    self._outer.shutdown()
+                    raise
+
+        return StreamIterator(self)
 
     def shutdown(self):
         with self._shutdown_lock:
