@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Tuple, Callable
+from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
@@ -8,6 +8,9 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
+
+# Node id string returned by `ray.get_runtime_context().get_node_id()`.
+NodeIdStr = str
 
 
 @dataclass
@@ -37,6 +40,9 @@ class RefBundle:
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
+
+    # Cached location, used for get_cached_location().
+    _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
         for b in self.blocks:
@@ -73,6 +79,28 @@ class RefBundle:
         for b in self.blocks:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
+
+    def get_cached_location(self) -> Optional[NodeIdStr]:
+        """Return a location for this bundle's data, if possible.
+
+        Caches the resolved location so multiple calls to this are efficient.
+        """
+        if self._cached_location is None:
+            # Only consider the first block in the bundle for now. TODO(ekl) consider
+            # taking into account other blocks.
+            ref = self.blocks[0][0]
+            # This call is pretty fast for owned objects (~5k/s), so we don't need to
+            # batch it for now.
+            locs = ray.experimental.get_object_locations([ref])
+            nodes = locs[ref]["node_ids"]
+            if nodes:
+                self._cached_location = nodes[0]
+            else:
+                self._cached_location = ""
+        if self._cached_location:
+            return self._cached_location
+        else:
+            return None  # Return None if cached location is "".
 
     def __eq__(self, other) -> bool:
         return self is other
@@ -167,14 +195,16 @@ class ExecutionOptions:
     resource_limits: ExecutionResources = ExecutionResources()
 
     # Set this to prefer running tasks on the same node as the output
-    # node (node driving the execution).
-    locality_with_output: bool = False
+    # node (node driving the execution). It can also be set to a list of node ids
+    # to spread the outputs across those nodes.
+    locality_with_output: Union[bool, List[NodeIdStr]] = False
 
     # Set this to preserve the ordering between blocks processed by operators under the
     # streaming executor. The bulk executor always preserves order.
     preserve_order: bool = False
 
-    # Whether to enable locality-aware task dispatch to actors (on by default).
+    # Whether to enable locality-aware task dispatch to actors (on by default). This
+    # applies to both ActorPoolStrategy map and streaming_split operations.
     actor_locality_enabled: bool = True
 
 
@@ -390,6 +420,34 @@ class PhysicalOperator(Operator):
         return ExecutionResources()
 
 
+class OutputIterator(Iterator[RefBundle]):
+    """Iterator used to access the output of an Executor execution.
+
+    This is a blocking iterator. Datasets guarantees that all its iterators are
+    thread-safe (i.e., multiple threads can block on them at the same time).
+    """
+
+    def __init__(self, base: Iterable[RefBundle]):
+        self._it = iter(base)
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        """Can be used to pull outputs by a specified output index.
+
+        This is used to support the streaming_split() API, where the output of a
+        streaming execution is to be consumed by multiple processes.
+
+        Args:
+            output_split_idx: The output split index to get results for. This arg is
+                only allowed for iterators created by `Dataset.streaming_split()`.
+        """
+        if output_split_idx is not None:
+            raise NotImplementedError()
+        return next(self._it)
+
+    def __next__(self) -> RefBundle:
+        return self.get_next()
+
+
 class Executor:
     """Abstract class for executors, which implement physical operator execution.
 
@@ -404,7 +462,7 @@ class Executor:
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterable[RefBundle]:
+    ) -> OutputIterator:
         """Start execution.
 
         Args:
