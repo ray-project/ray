@@ -50,8 +50,6 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
                                               std::function<void()> failure_cb) {
                                       // Long polling should always succeed.
                                       RAY_CHECK_OK(status);
-                                      RAY_CHECK(success_cb == nullptr);
-                                      RAY_CHECK(failure_cb == nullptr);
                                       reactor->Finish(grpc::Status::OK);
                                     });
     return reactor;

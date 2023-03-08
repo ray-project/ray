@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <deque>
 #include <functional>
 #include <queue>
 #include <string>
@@ -237,7 +238,7 @@ class SubscriberState {
   int64_t next_sequence_id_ = 0;
   /// Queued messages to publish in the pair of <sequence_id, message>.
   /// We guarantees the sequence_id in mailbox_ is monotonically increasing.
-  std::queue<std::pair<int64_t, std::shared_ptr<rpc::PubMessage>>> mailbox_;
+  std::deque<std::pair<int64_t, std::shared_ptr<rpc::PubMessage>>> mailbox_;
 
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
