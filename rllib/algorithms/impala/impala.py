@@ -834,9 +834,9 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            elif self.workers.local_worker() and (
-                self.config.create_env_on_local_worker
-                or self.config.num_rollout_workers == 0
+            elif (
+                self.workers.local_worker()
+                and self.workers.local_worker().async_env is not None
             ):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
