@@ -252,7 +252,7 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
     RAY_LOG(DEBUG) << "removing " << max_processed_sequence_id << " : "
-                  << mailbox_.front()->sequence_id();
+                   << mailbox_.front()->sequence_id();
     mailbox_.pop_front();
   }
 

@@ -381,8 +381,14 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
       const auto &key_id = msg.key_id();
-      processed_sequences_[publisher_id] =
-          std::max(processed_sequences_[publisher_id], msg.sequence_id());
+      if (msg.sequence_id() <= processed_sequences_[publisher_id]) {
+        RAY_LOG_EVERY_MS(ERROR, 10000)
+            << "Received message out of order, proccessed_sequence_id: "
+            << processed_sequences_[publisher_id] << ", received message sequence_id "
+            << msg.sequence_id();
+        continue;
+      }
+      processed_sequences_[publisher_id] = msg.sequence_id();
       // If the published message is a failure message, the publisher indicates
       // this key id is failed. Invoke the failure callback. At this time, we should not
       // unsubscribe the publisher because there are other entries that subscribe from the

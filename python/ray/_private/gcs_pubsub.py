@@ -275,9 +275,10 @@ class _SyncSubscriber(_SubscriberBase):
             if fut.done():
                 self._last_batch_size = len(fut.result().pub_messages)
                 for msg in fut.result().pub_messages:
-                    self._max_processed_sequence_id = max(
-                        self._max_processed_sequence_id, msg.sequence_id
-                    )
+                    if msg.sequence_id <= self._max_processed_sequence_id:
+                        logger.warn(f"Ignoring out of order message {msg}")
+                        continue
+                    self._max_processed_sequence_id = msg.sequence_id
                     if msg.channel_type != self._channel:
                         logger.warn(f"Ignoring message from unsubscribed channel {msg}")
                         continue
@@ -544,9 +545,10 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 self._last_batch_size = len(poll.result().pub_messages)
                 for msg in poll.result().pub_messages:
-                    self._max_processed_sequence_id = max(
-                        self._max_processed_sequence_id, msg.sequence_id
-                    )
+                    if msg.sequence_id <= self._max_processed_sequence_id:
+                        logger.warn(f"Ignoring out of order message {msg}")
+                        continue
+                    self._max_processed_sequence_id = msg.sequence_id
                     self._queue.append(msg)
             except grpc.RpcError as e:
                 if self._should_terminate_polling(e):
