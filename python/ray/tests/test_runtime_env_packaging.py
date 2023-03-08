@@ -30,6 +30,7 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
+    _get_gitignore,
 )
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -508,6 +509,13 @@ class TestParseUri:
         protocol, package_name = parse_uri(gcs_uri)
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
+
+
+def test_get_gitignore(tmp_path):
+    gitignore_path = tmp_path / ".gitignore"
+    gitignore_path.write_text("*.pyc")
+    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.pyc")) is True
+    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
