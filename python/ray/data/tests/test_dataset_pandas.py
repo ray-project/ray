@@ -7,7 +7,6 @@ import ray
 
 from ray.data.extensions import (
     TensorDtype,
-    TensorArray,
     ArrowTensorType,
     ArrowTensorArray,
 )
@@ -112,14 +111,18 @@ def test_to_pandas_tensor_column_cast_pandas(ray_start_regular_shared):
     original = ctx.enable_tensor_extension_casting
     try:
         ctx.enable_tensor_extension_casting = True
-        in_df = pd.DataFrame({"a": TensorArray(data)})
+        in_df = pd.DataFrame({"a": [data]})
         ds = ray.data.from_pandas(in_df)
         dtypes = ds.schema().types
         assert len(dtypes) == 1
+        # Tensor column should be automatically cast to Tensor extension.
         assert isinstance(dtypes[0], TensorDtype)
+        # Original df should not be changed.
+        assert not isinstance(in_df.dtypes[0], TensorDtype)
         out_df = ds.to_pandas()
+        # Column should be cast back to object dtype when returning back to user.
         assert out_df["a"].dtype.type is np.object_
-        expected_df = pd.DataFrame({"a": list(data)})
+        expected_df = pd.DataFrame({"a": [data]})
         pd.testing.assert_frame_equal(out_df, expected_df)
     finally:
         ctx.enable_tensor_extension_casting = original
