@@ -1,2 +1,2 @@
-# flake8: noqa
+#pylint: skip-file
 x = (1 + 2
