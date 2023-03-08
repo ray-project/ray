@@ -127,7 +127,7 @@ class PPOCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        self.pi_head_config.output_dim = (
+        self.pi_head_config.output_dims = (
             action_distribution_cls.required_model_output_shape(
                 space=self.action_space, model_config=self.model_config_dict
             )
