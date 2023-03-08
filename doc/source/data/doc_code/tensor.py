@@ -489,21 +489,17 @@ print(read_ds.schema())
 # fmt: off
 # __create_variable_shaped_tensors_begin___
 # Create a Dataset of variable-shaped tensors.
-ragged_array = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
-df = pd.DataFrame({"feature": ragged_array, "label": [1, 1]})
-ds = ray.data.from_pandas([df, df])
+arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
+ds = ray.data.from_numpy([arr, arr])
 # -> Dataset(num_blocks=2, num_rows=4,
-#            schema={feature: TensorDtype(shape=(None, None), dtype=float64), 
-#            label: int64})
+#            schema={__value__: ArrowVariableShapedTensorType(dtype=double)})
 
 ds.take(2)
-# -> [{'feature': array([[1., 1.],
-#                       [1., 1.]]), 
-#       'label': 1}, 
-#     {'feature': array([[1., 1., 1.],
-#                        [1., 1., 1.],
-#                        [1., 1., 1.]]), 
-#       'label': 1}]
+# -> [array([[1., 1.],
+#            [1., 1.]]),
+#     array([[1., 1., 1.],
+#            [1., 1., 1.],
+#            [1., 1., 1.]])]
 # __create_variable_shaped_tensors_end__
 
 # fmt: off
@@ -511,16 +507,13 @@ ds.take(2)
 # Convert Ray Dataset to a TensorFlow Dataset.
 tf_ds = ds.to_tf(
     batch_size=2,
-    feature_columns="feature",
-    label_columns="label"
+    output_signature=tf.RaggedTensorSpec(shape=(None, None, None), dtype=tf.float64),
 )
 # Iterate through the tf.RaggedTensors.
 for ragged_tensor in tf_ds:
     print(ragged_tensor)
-# -> (<tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
-#                      [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>,
-#     <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 1])>)
-# (<tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
-#                   [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>,
-#  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 1])>)
+# -> <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
+#    <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
 # __tf_variable_shaped_tensors_end__
