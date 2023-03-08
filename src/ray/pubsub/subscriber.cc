@@ -401,6 +401,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   if (SubscriptionExists(publisher_id)) {
     MakeLongPollingPubsubConnection(publisher_address);
   } else {
+    processed_sequences_.erase(publisher_id);
     publishers_connected_.erase(publisher_id);
   }
 }

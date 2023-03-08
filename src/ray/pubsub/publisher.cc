@@ -382,9 +382,9 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   auto &subscription_index = subscription_index_map_.at(channel_type);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
-  int64_t sequence_id = ++cum_pub_message_cnt_[channel_type];
-  pub_message.set_sequence_id(sequence_id);
+  pub_message.set_sequence_id(++next_sequence_id_);
   subscription_index.Publish(pub_message);
+  cum_pub_message_cnt_[channel_type]++;
 }
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,

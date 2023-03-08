@@ -461,7 +461,9 @@ class Publisher : public PublisherInterface {
   /// The maximum number of objects to publish for each publish calls.
   int publish_batch_size_;
 
-  absl::flat_hash_map<rpc::ChannelType, int64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
+
+  int64_t next_sequence_id_ GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace pubsub
