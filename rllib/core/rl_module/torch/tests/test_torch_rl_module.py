@@ -100,7 +100,7 @@ class TestRLModule(unittest.TestCase):
         state2_after = module2.get_state()
         check(state, state2_after)
 
-    def test_serialize_deserialize(self):
+    def test_checkpointing(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
@@ -109,20 +109,12 @@ class TestRLModule(unittest.TestCase):
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         )
+        module.save_to_checkpoint("/tmp/test_checkpoint_torch")
+        new_module = DiscreteBCTorchModule.load_from_checkpoint(
+            "/tmp/test_checkpoint_torch"
+        )
 
-        # create a new module from the old module
-        new_module = module.deserialize(module.serialize())
-
-        # check that the new module is the same type
-        self.assertIsInstance(new_module, type(module))
-
-        # check that a parameter of their's is the same
-        self.assertEqual(new_module.input_dim, module.input_dim)
-
-        # check that their states are the same
         check(module.get_state(), new_module.get_state())
-
-        # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
 
 
