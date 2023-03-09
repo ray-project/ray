@@ -1,3 +1,37 @@
+"""Tests for wandb integration.
+
+Note: These tests use a set of mocked APIs:
+- _MockWandbAPI: Mocks wandb API calls (ex: wandb.init).
+- _MockWandbLoggingActor: The same as the regular _WandbLoggingActor,
+    except using the mocked wandb API
+- WandbTestExperimentLogger: Thin subclass of `WandbLoggerCallback` to use for testing.
+    Provides a helper `trial_logging_actors` property that can be used to
+    access attributes of the remote actors for assertions.
+- Use the `get_mock_wandb_logger` helper method to create a logger with
+    a custom mock wandb API class. (Ex: If you want to override some wandb API methods.)
+
+Template for testing with these mocks:
+
+    wandb_logger_kwargs = {}
+    logger = get_mock_wandb_logger(mock_api_cls=_MockWandbAPI, **wandb_logger_kwargs)
+    logger.setup()
+
+    # From now on, the API key is in the env variable.
+    # Start the remote logging actor
+    logger.on_trial_start(0, [], trial)
+    # Log some results
+    result = {}
+    logger.on_trial_result(0, [], trial, result)
+    # Send a STOP signal to the logging actor
+    logger.on_trial_complete(0, [], trial)
+    # This will wait for the logging actor to finish + cleanup
+    logger.on_experiment_end(trials=[trial])
+
+    # Now, we can access properties of the logging actors
+    # (must happen after `on_trial_end` and `on_experiment_end`)
+    logs = logger.trial_logging_actors[trial]._wandb.logs
+"""
+
 import os
 import time
 import tempfile
@@ -49,7 +83,7 @@ class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
     pass
 
 
-@pytest.fixture(autouse=True, scope="class")
+@pytest.fixture(autouse=True, scope="module")
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
     yield address_info

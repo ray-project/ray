@@ -714,13 +714,16 @@ class WandbLoggerCallback(LoggerCallback):
                 self._cleanup_logging_actor(trial)
 
     def on_experiment_end(self, trials: List["Trial"], **info):
-        self._cleanup_logging_actors(timeout=self._upload_timeout)
+        """Wait for the actors to finish their call to `wandb.finish`.
+        This includes uploading all logs + artifacts to wandb."""
+        self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):
-        for trial in list(self._trial_logging_actors):
-            self._signal_logging_actor_stop(trial=trial)
+        if ray.is_initialized():
+            for trial in list(self._trial_logging_actors):
+                self._signal_logging_actor_stop(trial=trial)
 
-        self._cleanup_logging_actors(timeout=2, kill_on_timeout=True)
+            self._cleanup_logging_actors(timeout=2, kill_on_timeout=True)
 
         self._trial_logging_actors = {}
         self._trial_logging_futures = {}
