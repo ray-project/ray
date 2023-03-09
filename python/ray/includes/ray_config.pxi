@@ -160,3 +160,7 @@ cdef class Config:
     @staticmethod
     def grpc_client_keepalive_timeout_ms():
         return RayConfig.instance().grpc_client_keepalive_timeout_ms()
+
+    @staticmethod
+    def one_log_per_workerpool_worker():
+        return (RayConfig.instance().one_log_per_workerpool_worker())

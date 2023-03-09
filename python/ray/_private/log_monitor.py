@@ -23,8 +23,12 @@ from ray._private.ray_logging import setup_component_logger
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# The groups are job id, and pid.
-WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
+if ray._config.one_log_per_workerpool_worker():
+    # Postfix with worker index assigned by the worker pool.
+    WORKER_LOG_PATTERN = re.compile(".*worker-(\d+)")
+else:
+    # Postfix with worker id followed by the pid.
+    WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -219,10 +223,9 @@ class LogMonitor:
         ):
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 worker_match = WORKER_LOG_PATTERN.match(file_path)
-                if worker_match:
+                worker_pid = None
+                if worker_match and not ray._config.one_log_per_workerpool_worker():
                     worker_pid = int(worker_match.group(2))
-                else:
-                    worker_pid = None
                 job_id = None
 
                 # Perform existence check first because most file will not be
@@ -364,9 +367,15 @@ class LogMonitor:
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1
                         )[1]
+                        file_info.actor_name = None
                     elif next_line.startswith(ray_constants.LOG_PREFIX_JOB_ID):
                         file_info.job_id = next_line.split(
                             ray_constants.LOG_PREFIX_JOB_ID, 1
+                        )[1]
+                    elif next_line.startswith(ray_constants.LOG_PREFIX_PID):
+                        flush()  # Possible change of pid.
+                        file_info.worker_pid = next_line.split(
+                            ray_constants.LOG_PREFIX_PID, 1
                         )[1]
                     elif next_line.startswith(
                         "Windows fatal exception: access violation"

@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, MagicMock
-
+import numpy as np
 import pytest
 
 import ray
@@ -125,11 +125,25 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
     assert config["log_rotation_backup_count"] == 0
 
 
-def test_log_file_exists(shutdown_only):
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        {
+            "num_cpus": 1,
+        },
+        {
+            "num_cpus": 1,
+            "_system_config": {
+                "one_log_per_workerpool_worker": True,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_log_file_exists(ray_start_cluster_head):
     """Verify all log files exist as specified in
     https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
     """
-    ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
@@ -811,7 +825,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert log_monitor.should_update_filenames(current)
 
 
-def test_repr_inheritance():
+def test_repr_inheritance(shutdown_only):
     """Tests that a subclass's repr is used in logging."""
     logger = logging.getLogger(__name__)
 
@@ -872,6 +886,313 @@ def test_ray_does_not_break_makeRecord():
     finally:
         # Set it back to the default factory.
         logging.setLogRecordFactory(logging.LogRecord)
+
+
+def test_one_log_per_workerpool_worker_processes_reuse_log_file(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "one_log_per_workerpool_worker": True,
+            "enable_worker_prestart": False,
+        },
+    )
+
+    actor_log_line = "my actor remote func"
+
+    @ray.remote
+    class MyActor:
+        def act(self):
+            print(actor_log_line)
+
+    actor = MyActor.options(name="MyActor").remote()
+    ray.get(actor.act.remote())
+
+    # Kill actor, which kills the worker, so the next task creates a worker with
+    # the same index and uses the same file name.
+    del actor
+
+    def actor_killed():
+        try:
+            ray.get_actor("MyActor")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_killed)
+
+    actor = MyActor.remote()
+    ray.get(actor.act.remote())
+
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    paths = list(log_dir_path.iterdir())
+
+    worker_out = [
+        path.name for path in paths if re.match(r"^worker-\d+.out", path.name)
+    ]
+    worker_err = [
+        path.name for path in paths if re.match(r"^worker-\d+.err", path.name)
+    ]
+    assert len(worker_out) == 1, f"expect 1 worker log file {worker_out}"
+    assert len(worker_err) == 1, f"expect 1 worker log file {worker_err}"
+    assert "worker-0.out" in worker_out
+    assert "worker-0.err" in worker_err
+
+    python_worker_log = [
+        path.name
+        for path in paths
+        if re.match(r"^python-core-worker-\d+.log", path.name)
+    ]
+    assert len(python_worker_log) == 1, f"expect 1 worker log file {python_worker_log}"
+    assert "python-core-worker-0.log" in python_worker_log
+
+
+def test_one_log_per_workerpool_worker_actor_on_different_files(shutdown_only):
+    ray.init(
+        num_cpus=2,
+        _system_config={"one_log_per_workerpool_worker": True},
+    )
+    log_pubsub = init_log_pubsub()
+
+    log_line = "my f remote func"
+
+    @ray.remote
+    class MyActor:
+        def f(self):
+            print(log_line)
+
+    actors = [MyActor.remote() for _ in range(2)]
+    ray.get([actor.f.remote() for actor in actors])
+    ray.get([actor.f.remote() for actor in actors])
+    ray.get([actor.f.remote() for actor in actors])
+
+    def matcher(log_batch):
+        return log_batch["actor_name"] == "MyActor"
+
+    logs = get_log_batch(log_pubsub, 2 * 3, matcher=matcher)
+
+    pid_to_logs = defaultdict(list)
+    for log in logs:
+        pid_to_logs[log["pid"]].extend(log["lines"])
+    assert len(pid_to_logs.keys()) == 2
+
+    for key, lines in pid_to_logs.items():
+        assert len(lines) == 3
+        for line in lines:
+            assert line == log_line
+
+
+def test_one_log_per_workerpool_worker_task_reuse_worker(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={"one_log_per_workerpool_worker": True},
+    )
+    log_pubsub = init_log_pubsub()
+
+    f_log_line = "my f remote func"
+
+    @ray.remote
+    def f():
+        print(f_log_line)
+
+    ray.get([f.remote() for _ in range(3)])
+
+    g_log_line = "my g remote func"
+
+    @ray.remote
+    def g():
+        print(g_log_line)
+
+    ray.get([g.remote() for _ in range(4)])
+
+    f_logs = get_log_batch(
+        log_pubsub, 3, matcher=lambda log_batch: log_batch["task_name"] == "f"
+    )
+    g_logs = get_log_batch(
+        log_pubsub, 4, matcher=lambda log_batch: log_batch["task_name"] == "g"
+    )
+
+    pids = {log["pid"] for log in f_logs}
+    g_pids = {log["pid"] for log in g_logs}
+    pids.update(g_pids)
+    assert len(set(pids)) == 1, "tasks should all run from the same process"
+
+    for log in f_logs:
+        for line in log["lines"]:
+            assert line == f_log_line
+
+    for log in g_logs:
+        for line in log["lines"]:
+            assert line == g_log_line
+
+
+def test_one_log_per_workerpool_worker_create_workers_parallel_index_matches(
+    shutdown_only,
+):
+    ray.init(
+        num_cpus=20,
+        _system_config={
+            "one_log_per_workerpool_worker": True,
+            "enable_worker_prestart": False,
+        },
+    )
+    log_pubsub = init_log_pubsub()
+
+    @ray.remote
+    class MyActor:
+        def f(self):
+            print("actor's best line")
+
+    actors = [MyActor.remote() for _ in range(20)]
+    ray.get([actor.f.remote() for actor in actors])
+
+    logs = get_log_batch(
+        log_pubsub, 20, matcher=lambda log_batch: log_batch["actor_name"] == "MyActor"
+    )
+
+    pids = {log["pid"] for log in logs}
+    assert len(pids) == 20, f"tasks should uses all workers {pids}"
+
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    paths = list(log_dir_path.iterdir())
+
+    worker_out = [
+        path.name for path in paths if re.match(r"^worker-\d+.out", path.name)
+    ]
+    worker_err = [
+        path.name for path in paths if re.match(r"^worker-\d+.err", path.name)
+    ]
+    python_worker_log = [
+        path.name
+        for path in paths
+        if re.match(r"^python-core-worker-\d+.log", path.name)
+    ]
+
+    for index in range(20):
+        assert f"worker-{index}.out" in worker_out
+        assert f"worker-{index}.err" in worker_err
+        assert f"python-core-worker-{index}.log" in python_worker_log
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "object_store_memory": 75 * 1024 * 1024,
+            "_system_config": {
+                "max_io_workers": 1,
+                "one_log_per_workerpool_worker": True,
+                "enable_worker_prestart": False,
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_worker_type_increments_worker_index_separately(ray_start_regular):
+    @ray.remote
+    class MyActor:
+        def f(self):
+            return
+
+    actors = [MyActor.options(name=f"MyActor{idx}").remote() for idx in range(3)]
+    ray.get([actor.f.remote() for actor in actors])
+
+    @ray.remote
+    def trigger_spill():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+    ids = [trigger_spill.remote() for _ in range(2)]
+    ray.get(ids)
+    del ids
+
+    for actor in actors:
+        del actor
+    actors.clear()
+
+    def actor_killed():
+        for idx in range(3):
+            try:
+                ray.get_actor(f"MyActor{idx}")
+                return False
+            except ValueError:
+                continue
+        return True
+
+    wait_for_condition(actor_killed)
+
+    actors = [MyActor.remote() for _ in range(5)]
+    ray.get([actor.f.remote() for actor in actors])
+
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    paths = list(log_dir_path.iterdir())
+
+    worker_out = [
+        path.name for path in paths if re.match(r"^worker-\d+.out", path.name)
+    ]
+    worker_err = [
+        path.name for path in paths if re.match(r"^worker-\d+.err", path.name)
+    ]
+    python_worker_log = [
+        path.name
+        for path in paths
+        if re.match(r"^python-core-worker-\d+.log", path.name)
+    ]
+
+    assert len(worker_out) == 5
+    assert len(worker_err) == 5
+    assert len(python_worker_log) == 5
+
+    for idx in range(5):
+        assert f"worker-{idx}.out" in worker_out
+        assert f"worker-{idx}.err" in worker_err
+        assert f"python-core-worker-{idx}.log" in python_worker_log
+
+    restore_worker_out = [
+        path.name for path in paths if re.match(r"^restore_worker-\d+.out", path.name)
+    ]
+    restore_worker_err = [
+        path.name for path in paths if re.match(r"^restore_worker-\d+.err", path.name)
+    ]
+    spill_worker_out = [
+        path.name for path in paths if re.match(r"^spill_worker-\d+.out", path.name)
+    ]
+    spill_worker_err = [
+        path.name for path in paths if re.match(r"^spill_worker-\d+.err", path.name)
+    ]
+    python_spill_worker_log = [
+        path.name
+        for path in paths
+        if re.match(r"^python-core-restore_worker-\d+.log", path.name)
+    ]
+    python_restore_worker_log = [
+        path.name
+        for path in paths
+        if re.match(r"^python-core-spill_worker-\d+.log", path.name)
+    ]
+
+    assert len(restore_worker_out) == 1
+    assert len(restore_worker_err) == 1
+    assert len(python_restore_worker_log) == 1
+
+    assert len(spill_worker_out) == 1
+    assert len(spill_worker_err) == 1
+    assert len(python_spill_worker_log) == 1
+
+    assert "restore_worker-0.out" in restore_worker_out
+    assert "restore_worker-0.err" in restore_worker_err
+    assert "python-core-spill_worker-0.log" in python_restore_worker_log
+
+    assert "spill_worker-0.out" in spill_worker_out
+    assert "spill_worker-0.err" in spill_worker_err
+    assert "python-core-restore_worker-0.log" in python_spill_worker_log
 
 
 if __name__ == "__main__":

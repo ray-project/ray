@@ -82,9 +82,20 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
              << WorkerTypeString(options_.worker_type);
-    if (!worker_id_.IsNil()) {
-      app_name << "-" << worker_id_;
+    if (options_.worker_index >= 0) {
+      app_name << "-" << options_.worker_index;
+    } else {
+      if (!worker_id_.IsNil()) {
+        app_name << "-" << worker_id_;
+      }
+#ifdef _WIN32
+      int pid = _getpid();
+#else
+      pid_t pid = getpid();
+#endif
+      app_name << "_" << std::to_string(pid);
     }
+    app_name << ".log";
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.

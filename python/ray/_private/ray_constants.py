@@ -263,6 +263,8 @@ LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_TASK_NAME = ":task_name:"
+# Pids are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_PID = ":pid:"
 # Job ids are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_JOB_ID = ":job_id:"
 

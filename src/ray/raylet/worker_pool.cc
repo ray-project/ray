@@ -385,6 +385,17 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     }
   }
 
+  if (RayConfig::instance().one_log_per_workerpool_worker()) {
+    int32_t workers_same_type_count = 0;
+    for (const auto &entry : state.worker_processes) {
+      if (entry.second.worker_type == worker_type) {
+        workers_same_type_count += 1;
+      }
+    }
+    worker_command_args.push_back("--worker-index=" +
+                                  std::to_string(workers_same_type_count));
+  }
+
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -801,14 +812,19 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   // Invoke the `send_reply_callback` later to only finish driver
   // registration after all initial workers are registered to Raylet.
   bool delay_callback = false;
-  // If this is the first job.
-  if (first_job_.IsNil()) {
-    first_job_ = job_id;
-    // If the number of Python workers we need to wait is positive.
-    if (num_initial_python_workers_for_first_job_ > 0) {
-      delay_callback = true;
-      PrestartDefaultCpuWorkers(Language::PYTHON,
-                                num_initial_python_workers_for_first_job_);
+  // TODO(clarng): Improve worker prestart to run once on node start up, instead of
+  // running on driver connect and on lease request.
+  if (RayConfig::instance().enable_worker_prestart()) {
+    // If this is the first job.
+    if (first_job_.IsNil()) {
+      first_job_ = job_id;
+      // If the number of Python workers we need to wait is positive.
+
+      if (num_initial_python_workers_for_first_job_ > 0) {
+        delay_callback = true;
+        PrestartDefaultCpuWorkers(Language::PYTHON,
+                                  num_initial_python_workers_for_first_job_);
+      }
     }
   }
 

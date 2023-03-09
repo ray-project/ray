@@ -182,27 +182,36 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
         os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
-def get_worker_log_file_name(worker_type, job_id=None):
+def get_worker_log_file_name(worker_type, job_id=None, worker_index=-1):
     if job_id is None:
         job_id = os.environ.get("RAY_JOB_ID")
     if worker_type == "WORKER":
         if job_id is None:
             job_id = ""
         worker_name = "worker"
-    else:
+    elif worker_type == "SPILL_WORKER":
         job_id = ""
-        worker_name = "io_worker"
+        worker_name = "spill_worker"
+    elif worker_type == "RESTORE_WORKER":
+        job_id = ""
+        worker_name = "restore_worker"
+    else:
+        raise Exception("Unknown worker type")
 
     # Make sure these values are set already.
     assert ray._private.worker._global_node is not None
     assert ray._private.worker.global_worker is not None
-    filename = (
-        f"{worker_name}-"
-        f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
-    )
-    if job_id:
-        filename += f"{job_id}-"
-    filename += f"{os.getpid()}"
+
+    if ray._config.one_log_per_workerpool_worker() and worker_index >= 0:
+        filename = f"{worker_name}-{worker_index}"
+    else:
+        filename = (
+            f"{worker_name}-"
+            f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
+        )
+        if job_id:
+            filename += f"{job_id}-"
+        filename += f"{os.getpid()}"
     return filename
 
 

@@ -325,6 +325,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int startup_token
         c_string session_name
         c_string entrypoint
+        int worker_index
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

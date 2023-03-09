@@ -1897,6 +1897,7 @@ def connect(
     startup_token: int = 0,
     ray_debugger_external: bool = False,
     entrypoint: str = "",
+    worker_index: int = -1,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -1918,6 +1919,8 @@ def connect(
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
+        worker_index: The worker index assigned by the worker pool this
+            worker belongs to.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2088,6 +2091,7 @@ def connect(
         startup_token,
         session_name,
         "" if mode != SCRIPT_MODE else entrypoint,
+        worker_index,
     )
 
     # Notify raylet that the core worker is ready.

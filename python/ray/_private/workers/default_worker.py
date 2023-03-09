@@ -144,6 +144,13 @@ parser.add_argument(
     required=False,
     help="The address of web ui",
 )
+parser.add_argument(
+    "--worker-index",
+    required=False,
+    type=int,
+    default=-1,
+    help="The worker index assigned by the worker pool this worker belongs to.",
+)
 
 
 if __name__ == "__main__":
@@ -214,11 +221,12 @@ if __name__ == "__main__":
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
+        worker_index=args.worker_index,
     )
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
+        get_worker_log_file_name(args.worker_type, worker_index=args.worker_index)
     )
     configure_log_file(out_file, err_file)
 
