@@ -1,0 +1,40 @@
+(serve-stable-diffusion-tutorial)=
+
+# Serving Stable Diffusion Model
+In this guide, we will show you how to build a stable diffusion application with Ray Serve.
+
+For this example, we use [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) model and FastAPI to build the example. 
+
+Serve Code:
+```{literalinclude} ../doc_code/stable_diffusion.py
+```
+
+Save above code to a file e.g. stable_diffusion.py. You can use `serve run stable_diffusion:entrypoint` to start the serve application.
+
+:::{note}
+The autoscaling config is using min_replica = 0, replica will be spawn when the request arrives. When there is no request, Serve Application will downsacle replicas to 0 for saving GPU resource.
+:::
+
+You should see output in the end.
+```text
+(ServeController pid=362, ip=10.0.44.233) INFO 2023-03-08 16:44:57,579 controller 362 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7396d5a9efdb59ee01b7befba448433f6c6fc734cfa5421d415da1b3' on node '7396d5a9efdb59ee01b7befba448433f6c6fc734cfa5421d415da1b3' listening on '127.0.0.1:8000'
+(ServeController pid=362, ip=10.0.44.233) INFO 2023-03-08 16:44:57,588 controller 362 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-a30ea53938547e0bf88ce8672e578f0067be26a7e26d23465c46300b' on node 'a30ea53938547e0bf88ce8672e578f0067be26a7e26d23465c46300b' listening on '127.0.0.1:8000'
+(HTTPProxyActor pid=439, ip=10.0.44.233) INFO:     Started server process [439]
+(HTTPProxyActor pid=5779) INFO:     Started server process [5779]
+(ServeController pid=362, ip=10.0.44.233) INFO 2023-03-08 16:44:59,362 controller 362 deployment_state.py:1333 - Adding 1 replica to deployment 'APIIngress'.
+2023-03-08 16:45:01,316 SUCC <string>:93 -- Deployed Serve app successfully.
+```
+
+You can use following code to send request.
+```python
+import requests
+
+prompt = "a cute cat is dancing on the grass."
+input = "%20".join(prompt.split(" "))
+resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={input}")
+with open("output.png", 'wb') as f:
+    f.write(resp.content)
+```
+At the end, `output.png` file should be saved locally. Checkout!
+![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_output.png)
+

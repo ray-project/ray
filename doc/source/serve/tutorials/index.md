@@ -15,4 +15,6 @@ rllib
 gradio-integration
 gradio-dag-visualization
 java
+stable-diffusion
+object-detection
 ```
