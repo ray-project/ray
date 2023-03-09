@@ -686,6 +686,7 @@ class ServeController:
             application_details[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
+                docs_path=self.get_docs_path(app_name),
                 app_status=app_status_info.status,
                 app_message=app_status_info.message,
                 deployment_timestamp=app_status_info.deployment_timestamp,

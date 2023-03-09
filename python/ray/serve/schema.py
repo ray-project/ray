@@ -561,6 +561,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
 class ApplicationDetails(BaseModel, extra=Extra.forbid):
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
+        ...,
         description=(
             "Requests to paths under this HTTP path prefix will be routed to this "
             "application. This value can be null if the application is deploying "
@@ -571,7 +572,14 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
             '"/a/c" go to A and requests to "/a/b", "/a/b/", and "/a/b/c" go to B. '
             'Routes must not end with a "/" unless they\'re the root (just "/"), which '
             "acts as a catch-all."
-        )
+        ),
+    )
+    docs_path: Optional[str] = Field(
+        ...,
+        description=(
+            "The path at which the docs for this application is served, for instance "
+            "the `docs_url` for FastAPI-integrated applications."
+        ),
     )
     app_status: ApplicationStatus = Field(
         description="The current status of the application."

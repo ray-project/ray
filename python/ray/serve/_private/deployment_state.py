@@ -2025,7 +2025,7 @@ class DeploymentStateManager:
     def get_deployment_details(self, deployment_name: str) -> DeploymentDetails:
         replicas = self.get_running_replica_infos()
         status_info = self.get_deployment_statuses([deployment_name])[0]
-        
+
         return DeploymentDetails(
             name=deployment_name,
             num_running_replicas=len(replicas[deployment_name]),

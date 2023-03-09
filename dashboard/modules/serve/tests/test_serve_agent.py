@@ -416,7 +416,7 @@ def test_get_serve_instance_details(ray_start_stop):
     pizza_import_path = (
         "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
     )
-    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
         "host": "127.0.0.1",
         "port": 8000,
@@ -443,7 +443,7 @@ def test_get_serve_instance_details(ray_start_stop):
             {
                 "name": "app2",
                 "route_prefix": "/app2",
-                "import_path": world_import_path,
+                "import_path": fastapi_import_path,
             },
         ],
     }
@@ -466,13 +466,14 @@ def test_get_serve_instance_details(ray_start_stop):
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
+    # CHECK: host and port
     assert serve_details.host == "127.0.0.1"
     assert serve_details.port == 8000
     print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
 
     app_details = serve_details.application_details
 
-    # Check that the app configs deployed by the user matches what is returned
+    # CHECK: app configs are equal
     assert (
         app_details["app1"].deployed_app_config.dict(exclude_unset=True)
         == config1["applications"][0]
@@ -483,7 +484,17 @@ def test_get_serve_instance_details(ray_start_stop):
     )
     print("Confirmed the deployed app configs from the fetched metadata is correct.")
 
-    # Check that all deployed deployments are present in the fetched metadata
+    # CHECK: deployment timestamp
+    assert app_details["app1"].deployment_timestamp > 0
+    assert app_details["app2"].deployment_timestamp > 0
+    print("Confirmed deployment timestamps are nonzero.")
+
+    # CHECK: docs path
+    assert app_details["app1"].docs_path is None
+    assert app_details["app2"].docs_path == "/my_docs"
+    print("Confirmed docs paths are correct.")
+
+    # CHECK: all deployments are present
     assert app_details["app1"].deployments_details.keys() == {
         "app1_DAGDriver",
         "app1_create_order",
@@ -492,12 +503,11 @@ def test_get_serve_instance_details(ray_start_stop):
         "app1_Multiplier",
     }
     assert app_details["app2"].deployments_details.keys() == {
-        "app2_f",
-        "app2_BasicDriver",
+        "app2_FastAPIDeployment",
     }
     print("Metadata for all deployed deployments are present.")
 
-    # Check application details
+    # CHECK: application details
     for app in ["app1", "app2"]:
         assert app_details[app].route_prefix == f"/{app}"
         for dep_details in app_details[app].deployments_details.values():
