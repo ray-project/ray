@@ -43,6 +43,7 @@ class TestReadImages:
         paths = [
             "example://image-datasets/simple/image1.jpg",
             "example://missing.jpg",
+            "example://image-datasets/missing/",
         ]
 
         if ignore_missing_paths:

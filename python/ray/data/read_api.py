@@ -611,8 +611,8 @@ def read_images(
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
-        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
-            found. Defaults to False.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
 
     Returns:
         A :class:`~ray.data.Dataset` containing tensors that represent the images at

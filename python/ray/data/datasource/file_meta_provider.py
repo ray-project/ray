@@ -184,6 +184,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
                 expanded_paths.append(path)
                 file_infos.append(file_info)
             elif ignore_missing_paths:
+                logger.debug(f"{path} not found.")
                 continue
             else:
                 raise FileNotFoundError(path)

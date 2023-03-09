@@ -380,7 +380,10 @@ class _FileBasedDatasourceReader(Reader):
         )
 
         if ignore_missing_paths and len(self._paths) <= 0:
-            raise ValueError("None of the provided paths exist.")
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
@@ -465,14 +468,7 @@ class _FileBasedDatasourceReader(Reader):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                try:
-                    opened_file = open_input_source(fs, read_path, **open_stream_args)
-                except FileNotFoundError:
-                    if self._ignore_missing_paths:
-                        continue
-                    else:
-                        raise
-                with opened_file as f:
+                with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = convert_block_to_tabular_block(data, column_name)
