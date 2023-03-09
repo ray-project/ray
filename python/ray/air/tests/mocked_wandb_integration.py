@@ -100,7 +100,7 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
         del self._trial_logging_futures[trial]
 
     @property
-    def trial_processes(self):
+    def trial_logging_actors(self):
         class PassThroughActor:
             def __init__(self, actor):
                 self._actor = actor

@@ -222,13 +222,14 @@ class TestWandbLogger:
         logger.log_trial_end(trial)
         logger.on_experiment_end(trials=[trial])
 
-        assert logger.trial_processes[trial].kwargs["project"] == "test_project"
-        assert logger.trial_processes[trial].kwargs["id"] == trial.trial_id
-        assert logger.trial_processes[trial].kwargs["name"] == trial.trial_name
+        assert logger.trial_logging_actors[trial].kwargs["project"] == "test_project"
+        assert logger.trial_logging_actors[trial].kwargs["id"] == trial.trial_id
+        assert logger.trial_logging_actors[trial].kwargs["name"] == trial.trial_name
         assert (
-            logger.trial_processes[trial].kwargs["group"] == trial.experiment_dir_name
+            logger.trial_logging_actors[trial].kwargs["group"]
+            == trial.experiment_dir_name
         )
-        assert "config" in logger.trial_processes[trial]._exclude
+        assert "config" in logger.trial_logging_actors[trial]._exclude
 
         del logger
 
@@ -238,8 +239,8 @@ class TestWandbLogger:
         logger.log_trial_end(trial)
         logger.on_experiment_end(trials=[trial])
 
-        assert "config" not in logger.trial_processes[trial]._exclude
-        assert "metric" not in logger.trial_processes[trial]._exclude
+        assert "config" not in logger.trial_logging_actors[trial]._exclude
+        assert "metric" not in logger.trial_logging_actors[trial]._exclude
 
         del logger
 
@@ -249,8 +250,8 @@ class TestWandbLogger:
         logger.log_trial_end(trial)
         logger.on_experiment_end(trials=[trial])
 
-        assert "config" in logger.trial_processes[trial]._exclude
-        assert "metric" in logger.trial_processes[trial]._exclude
+        assert "config" in logger.trial_logging_actors[trial]._exclude
+        assert "metric" in logger.trial_logging_actors[trial]._exclude
 
         del logger
 
@@ -270,7 +271,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, r1)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
-        logged = logger.trial_processes[trial]._wandb.logs[0]
+        logged = logger.trial_logging_actors[trial]._wandb.logs[0]
         assert "metric1" in logged
         assert "metric2" not in logged
         assert "metric3" in logged
@@ -285,7 +286,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, result)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
-        mock_config: _FakeConfig = logger.trial_processes[trial]._wandb.config
+        mock_config: _FakeConfig = logger.trial_logging_actors[trial]._wandb.config
         config = mock_config.config
         # The results in `AUTO_CONFIG_KEYS` should be saved as training configuration
         # instead of output metrics.
@@ -312,7 +313,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, result)
         logger.on_trial_complete(0, [], trial)
 
-        mock_config: _FakeConfig = logger.trial_processes[trial]._wandb.config
+        mock_config: _FakeConfig = logger.trial_logging_actors[trial]._wandb.config
         config = mock_config.config
         assert set(config) == {"param1"}
 
@@ -346,7 +347,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, rllib_result)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
-        logged = logger.trial_processes[trial]._wandb.logs[0]
+        logged = logger.trial_logging_actors[trial]._wandb.logs[0]
         assert logged != "serialization error"
 
     def test_wandb_logging_actor_api_key(self, trial, monkeypatch):
