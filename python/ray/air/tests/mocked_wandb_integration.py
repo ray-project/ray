@@ -1,6 +1,4 @@
 from collections import namedtuple
-from queue import Queue
-import threading
 from unittest.mock import Mock
 from wandb.util import json_dumps_safer
 
@@ -87,9 +85,6 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
 
     _logger_actor_cls = _MockWandbLoggingActor
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def _cleanup_logging_actor(self, trial: "Trial"):
         # Unique for the mocked instance is the delayed delete of
         # `self._trial_logging_actors[trial]`.
@@ -102,6 +97,8 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
     @property
     def trial_logging_actors(self):
         class PassThroughActor:
+            """Object that passes through all attributes of a remote actor."""
+
             def __init__(self, actor):
                 self._actor = actor
 
