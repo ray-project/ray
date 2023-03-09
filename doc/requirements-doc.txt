@@ -37,7 +37,7 @@ torchvision
 transformers
 
 # Train
-mxnet==1.8.0.post0
+mxnet==1.9.1
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
