@@ -53,8 +53,7 @@ class TopologyResourceUsage:
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.
             if not isinstance(op, InputDataBuffer):
-                for bundle in state.outqueue:
-                    cur_usage.object_store_memory += bundle.size_bytes()
+                cur_usage.object_store_memory += state.outqueue_memory_usage()
             # Subtract one from denom to account for input buffer.
             f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
             downstream_usage[op] = DownstreamMemoryInfo(
@@ -92,6 +91,10 @@ class OpState:
         self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
+        #
+        # Note: this queue is also accessed concurrently from the consumer thread.
+        # (in addition to the streaming executor thread). Hence, it must be a
+        # thread-safe type such as `deque`.
         self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
@@ -141,7 +144,7 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self) -> MaybeRefBundle:
+    def get_output_blocking(self, output_split_idx: Optional[int]) -> MaybeRefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         Returns:
@@ -149,9 +152,44 @@ class OpState:
         """
         while True:
             try:
-                return self.outqueue.popleft()
+                # Non-split output case.
+                if output_split_idx is None:
+                    return self.outqueue.popleft()
+
+                # Scan the queue and look for outputs tagged for the given index.
+                for i in range(len(self.outqueue)):
+                    bundle = self.outqueue[i]
+                    if bundle is None:
+                        # End of stream for this index! Note that we
+                        # do not remove the None, so that it can act
+                        # as the termination signal for all indices.
+                        return None
+                    elif bundle.output_split_idx == output_split_idx:
+                        self.outqueue.remove(bundle)
+                        return bundle
+
+                # Didn't find any outputs matching this index, repeat the loop until
+                # we find one or hit a None.
             except IndexError:
-                time.sleep(0.01)
+                pass
+            time.sleep(0.01)
+
+    def outqueue_memory_usage(self) -> int:
+        """Return the object store memory of this operator's outqueue.
+
+        Note: Python's deque isn't truly thread-safe since it raises RuntimeError
+        if it detects concurrent iteration. Hence we don't use its iterator but
+        manually index into it.
+        """
+
+        object_store_memory = 0
+        for i in range(len(self.outqueue)):
+            try:
+                bundle = self.outqueue[i]
+                object_store_memory += bundle.size_bytes()
+            except IndexError:
+                break  # Concurrent pop from the outqueue by the consumer thread.
+        return object_store_memory
 
 
 def build_streaming_topology(

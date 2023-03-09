@@ -597,7 +597,8 @@ void GcsServer::InitMonitorServer() {
   monitor_server_ = std::make_unique<GcsMonitorServer>(
       gcs_node_manager_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      gcs_resource_manager_);
+      gcs_resource_manager_,
+      gcs_placement_group_manager_);
   monitor_grpc_service_.reset(
       new rpc::MonitorGrpcService(main_service_, *monitor_server_));
   rpc_server_.RegisterService(*monitor_grpc_service_);
