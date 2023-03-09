@@ -1,4 +1,3 @@
-import os
 import threading
 from typing import Any, List
 
@@ -7,9 +6,6 @@ from ray._private.ray_constants import env_integer
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
-
-# Set this env var to enable distributed tqdm (experimental).
-RAY_TQDM = bool(os.environ.get("RAY_TQDM"))
 
 try:
     import tqdm
@@ -53,7 +49,8 @@ class ProgressBar:
         if not _enabled or threading.current_thread() is not threading.main_thread():
             self._bar = None
         elif tqdm:
-            if RAY_TQDM:
+            ctx = ray.data.context.DatasetContext.get_current()
+            if ctx.use_ray_tqdm:
                 self._bar = tqdm_ray.tqdm(total=total, position=position)
             else:
                 self._bar = tqdm.tqdm(total=total, position=position)

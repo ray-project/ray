@@ -55,8 +55,6 @@ import ray._private.storage as storage
 
 # Ray modules
 import ray.actor
-from ray.experimental import tqdm_ray
-from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
@@ -84,6 +82,8 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_reset,
 )
+from ray.experimental import tqdm_ray
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy

@@ -172,11 +172,11 @@ class _BarGroup:
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
 
-    def max_pos(self):
-        """Query the max bar position (not including offset) within this group."""
+    def slots_required(self):
+        """Return the number of pos slots we need to accomodate bars in this group."""
         if not self.bars_by_uuid:
             return 0
-        return max(bar.state["pos"] for bar in self.bars_by_uuid.values())
+        return 1 + max(bar.state["pos"] for bar in self.bars_by_uuid.values())
 
     def update_offset(self, offset: int) -> None:
         """Update the position offset assigned by the BarManager."""
@@ -241,7 +241,7 @@ class _BarManager:
     def _get_or_allocate_bar_group(self, state: ProgressBarState):
         ptuple = (state["ip"], state["pid"])
         if ptuple not in self.bar_groups:
-            offset = sum(p.max_pos() + 1 for p in self.bar_groups.values())
+            offset = sum(p.slots_required() for p in self.bar_groups.values())
             self.bar_groups[ptuple] = _BarGroup(state["ip"], state["pid"], offset)
         return self.bar_groups[ptuple]
 
@@ -249,7 +249,7 @@ class _BarManager:
         offset = 0
         for proc in self.bar_groups.values():
             proc.update_offset(offset)
-            offset += proc.max_pos() + 1
+            offset += proc.slots_required()
 
 
 def instance() -> _BarManager:
@@ -263,23 +263,20 @@ def instance() -> _BarManager:
 if __name__ == "__main__":
     import time
 
-    bars = []
-
     @ray.remote
     def processing(delay):
         def sleep(x):
             time.sleep(delay)
             return x
 
-        while True:
-            ray.data.range(1000, parallelism=100).map(
-                sleep, compute=ray.data.ActorPoolStrategy(1, 1)
-            ).count()
+        ray.data.range(1000, parallelism=100).map(
+            sleep, compute=ray.data.ActorPoolStrategy(1, 1)
+        ).count()
 
     ray.get(
         [
-            processing.remote(0.05),
             processing.remote(0.03),
-            processing.remote(0.10),
+            processing.remote(0.01),
+            processing.remote(0.05),
         ]
     )
