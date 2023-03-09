@@ -21,7 +21,7 @@ There are three types of datasets:
 
 * :term:`Simple datasets <Simple Dataset>` -- Datasets that represent a collection of Python objects
 * :term:`Tabular datasets <Tabular Dataset>` -- Datasets that represents columnar data
-* :term:`Tensor datasets <Tensor Dataset>` -- Datasets that represents a collection of ndarrays
+* :term:`Tensor datasets <Tensor Dataset>` -- Datasets that represent a collection of ndarrays
 
 The following figure visualizes a tabular dataset with three blocks, each block holding 1000 rows:
 
