@@ -113,7 +113,7 @@ def _get_execution_dag(
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
-    if plan._logical_plan is not None:
+    if hasattr(plan, "_logical_plan") and plan._logical_plan is not None:
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
