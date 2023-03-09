@@ -1,5 +1,4 @@
 import os
-import time
 from typing import Dict
 
 import numpy as np
@@ -18,6 +17,7 @@ from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import wait_for_condition
 
 
 class TestReadImages:
@@ -193,12 +193,7 @@ class TestReadImages:
             ds.fully_executed()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
-
-            # NOTE: Need to wait for 1 second before checking stats, because we report
-            # stats to stats actors asynchronously when returning the blocks metadata.
-            # TODO(chengsu): clean it up after refactoring lazy block list.
-            time.sleep(1)
-            assert "3 blocks executed" in ds.stats()
+            wait_for_condition(lambda: "3 blocks executed" in ds.stats(), timeout=20)
 
             # Test union of same datasets
             union_ds = ds.union(ds, ds, ds).fully_executed()
