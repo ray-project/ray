@@ -278,13 +278,8 @@ class TestCatalog(unittest.TestCase):
         )
 
         algo = config.build(env="CartPole-v0")
-        self.assertTrue(
-            isinstance(
-                algo.get_policy("default_policy").model.config.build_encoder(
-                    framework="torch"
-                ),
-                MyCatalog,
-            )
+        self.assertEqual(
+            algo.get_policy("default_policy").model.config.catalog_class, MyCatalog
         )
 
         # Test if we can pass custom catalog to algorithm config and train with it.
@@ -311,7 +306,7 @@ class TestCatalog(unittest.TestCase):
                 overwriting the __post_init__ method and defining a custom
                 Catalog.encoder_config.
             - Defines a custom RLModule that uses the custom catalog.
-            - Runs a forward pass through the custom RLModule and checks if
+            - Runs a forward pass through the custom RLModule to check if
                 everything is working together as expected.
 
         """
@@ -344,7 +339,11 @@ class TestCatalog(unittest.TestCase):
                 )
 
         spec = SingleAgentRLModuleSpec(
-            module_class=PPOTorchRLModule, catalog_class=MyCustomCatalog
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict=MODEL_DEFAULTS.copy(),
+            catalog_class=MyCustomCatalog,
         )
         module = spec.build()
 
