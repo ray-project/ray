@@ -185,10 +185,12 @@ def write_partitioned_df():
         partition_keys,
         partition_path_encoder,
         file_writer_fn,
+        file_name_suffix="_1",
     ):
         import urllib.parse
 
         df_partitions = [df for _, df in df.groupby(partition_keys, as_index=False)]
+        paths = []
         for df_partition in df_partitions:
             partition_values = []
             for key in partition_keys:
@@ -197,12 +199,15 @@ def write_partitioned_df():
             partition_path_encoder.scheme.resolved_filesystem.create_dir(path)
             base_dir = partition_path_encoder.scheme.base_dir
             parsed_base_dir = urllib.parse.urlparse(base_dir)
+            file_name = f"test_{file_name_suffix}.tmp"
             if parsed_base_dir.scheme:
                 # replace the protocol removed by the partition path generator
-                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", "test.tmp")
+                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", file_name)
             else:
-                path = os.path.join(path, "test.tmp")
+                path = os.path.join(path, file_name)
             file_writer_fn(df_partition, path)
+            paths.append(path)
+        return paths
 
     yield _write_partitioned_df
 
@@ -274,7 +279,7 @@ def assert_base_partitioned_ds():
             ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
 
         # Force a data read.
-        values = ds_take_transform_fn(ds.take())
+        values = ds_take_transform_fn(ds.take_all())
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed

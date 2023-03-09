@@ -1,3 +1,4 @@
+import itertools
 import os
 import shutil
 from functools import partial
@@ -24,6 +25,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     FileExtensionFilter,
     _unwrap_protocol,
 )
@@ -123,7 +125,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
-    assert df.equals(dsdf)
+    pd.testing.assert_frame_equal(df, dsdf)
     if fs is None:
         shutil.rmtree(path)
     else:
@@ -257,6 +259,157 @@ def test_csv_read_meta_provider(
             filesystem=fs,
             meta_provider=BaseFileMetadataProvider(),
         )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_many_files_basic(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    paths = []
+    dfs = []
+    num_dfs = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    for i in range(num_dfs):
+        df = pd.DataFrame({"one": list(range(i * 3, (i + 1) * 3))})
+        dfs.append(df)
+        path = os.path.join(data_path, f"test_{i}.csv")
+        paths.append(path)
+        df.to_csv(path, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv(paths, filesystem=fs)
+
+    dsdf = ds.to_pandas()
+    df = pd.concat(dfs).reset_index(drop=True)
+    pd.testing.assert_frame_equal(df, dsdf)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_many_files_partitioned(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    write_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    partition_keys = ["one"]
+    partition_path_encoder = PathPartitionEncoder.of(
+        base_dir=data_path,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    paths = []
+    dfs = []
+    num_dfs = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    num_rows = 6 * num_dfs
+    num_files = 2 * num_dfs
+    for i in range(num_dfs):
+        df = pd.DataFrame(
+            {"one": [1, 1, 1, 3, 3, 3], "two": list(range(6 * i, 6 * (i + 1)))}
+        )
+        df_paths = write_partitioned_df(
+            df,
+            partition_keys,
+            partition_path_encoder,
+            partial(df_to_csv, storage_options=storage_options, index=False),
+            file_name_suffix=i,
+        )
+        dfs.append(df)
+        paths.extend(df_paths)
+
+    ds = ray.data.read_csv(
+        paths,
+        filesystem=fs,
+        partitioning=partition_path_encoder.scheme,
+        parallelism=num_files,
+    )
+
+    assert_base_partitioned_ds(
+        ds,
+        count=num_rows,
+        num_input_files=num_files,
+        num_rows=num_rows,
+        schema="{one: int64, two: int64}",
+        num_computed=num_files,
+        sorted_values=sorted(
+            itertools.chain.from_iterable(
+                list(
+                    map(list, zip([1, 1, 1, 3, 3, 3], list(range(6 * i, 6 * (i + 1)))))
+                )
+                for i in range(num_dfs)
+            )
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_many_files_diff_dirs(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    dir1 = os.path.join(data_path, "dir1")
+    dir2 = os.path.join(data_path, "dir2")
+    if fs is None:
+        os.mkdir(dir1)
+        os.mkdir(dir2)
+    else:
+        fs.create_dir(_unwrap_protocol(dir1))
+        fs.create_dir(_unwrap_protocol(dir2))
+
+    paths = []
+    dfs = []
+    num_dfs = 2 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    for i, dir_path in enumerate([dir1, dir2]):
+        for j in range(num_dfs * i, num_dfs * (i + 1)):
+            df = pd.DataFrame({"one": list(range(3 * j, 3 * (j + 1)))})
+            dfs.append(df)
+            path = os.path.join(dir_path, f"test_{j}.csv")
+            paths.append(path)
+            df.to_csv(path, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv(paths, filesystem=fs)
+
+    dsdf = ds.to_pandas()
+    df = pd.concat(dfs).reset_index(drop=True)
+    pd.testing.assert_frame_equal(df, dsdf)
 
 
 @pytest.mark.parametrize(
