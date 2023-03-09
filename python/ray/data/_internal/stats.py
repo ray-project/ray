@@ -648,8 +648,8 @@ class IterStatsSummary:
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
-            out += "* Num blocks fetch locally: {}\n".format(self.iter_blocks_local)
-            out += "* Num blocks fetch remotely: {}\n".format(self.iter_blocks_remote)
+            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
             out += "* Num blocks unknown location: {}\n".format(
                 self.iter_unknown_location
             )
