@@ -267,9 +267,6 @@ class TestAlgorithmConfig(unittest.TestCase):
         class CustomMARLModule1(MultiAgentRLModule):
             pass
 
-        class CustomMARLModule2(MultiAgentRLModule):
-            pass
-
         ########################################
         # single agent
         class SingleAgentAlgoConfig(AlgorithmConfig):

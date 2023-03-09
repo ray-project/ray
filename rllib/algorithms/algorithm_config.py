@@ -2781,8 +2781,8 @@ class AlgorithmConfig(_Config):
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
-        policy_dict could be a partial dict of the policies that we need to return a
-        multi-agent RLModule spec equivalent for.
+        policy_dict could be a partial dict of the policies that we need to turn into
+        an equivalent multi-agent RLModule spec.
 
         Args:
             policy_dict: The policy spec dict. Using this dict, we can determine the
@@ -2811,11 +2811,11 @@ class AlgorithmConfig(_Config):
                 },
             )
         else:
-            cur_marl_module_spec = copy.deepcopy(self.rl_module_spec)
+            cur_marl_module_spec = self.rl_module_spec
             default_rl_module = self.get_default_rl_module_spec()
 
             if isinstance(default_rl_module, SingleAgentRLModuleSpec):
-                # default is single-agent but the user has provided a multi-agent spec
+                # Default is single-agent but the user has provided a multi-agent spec
                 # so the use-case is multi-agent. We need to inherit the multi-agent
                 # class from self.rl_module_spec and fill in the module_specs dict.
                 # If the user provided a multi-agent spec, we use that for the values,
@@ -2826,13 +2826,13 @@ class AlgorithmConfig(_Config):
                 if isinstance(
                     cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
                 ):
-                    # the individual module specs are defined by the user
+                    # The individual module specs are defined by the user
                     single_agent_spec = module_spec or cur_marl_module_spec.module_specs
                     module_specs = {
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     }
                 else:
-                    # the individual module specs are not defined by the user,
+                    # The individual module specs are not defined by the user,
                     # so we use the default
                     single_agent_spec = module_spec or default_rl_module
                     module_specs = {
@@ -2847,7 +2847,7 @@ class AlgorithmConfig(_Config):
                     module_specs=module_specs,
                 )
             else:
-                # default is multi-agent and user wants to override it. In this case,
+                # Default is multi-agent and user wants to override it. In this case,
                 # we have two options: 1) the user provided a multi-agent spec, in
                 # which case we use that for the values, 2) self.rl_module_spec is a
                 # spec that defines SingleAgentRLModuleSpecs to be used for everything.
@@ -2856,7 +2856,7 @@ class AlgorithmConfig(_Config):
                     if isinstance(
                         cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
                     ):
-                        # the individual module specs are not given, it is given as one
+                        # The individual module specs are not given, it is given as one
                         # SingleAgentRLModuleSpec to be re-used for all
                         single_agent_spec = cur_marl_module_spec.module_specs
                     else:

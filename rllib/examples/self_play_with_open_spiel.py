@@ -185,12 +185,19 @@ class SelfPlayCallback(DefaultCallbacks):
                 )
 
             main_policy = algorithm.get_policy("main")
-            new_policy = algorithm.add_policy(
-                policy_id=new_pol_id,
-                policy_cls=type(main_policy),
-                policy_mapping_fn=policy_mapping_fn,
-                module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
-            )
+            if algorithm.config._enable_learner_api:
+                new_policy = algorithm.add_policy(
+                    policy_id=new_pol_id,
+                    policy_cls=type(main_policy),
+                    policy_mapping_fn=policy_mapping_fn,
+                    module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
+                )
+            else:
+                new_policy = algorithm.add_policy(
+                    policy_id=new_pol_id,
+                    policy_cls=type(main_policy),
+                    policy_mapping_fn=policy_mapping_fn,
+                )
 
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will
@@ -210,7 +217,7 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
