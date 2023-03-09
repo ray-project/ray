@@ -111,6 +111,15 @@ class BackendExecutor:
             actor_cls_kwargs=train_cls_kwargs,
             placement_group=placement_group,
         )
+        # Hack to avoid OOMs.
+        # This is just a temporary solution for Train loading entire checkpoints
+        # into memory by ensuring that the rank 0 worker is on the same node as
+        # trainable, thus allowing for lazy checkpoint transfer to be used.
+        # See https://github.com/ray-project/ray/issues/33073
+        # for more context.
+        # TODO remove
+        if self._trial_info and self._trial_info.driver_ip:
+            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook

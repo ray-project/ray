@@ -251,7 +251,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "Application name, the name should be unique within the serve instance"
         ),
     )
-    route_prefix: str = Field(
+    route_prefix: Optional[str] = Field(
         default="/",
         description=(
             "Route prefix for HTTP requests. If not provided, it will use"
@@ -260,7 +260,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
-        default=None,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -476,6 +475,35 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         default=[],
         description=("The set of Serve applications to run on the Ray cluster."),
     )
+
+    @validator("applications")
+    def application_names_unique(cls, v):
+        # Ensure there are no duplicate applications listed
+        names = [app.name for app in v]
+        duplicates = {f'"{name}"' for name in names if names.count(name) > 1}
+        if len(duplicates):
+            apps_str = ("application " if len(duplicates) == 1 else "applications ") + (
+                ", ".join(duplicates)
+            )
+            raise ValueError(
+                f"Found multiple configs for {apps_str}. Please remove all duplicates."
+            )
+        return v
+
+    @validator("applications")
+    def application_routes_unique(cls, v):
+        # Ensure each application with a non-null route prefix has unique route prefixes
+        routes = [app.route_prefix for app in v if app.route_prefix is not None]
+        duplicates = {f'"{route}"' for route in routes if routes.count(route) > 1}
+        if len(duplicates):
+            routes_str = (
+                "route prefix " if len(duplicates) == 1 else "route prefixes "
+            ) + (", ".join(duplicates))
+            raise ValueError(
+                f"Found duplicate applications for {routes_str}. Please ensure each "
+                "application's route_prefix is unique."
+            )
+        return v
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:

@@ -12,6 +12,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
     TaskContext,
+    NodeIdStr,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -20,9 +21,6 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
-
-# Type alias for a node id.
-NodeIdStr = str
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -93,7 +91,7 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DatasetContext.get_current()
-        actor = self._cls.remote(ctx)
+        actor = self._cls.remote(ctx, src_fn_name=self.name)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -122,7 +120,7 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic").remote(
+            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
                 self._transform_fn_ref, ctx, *input_blocks
             )
             self._next_task_idx += 1
@@ -284,8 +282,9 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def __init__(self, ctx: DatasetContext):
+    def __init__(self, ctx: DatasetContext, src_fn_name: str):
         DatasetContext._set_current(ctx)
+        self.src_fn_name: str = src_fn_name
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -297,6 +296,9 @@ class _MapWorker:
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(fn, ctx, *blocks)
+
+    def __repr__(self):
+        return f"MapWorker({self.src_fn_name})"
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
@@ -652,14 +654,4 @@ class _ActorPool:
         Returns:
             A node id associated with the bundle, or None if unknown.
         """
-        # Only consider the first block in the bundle for now. TODO(ekl) consider
-        # taking into account other blocks.
-        ref = bundle.blocks[0][0]
-        # This call is pretty fast for owned objects (~5k/s), so we don't need to
-        # batch it for now.
-        locs = ray.experimental.get_object_locations([ref])
-        nodes = locs[ref]["node_ids"]
-        if nodes:
-            return nodes[0]
-        else:
-            return None
+        return bundle.get_cached_location()
