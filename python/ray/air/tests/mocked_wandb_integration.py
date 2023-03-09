@@ -69,11 +69,13 @@ class _MockWandbAPI:
 
 
 class _MockWandbLoggingActor(_WandbLoggingActor):
+    _mock_wandb_api_cls = _MockWandbAPI
+
     def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
         super(_MockWandbLoggingActor, self).__init__(
             logdir, queue, exclude, to_config, *args, **kwargs
         )
-        self._wandb = _MockWandbAPI()
+        self._wandb = self._mock_wandb_api_cls()
 
     def getattr(self, attr):
         # Helper for the test to get attributes from the actor
@@ -116,3 +118,16 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
             trial: PassThroughActor(actor)
             for trial, actor in self._trial_logging_actors.items()
         }
+
+
+def get_mock_wandb_logger(mock_api_cls, **kwargs):
+    class MockWandbLoggingActor(_MockWandbLoggingActor):
+        _mock_wandb_api_cls = mock_api_cls
+
+    logger = WandbTestExperimentLogger(
+        project="test_project",
+        api_key="1234",
+        **kwargs,
+    )
+    logger._logger_actor_cls = MockWandbLoggingActor
+    return logger

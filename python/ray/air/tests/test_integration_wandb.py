@@ -11,10 +11,8 @@ import pytest
 
 import ray
 from ray.exceptions import RayActorError
-
 from ray.tune import Trainable
 from ray.tune.integration.wandb import WandbTrainableMixin
-
 from ray.tune.trainable import wrap_function
 from ray.tune.integration.wandb import wandb_mixin
 from ray.air.integrations.wandb import (
@@ -39,6 +37,7 @@ from ray.air.tests.mocked_wandb_integration import (
     _MockWandbLoggingActor,
     Trial,
     WandbTestExperimentLogger,
+    get_mock_wandb_logger,
 )
 
 
@@ -359,49 +358,82 @@ class TestWandbLogger:
         def mock_run(actor_cls):
             return os.environ.get(WANDB_ENV_VAR)
 
-        monkeypatch.setattr(
-            WandbLoggerCallback, "_logger_actor_cls", _MockWandbLoggingActor
-        )
         monkeypatch.setattr(_MockWandbLoggingActor, "run", mock_run)
 
         logger = WandbLoggerCallback(
             project="test_project", api_key="1234", excludes=["metric2"]
         )
+        logger._logger_actor_cls = _MockWandbLoggingActor
         logger.setup()
         logger.log_trial_start(trial)
         actor_env_var = ray.get(logger._trial_logging_futures[trial])
         assert actor_env_var == "1234"
 
-    def test_wandb_finish(self, monkeypatch, trial, tmp_path):
-        """Test that logging actors finish upon experiment completion."""
+    def test_wandb_finish(self, trial, tmp_path):
+        """Test that logging actors are cleaned up upon experiment completion."""
         marker = tmp_path / "hang_marker"
         marker.write_text("")
 
-        logger = WandbTestExperimentLogger(
-            project="test_project",
-            api_key="1234",
+        class HangingFinishMockWandbAPI(_MockWandbAPI):
+            def finish(self):
+                while marker.exists():
+                    time.sleep(0.1)
+
+        logger = get_mock_wandb_logger(
+            mock_api_cls=HangingFinishMockWandbAPI,
             upload_timeout=1.0,
             cleanup_actors=True,
         )
         logger.setup()
         logger.on_trial_start(0, [], trial)
         logger.on_trial_complete(0, [], trial)
+        # Signalling stop will not cleanup fully due to the hanging finish
         assert logger.trial_logging_actors
         marker.unlink()
+        # wandb.finish has ended -> experiment end hook should cleanup actors fully
         logger.on_experiment_end(trials=[trial])
         assert not logger.trial_logging_actors
 
-    def test_wandb_destructor(self, monkeypatch, trial):
-        def hanging(*args, **kwargs):
-            time.sleep(50)
+    def test_wandb_kill_hanging_actor(self, trial):
+        """Test that logging actors are killed if exceeding the upload timeout
+        upon experiment completion."""
 
-        monkeypatch.setattr(_MockWandbAPI, "finish", hanging)
-        logger = WandbTestExperimentLogger(
-            project="test_project",
-            api_key="1234",
+        class HangingFinishMockWandbAPI(_MockWandbAPI):
+            def finish(self):
+                time.sleep(5)
+
+        logger = get_mock_wandb_logger(
+            mock_api_cls=HangingFinishMockWandbAPI,
+            upload_timeout=0.1,
+            cleanup_actors=True,
+        )
+        logger.setup()
+        logger.on_trial_start(0, [], trial)
+        logger.on_trial_complete(0, [], trial)
+        # Signalling stop will not cleanup fully due to the hanging finish
+        actors = logger.trial_logging_actors
+        assert actors
+        # Experiment end hook should kill actors since upload_timeout < 5
+        logger.on_experiment_end(trials=[trial])
+        assert not logger.trial_logging_actors
+        with pytest.raises(RayActorError):
+            # This will call `ray.get` on the underlying actor attribute
+            print(actors[trial]._wandb)
+
+    def test_wandb_destructor(self, trial):
+        """Test that the WandbLoggerCallback destructor forcefully cleans up
+        logging actors."""
+
+        class SlowFinishMockWandbAPI(_MockWandbAPI):
+            def finish(self):
+                time.sleep(5)
+
+        logger = get_mock_wandb_logger(
+            mock_api_cls=SlowFinishMockWandbAPI,
             upload_timeout=1.0,
             cleanup_actors=True,
         )
+
         logger.setup()
         # Triggers logging actor run loop
         logger.on_trial_start(0, [], trial)
