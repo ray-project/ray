@@ -174,7 +174,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
             _do_check(alg, config, a_name, o_name)
 
 
-class TestSupportedSpacesIMPALAAPPO(unittest.TestCase):
+class TestSupportedSpacesIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -193,6 +193,16 @@ class TestSupportedSpacesIMPALAAPPO(unittest.TestCase):
             ),
         )
 
+
+class TestSupportedSpacesAPPO(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_appo(self):
         config = (
             APPOConfig()
@@ -204,7 +214,7 @@ class TestSupportedSpacesIMPALAAPPO(unittest.TestCase):
         check_support("APPO", config)
 
 
-class TestSupportedSpacesA3CPPO(unittest.TestCase):
+class TestSupportedSpacesA3C(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -223,6 +233,16 @@ class TestSupportedSpacesA3CPPO(unittest.TestCase):
             )
         )
         check_support("A3C", config, check_bounds=True)
+
+
+class TestSupportedSpacesPPO(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_ppo(self):
         config = (
