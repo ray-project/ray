@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ray.data import Dataset
 
 
-class BulkDatasetIterator(DatasetIterator):
+class DatasetIteratorImpl(DatasetIterator):
     def __init__(
         self,
         base_dataset: "Dataset",

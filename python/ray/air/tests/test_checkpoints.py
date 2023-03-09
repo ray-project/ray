@@ -736,6 +736,11 @@ class PreprocessorCheckpointTest(unittest.TestCase):
         preprocessor = checkpoint.get_preprocessor()
         assert preprocessor.multiplier == 1
 
+        # Check that we can set it to None
+        checkpoint.set_preprocessor(None)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor is None
+
     def testDictCheckpointSetPreprocessorAsDir(self):
         preprocessor = DummyPreprocessor(1)
         data = {"metric": 5}
