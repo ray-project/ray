@@ -373,7 +373,7 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
 }
 
 void Publisher::Publish(rpc::PubMessage pub_message) {
-  RAY_CHECK(pub_message.sequence_id() == 0) << "sequence_id should not be set;";
+  RAY_CHECK_EQ(pub_message.sequence_id(), 0) << "sequence_id should not be set;";
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);

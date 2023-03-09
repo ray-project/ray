@@ -381,7 +381,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
       const auto &key_id = msg.key_id();
-      RAY_CHECK(msg.sequence_id() > 0)
+      RAY_CHECK_GT(msg.sequence_id(), 0)
           << "message's sequence_id is invalid " << msg.sequence_id();
       if (msg.sequence_id() <= processed_sequences_[publisher_id]) {
         RAY_LOG_EVERY_MS(WARNING, 10000)
