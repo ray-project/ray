@@ -71,7 +71,7 @@ class TorchCNN(nn.Module):
 
     def __init__(
         self,
-        input_dims: Union[List, Tuple] = None,
+        input_dims: Union[List[int], Tuple[int]] = None,
         filter_specifiers: List[List[Union[int, List]]] = None,
         filter_layer_activation: str = "relu",
         output_activation: str = "linear",
