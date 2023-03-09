@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 import torch
 import ray
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
+from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 import pytest
 
 
@@ -39,6 +40,37 @@ class LinearModule(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.SGD(self.parameters(), lr=0.1)
 
+
+class DoubleLinearModule(pl.LightningModule):
+    def __init__(self, input_dim_1, input_dim_2, output_dim) -> None:
+        super().__init__()
+        self.linear_1 = nn.Linear(input_dim_1, output_dim)
+        self.linear_2 = nn.Linear(input_dim_2, output_dim)
+
+    def forward(self, batch):
+        input_1 = batch["input_1"]
+        input_2 = batch["input_2"]
+        return self.linear_1(input_1) + self.linear_2(input_2)
+
+    def training_step(self, batch):
+        output = self.forward(batch)
+        loss = torch.sum(output)
+        self.log("loss", loss)
+        return loss
+    
+    def validation_step(self, val_batch, batch_idx):
+        loss = self.forward(val_batch)
+        return {"val_loss": loss}
+    
+    def validation_epoch_end(self, outputs) -> None:
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
+        self.log("val_loss", avg_loss)
+
+    def predict_step(self, batch, batch_idx):
+        return self.forward(batch)
+
+    def configure_optimizers(self):
+        return torch.optim.SGD(self.parameters(), lr=0.1)
 
 class DummyDataModule(pl.LightningDataModule):
     def __init__(self, batch_size: int = 8, dataset_size: int = 256) -> None:
@@ -84,7 +116,7 @@ def test_trainer_with_native_dataloader(accelerator, datasource):
     )
 
     results = trainer.fit()
-    # TODO(yunxuanx): add asserts after supporting logging and checkpointing
+    # TODO(yunxuanx): Add assertion after support metrics logging
     # assert results.metrics["epoch"] == num_epochs - 1
     # assert results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
     # assert "loss" in results.metrics
@@ -117,6 +149,35 @@ def test_trainer_with_ray_data(accelerator):
 
     results = trainer.fit()
 
+
+@pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
+def test_trainer_with_categorical_ray_data(accelerator):
+    num_epochs = 4
+    batch_size = 8
+    num_workers = 2
+    dataset_size = 256
+
+    input_1 = np.random.rand(dataset_size, 32).astype(np.float32)
+    input_2 = np.random.rand(dataset_size, 32).astype(np.float32)
+    pd = convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
+    train_dataset = ray.data.from_pandas(pd)
+    val_dataset = ray.data.from_pandas(pd)
+
+    lightning_config = LightningConfig()
+    lightning_config.set_module_class(DoubleLinearModule)
+    lightning_config.set_module_init_config(input_dim_1=32, input_dim_2=32, output_dim=4)
+    lightning_config.set_trainer_init_config(max_epochs=num_epochs, accelerator=accelerator)
+
+    scaling_config = ray.air.ScalingConfig(num_workers=num_workers, use_gpu=(accelerator=="gpu"))
+    
+    trainer = LightningTrainer(
+        lightning_config=lightning_config,
+        scaling_config=scaling_config,
+        datasets={"train": train_dataset, "val": val_dataset},
+        dataset_iter_config={"batch_size": batch_size}
+    )
+
+    results = trainer.fit()
 
 if __name__ == "__main__":
     import sys
