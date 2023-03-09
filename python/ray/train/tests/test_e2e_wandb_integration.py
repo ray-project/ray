@@ -62,9 +62,7 @@ def test_trainer_wandb_integration(
     # guaranteed to be available by the time `trainer.fit()` returns.
     # This is so because they are generated in corresponding initializer
     # in a sync fashion.
-    config = list(logger.trial_processes.values())[0]._wandb.config.queue.get(
-        timeout=10
-    )
+    config = list(logger.trial_logging_actors.values())[0]._wandb.config.config
 
     if with_train_loop_config:
         assert "train_loop_config" in config
