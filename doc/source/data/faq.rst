@@ -231,7 +231,7 @@ How do I do streaming/online data loading and processing?
 =========================================================
 
 Streaming data loading and data processing can be accomplished by using
-dataset pipelies. By windowing a dataset, you can
+dataset pipelines. By windowing a dataset, you can
 stream data transformations across subsets of the data, even windowing down to the
 reading of each file.
 
