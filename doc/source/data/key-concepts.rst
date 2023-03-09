@@ -23,7 +23,7 @@ There are three types of datasets:
 * :term:`Tabular datasets <Tabular Dataset>` -- Datasets that represents columnar data
 * :term:`Tensor datasets <Tensor Dataset>` -- Datasets that represent a collection of ndarrays
 
-The following figure visualizes a tabular dataset with three blocks, each block holding 1000 rows:
+The following figure visualizes a tabular dataset with three blocks, each holding 1000 rows:
 
 .. image:: images/dataset-arch.svg
 
