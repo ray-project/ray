@@ -185,10 +185,12 @@ def write_partitioned_df():
         partition_keys,
         partition_path_encoder,
         file_writer_fn,
+        file_name_suffix="_1",
     ):
         import urllib.parse
 
         df_partitions = [df for _, df in df.groupby(partition_keys, as_index=False)]
+        paths = []
         for df_partition in df_partitions:
             partition_values = []
             for key in partition_keys:
@@ -197,12 +199,15 @@ def write_partitioned_df():
             partition_path_encoder.scheme.resolved_filesystem.create_dir(path)
             base_dir = partition_path_encoder.scheme.base_dir
             parsed_base_dir = urllib.parse.urlparse(base_dir)
+            file_name = f"test_{file_name_suffix}.tmp"
             if parsed_base_dir.scheme:
                 # replace the protocol removed by the partition path generator
-                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", "test.tmp")
+                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", file_name)
             else:
-                path = os.path.join(path, "test.tmp")
+                path = os.path.join(path, file_name)
             file_writer_fn(df_partition, path)
+            paths.append(path)
+        return paths
 
     yield _write_partitioned_df
 
@@ -246,21 +251,35 @@ def assert_base_partitioned_ds():
         assert ds.schema() is not None
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-        assert (
-            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
-        assert (
-            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
+
+        # For Datasets with long string representations, the format will include
+        # whitespace and newline characters, which is difficult to generalize
+        # without implementing the formatting logic again (from
+        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
+        # characters to test the string contents regardless of the string repr length.
+        def _remove_whitespace(ds_str):
+            for c in ["\n", "\t", " "]:
+                ds_str = ds_str.replace(c, "")
+            return ds_str
+
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(str(ds)), ds
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(repr(ds)), ds
+
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
             ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
 
         # Force a data read.
-        values = ds_take_transform_fn(ds.take())
+        values = ds_take_transform_fn(ds.take_all())
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed

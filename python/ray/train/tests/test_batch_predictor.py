@@ -116,7 +116,7 @@ def test_separate_gpu_stage(shutdown_only):
         allow_gpu=True,
     ).fully_executed()
     stats = ds.stats()
-    assert "Stage 1 read->DummyPreprocessor:" in stats, stats
+    assert "Stage 1 ReadRange->DummyPreprocessor:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("value") == 36.0, ds
 
@@ -127,7 +127,7 @@ def test_separate_gpu_stage(shutdown_only):
         allow_gpu=True,
     ).fully_executed()
     stats = ds.stats()
-    assert "Stage 1 read:" in stats, stats
+    assert "Stage 1 ReadRange:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("value") == 36.0, ds
 
@@ -160,7 +160,7 @@ def test_batch_prediction():
     test_dataset = ray.data.range_table(4)
     ds = batch_predictor.predict(test_dataset).fully_executed()
     # Check fusion occurred.
-    assert "read->DummyPreprocessor" in ds.stats(), ds.stats()
+    assert "ReadRange->DummyPreprocessor" in ds.stats(), ds.stats()
     assert ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
         4.0,
@@ -504,6 +504,18 @@ def test_get_and_set_preprocessor():
         12.0,
     ]
 
+    # Remove preprocessor
+    batch_predictor.set_preprocessor(None)
+    assert batch_predictor.get_preprocessor() is None
+
+    output_ds = batch_predictor.predict(test_dataset)
+    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
+        2.0,
+        4.0,
+        6.0,
+    ]
+
 
 def test_batch_prediction_large_predictor_kwarg():
     class StubPredictor(Predictor):
@@ -543,7 +555,7 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
     )
     out = [x["value"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 read->DummyPreprocessor:" in stats, stats
+    assert "Stage 1 ReadRange->DummyPreprocessor:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
@@ -556,7 +568,7 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
     )
     out = [x["value"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 read:" in stats, stats
+    assert "Stage 1 ReadRange:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
