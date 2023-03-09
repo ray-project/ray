@@ -19,7 +19,6 @@ from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
 from ray.data.block import Block, CallableClass
 
 

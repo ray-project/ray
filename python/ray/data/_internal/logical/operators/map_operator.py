@@ -8,7 +8,6 @@ from ray.data._internal.compute import (
 )
 from ray.data.block import BatchUDF, RowUDF
 from ray.data.context import DEFAULT_BATCH_SIZE
-from ray.data.datasource import Datasource
 
 
 if sys.version_info >= (3, 8):
