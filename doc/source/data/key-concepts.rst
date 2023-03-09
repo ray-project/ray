@@ -10,7 +10,7 @@ Key Concepts
 Datasets
 --------
 
-A :term:`Dataset` contains a list of Ray object references to :term:`blocks <Block>`.
+A :term:`Dataset <Dataset (object)>` contains a list of Ray object references to :term:`blocks <Block>`.
 Each block holds a set of items in a `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_,
 `pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
 Having multiple blocks in a dataset allows for parallel transformation and ingest.
