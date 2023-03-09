@@ -12,6 +12,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
     TaskContext,
+    NodeIdStr,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -20,9 +21,6 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
-
-# Type alias for a node id.
-NodeIdStr = str
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -656,14 +654,4 @@ class _ActorPool:
         Returns:
             A node id associated with the bundle, or None if unknown.
         """
-        # Only consider the first block in the bundle for now. TODO(ekl) consider
-        # taking into account other blocks.
-        ref = bundle.blocks[0][0]
-        # This call is pretty fast for owned objects (~5k/s), so we don't need to
-        # batch it for now.
-        locs = ray.experimental.get_object_locations([ref])
-        nodes = locs[ref]["node_ids"]
-        if nodes:
-            return nodes[0]
-        else:
-            return None
+        return bundle.get_cached_location()
