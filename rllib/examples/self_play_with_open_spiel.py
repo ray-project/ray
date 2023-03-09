@@ -184,18 +184,20 @@ class SelfPlayCallback(DefaultCallbacks):
                     )
                 )
 
+            main_policy = algorithm.get_policy("main")
             new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
                 policy_cls=type(algorithm.get_policy("main")),
                 policy_mapping_fn=policy_mapping_fn,
+                module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
             )
+            breakpoint()
 
-            main_policy = algorithm.get_policy("main")
             algorithm.add_module(
                 module_id=new_pol_id,
                 module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
                 agent_to_module_map_fn=policy_mapping_fn,
-                module_states=None
+                module_states=None,
             )
             breakpoint()
 

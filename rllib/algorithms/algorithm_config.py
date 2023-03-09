@@ -2775,10 +2775,14 @@ class AlgorithmConfig(_Config):
 
     def get_marl_module_spec(
         self,
+        *,
         policy_dict: Dict[str, PolicySpec],
-        policies_to_train: Callable[[PolicyID, SampleBatchType], bool],
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
+
+        policy_dict could be a partial dict of the policies that we need to return a
+        multi-agent RLModule spec equivalent for.
 
         Args:
             policy_dict: The policy spec dict. Using this dict, we can determine the
@@ -2787,8 +2791,9 @@ class AlgorithmConfig(_Config):
                 they will get auto-filled with these values obtrained from the policy
                 spec dict. Here we are relying on the policy's logic for infering these
                 values from other sources of information (e.g. environement)
-            policies_to_train: The policies to train. This can be optionally used to
-                construct the MultiAgentRLModuleSpec (if necessary).
+            module_spec: The single-agent RLModule spec to use for constructing the
+                multi-agent RLModule spec. If None, the default RLModule spec for this
+                algorithm will be used.
         """
         # TODO (Kourosh): When we replace policy entirely there will be no need for
         # this function to map policy_dict to marl_module_specs anymore. The module
@@ -2796,34 +2801,77 @@ class AlgorithmConfig(_Config):
 
         # TODO (Kourosh): Raise an error if the config is not frozen (validated)
         # If the module is single-agent convert it to multi-agent spec
+
         if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
+            # if module_spec is provided, use it otherwise use the self.rl_module_spec
+            single_agent_spec = module_spec or self.rl_module_spec
             marl_module_spec = MultiAgentRLModuleSpec(
                 module_specs={
-                    k: copy.deepcopy(self.rl_module_spec) for k in policy_dict.keys()
+                    k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                 },
             )
-        elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
-            marl_module_spec = copy.deepcopy(self.rl_module_spec)
-
-            if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
-                # the individual module specs are not given, it is given as one
-                # SingleAgentRLModuleSpec to be re-used for all
-                marl_module_spec.module_specs = {
-                    k: copy.deepcopy(marl_module_spec.module_specs)
-                    for k in policy_dict.keys()
-                }
-
-            # otherwise it is assumed that the module specs are given as a dict that
-            # match the sampler's policy dict
         else:
-            raise ValueError(
-                "RLModuleSpec must be either SingleAgentRLModuleSpec "
-                f"or MultiAgentRLModuleSpec got {type(self.rl_module_spec)} instead."
-            )
+            cur_marl_module_spec = copy.deepcopy(self.rl_module_spec)
+            default_rl_module = self.get_default_rl_module_spec()
+
+            if isinstance(default_rl_module, SingleAgentRLModuleSpec):
+                # default is single-agent but the user has provided a multi-agent spec
+                # so the use-case is multi-agent. We need to inherit the multi-agent
+                # class from self.rl_module_spec and fill in the module_specs dict.
+                # If the user provided a multi-agent spec, we use that for the values,
+                # otherwise we see if they have provided a multi-agent spec that
+                # specifies the SingleAgentRLModuleSpec to use instead of the default,
+                # in that case, we use that spec for the values. otherwise we use
+                # the default spec for the values.
+                if isinstance(
+                    cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
+                ):
+                    # the individual module specs are defined by the user
+                    single_agent_spec = cur_marl_module_spec.module_specs
+                else:
+                    # the individual module specs are not defined by the user,
+                    # so we use the default
+                    single_agent_spec = default_rl_module
+
+                # if module_spec is defined we use that instead
+                single_agent_spec = module_spec or single_agent_spec
+                module_specs = {
+                    k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
+                }
+                marl_module_spec = cur_marl_module_spec.__class__(
+                    marl_module_class=cur_marl_module_spec.marl_module_class,
+                    module_specs=module_specs,
+                )
+            else:
+                # default is multi-agent and user wants to override it. In this case,
+                # we have two options: 1) the user provided a multi-agent spec, in
+                # which case we use that for the values, 2) self.rl_module_spec is a
+                # spec that defines SingleAgentRLModuleSpecs to be used for everything.
+                # In this case, we need to use that spec for the values.
+                if module_spec is None:
+                    if isinstance(
+                        cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
+                    ):
+                        # the individual module specs are not given, it is given as one
+                        # SingleAgentRLModuleSpec to be re-used for all
+                        single_agent_spec = cur_marl_module_spec.module_specs
+                    else:
+                        raise ValueError(
+                            "MultiAgentRLModuleSpec is given but no module_spec is "
+                            "provided when adding a policy."
+                        )
+                else:
+                    single_agent_spec = module_spec
+
+                marl_module_spec = cur_marl_module_spec.__class__(
+                    marl_module_class=cur_marl_module_spec.marl_module_class,
+                    module_specs={
+                        k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
+                    },
+                )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
         if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
-            breakpoint()
             raise ValueError(
                 "Policy dict and module spec have different keys! \n"
                 f"policy_dict keys: {list(policy_dict.keys())} \n"
@@ -2836,6 +2884,8 @@ class AlgorithmConfig(_Config):
             policy_spec = policy_dict[module_id]
             module_spec = marl_module_spec.module_specs[module_id]
 
+            # TODO (Kourosh): Use update() instead of this if-else logic
+            # module_spec empty fields with default_spec.
             if module_spec.module_class is None:
                 module_spec.module_class = default_spec.module_class
             if module_spec.observation_space is None:
