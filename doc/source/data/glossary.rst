@@ -117,9 +117,9 @@ Ray Datasets Glossary
             >>> import ray
             >>> ray.data.from_numpy(np.zeros((100, 32, 32, 3)))
             Dataset(
-                num_blocks=1,
-                num_rows=100,
-                schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=double)}
+               num_blocks=1,
+               num_rows=100,
+               schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=double)}
             )
 
     Tabular Dataset
@@ -130,15 +130,15 @@ Ray Datasets Glossary
             >>> import ray
             >>> ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             Dataset(
-                num_blocks=1,
-                num_rows=150,
-                schema={
-                    sepal length (cm): double,
-                    sepal width (cm): double,
-                    petal length (cm): double,
-                    petal width (cm): double,
-                    target: int64
-                }
+               num_blocks=1,
+               num_rows=150,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
             )
 
     User-defined function (UDF)
