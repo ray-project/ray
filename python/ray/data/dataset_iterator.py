@@ -3,7 +3,8 @@ import numpy as np
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
-from ray.data.block import DataBatch
+from ray.data.block import DataBatch, T
+from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _is_tensor_schema
 
@@ -101,6 +102,31 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over record batches.
         """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+        """Return a local row iterator over the dataset.
+
+        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
+        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
+        If the dataset is not tabular, the raw row is yielded.
+
+        Examples:
+            >>> import ray
+            >>> for i in ray.data.range(1000000).iterator().iter_rows(): # doctest: +SKIP
+            ...     print(i) # doctest: +SKIP
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            An iterator over rows of the dataset.
+        """
+
         raise NotImplementedError
 
     @abc.abstractmethod

@@ -37,6 +37,16 @@ def test_basic_dataset(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
+def test_basic_dataset_iter_rows(ray_start_regular_shared):
+    ds = ray.data.range(100)
+    it = ds.iterator()
+    for _ in range(3):
+        result = []
+        for row in it.iter_rows():
+            result.append(row)
+        assert result == list(range(100))
+
+
 def test_basic_dataset_pipeline(ray_start_regular_shared):
     ds = ray.data.range(100).window(bytes_per_window=1).repeat()
     it = ds.iterator()
@@ -44,6 +54,18 @@ def test_basic_dataset_pipeline(ray_start_regular_shared):
         result = []
         for batch in it.iter_batches():
             result += batch
+        assert result == list(range(100))
+
+    assert it.stats() == ds.stats()
+
+
+def test_basic_dataset_pipeline_iter_rows(ray_start_regular_shared):
+    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
+    it = ds.iterator()
+    for _ in range(3):
+        result = []
+        for row in it.iter_rows():
+            result.append(row)
         assert result == list(range(100))
 
     assert it.stats() == ds.stats()
