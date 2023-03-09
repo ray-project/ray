@@ -88,11 +88,12 @@ RayServerBidiReactor::RayServerBidiReactor(
     grpc::CallbackServerContext *server_context,
     instrumented_io_context &io_context,
     const std::string &local_node_id,
+    const std::string &remote_node_id,
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(const std::string &, bool)> cleanup_cb)
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,
-          GetNodeIDFromServerContext(server_context),
+          remote_node_id,
           std::move(message_processor)),
       cleanup_cb_(std::move(cleanup_cb)),
       server_context_(server_context) {
@@ -314,10 +315,10 @@ void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> me
   BroadcastMessage(GetLocalNodeID(), std::move(message));
 }
 
-void RaySyncer::BroadcastMessage(const std::string &from_node_id,
+void RaySyncer::BroadcastMessage(const std::string &sent_from,
                                  std::shared_ptr<const RaySyncMessage> message) {
   io_context_.dispatch(
-      [this, from_node_id, message] {
+      [this, sent_from, message] {
         // The message is stale. Just skip this one.
         RAY_LOG(DEBUG) << "Receive message from: "
                        << NodeID::FromBinary(message->node_id()) << " to "
@@ -325,13 +326,15 @@ void RaySyncer::BroadcastMessage(const std::string &from_node_id,
         if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
+
         auto &ver = message_versions_[message->message_type()][message->node_id()];
+
         if (ver == nullptr) {
           ver = std::make_shared<int64_t>(message->version());
         }
 
         for (auto &reactor : sync_reactors_) {
-          if (reactor.first == from_node_id) {
+          if (reactor.first == sent_from) {
             continue;
           }
 
@@ -343,11 +346,13 @@ void RaySyncer::BroadcastMessage(const std::string &from_node_id,
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
   using namespace std::placeholders;
+  auto remote_node_id = GetNodeIDFromServerContext(context);
   auto reactor = new RayServerBidiReactor(
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
-      std::bind(&RaySyncer::BroadcastMessage, &syncer_, syncer_.GetLocalNodeID(), _1),
+      remote_node_id,
+      std::bind(&RaySyncer::BroadcastMessage, &syncer_, remote_node_id, _1),
       [this](const std::string &node_id, bool reconnect) mutable {
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);
