@@ -1,15 +1,20 @@
 import os
 import logging
 import torch
+from torch import Tensor
+from copy import deepcopy
 from typing import Any, Dict, Optional
 
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
-
 import ray
 from ray.air import session
+from ray.air.constants import MODEL_KEY
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
 from torch.utils.data import IterableDataset, DataLoader
 from ray.data.dataset import Dataset
@@ -97,3 +102,91 @@ class RayDataModule(pl.LightningDataModule):
             raise RuntimeError(
                 "val_dataset is None. Please provide your validation ray dataset when initializing the `LightningTrainer`."
             )
+
+
+class RayModelCheckpoint(ModelCheckpoint):
+    """
+    AIR customized ModelCheckpoint callback.
+
+    A subclass of ``pytorch_lightning.callbacks.ModelCheckpoint``.
+    This callback function reports the latest metrics to the AIR session and
+    creates an AIR checkpoint whenever a lightning checkpoint is saved.
+    """
+
+    def setup(self, *args, **kwargs) -> None:
+        super().setup(*args, **kwargs)
+        self.last_best_k_models = {}
+
+    def format_checkpoint_name(
+        self,
+        metrics: Dict[str, Tensor],
+        filename: Optional[str] = None,
+        ver: Optional[int] = None,
+    ) -> str:
+        """
+        Ensure different checkpoint files saved in seperate folders to align with AIR checkpoint format.
+
+        e.g. './epoch=2-validation_loss=0.12.ckpt' -> './epoch=2-validation_loss=0.12.ckpt/model'
+        """
+        filepath = super().format_checkpoint_name(metrics, filename, ver)
+        return f"{filepath}/{MODEL_KEY}"
+
+    def _session_report(self, trainer: "pl.Trainer"):
+        """Report latest metrics dict and checkpoint to AIR training session."""
+        kwargs = {}
+
+        # Report latest logged metrics
+        metrics = self._monitor_candidates(trainer)
+        for k, v in metrics.items():
+            if isinstance(v, torch.Tensor):
+                metrics[k] = v.cpu().numpy()
+        kwargs["metrics"] = metrics
+
+        filepath = None
+        if self.monitor:
+            # Capture metric-based top-k checkpoint
+            new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
+            if new_checkpoint:
+                filepath = new_checkpoint.pop()
+        else:
+            # Capture frequency-based checkpoint
+            filepath = self.best_model_path
+
+        # Report latest saved checkpoint
+        # Note that AIR only takes the checkpoint of rank 0.
+        # Just save a dummy checkpoint on the other workers.
+        if filepath:
+            if trainer.global_rank == 0:
+                kwargs["checkpoint"] = LightningCheckpoint.from_directory(
+                    path=os.path.dirname(filepath)
+                )
+            else:
+                kwargs["checkpoint"] = LightningCheckpoint.from_dict(
+                    {"rank": session.get_world_rank()}
+                )
+
+        self.last_best_k_models = deepcopy(self.best_k_models)
+        session.report(**kwargs)
+
+    def on_train_batch_end(
+        self,
+        trainer: "pl.Trainer",
+        pl_module: "pl.LightningModule",
+        outputs: STEP_OUTPUT,
+        batch: Any,
+        batch_idx: int,
+    ) -> None:
+        super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
+        self._session_report(trainer=trainer)
+
+    def on_train_epoch_end(
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+    ) -> None:
+        super().on_train_epoch_end(trainer, pl_module)
+        self._session_report(trainer=trainer)
+
+    def on_validation_end(
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+    ) -> None:
+        super().on_validation_end(trainer, pl_module)
+        self._session_report(trainer=trainer)

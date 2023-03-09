@@ -6,7 +6,7 @@ import shutil
 
 from ray.air import session
 from ray.air.constants import MODEL_KEY
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset
@@ -17,10 +17,11 @@ from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayEnvironment,
     RayDataModule,
+    RayModelCheckpoint,
 )
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, model_checkpoint
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 import logging
@@ -210,6 +211,7 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
+            You don't need to provide an AIR CheckpointConfig will be overrided by
         datasets: A dictionary of Ray Datasets to use for training.
             Use the key "train" to denote which dataset is the training
             dataset and (optionally) key "val" to denote the validation
@@ -245,6 +247,13 @@ class LightningTrainer(TorchTrainer):
             "dataset_iter_config": dataset_iter_config,
         }
 
+        if not run_config:
+            run_config = RunConfig()
+
+        run_config.checkpoint_config = self._create_air_checkpoint_config(
+            lightning_config.model_checkpoint_config
+        )
+
         super(LightningTrainer, self).__init__(
             train_loop_per_worker=_lightning_train_loop_per_worker,
             train_loop_config=train_loop_config,
@@ -256,6 +265,35 @@ class LightningTrainer(TorchTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _create_air_checkpoint_config(
+        self, model_checkpoint_config: Optional[Dict] = None
+    ) -> CheckpointConfig:
+        """
+        Generate AIR CheckpointConfig based on provided Lightning checkpoint config.
+
+        PTL checkpointing logic:
+            no monitor + no save_top_k:  default = 1, only save last one
+            no monitor +    save_top_k:  if save_top_k != 1, save all
+               monitor + no save_top_k:  default = 1, save the best checkpoint
+               monitor +    save_top_k:  n/a
+        """
+
+        if not model_checkpoint_config:
+            model_checkpoint_config = {}
+
+        mode = model_checkpoint_config.get("mode", "min")
+        monitor = model_checkpoint_config.get("monitor", None)
+        num_to_keep = model_checkpoint_config.get("save_top_k", 1)
+        if not monitor and num_to_keep != 1:
+            num_to_keep = None
+
+        air_checkpoint_config = CheckpointConfig(
+            num_to_keep=num_to_keep,
+            checkpoint_score_attribute=monitor,
+            checkpoint_score_order=mode,
+        )
+        return air_checkpoint_config
 
 
 def _lightning_train_loop_per_worker(config):
@@ -318,9 +356,6 @@ def _lightning_train_loop_per_worker(config):
         )
     trainer_config["strategy"] = RayDDPStrategy(ptl_config.ddp_strategy_config)
 
-    # TODO(yunxuanx): Next PR, add logging and checkpointing support
-    trainer_config["enable_checkpointing"] = False
-
     # Filter out existing ModelCheckpoint Callbacks
     callbacks = []
     for callback in trainer_config.get("callbacks", []):
@@ -331,6 +366,11 @@ def _lightning_train_loop_per_worker(config):
             )
         else:
             callbacks.append(callback)
+
+    # AIR needs a RayModelCheckpoint for metircs logging anyway.
+    trainer_config["enable_checkpointing"] = True
+    callbacks.append(RayModelCheckpoint(**ptl_config.model_checkpoint_config))
+
     trainer_config["callbacks"] = callbacks
 
     trainer = pl.Trainer(**trainer_config)
