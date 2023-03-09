@@ -1611,7 +1611,6 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     schema = ds.schema()
     ds.stats()
     assert schema == ds.schema()
-    ray.shutdown()
 
 
 # TODO: re-enable the followed tests once they pass in CI consistently.
@@ -1628,6 +1627,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     """Tests ExecutionPlan.execute() to ensure a warning is logged
     when no CPU resources are available."""
     # Create one node with no CPUs to trigger the Dataset warning
+    ray.init(ray_start_cluster.address)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
@@ -1656,11 +1656,11 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
                 )
 
 
-def test_nowarning_execute_with_cpu(ray_start_cluster_init):
+def test_nowarning_execute_with_cpu(ray_start_cluster):
     """Tests ExecutionPlan.execute() to ensure no warning is logged
     when there are available CPU resources."""
     # Create one node with CPUs to avoid triggering the Dataset warning
-    ray.init(ray_start_cluster_init.address)
+    ray.init(ray_start_cluster.address)
 
     logger = DatasetLogger("ray.data._internal.plan").get_logger()
     with patch.object(
