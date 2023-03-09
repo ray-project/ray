@@ -1,5 +1,7 @@
 .. _tune-storage-options:
 
+.. _tune-persisted-experiment-data:
+
 What types of data are stored by Tune
 -------------------------------------
 
@@ -343,7 +345,3 @@ This experiment can be resumed from the head node:
         resume_errored=True
     )
     tuner.fit()
-
-.. TODO: Move this appendix to a new tune-checkpoints user guide.
-
-.. _tune-persisted-experiment-data:
