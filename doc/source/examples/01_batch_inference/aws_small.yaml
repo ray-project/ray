@@ -1,0 +1,7 @@
+cloud: anyscale_v2_default_cloud
+max_workers: 0
+allowed_azs:
+- us-west-2a
+head_node_type:
+  name: head_node_type
+  instance_type: m5.2xlarge

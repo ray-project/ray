@@ -1,0 +1,2 @@
+docker_image: anyscale/ray-ml:latest-py39-gpu
+ray_version: 2.3.0
