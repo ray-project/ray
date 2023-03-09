@@ -24,15 +24,15 @@ class RuntimeContext(object):
             dict: Dictionary of the current context.
         """
         context = {
-            "job_id": self.job_id,
-            "node_id": self.node_id,
+            "job_id": self.get_job_id(),
+            "node_id": self.get_node_id(),
             "namespace": self.namespace,
         }
         if self.worker.mode == ray._private.worker.WORKER_MODE:
-            if self.task_id is not None:
-                context["task_id"] = self.task_id
+            if self.get_task_id() is not None:
+                context["task_id"] = self.get_task_id()
             if self.actor_id is not None:
-                context["actor_id"] = self.actor_id
+                context["actor_id"] = self.get_actor_id()
 
         return context
 
