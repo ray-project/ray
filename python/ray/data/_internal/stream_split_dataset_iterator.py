@@ -84,12 +84,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
         def gen_blocks() -> Iterator[ObjectRef[Block]]:
             future = self._coord_actor.get.remote(self._output_split_idx)
             while True:
-                block = ray.get(future)
-                if not block:
+                block_ref = ray.get(future)
+                if not block_ref:
                     break
                 else:
                     future = self._coord_actor.get.remote(self._output_split_idx)
-                    yield block
+                    yield block_ref
 
         yield from batch_block_refs(
             gen_blocks(),
