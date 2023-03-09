@@ -1,8 +1,8 @@
 import copy
 import logging
+import sys
 from typing import (
     List,
-    Literal,
     Optional,
     Iterator,
     Callable,
@@ -29,6 +29,11 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
     from ray.data import Dataset
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 logger = logging.getLogger(__name__)
 
