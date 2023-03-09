@@ -4,9 +4,9 @@ import threading
 from unittest.mock import Mock
 from wandb.util import json_dumps_safer
 
+import ray
 from ray.air.integrations.wandb import (
     _WandbLoggingActor,
-    _QueueItem,
     WandbLoggerCallback,
 )
 
@@ -32,14 +32,11 @@ class Trial(
 
 
 class _FakeConfig:
-    """Thread-safe."""
-
     def __init__(self):
-        self.queue = Queue()
+        self.config = {}
 
-    # This is called during both on_trial_start and on_trial_result.
     def update(self, config, *args, **kwargs):
-        self.queue.put(config)
+        self.config.update(config)
 
 
 class _MockWandbAPI:
@@ -48,7 +45,7 @@ class _MockWandbAPI:
     Note: Not implemented to mock re-init behavior properly. Proceed with caution."""
 
     def __init__(self):
-        self.logs = Queue()
+        self.logs = []
         self.config = _FakeConfig()
 
     def init(self, *args, **kwargs):
@@ -65,9 +62,9 @@ class _MockWandbAPI:
         try:
             json_dumps_safer(data)
         except Exception:
-            self.logs.put("serialization error")
+            self.logs.append("serialization error")
         else:
-            self.logs.put(data)
+            self.logs.append(data)
 
     def finish(self):
         pass
@@ -80,38 +77,38 @@ class _MockWandbLoggingActor(_WandbLoggingActor):
         )
         self._wandb = _MockWandbAPI()
 
+    def getattr(self, attr):
+        # Helper for the test to get attributes from the actor
+        return getattr(self, attr)
+
 
 class WandbTestExperimentLogger(WandbLoggerCallback):
-
     """Wandb logger with mocked Wandb API gateway (one per trial)."""
+
+    _logger_actor_cls = _MockWandbLoggingActor
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _cleanup_logging_actor(self, trial: "Trial"):
+        # Unique for the mocked instance is the delayed delete of
+        # `self._trial_logging_actors[trial]`.
+        # This is because we want to access them in unit test after `.fit()`
+        # to assert certain config and log is called with wandb.
+        # Call `__del__` on the instance to kill/delete the actors
+        del self._trial_queues[trial]
+        del self._trial_logging_futures[trial]
 
     @property
     def trial_processes(self):
-        return self._trial_logging_actors
+        class PassThroughActor:
+            def __init__(self, actor):
+                self._actor = actor
 
-    def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
-        self._trial_queues[trial] = Queue()
-        local_actor = _MockWandbLoggingActor(
-            logdir=trial.logdir,
-            queue=self._trial_queues[trial],
-            exclude=exclude_results,
-            to_config=self.AUTO_CONFIG_KEYS,
-            **wandb_init_kwargs,
-        )
-        self._trial_logging_actors[trial] = local_actor
+            def __getattr__(self, attr):
+                return ray.get(self._actor.getattr.remote(attr))
 
-        thread = threading.Thread(target=local_actor.run)
-        self._trial_logging_futures[trial] = thread
-        thread.start()
-
-    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
-        # Unique for the mocked instance is the delayed delete of
-        # `self._trial_logging_actors`.
-        # This is because we want to access them in unit test after `.fit()`
-        # to assert certain config and log is called with wandb.
-        if trial in self._trial_queues:
-            self._trial_queues[trial].put((_QueueItem.END, None))
-            del self._trial_queues[trial]
-        if trial in self._trial_logging_futures:
-            self._trial_logging_futures[trial].join(timeout=2)
-            del self._trial_logging_futures[trial]
+        return {
+            trial: PassThroughActor(actor)
+            for trial, actor in self._trial_logging_actors.items()
+        }

@@ -683,6 +683,11 @@ class WandbLoggerCallback(LoggerCallback):
         self._signal_logging_actor_stop(trial=trial)
         self._cleanup_logging_actors()
 
+    def _cleanup_logging_actor(self, trial: "Trial"):
+        del self._trial_queues[trial]
+        del self._trial_logging_actors[trial]
+        del self._trial_logging_futures[trial]
+
     def _cleanup_logging_actors(self, timeout: int = 0, kill_on_timeout: bool = False):
         """Clean up logging actors that have finished uploading to wandb.
         Waits for `timeout` seconds to collect finished logging actors.
@@ -696,22 +701,17 @@ class WandbLoggerCallback(LoggerCallback):
                 it hasn't finished within the timeout.
         """
 
-        def cleanup_logging_actor(trial):
-            del self._trial_queues[trial]
-            del self._trial_logging_actors[trial]
-            del self._trial_logging_futures[trial]
-
         futures = list(self._trial_logging_futures.values())
         done, remaining = ray.wait(futures, num_returns=len(futures), timeout=timeout)
         for ready_future in done:
             finished_trial = self._logging_future_to_trial.pop(ready_future)
-            cleanup_logging_actor(finished_trial)
+            self._cleanup_logging_actor(finished_trial)
 
         if kill_on_timeout:
             for remaining_future in remaining:
                 trial = self._logging_future_to_trial.pop(remaining_future)
                 ray.kill(self._trial_logging_actors[trial])
-                cleanup_logging_actor(trial)
+                self._cleanup_logging_actor(trial)
 
     def on_experiment_end(self, trials: List["Trial"], **info):
         self._cleanup_logging_actors(timeout=self._upload_timeout)
