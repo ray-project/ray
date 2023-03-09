@@ -142,7 +142,9 @@ def test_default_parquet_metadata_provider(fs, data_path):
         ),
     ],
 )
-def test_default_file_metadata_provider(caplog, fs, data_path, endpoint_url):
+def test_default_file_metadata_provider(
+    propagate_logs, caplog, fs, data_path, endpoint_url
+):
     storage_options = (
         {}
         if endpoint_url is None
@@ -193,6 +195,7 @@ def test_default_file_metadata_provider(caplog, fs, data_path, endpoint_url):
     ],
 )
 def test_default_file_metadata_provider_many_files_basic(
+    propagate_logs,
     caplog,
     fs,
     data_path,
@@ -245,6 +248,7 @@ def test_default_file_metadata_provider_many_files_basic(
     ],
 )
 def test_default_file_metadata_provider_many_files_partitioned(
+    propagate_logs,
     caplog,
     fs,
     data_path,
@@ -319,6 +323,8 @@ def test_default_file_metadata_provider_many_files_partitioned(
     ],
 )
 def test_default_file_metadata_provider_many_files_diff_dirs(
+    ray_start_regular,
+    propagate_logs,
     caplog,
     fs,
     data_path,
@@ -388,7 +394,9 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
         ),
     ],
 )
-def test_fast_file_metadata_provider(caplog, fs, data_path, endpoint_url):
+def test_fast_file_metadata_provider(
+    propagate_logs, caplog, fs, data_path, endpoint_url
+):
     storage_options = (
         {}
         if endpoint_url is None
