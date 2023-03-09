@@ -182,7 +182,7 @@ has a few advantages:
   prefetching, pipelining data transfer with compute.
 * Ray Datasets takes care of orchestrating the tasks, batching the data, and managing
   the memory.
-* With Ray Datasets pipelining, Ray Datasets allows you to
+* With Ray Datasets pipelining, you can
   precisely configure pipelining of preprocessing with batch inference, allowing you to
   easily tweak parallelism vs. pipelining to maximize your GPU utilization.
 * Ray Datasets provides a broad and performant I/O layer, which you would otherwise have
