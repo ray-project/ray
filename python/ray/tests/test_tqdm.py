@@ -1,10 +1,11 @@
+import os
 import sys
 import time
 
 import pytest
 
 import ray
-from ray.experimental import  tqdm_ray
+from ray.experimental import tqdm_ray
 from ray._private.test_utils import wait_for_condition
 
 
@@ -20,7 +21,7 @@ def test_distributed_tqdm_remote():
         print("foo wait")
         time.sleep(999)
 
-    x = foo.remote()
+    foo.remote()
 
     mgr = tqdm_ray.instance()
     wait_for_condition(lambda: len(mgr.bar_groups) == 1)
@@ -47,8 +48,6 @@ def test_distributed_tqdm_local():
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Test suite is timing out. Disable on windows for now.
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
