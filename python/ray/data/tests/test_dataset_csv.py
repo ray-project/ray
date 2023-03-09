@@ -231,7 +231,7 @@ def test_csv_ignore_missing_paths(
 
     if ignore_missing_paths:
         ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.count() == len(df1)
+        assert ds.input_files() == [path1]
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)

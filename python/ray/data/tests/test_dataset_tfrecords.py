@@ -84,7 +84,7 @@ def test_read_tfrecords_ignore_missing_paths(
 
     if ignore_missing_paths:
         ds = ray.data.read_tfrecords(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.count() == 1
+        assert ds.input_files() == [path]
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_tfrecords(

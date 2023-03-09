@@ -63,7 +63,7 @@ def test_read_binary_files_ignore_missing_paths(
             ds = ray.data.read_binary_files(
                 paths, ignore_missing_paths=ignore_missing_paths
             )
-            assert ds.count() == 1
+            assert ds.input_files() == paths
         else:
             with pytest.raises(FileNotFoundError):
                 ds = ray.data.read_binary_files(

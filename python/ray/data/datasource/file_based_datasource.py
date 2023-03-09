@@ -379,7 +379,7 @@ class _FileBasedDatasourceReader(Reader):
             paths, self._filesystem, ignore_missing_paths=ignore_missing_paths
         )
 
-        if ignore_missing_paths and len(self._paths) <= 0:
+        if ignore_missing_paths and len(self._paths) == 0:
             raise ValueError(
                 "None of the provided paths exist. "
                 "The 'ignore_missing_paths' field is set to True."
