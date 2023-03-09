@@ -18,6 +18,15 @@ import zipfile
 from enum import Enum
 from itertools import chain
 
+# Workaround for setuptools_scm (used on macos) adding junk files
+# https://stackoverflow.com/a/61274968/8162137
+try:
+    import setuptools_scm.integration
+
+    setuptools_scm.integration.find_files = lambda _: []
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
@@ -101,7 +110,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
 
@@ -789,6 +798,11 @@ setuptools.setup(
         "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
+    exclude_package_data={
+        # Empty string means "any package".
+        # Therefore, exclude BUILD from every package:
+        "": ["BUILD"],
+    },
     zip_safe=False,
     license="Apache 2.0",
 ) if __name__ == "__main__" else None
