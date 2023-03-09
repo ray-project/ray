@@ -8,6 +8,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     StatusOverview,
 )
+from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -469,6 +470,22 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             "Port for HTTP server. Defaults to 8000. Cannot be updated once "
             "Serve has started running. Serve must be shut down and restarted "
             "with the new port instead."
+        ),
+    )
+    root_path: str = Field(
+        default="",
+        description=(
+            'Root path to mount the serve application (for example, "/serve"). All '
+            'deployment routes will be prefixed with this path. Defaults to "".'
+        ),
+    )
+    http_location: DeploymentMode = Field(
+        default=DeploymentMode.EveryNode,
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode" (default): start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
         ),
     )
     applications: List[ServeApplicationSchema] = Field(

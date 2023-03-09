@@ -123,6 +123,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
+        from ray.serve._private.api import serve_start
         from ray.serve.schema import ServeApplicationSchema
         from pydantic import ValidationError
 
@@ -133,27 +134,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 status=400,
                 text=repr(e),
             )
-
-        return self.submit_config(config)
-
-    @routes.put("/api/serve/applications/")
-    @optional_utils.init_ray_and_catch_exceptions()
-    async def put_all_applications(self, req: Request) -> Response:
-        from ray.serve.schema import ServeDeploySchema
-        from pydantic import ValidationError
-
-        try:
-            config = ServeDeploySchema.parse_obj(await req.json())
-        except ValidationError as e:
-            return Response(
-                status=400,
-                text=repr(e),
-            )
-
-        return self.submit_config(config)
-
-    def submit_config(self, config):
-        from ray.serve._private.api import serve_start
 
         client = serve_start(
             detached=True,
@@ -195,6 +175,82 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     "request to this Ray cluster's "
                     '"/api/serve/deployments/" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
+        client.deploy_apps(config)
+
+        return Response()
+
+    @routes.put("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve._private.api import serve_start
+        from ray.serve.schema import ServeDeploySchema
+        from pydantic import ValidationError
+
+        try:
+            config = ServeDeploySchema.parse_obj(await req.json())
+        except ValidationError as e:
+            return Response(
+                status=400,
+                text=repr(e),
+            )
+
+        client = serve_start(
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "root_path": config.root_path,
+                "location": config.http_location,
+            },
+        )
+
+        http_mismatch_message = (
+            "Serve is already running on this Ray cluster. Its HTTP {option} is set to "
+            '"{old}". However, the requested {option} is "{new}". The requested '
+            "{option} must match the running Serve instance's HTTP {option}. To change "
+            "the Serve HTTP {option}, shut down Serve on this Ray cluster using "
+            "the `serve shutdown` CLI command or by sending a DELETE request to this "
+            "Ray cluster's "
+            '"/api/serve/deployments/" endpoint. CAUTION: shutting down Serve will '
+            "also shut down all Serve deployments."
+        )
+
+        if client.http_config.host != config.host:
+            return Response(
+                status=400,
+                text=http_mismatch_message.format(
+                    option="host", old=client.http_config.host, new=config.host
+                ),
+            )
+
+        if client.http_config.port != config.port:
+            return Response(
+                status=400,
+                text=http_mismatch_message.format(
+                    option="port", old=client.http_config.port, new=config.port
+                ),
+            )
+
+        if client.http_config.root_path != config.root_path:
+            return Response(
+                status=400,
+                text=http_mismatch_message.format(
+                    option="root path",
+                    old=client.http_config.root_path,
+                    new=config.root_path,
+                ),
+            )
+
+        if client.http_config.location != config.http_location:
+            return Response(
+                status=400,
+                text=http_mismatch_message.format(
+                    option="location",
+                    old=client.http_config.location,
+                    new=config.http_location,
                 ),
             )
 
