@@ -113,10 +113,13 @@ class SingleAgentRLModuleSpec:
             catalog_class=catalog_class,
         )
 
-    def update(self, other):
+    def update(self, other) -> None:
         """Updates this spec with the given other spec. Works like dict.update()."""
-        assert type(other) is SingleAgentRLModuleSpec
+        if not isinstance(other, SingleAgentRLModuleSpec):
+            raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
 
+        # If the field is None in the other, keep the current field, otherwise update
+        # with the new value.
         self.module_class = other.module_class or self.module_class
         self.observation_space = other.observation_space or self.observation_space
         self.action_space = other.action_space or self.action_space

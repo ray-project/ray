@@ -71,9 +71,9 @@ class TestCatalog(unittest.TestCase):
         }
         outputs = model(inputs)
 
-        assert outputs[ENCODER_OUT].shape == (32, latent_dim)
+        self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
         tree.map_structure_with_path(
-            lambda p, v: self.assertTrue(v.shape == states[p].shape),
+            lambda p, v: self.assertEqual(v.shape, states[p].shape),
             outputs[STATE_OUT],
         )
 
@@ -184,7 +184,7 @@ class TestCatalog(unittest.TestCase):
             model_config = catalog.get_encoder_config(
                 observation_space=input_space, model_config_dict=model_config_dict
             )
-            assert type(model_config) == model_config_type
+            self.assertEqual(type(model_config), model_config_type)
             model = model_config.build(framework=framework)
 
             # Do a forward pass and check if the output has the correct shape
@@ -259,16 +259,17 @@ class TestCatalog(unittest.TestCase):
                     logits = tf.convert_to_tensor(logits)
                 # We don't need a model if we input tensors
                 dist = dist_cls.from_logits(logits=logits)
-                assert isinstance(dist, expected_cls_dict[framework])
+                self.assertTrue(isinstance(dist, expected_cls_dict[framework]))
                 actions = dist.sample()
-                assert action_space.contains(actions.numpy()[0])
+                self.assertTrue(action_space.contains(actions.numpy()[0]))
 
-    def test_catalog_and_algorithm_config(self):
+    def test_customize_catalog_from_algorithm_config(self):
         """Test if we can pass catalog to algorithm config and it ends up inside
         RLModule and is used to build models there."""
 
         class MyCatalog(PPOCatalog):
-            pass
+            def build_vf_head(self, framework):
+                return torch.nn.Linear(self.latent_dims[0], 1)
 
         config = (
             PPOConfig()
@@ -277,20 +278,22 @@ class TestCatalog(unittest.TestCase):
         )
 
         algo = config.build(env="CartPole-v0")
-        assert algo.get_policy("default_policy").model.config.catalog_class == MyCatalog
+        self.assertTrue(
+            isinstance(
+                algo.get_policy("default_policy").model.config.build_encoder(
+                    framework="torch"
+                ),
+                MyCatalog,
+            )
+        )
 
-    def test_custom_catalog(self):
-        """Test if we can pass custom catalog to algorithm config and train with it."""
-
-        class MyTorchCatalog(PPOCatalog):
-            def build_vf_head(self, framework):
-                return torch.nn.Linear(self.latent_dims[0], 1)
+        # Test if we can pass custom catalog to algorithm config and train with it.
 
         config = (
             PPOConfig()
             .rl_module(
                 rl_module_spec=SingleAgentRLModuleSpec(
-                    module_class=PPOTorchRLModule, catalog_class=MyTorchCatalog
+                    module_class=PPOTorchRLModule, catalog_class=MyCatalog
                 )
             )
             .framework("torch")
@@ -300,8 +303,18 @@ class TestCatalog(unittest.TestCase):
         algo.train()
 
     def test_post_init_overwrite(self):
-        """Test if we can overwrite post_init method of a catalog class and
-        construct some custom encoders."""
+        """Test if we can overwrite post_init method of a catalog class.
+
+        This tests:
+            - Defines a custom encoder and its config.
+            - Defines a custom catalog class that uses the custom encoder by
+                overwriting the __post_init__ method and defining a custom
+                Catalog.encoder_config.
+            - Defines a custom RLModule that uses the custom catalog.
+            - Runs a forward pass through the custom RLModule and checks if
+                everything is working together as expected.
+
+        """
         env = gym.make("CartPole-v0")
 
         class MyCostumTorchEncoderConfig(ModelConfig):
@@ -330,15 +343,10 @@ class TestCatalog(unittest.TestCase):
                     output_dims=self.latent_dims,
                 )
 
-        module = PPOTorchRLModule(
-            config=SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule,
-                catalog_class=MyCustomCatalog,
-                model_config_dict=MODEL_DEFAULTS,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-            ).get_rl_module_config()
+        spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule, catalog_class=MyCustomCatalog
         )
+        module = spec.build()
 
         module.forward_inference(
             input_data={"obs": torch.ones((32, *env.observation_space.shape))}

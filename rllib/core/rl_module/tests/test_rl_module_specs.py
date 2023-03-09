@@ -167,17 +167,38 @@ class TestRLModuleSpecs(unittest.TestCase):
         module_spec_2 = SingleAgentRLModuleSpec(
             model_config_dict={"fcnet_hiddens": [32]}
         )
-        assert module_spec_1.model_config_dict == "Update me!"
+        self.assertEqual(module_spec_1.model_config_dict, "Update me!")
         module_spec_1.update(module_spec_2)
-        assert module_spec_1.model_config_dict == {"fcnet_hiddens": [32]}
+        self.assertEqual(module_spec_1.model_config_dict, {"fcnet_hiddens": [32]})
 
-        # Test if updating a SingleAgentRLModuleSpec in MultiAgentRLModuleSpec works.
+    def test_update_specs_multi_agent(self):
+        """Test if updating a SingleAgentRLModuleSpec in MultiAgentRLModuleSpec works.
+
+        This tests if we can update a `model_config_dict` field through different
+        kinds of updates:
+            - Create a SingleAgentRLModuleSpec and updates its model_config_dict.
+            - Create two MultiAgentRLModuleSpecs and updates the first one with the
+                second one without overwriting it.
+            - Check if the updated MultiAgentRLModuleSpec does not(!) have the
+                updated model_config_dict.
+            - Create two MultiAgentRLModuleSpecs and updates the first one with the
+                second one with overwriting it.
+            - Check if the updated MultiAgentRLModuleSpec has(!) the updated
+                model_config_dict.
+
+        """
+        env = gym.make("CartPole-v0")
+
         module_spec_1 = SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
+            observation_space="Do not update me!",
             action_space=env.action_space,
             model_config_dict="Update me!",
         )
+        module_spec_2 = SingleAgentRLModuleSpec(
+            model_config_dict={"fcnet_hiddens": [32]},
+        )
+
         marl_spec_1 = MultiAgentRLModuleSpec(
             marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
             module_specs={"agent_1": module_spec_1},
@@ -186,11 +207,32 @@ class TestRLModuleSpecs(unittest.TestCase):
             marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
             module_specs={"agent_1": module_spec_2},
         )
-        assert marl_spec_1.module_specs["agent_1"].model_config_dict == "Update me!"
-        marl_spec_1.update(marl_spec_2)
-        assert marl_spec_1.module_specs["agent_1"].model_config_dict == {
-            "fcnet_hiddens": [32]
-        }
+
+        # Test if updating with or with overwriting works. This means that the
+        # single agent specs should be overwritten
+        self.assertEqual(
+            marl_spec_1.module_specs["agent_1"].model_config_dict, "Update me!"
+        )
+        marl_spec_1.update(marl_spec_2, overwrite=True)
+        self.assertEqual(marl_spec_1.module_specs["agent_1"], module_spec_2)
+
+        # Test if updating without overwriting works. This means that the single
+        # agent specs should not be overwritten
+
+        marl_spec_3 = MultiAgentRLModuleSpec(
+            marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
+            module_specs={"agent_1": module_spec_1},
+        )
+
+        self.assertEqual(
+            marl_spec_3.module_specs["agent_1"].observation_space, "Do not update me!"
+        )
+        marl_spec_3.update(marl_spec_2, overwrite=False)
+        # If we would overwrite, we would replace the observation space even though
+        # it was None. This is not the case here.
+        self.assertEqual(
+            marl_spec_3.module_specs["agent_1"].observation_space, "Do not update me!"
+        )
 
         # Test if updating with an additional SingleAgentRLModuleSpec works.
         module_spec_3 = SingleAgentRLModuleSpec(
@@ -203,9 +245,11 @@ class TestRLModuleSpecs(unittest.TestCase):
             marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
             module_specs={"agent_2": module_spec_3},
         )
-        assert marl_spec_1.module_specs.get("agent_2") is None
+        self.assertEqual(marl_spec_1.module_specs.get("agent_2"), None)
         marl_spec_1.update(marl_spec_3)
-        assert marl_spec_1.module_specs["agent_2"].model_config_dict == "I'm new!"
+        self.assertEqual(
+            marl_spec_1.module_specs["agent_2"].model_config_dict, "I'm new!"
+        )
 
 
 if __name__ == "__main__":

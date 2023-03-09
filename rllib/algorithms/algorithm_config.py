@@ -911,22 +911,25 @@ class AlgorithmConfig(_Config):
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
         if self._enable_rl_module_api:
+            default_rl_module_spec = self.get_default_rl_module_spec()
+            _check_rl_module_spec(default_rl_module_spec)
+
             if self.rl_module_spec is not None:
                 # Merge provided RL Module spec class with defaults
                 _check_rl_module_spec(self.rl_module_spec)
-                default_rl_module_spec = self.get_default_rl_module_spec()
                 # We can only merge if we have SingleAgentRLModuleSpecs.
                 # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
-                if (
-                    type(default_rl_module_spec) is SingleAgentRLModuleSpec
-                    and type(self.rl_module_spec) is SingleAgentRLModuleSpec
-                ):
-                    _check_rl_module_spec(default_rl_module_spec)
-                    default_rl_module_spec.update(self.rl_module_spec)
-                    self.rl_module_spec = default_rl_module_spec
+                if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
+                    if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                        default_rl_module_spec.update(self.rl_module_spec)
+                        self.rl_module_spec = default_rl_module_spec
+                    elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
+                        raise ValueError(
+                            "Cannot merge MultiAgentRLModuleSpec with "
+                            "SingleAgentRLModuleSpec!"
+                        )
             else:
-                self.rl_module_spec = self.get_default_rl_module_spec()
-                _check_rl_module_spec(self.rl_module_spec)
+                self.rl_module_spec = default_rl_module_spec
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:

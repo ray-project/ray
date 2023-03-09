@@ -460,7 +460,7 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpecs for each individual module."
             )
 
-    def update(self, other: "MultiAgentRLModuleSpec") -> None:
+    def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
         """Updates this spec with the other spec.
 
         Traverses this MultiAgentRLModuleSpec's module_specs and updates them with
@@ -468,11 +468,13 @@ class MultiAgentRLModuleSpec:
 
         Args:
             other: The other spec to update this spec with.
+            overwrite: Whether to overwrite the existing module specs if they already
+                exist. If False, they will be updated only.
         """
         assert type(other) is MultiAgentRLModuleSpec
 
         if isinstance(other.module_specs, dict):
-            self.add_modules(other.module_specs, overwrite=False)
+            self.add_modules(other.module_specs, overwrite=overwrite)
         else:
             if not self.module_specs:
                 self.module_specs = other.module_specs
