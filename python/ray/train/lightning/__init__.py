@@ -10,7 +10,4 @@ except ModuleNotFoundError:
 from ray.train.lightning.lightning_trainer import LightningTrainer, LightningConfig
 
 
-__all__ = [
-    "LightningTrainer",
-    "LightningConfig"
-]
+__all__ = ["LightningTrainer", "LightningConfig"]

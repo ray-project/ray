@@ -1,8 +1,8 @@
 import pytorch_lightning as pl
 import torch.nn as nn
 import torch
-import numpy as np 
 from torch.utils.data import DataLoader
+
 
 class LinearModule(pl.LightningModule):
     def __init__(self, input_dim, output_dim) -> None:
@@ -17,11 +17,11 @@ class LinearModule(pl.LightningModule):
         loss = torch.sum(output)
         self.log("loss", loss)
         return loss
-    
+
     def validation_step(self, val_batch, batch_idx):
         loss = self.forward(val_batch)
         return {"val_loss": loss}
-    
+
     def validation_epoch_end(self, outputs) -> None:
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         self.log("val_loss", avg_loss)
@@ -49,11 +49,11 @@ class DoubleLinearModule(pl.LightningModule):
         loss = torch.sum(output)
         self.log("loss", loss)
         return loss
-    
+
     def validation_step(self, val_batch, batch_idx):
         loss = self.forward(val_batch)
         return {"val_loss": loss}
-    
+
     def validation_epoch_end(self, outputs) -> None:
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         self.log("val_loss", avg_loss)
@@ -64,15 +64,16 @@ class DoubleLinearModule(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.SGD(self.parameters(), lr=0.1)
 
+
 class DummyDataModule(pl.LightningDataModule):
     def __init__(self, batch_size: int = 8, dataset_size: int = 256) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.train_data = torch.randn(dataset_size, 32)
         self.val_data = torch.randn(dataset_size, 32)
-    
+
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size)
-    
+
     def val_dataloader(self):
         return DataLoader(self.val_data, batch_size=self.batch_size)

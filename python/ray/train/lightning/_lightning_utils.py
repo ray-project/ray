@@ -1,10 +1,10 @@
 import os
 import logging
 import torch
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional
 
 import pytorch_lightning as pl
-from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
+from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy that ensures DDP training correctly with Ray orchestration."""
+
     @property
     def root_device(self) -> torch.device:
         return ray.train.torch.get_device()
@@ -56,6 +57,7 @@ class RayEnvironment(LightningEnvironment):
     def teardown(self):
         pass
 
+
 class RayIterableDataset(IterableDataset):
     def __init__(self, dataset: "Dataset", config: Dict[str, Any]) -> None:
         super().__init__()
@@ -67,10 +69,12 @@ class RayIterableDataset(IterableDataset):
 
 
 class RayDataModule(pl.LightningDataModule):
-    def __init__(self,
-                dataset_iter_config: Dict[str, Any],
-                train_dataset: "Dataset",
-                val_dataset: Optional["Dataset"] = None) -> None:
+    def __init__(
+        self,
+        dataset_iter_config: Dict[str, Any],
+        train_dataset: "Dataset",
+        val_dataset: Optional["Dataset"] = None,
+    ) -> None:
         super().__init__()
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
