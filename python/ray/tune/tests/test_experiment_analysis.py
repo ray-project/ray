@@ -390,9 +390,7 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
         ray.shutdown()
-        ray.tune.registry._global_registry = ray.tune.registry._Registry(
-            prefix="global"
-        )
+        ray.tune.registry._global_registry = ray.tune.registry._Registry()
 
         with open(pickle_path, "rb") as f:
             analysis = pickle.load(f)
@@ -406,9 +404,7 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
         ray.shutdown()
-        ray.tune.registry._global_registry = ray.tune.registry._Registry(
-            prefix="global"
-        )
+        ray.tune.registry._global_registry = ray.tune.registry._Registry()
 
         analysis = ExperimentAnalysis(self.test_path)
 
