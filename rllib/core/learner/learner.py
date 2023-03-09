@@ -407,7 +407,9 @@ class Learner:
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
         mean_grads = [
-            np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
+            np.mean(grad) 
+            for grad in convert_to_numpy(postprocessed_gradients.values()) 
+            if grad is not None
         ]
 
         module_learner_stats[ALL_MODULES] = {

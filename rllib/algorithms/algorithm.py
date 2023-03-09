@@ -1850,6 +1850,7 @@ class Algorithm(Trainable):
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
         )
+        breakpoint()
 
         # If learner API is enabled, we need to also add the underlying module
         # to the learner group.

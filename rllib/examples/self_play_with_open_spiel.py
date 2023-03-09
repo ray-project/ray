@@ -147,6 +147,7 @@ class SelfPlayCallback(DefaultCallbacks):
         self.current_opponent = 0
 
     def on_train_result(self, *, algorithm, result, **kwargs):
+        breakpoint()
         # Get the win rate for the train batch.
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
@@ -187,24 +188,16 @@ class SelfPlayCallback(DefaultCallbacks):
             main_policy = algorithm.get_policy("main")
             new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
-                policy_cls=type(algorithm.get_policy("main")),
+                policy_cls=type(main_policy),
                 policy_mapping_fn=policy_mapping_fn,
                 module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
-            )
-            breakpoint()
-
-            algorithm.add_module(
-                module_id=new_pol_id,
-                module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
-                agent_to_module_map_fn=policy_mapping_fn,
-                module_states=None,
             )
             breakpoint()
 
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will
             # remain fixed.
-            main_state = algorithm.get_policy("main").get_state()
+            main_state = main_policy.get_state()
             new_policy.set_state(main_state)
             # We need to sync the just copied local weights (from main policy)
             # to all the remote workers as well.
