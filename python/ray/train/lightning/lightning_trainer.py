@@ -313,8 +313,9 @@ def _lightning_train_loop_per_worker(config):
     # Setup ddp strategy for ray orchestration
     if "strategy" in trainer_config:
         logger.warning(
-            "`strategy` specified in `LightningConfig.trainer_init_config` will be ignored."
-            "LightningTrainer will create a RayDDPStrategy object based on `LightningConfig.ddp_strategy_config`."
+            "`strategy` specified in `LightningConfig.trainer_init_config` "
+            "will be ignored. LightningTrainer will create a RayDDPStrategy "
+            "object based on `LightningConfig.ddp_strategy_config`."
         )
     trainer_config["strategy"] = RayDDPStrategy(ptl_config.ddp_strategy_config)
 
