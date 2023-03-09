@@ -587,7 +587,9 @@ class AlgorithmConfig(_Config):
                 # Resolve possible classpath.
                 value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
-            elif key == "env":
+            # `env` key might be None, iff algorithm is constructed with the soon to
+            # be deprecated [Algo class](config, env=...) signature.
+            elif key == "env" and value is not None:
                 # Resolve possible classpath.
                 value = deserialize_type(value)
                 self.environment(env=value)
