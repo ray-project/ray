@@ -121,7 +121,7 @@ def test(num_tasks):
             },
         ],
     }
-        
+
     dashboard_test.update_release_test_result(results)
     test_utils.safe_write_to_results_json(results)
 
