@@ -8,10 +8,12 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from unittest.mock import patch
 
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
@@ -1611,21 +1613,20 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     assert schema == ds.schema()
 
 
-# TODO: re-enable the followed tests once they pass in CI consistently.
-"""
 class LoggerWarningCalled(Exception):
-    Custom exception used in test_warning_execute_with_no_cpu() and
+    """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
     is called, so that we can kick out of `plan.execute()` by catching this Exception
-    and check logging was done properly.
+    and check logging was done properly."""
 
     pass
 
 
 def test_warning_execute_with_no_cpu(ray_start_cluster):
-    Tests ExecutionPlan.execute() to ensure a warning is logged
-    when no CPU resources are available.
+    """Tests ExecutionPlan.execute() to ensure a warning is logged
+    when no CPU resources are available."""
     # Create one node with no CPUs to trigger the Dataset warning
+    ray.init(ray_start_cluster.address)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
@@ -1654,11 +1655,11 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
                 )
 
 
-def test_nowarning_execute_with_cpu(ray_start_cluster_init):
-    Tests ExecutionPlan.execute() to ensure no warning is logged
-    when there are available CPU resources.
+def test_nowarning_execute_with_cpu(ray_start_cluster):
+    """Tests ExecutionPlan.execute() to ensure no warning is logged
+    when there are available CPU resources."""
     # Create one node with CPUs to avoid triggering the Dataset warning
-    ray.init(ray_start_cluster_init.address)
+    ray.init(ray_start_cluster.address)
 
     logger = DatasetLogger("ray.data._internal.plan").get_logger()
     with patch.object(
@@ -1670,7 +1671,6 @@ def test_nowarning_execute_with_cpu(ray_start_cluster_init):
         ds = ds.map_batches(lambda x: x)
         ds.take()
         mock_logger.assert_not_called()
-"""
 
 
 if __name__ == "__main__":
