@@ -17,7 +17,6 @@ from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
-from ray._private.test_utils import wait_for_condition
 
 
 class TestReadImages:
