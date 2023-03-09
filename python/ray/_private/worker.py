@@ -1797,31 +1797,43 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data.get("ip") == data.get("localhost"):
         for line in lines:
-            print(
-                "{}{}({}{}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
-            )
+            if "__ray_tqdm_magic__" in line:
+                process_tqdm(line)
+            else:
+                print(
+                    "{}{}({}{}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
     else:
         for line in lines:
-            print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    data.get("ip"),
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
-            )
+            if "__ray_tqdm_magic__" in line:
+                process_tqdm(line)
+            else:
+                print(
+                    "{}{}({}{}, ip={}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        data.get("ip"),
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
+
+
+def process_tqdm(line):
+    from ray.util import tqdm_ray
+
+    tqdm_ray._manager.process_state_update(json.loads(line))
 
 
 def listen_error_messages(worker, threads_stopped):

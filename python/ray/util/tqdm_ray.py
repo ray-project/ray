@@ -2,8 +2,11 @@ import os
 import json
 from typing import Optional, Iterable, Dict, Any
 import uuid
-import tqdm as real_tqdm
 
+import tqdm as real_tqdm
+import colorama
+
+import ray
 import ray._private.services as services
 
 
@@ -55,9 +58,7 @@ class tqdm:
         self._dump_state()
 
     def _dump_state(self) -> None:
-        _manager.process_state_update(self._get_state())
-
-    #        print(json.dumps(self._get_state()))
+        print(json.dumps(self._get_state()))
 
     def _get_state(self) -> _ProgressState:
         return {
@@ -148,9 +149,20 @@ class _BarManager:
 
     def process_state_update(self, state: _ProgressState) -> None:
         if state["ip"] == self.ip:
-            prefix = "(pid={}): ".format(state["pid"])
+            prefix = "{}{}(pid={}){} ".format(
+                colorama.Style.DIM,
+                colorama.Fore.CYAN,
+                state.get("pid"),
+                colorama.Style.RESET_ALL,
+            )
         else:
-            prefix = "(ip={}, pid={}): ".format(state["ip"], state["pid"])
+            prefix = "{}{}(pid={}, ip={}){} ".format(
+                colorama.Style.DIM,
+                colorama.Fore.CYAN,
+                state.get("pid"),
+                state.get("ip"),
+                colorama.Style.RESET_ALL,
+            )
         state["desc"] = prefix + state["desc"]
         process = self.get_or_allocate_process(state)
         if process.has_bar(state["uuid"]):
@@ -186,22 +198,34 @@ if __name__ == "__main__":
 
     bars = []
 
-    for i in range(1000):
-        if random.random() > 0.9:
-            ray_ip = random.choice(["10.0.0.1", "2.3.3.3", "192.168.1.254"])
-            pos = []
+    @ray.remote
+    def processing(ray_ip):
+        ray_pid = os.getpid()
+        for i in range(1000):
+            if random.random() > 0.95:
+                pos = []
+                for bar in bars:
+                    if bar._ip == ray_ip:
+                        pos.append(bar._pos)
+                i = 0
+                while i in pos:
+                    i += 1
+                t1 = tqdm(
+                    desc="foo", total=100, position=i, _ray_ip=ray_ip, _ray_pid=ray_pid
+                )
+                bars.append(t1)
+            time.sleep(0.2)
             for bar in bars:
-                if bar._ip == ray_ip:
-                    pos.append(bar._pos)
-            i = 0
-            while i in pos:
-                i += 1
-            t1 = tqdm(desc="foo", total=100, position=i, _ray_ip=ray_ip, _ray_pid=1000)
-            bars.append(t1)
-        time.sleep(0.1)
-        for bar in bars:
-            bar.update(1)
-        for b in bars.copy():
-            if b._x >= 100:
-                b.close()
-                bars.remove(b)
+                bar.update(1)
+            for b in bars.copy():
+                if b._x >= 100:
+                    b.close()
+                    bars.remove(b)
+
+    ray.get(
+        [
+            processing.remote(services.get_node_ip_address()),
+            processing.remote("172.101.2.42"),
+            processing.remote("172.43.2.9"),
+        ]
+    )
