@@ -1613,7 +1613,6 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     assert schema == ds.schema()
 
 
-# TODO: re-enable the followed tests once they pass in CI consistently.
 class LoggerWarningCalled(Exception):
     """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
