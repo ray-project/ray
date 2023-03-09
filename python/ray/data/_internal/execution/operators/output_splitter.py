@@ -1,5 +1,5 @@
 import math
-from typing import List
+from typing import List, Dict
 
 from ray.data.block import Block, BlockMetadata, BlockAccessor
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -47,6 +47,9 @@ class OutputSplitter(PhysicalOperator):
         return self._output_queue.pop()
 
     def get_stats(self) -> StatsDict:
+        return {"split": []}  # TODO(ekl) add split metrics?
+
+    def get_metrics(self) -> Dict[str, int]:
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num
@@ -59,6 +62,7 @@ class OutputSplitter(PhysicalOperator):
         self._dispatch_bundles()
 
     def inputs_done(self) -> None:
+        super().inputs_done()
         if not self._equal:
             # There shouldn't be any buffered data if we're not in equal split mode.
             assert not self._buffer
