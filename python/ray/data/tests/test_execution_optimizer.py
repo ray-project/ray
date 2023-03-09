@@ -1,8 +1,10 @@
+import itertools
 import pytest
 
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
@@ -20,6 +22,7 @@ from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
 )
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.planner.planner import Planner
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
@@ -592,6 +595,33 @@ def test_aggregate_e2e(
     assert ds.count() == 100
     for idx, row in enumerate(ds.sort("value").iter_rows()):
         assert row.as_pydict() == {"value": idx, "count()": 1}
+
+
+def test_zip_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    read_op1 = Read(ParquetDatasource())
+    read_op2 = Read(ParquetDatasource())
+    op = Zip(read_op1, read_op2)
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Zip"
+    assert isinstance(physical_op, ZipOperator)
+    assert len(physical_op.input_dependencies) == 2
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert isinstance(physical_op.input_dependencies[1], MapOperator)
+
+
+@pytest.mark.parametrize(
+    "num_blocks1,num_blocks2",
+    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+)
+def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_blocks2):
+    n = 12
+    ds1 = ray.data.range(n, parallelism=num_blocks1)
+    ds2 = ray.data.range(n, parallelism=num_blocks2).map(lambda x: x + 1)
+    ds = ds1.zip(ds2)
+    assert ds.take() == list(zip(range(n), range(1, n + 1)))
 
 
 def test_streaming_executor(
