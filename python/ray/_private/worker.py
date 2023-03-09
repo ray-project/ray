@@ -55,6 +55,7 @@ import ray._private.storage as storage
 
 # Ray modules
 import ray.actor
+from ray.experimental import tqdm_ray
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
@@ -1797,7 +1798,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data.get("ip") == data.get("localhost"):
         for line in lines:
-            if "__ray_tqdm_magic__" in line:
+            if RAY_TQDM_MAGIC in line:
                 process_tqdm(line)
             else:
                 print(
@@ -1813,7 +1814,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 )
     else:
         for line in lines:
-            if "__ray_tqdm_magic__" in line:
+            if RAY_TQDM_MAGIC in line:
                 process_tqdm(line)
             else:
                 print(
@@ -1831,8 +1832,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
 
 def process_tqdm(line):
-    from ray.util import tqdm_ray
-
+    """Experimental distributed tqdm: see ray.experimental.tqdm_ray."""
     tqdm_ray._manager.process_state_update(json.loads(line))
 
 

@@ -10,11 +10,15 @@ import ray
 import ray._private.services as services
 
 
-_ProgressState = Dict[str, Any]
+# Describes the state of a single progress bar.
+ProgressBarState = Dict[str, Any]
+
+# Magic token used to identify Ray TQDM log lines.
+RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
 
 class tqdm:
-    """Ray virtual tqdm implementation.
+    """Experimental: Ray distributed tqdm implementation.
 
     This class lets you use tqdm from any Ray remote task or actor, and have the
     progress centrally reported from the driver. This avoids issues with overlapping
@@ -25,15 +29,18 @@ class tqdm:
 
     def __init__(
         self,
-        iterable: Optional[Iterable] = None,  # TODO
+        iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
         position: Optional[int] = 0,
+        # Visible for testing.
         _ray_ip: Optional[str] = None,
         _ray_pid: Optional[int] = None,
     ):
+        if iterable is not None:
+            raise NotImplementedError("TODO implement iterable support")
         if position is None:
-            raise NotImplementedError
+            raise NotImplementedError("tqdm_ray requires position to be specified")
         self._iterable = iterable
         self._desc = desc
         self._total = total
@@ -60,9 +67,9 @@ class tqdm:
     def _dump_state(self) -> None:
         print(json.dumps(self._get_state()))
 
-    def _get_state(self) -> _ProgressState:
+    def _get_state(self) -> ProgressBarState:
         return {
-            "__type__": "__ray_tqdm_magic__",
+            "__magic_token__": RAY_TQDM_MAGIC,
             "x": self._x,
             "pos": self._pos,
             "desc": self._desc,
@@ -75,7 +82,7 @@ class tqdm:
 
 
 class _Bar:
-    def __init__(self, state: _ProgressState, pos_offset: int):
+    def __init__(self, state: ProgressBarState, pos_offset: int):
         self.state = state
         self.pos_offset = pos_offset
         self.bar = real_tqdm.tqdm(
@@ -87,7 +94,7 @@ class _Bar:
         if state["x"]:
             self.bar.update(state["x"])
 
-    def update(self, state: _ProgressState) -> None:
+    def update(self, state: ProgressBarState) -> None:
         if state["desc"] != self.state["desc"]:
             self.bar.set_description(state["desc"] + " " + str(state["pos"]))
         delta = state["x"] - self.state["x"]
@@ -116,14 +123,14 @@ class _Process:
     def has_bar(self, bar_uuid) -> bool:
         return bar_uuid in self.bars_by_uuid
 
-    def allocate_bar(self, state: _ProgressState) -> None:
+    def allocate_bar(self, state: ProgressBarState) -> None:
         self.bars_by_uuid[state["uuid"]] = _Bar(state, self.pos_offset)
 
-    def update_bar(self, state: _ProgressState) -> None:
+    def update_bar(self, state: ProgressBarState) -> None:
         bar = self.bars_by_uuid[state["uuid"]]
         bar.update(state)
 
-    def close_bar(self, state: _ProgressState) -> None:
+    def close_bar(self, state: ProgressBarState) -> None:
         bar = self.bars_by_uuid[state["uuid"]]
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
@@ -147,7 +154,7 @@ class _BarManager:
         self.ip = services.get_node_ip_address()
         self.processes = {}
 
-    def process_state_update(self, state: _ProgressState) -> None:
+    def process_state_update(self, state: ProgressBarState) -> None:
         if state["ip"] == self.ip:
             prefix = "{}{}(pid={}){} ".format(
                 colorama.Style.DIM,
@@ -175,7 +182,7 @@ class _BarManager:
             process.allocate_bar(state)
             self.update_offsets()
 
-    def get_or_allocate_process(self, state: _ProgressState):
+    def get_or_allocate_process(self, state: ProgressBarState):
         ptuple = (state["ip"], state["pid"])
         if ptuple not in self.processes:
             offset = sum(p.max_pos() + 1 for p in self.processes.values())
@@ -199,33 +206,21 @@ if __name__ == "__main__":
     bars = []
 
     @ray.remote
-    def processing(ray_ip):
+    def processing(delay):
+        def sleep(x):
+            time.sleep(delay)
+            return x
+
         ray_pid = os.getpid()
-        for i in range(1000):
-            if random.random() > 0.95:
-                pos = []
-                for bar in bars:
-                    if bar._ip == ray_ip:
-                        pos.append(bar._pos)
-                i = 0
-                while i in pos:
-                    i += 1
-                t1 = tqdm(
-                    desc="foo", total=100, position=i, _ray_ip=ray_ip, _ray_pid=ray_pid
-                )
-                bars.append(t1)
-            time.sleep(0.2)
-            for bar in bars:
-                bar.update(1)
-            for b in bars.copy():
-                if b._x >= 100:
-                    b.close()
-                    bars.remove(b)
+        while True:
+            ray.data.range(1000, parallelism=100).map(
+                sleep, compute=ray.data.ActorPoolStrategy(1, 1)
+            ).count()
 
     ray.get(
         [
-            processing.remote(services.get_node_ip_address()),
-            processing.remote("172.101.2.42"),
-            processing.remote("172.43.2.9"),
+            processing.remote(.05),
+            processing.remote(.03),
+            processing.remote(.10),
         ]
     )
