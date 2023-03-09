@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
 from pytorch_lightning.strategies import DDPStrategy
-from lightning_fabric.plugins.environments.lightning import LightningEnvironment
+from pytorch_lightning.plugins.environments import LightningEnvironment
 
 import ray
 from ray.air import session
