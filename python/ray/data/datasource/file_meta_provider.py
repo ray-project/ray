@@ -183,7 +183,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             elif file_info.type == FileType.File:
                 expanded_paths.append(path)
                 file_infos.append(file_info)
-            elif ignore_missing_paths:
+            elif file_info.type == FileType.NotFound and ignore_missing_paths:
                 logger.debug(f"{path} not found.")
                 continue
             else:
