@@ -4127,6 +4127,7 @@ py_test_module_list(
     "tests/test_perf.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
+    "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
