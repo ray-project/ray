@@ -304,6 +304,21 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
+        config = SingleAgentAlgoConfig().rl_module(
+            _enable_rl_module_api=True,
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs={
+                    "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                }
+            ),
+        )
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        ########################################
         # We want to override the default rl module
         config = SingleAgentAlgoConfig().rl_module(
             _enable_rl_module_api=True,
@@ -348,20 +363,22 @@ class TestAlgorithmConfig(unittest.TestCase):
                 marl_module_class=CustomMARLModule1,
                 module_specs={
                     "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
-                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule2),
+                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
                 },
             ),
         )
         config.validate()
 
         spec, expected = self._get_expected_marl_spec(
-            config, DiscreteBCTorchModule, expected_marl_module_class=CustomMARLModule1
+            config, CustomRLModule1, expected_marl_module_class=CustomMARLModule1
         )
         self._assertEqualMARLSpecs(spec, expected)
 
+        # this is expected to return CustomRLModule1 instead of CustomRLModule3 which
+        # is passed in. Because the default for p1, p2 is to use CustomRLModule1
         spec, expected = self._get_expected_marl_spec(
             config,
-            CustomRLModule3,
+            CustomRLModule1,
             passed_module_class=CustomRLModule3,
             expected_marl_module_class=CustomMARLModule1,
         )

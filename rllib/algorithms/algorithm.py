@@ -1783,6 +1783,7 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
@@ -1819,9 +1820,13 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
             workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
+
 
         Returns:
             The newly added policy (the copy that got added to the local
@@ -1849,8 +1854,8 @@ class Algorithm(Trainable):
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
+            module_spec=module_spec,
         )
-        breakpoint()
 
         # If learner API is enabled, we need to also add the underlying module
         # to the learner group.
@@ -1859,12 +1864,7 @@ class Algorithm(Trainable):
             module = policy.model
             self.learner_group.add_module(
                 module_id=policy_id,
-                module_spec=SingleAgentRLModuleSpec(
-                    module_class=type(module),
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config=policy.config["model"],
-                ),
+                module_spec=SingleAgentRLModuleSpec.from_module(module),
             )
 
             # TODO (Kourosh): Only allow users to set weights of a particular module
@@ -1883,6 +1883,7 @@ class Algorithm(Trainable):
                 policy_state=policy_state,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
+                module_spec=module_spec,
             )
 
         # Return newly added policy (from the local rollout worker).

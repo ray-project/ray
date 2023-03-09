@@ -447,9 +447,8 @@ class Learner:
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
             if optimizer_cls is None:
-                raise ValueError(
-                    "Either set_optimizer_fn or optimizer_cls must be provided."
-                )
+                # by default, use the optimizer_cls of the first parameter
+                optimizer_cls = next(iter(self._param_to_optim.values())).__class__
 
             def set_optimizer_fn(module):
                 param_optims = []

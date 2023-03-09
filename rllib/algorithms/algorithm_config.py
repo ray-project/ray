@@ -2827,17 +2827,21 @@ class AlgorithmConfig(_Config):
                     cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
                 ):
                     # the individual module specs are defined by the user
-                    single_agent_spec = cur_marl_module_spec.module_specs
+                    single_agent_spec = module_spec or cur_marl_module_spec.module_specs
+                    module_specs = {
+                        k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
+                    }
                 else:
                     # the individual module specs are not defined by the user,
                     # so we use the default
-                    single_agent_spec = default_rl_module
+                    single_agent_spec = module_spec or default_rl_module
+                    module_specs = {
+                        k: copy.deepcopy(
+                            cur_marl_module_spec.module_specs.get(k, single_agent_spec)
+                        )
+                        for k in policy_dict.keys()
+                    }
 
-                # if module_spec is defined we use that instead
-                single_agent_spec = module_spec or single_agent_spec
-                module_specs = {
-                    k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
-                }
                 marl_module_spec = cur_marl_module_spec.__class__(
                     marl_module_class=cur_marl_module_spec.marl_module_class,
                     module_specs=module_specs,
