@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, Mapping
+from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -30,54 +30,22 @@ class TorchRLModule(nn.Module, RLModule):
         self.load_state_dict(state_dict)
 
     @override(RLModule)
-    def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
-        """Saves the module to a checkpoint directory.
-
-        Args:
-            dir_path: The directory to save the checkpoint to.
-
-
-        Raises:
-            ValueError: If dir_path is not an absolute path.
-        """
-        path = pathlib.Path(checkpoint_dir_path)
-        if not path.is_absolute():
-            raise ValueError("dir_path must be an absolute path.")
-        path.mkdir(parents=True, exist_ok=True)
+    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
         module_state_path = path / "module_state.pt"
         torch.save(self.state_dict(), str(module_state_path))
-        self._save_module_metadata(path, module_state_path)
+        return str(module_state_path)
 
-    @classmethod
-    def load_from_checkpoint(cls, checkpoint_dir_path: str) -> "TorchRLModule":
-        """Loads the module from a checkpoint directory.
-
-        Args:
-            dir_path: The directory to load the checkpoint from.
-        """
-        path = pathlib.Path(checkpoint_dir_path)
+    @override(RLModule)
+    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
         if not path.exists():
             raise ValueError(
-                "While loading from checkpoint there was no directory"
-                " found at {}".format(checkpoint_dir_path)
+                f"While loading state from path, the path does not exist: {path}"
             )
-        if not path.is_absolute():
-            raise ValueError("dir_path must be an absolute path.")
-        if not path.is_dir():
-            raise ValueError(
-                "While loading from checkpoint the checkpoint_dir_path "
-                "provided was not a directory."
-            )
-
-        module = cls._from_metadata_file(path)
-        state_path = path / "module_state.pt"
-        if not state_path.exists():
-            raise ValueError(
-                "While loading from checkpoint there was no module_state.pt"
-                " found at {}".format(checkpoint_dir_path)
-            )
-        module.set_state(torch.load(str(state_path)))
-        return module
+        self.set_state(torch.load(str(path)))
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

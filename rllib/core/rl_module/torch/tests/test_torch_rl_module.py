@@ -1,4 +1,5 @@
 import gymnasium as gym
+import tempfile
 import torch
 from typing import Mapping
 import unittest
@@ -109,10 +110,9 @@ class TestRLModule(unittest.TestCase):
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         )
-        module.save_to_checkpoint("/tmp/test_checkpoint_torch")
-        new_module = DiscreteBCTorchModule.load_from_checkpoint(
-            "/tmp/test_checkpoint_torch"
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module.save_to_checkpoint(tmpdir)
+            new_module = DiscreteBCTorchModule.from_checkpoint(tmpdir)
 
         check(module.get_state(), new_module.get_state())
         self.assertNotEqual(id(module), id(new_module))

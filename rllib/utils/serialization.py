@@ -336,6 +336,7 @@ def serialize_type(type_: Union[Type, str]) -> str:
     Returns:
         The full classpath of the given type, e.g. "ray.rllib.algorithms.ppo.PPOConfig".
     """
+    # TODO (avnishn): find a way to incorporate the tune registry here.
     # Already serialized.
     if isinstance(type_, str):
         return type_
