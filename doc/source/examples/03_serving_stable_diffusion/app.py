@@ -29,26 +29,16 @@ class APIIngress:
         return Response(content=file_stream.getvalue(), media_type="image/png")
 
 
-runtime_env = {
-    "pip": [
-        "accelerate==0.14.0",
-        (
-            "diffusers @ git+https://github.com/huggingface/diffusers.git"
-            "@25f11424f62d8d9bef8a721b806926399a1557f2"
-        ),
-        "numpy==1.23.4",
-        "Pillow==9.3.0",
-        "scipy==1.9.3",
-        "tensorboard==2.12.0",
-        "torch==1.13.0",
-        "torchvision==0.14.0",
-        "transformers==4.24.0",
-    ]
-}
+def get_runtime_env():
+    # Read in the requirements.txt and install these packages in the environment
+    # of each worker.
+    with open("requirements.txt", "r") as f:
+        requirements = f.read().splitlines()
+    return {"pip": requirements}
 
 
 @serve.deployment(
-    ray_actor_options={"num_gpus": 1, "runtime_env": runtime_env},
+    ray_actor_options={"num_gpus": 1, "runtime_env": get_runtime_env()},
     autoscaling_config={"min_replicas": 0, "max_replicas": 2},
 )
 class StableDiffusionV2:
