@@ -1,4 +1,5 @@
 import os
+import time
 import tempfile
 from unittest.mock import (
     Mock,
@@ -9,6 +10,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.exceptions import RayActorError
 
 from ray.tune import Trainable
 from ray.tune.integration.wandb import WandbTrainableMixin
@@ -369,6 +371,45 @@ class TestWandbLogger:
         logger.log_trial_start(trial)
         actor_env_var = ray.get(logger._trial_logging_futures[trial])
         assert actor_env_var == "1234"
+
+    def test_wandb_finish(self, monkeypatch, trial, tmp_path):
+        """Test that logging actors finish upon experiment completion."""
+        marker = tmp_path / "hang_marker"
+        marker.write_text("")
+
+        logger = WandbTestExperimentLogger(
+            project="test_project",
+            api_key="1234",
+            upload_timeout=1.0,
+            cleanup_actors=True,
+        )
+        logger.setup()
+        logger.on_trial_start(0, [], trial)
+        logger.on_trial_complete(0, [], trial)
+        assert logger.trial_logging_actors
+        marker.unlink()
+        logger.on_experiment_end(trials=[trial])
+        assert not logger.trial_logging_actors
+
+    def test_wandb_destructor(self, monkeypatch, trial):
+        def hanging(*args, **kwargs):
+            time.sleep(50)
+
+        monkeypatch.setattr(_MockWandbAPI, "finish", hanging)
+        logger = WandbTestExperimentLogger(
+            project="test_project",
+            api_key="1234",
+            upload_timeout=1.0,
+            cleanup_actors=True,
+        )
+        logger.setup()
+        # Triggers logging actor run loop
+        logger.on_trial_start(0, [], trial)
+        actors = logger.trial_logging_actors
+        del logger
+        with pytest.raises(RayActorError):
+            # This will call `ray.get` on the underlying actor attribute
+            print(actors[trial]._wandb)
 
 
 class TestWandbClassMixin:

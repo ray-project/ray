@@ -85,14 +85,21 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
 
     _logger_actor_cls = _MockWandbLoggingActor
 
+    def __init__(self, *args, cleanup_actors: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cleanup_actors = cleanup_actors
+
     def _cleanup_logging_actor(self, trial: "Trial"):
+        del self._trial_queues[trial]
+        del self._trial_logging_futures[trial]
+
         # Unique for the mocked instance is the delayed delete of
         # `self._trial_logging_actors[trial]`.
         # This is because we want to access them in unit test after `.fit()`
         # to assert certain config and log is called with wandb.
         # Call `__del__` on the instance to kill/delete the actors
-        del self._trial_queues[trial]
-        del self._trial_logging_futures[trial]
+        if self._cleanup_actors:
+            del self._trial_logging_actors[trial]
 
     @property
     def trial_logging_actors(self):
