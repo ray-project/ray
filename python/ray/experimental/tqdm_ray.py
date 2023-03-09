@@ -71,7 +71,9 @@ class tqdm:
         self._dump_state()
 
     def _dump_state(self) -> None:
-        print(json.dumps(self._get_state()))
+        # Include newline in payload to avoid split prints.
+        # TODO(ekl) we should move this to events.json to avoid log corruption.
+        print(json.dumps(self._get_state()) + "\n", end="")
 
     def _get_state(self) -> ProgressBarState:
         return {

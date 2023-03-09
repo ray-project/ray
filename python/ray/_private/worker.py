@@ -1834,7 +1834,12 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
 def process_tqdm(line):
     """Experimental distributed tqdm: see ray.experimental.tqdm_ray."""
-    tqdm_ray.instance().process_state_update(json.loads(line))
+    try:
+        data = json.loads(line)
+        tqdm_ray.instance().process_state_update(data)
+    except Exception:
+        print("[tqdm_ray] Failed to decode", line)
+        raise
 
 
 def listen_error_messages(worker, threads_stopped):
