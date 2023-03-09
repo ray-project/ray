@@ -20,7 +20,7 @@ For ML use cases, Datasets also natively supports mixing :ref:`Tensors <datasets
 There are three types of datasets:
 
 * :term:`Simple datasets <Simple Dataset>` -- Datasets that represent a collection of Python objects
-* :term:`Tabular datasets <Tabular Dataset>` -- Datasets that represents columnar data
+* :term:`Tabular datasets <Tabular Dataset>` -- Datasets that represent columnar data
 * :term:`Tensor datasets <Tensor Dataset>` -- Datasets that represent a collection of ndarrays
 
 The following figure visualizes a tabular dataset with three blocks, each holding 1000 rows:
