@@ -86,7 +86,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     ^^^
 
     Understand the key concepts behind Ray Datasets.
-    Learn what :ref:`Datasets <dataset_concept>` are and how they get executed in Ray
+    Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray
     Datasets.
 
     +++
