@@ -8,7 +8,6 @@ import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
 from ray._private.state_api_test_utils import verify_failed_task
-from ray.experimental.state.api import list_tasks
 
 import ray
 import ray._private.ray_constants as ray_constants
