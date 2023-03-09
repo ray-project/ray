@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import uuid
@@ -71,9 +72,12 @@ class tqdm:
         self._dump_state()
 
     def _dump_state(self) -> None:
-        # Include newline in payload to avoid split prints.
-        # TODO(ekl) we should move this to events.json to avoid log corruption.
-        print(json.dumps(self._get_state()) + "\n", end="")
+        if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
+            # Include newline in payload to avoid split prints.
+            # TODO(ekl) we should move this to events.json to avoid log corruption.
+            print(json.dumps(self._get_state()) + "\n", end="")
+        else:
+            instance().process_state_update(copy.deepcopy(self._get_state()))
 
     def _get_state(self) -> ProgressBarState:
         return {
@@ -194,7 +198,8 @@ class _BarManager:
         import ray._private.services as services
 
         self.ip = services.get_node_ip_address()
-        self.processes = {}
+        self.pid = os.getpid()
+        self.bar_groups = {}
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -204,12 +209,15 @@ class _BarManager:
         BarGroup on the screen.
         """
         if state["ip"] == self.ip:
-            prefix = "{}{}(pid={}){} ".format(
-                colorama.Style.DIM,
-                colorama.Fore.CYAN,
-                state.get("pid"),
-                colorama.Style.RESET_ALL,
-            )
+            if state["pid"] == self.pid:
+                prefix = ""
+            else:
+                prefix = "{}{}(pid={}){} ".format(
+                    colorama.Style.DIM,
+                    colorama.Fore.CYAN,
+                    state.get("pid"),
+                    colorama.Style.RESET_ALL,
+                )
         else:
             prefix = "{}{}(pid={}, ip={}){} ".format(
                 colorama.Style.DIM,
@@ -232,14 +240,14 @@ class _BarManager:
 
     def _get_or_allocate_bar_group(self, state: ProgressBarState):
         ptuple = (state["ip"], state["pid"])
-        if ptuple not in self.processes:
-            offset = sum(p.max_pos() + 1 for p in self.processes.values())
-            self.processes[ptuple] = _BarGroup(state["ip"], state["pid"], offset)
-        return self.processes[ptuple]
+        if ptuple not in self.bar_groups:
+            offset = sum(p.max_pos() + 1 for p in self.bar_groups.values())
+            self.bar_groups[ptuple] = _BarGroup(state["ip"], state["pid"], offset)
+        return self.bar_groups[ptuple]
 
     def _update_offsets(self):
         offset = 0
-        for proc in self.processes.values():
+        for proc in self.bar_groups.values():
             proc.update_offset(offset)
             offset += proc.max_pos() + 1
 
