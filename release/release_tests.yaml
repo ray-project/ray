@@ -579,8 +579,6 @@
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
 
-  stable: false
-
   python: "3.9"
 
   frequency: weekly
