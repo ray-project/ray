@@ -413,17 +413,25 @@ class MultiAgentRLModuleSpec:
         return self.marl_module_class(module_config)
 
     def add_modules(
-        self, module_specs: Dict[ModuleID, SingleAgentRLModuleSpec]
+        self,
+        module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
+        overwrite: bool = True,
     ) -> None:
-        """Add new module specs to the spec.
+        """Add new module specs to the spec or updates existing ones.
 
         Args:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
+            overwrite: Whether to overwrite the existing module specs if they already
+                exist. If False, they will be updated only.
         """
         if self.module_specs is None:
             self.module_specs = {}
-        self.module_specs.update(module_specs)
+        for module_id, module_spec in module_specs.items():
+            if overwrite or module_id not in self.module_specs:
+                self.module_specs[module_id] = module_spec
+            else:
+                self.module_specs[module_id].update(module_spec)
 
     @classmethod
     def from_module(self, module: MultiAgentRLModule) -> "MultiAgentRLModuleSpec":
@@ -451,6 +459,27 @@ class MultiAgentRLModuleSpec:
                 "should be a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
+
+    def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
+        """Updates this spec with the other spec.
+
+        Traverses this MultiAgentRLModuleSpec's module_specs and updates them with
+        the module specs from the other MultiAgentRLModuleSpec.
+
+        Args:
+            other: The other spec to update this spec with.
+            overwrite: Whether to overwrite the existing module specs if they already
+                exist. If False, they will be updated only.
+        """
+        assert type(other) is MultiAgentRLModuleSpec
+
+        if isinstance(other.module_specs, dict):
+            self.add_modules(other.module_specs, overwrite=overwrite)
+        else:
+            if not self.module_specs:
+                self.module_specs = other.module_specs
+            else:
+                self.module_specs.update(other.module_specs)
 
 
 @ExperimentalAPI
