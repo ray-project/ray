@@ -8,7 +8,6 @@ from ray.data._internal.compute import (
 )
 from ray.data.block import BatchUDF, RowUDF
 from ray.data.context import DEFAULT_BATCH_SIZE
-from ray.data.datasource import Datasource
 
 
 if sys.version_info >= (3, 8):
@@ -140,26 +139,6 @@ class MapRows(AbstractUDFMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
-
-
-class Write(AbstractUDFMap):
-    """Logical operator for write."""
-
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        datasource: Datasource,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        **write_args,
-    ):
-        super().__init__(
-            "Write",
-            input_op,
-            fn=lambda x: x,
-            ray_remote_args=ray_remote_args,
-        )
-        self._datasource = datasource
-        self._write_args = write_args
 
 
 class Filter(AbstractUDFMap):
