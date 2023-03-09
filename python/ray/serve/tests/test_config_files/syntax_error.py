@@ -1,2 +1,2 @@
-#pylint: skip-file
+#pylint: disable-all
 x = (1 + 2
