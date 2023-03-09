@@ -56,6 +56,7 @@ import ray._private.storage as storage
 # Ray modules
 import ray.actor
 from ray.experimental import tqdm_ray
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function

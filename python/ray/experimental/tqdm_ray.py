@@ -1,14 +1,13 @@
-import os
 import json
-from typing import Optional, Iterable, Dict, Any
+import os
 import uuid
+from typing import Any, Dict, Iterable, Optional
 
-import tqdm as real_tqdm
 import colorama
+import tqdm as real_tqdm
 
 import ray
 import ray._private.services as services
-
 
 # Describes the state of a single progress bar.
 ProgressBarState = Dict[str, Any]
@@ -200,7 +199,6 @@ _manager = _BarManager()
 
 
 if __name__ == "__main__":
-    import random
     import time
 
     bars = []
@@ -211,7 +209,6 @@ if __name__ == "__main__":
             time.sleep(delay)
             return x
 
-        ray_pid = os.getpid()
         while True:
             ray.data.range(1000, parallelism=100).map(
                 sleep, compute=ray.data.ActorPoolStrategy(1, 1)
@@ -219,8 +216,8 @@ if __name__ == "__main__":
 
     ray.get(
         [
-            processing.remote(.05),
-            processing.remote(.03),
-            processing.remote(.10),
+            processing.remote(0.05),
+            processing.remote(0.03),
+            processing.remote(0.10),
         ]
     )
