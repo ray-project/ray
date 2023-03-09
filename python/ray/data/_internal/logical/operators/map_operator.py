@@ -142,26 +142,6 @@ class MapRows(AbstractUDFMap):
         )
 
 
-class Write(AbstractUDFMap):
-    """Logical operator for write."""
-
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        datasource: Datasource,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        **write_args,
-    ):
-        super().__init__(
-            "Write",
-            input_op,
-            fn=lambda x: x,
-            ray_remote_args=ray_remote_args,
-        )
-        self._datasource = datasource
-        self._write_args = write_args
-
-
 class Filter(AbstractUDFMap):
     """Logical operator for filter."""
 
