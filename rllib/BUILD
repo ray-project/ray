@@ -2682,7 +2682,7 @@ py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
      tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
-     size = "medium",
+     size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
  )
