@@ -178,6 +178,8 @@ class TestAlgorithmConfig(unittest.TestCase):
             .environment("CartPole-v1")
             .rollouts(enable_connectors=True)
             .training(learner_class=A, _enable_learner_api=True)
+            .rl_module(_enable_rl_module_api=True)
+            .framework("tf2")
         )
 
         config.validate()

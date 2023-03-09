@@ -88,7 +88,9 @@ class PPOTfPolicyWithRLModule(
         dist_class = curr_action_dist.__class__
         value_fn_out = fwd_out[SampleBatch.VF_PREDS]
 
-        prev_action_dist = dist_class(**train_batch[SampleBatch.ACTION_DIST_INPUTS])
+        prev_action_dist = dist_class.from_logits(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        )
 
         logp_ratio = tf.exp(
             curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
