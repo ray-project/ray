@@ -21,8 +21,7 @@ post_build_cmds:
   - git clone https://github.com/alpa-projects/alpa.git
   - pip3 install -e alpa
   # Install custom built jaxlib.
-  # TODO(jungong) : revisit after next release.
-  - pip3 install https://air-example-data-2.s3.us-west-2.amazonaws.com/alpa/jaxlib-0.3.22-cp38-cp38-manylinux2014_x86_64.whl
+  - pip install jaxlib==0.3.22+cuda113.cudnn820 -f https://alpa-projects.github.io/wheels.html
   # Install nvidia dependencies.
   - pip3 install --no-cache-dir nvidia-pyindex
   - pip3 install --no-cache-dir nvidia-tensorrt==7.2.3.4
