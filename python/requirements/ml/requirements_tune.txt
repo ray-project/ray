@@ -23,7 +23,7 @@ lightgbm==3.3.5
 matplotlib!=3.4.3
 mlflow==1.30.0
 # Unavailable for arm64 in more recent versions
-mxnet==1.8.0.post0; platform_machine != "arm64"
+mxnet==1.9.1; platform_machine != "arm64"
 nevergrad==0.4.3.post7
 optuna==2.10.0
 # For HEBO compatibility
