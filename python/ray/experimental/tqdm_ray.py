@@ -52,14 +52,17 @@ class tqdm:
         self._closed = False
 
     def set_description(self, desc):
+        """Implements tqdm.tqdm.set_description."""
         self._desc = desc
         self._dump_state()
 
     def update(self, n=1):
+        """Implements tqdm.tqdm.update."""
         self._x += n
         self._dump_state()
 
     def close(self):
+        """Implements tqdm.tqdm.close."""
         self._closed = True
         self._dump_state()
 
@@ -81,7 +84,19 @@ class tqdm:
 
 
 class _Bar:
+    """Manages a single virtual progress bar on the driver.
+
+    The actual position of individual bars is calculated as (pos_offset + position),
+    where `pos_offset` is the position offset determined by the BarManager.
+    """
+
     def __init__(self, state: ProgressBarState, pos_offset: int):
+        """Initialize a bar.
+
+        Args:
+            state: The initial progress bar state.
+            pos_offset: The position offset determined by the BarManager.
+        """
         self.state = state
         self.pos_offset = pos_offset
         self.bar = real_tqdm.tqdm(
@@ -94,6 +109,7 @@ class _Bar:
             self.bar.update(state["x"])
 
     def update(self, state: ProgressBarState) -> None:
+        """Apply the updated worker progress bar state."""
         if state["desc"] != self.state["desc"]:
             self.bar.set_description(state["desc"] + " " + str(state["pos"]))
         delta = state["x"] - self.state["x"]
@@ -102,9 +118,11 @@ class _Bar:
         self.state = state
 
     def close(self):
+        """The progress bar has been closed."""
         self.bar.close()
 
     def update_offset(self, pos_offset: int) -> None:
+        """Update the position offset assigned by the BarManager."""
         if pos_offset != self.pos_offset:
             self.pos_offset = pos_offset
             self.bar.clear()
@@ -112,7 +130,13 @@ class _Bar:
             self.bar.refresh()
 
 
-class _Process:
+class _BarGroup:
+    """Manages a group of virtual progress bar produced by a single worker.
+
+    All the progress bars in the group have the same `pos_offset` determined by the
+    BarManager for the process.
+    """
+
     def __init__(self, ip, pid, pos_offset):
         self.ip = ip
         self.pid = pid
@@ -120,26 +144,32 @@ class _Process:
         self.bars_by_uuid: Dict[str, _Bar] = {}
 
     def has_bar(self, bar_uuid) -> bool:
+        """Return whether this bar exists."""
         return bar_uuid in self.bars_by_uuid
 
     def allocate_bar(self, state: ProgressBarState) -> None:
+        """Add a new bar to this group."""
         self.bars_by_uuid[state["uuid"]] = _Bar(state, self.pos_offset)
 
     def update_bar(self, state: ProgressBarState) -> None:
+        """Update the state of a managed bar in this group."""
         bar = self.bars_by_uuid[state["uuid"]]
         bar.update(state)
 
     def close_bar(self, state: ProgressBarState) -> None:
+        """Remove a bar from this group."""
         bar = self.bars_by_uuid[state["uuid"]]
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
 
     def max_pos(self):
+        """Query the max bar position (not including offset) within this group."""
         if not self.bars_by_uuid:
             return 0
         return max(bar.state["pos"] for bar in self.bars_by_uuid.values())
 
     def update_offset(self, offset: int) -> None:
+        """Update the position offset assigned by the BarManager."""
         if offset != self.pos_offset:
             self.pos_offset = offset
             for bar in self.bars_by_uuid.values():
@@ -147,13 +177,24 @@ class _Process:
 
 
 class _BarManager:
-    """Central tqdm manager run on the driver."""
+    """Central tqdm manager run on the driver.
+
+    This class holds a collection of BarGroups and updates their `pos_offset` as
+    needed to ensure individual progress bars do not collide in position, kind of
+    like a virtual memory manager.
+    """
 
     def __init__(self):
         self.ip = services.get_node_ip_address()
         self.processes = {}
 
     def process_state_update(self, state: ProgressBarState) -> None:
+        """Apply the remote progress bar state update.
+
+        This creates a new bar locally if it doesn't already exist. When a bar is
+        created or destroyed, we also recalculate and update the `pos_offset` of each
+        BarGroup on the screen.
+        """
         if state["ip"] == self.ip:
             prefix = "{}{}(pid={}){} ".format(
                 colorama.Style.DIM,
@@ -170,31 +211,32 @@ class _BarManager:
                 colorama.Style.RESET_ALL,
             )
         state["desc"] = prefix + state["desc"]
-        process = self.get_or_allocate_process(state)
+        process = self._get_or_allocate_bar_group(state)
         if process.has_bar(state["uuid"]):
             if state["closed"]:
                 process.close_bar(state)
-                self.update_offsets()
+                self._update_offsets()
             else:
                 process.update_bar(state)
         else:
             process.allocate_bar(state)
-            self.update_offsets()
+            self._update_offsets()
 
-    def get_or_allocate_process(self, state: ProgressBarState):
+    def _get_or_allocate_bar_group(self, state: ProgressBarState):
         ptuple = (state["ip"], state["pid"])
         if ptuple not in self.processes:
             offset = sum(p.max_pos() + 1 for p in self.processes.values())
-            self.processes[ptuple] = _Process(state["ip"], state["pid"], offset)
+            self.processes[ptuple] = _BarGroup(state["ip"], state["pid"], offset)
         return self.processes[ptuple]
 
-    def update_offsets(self):
+    def _update_offsets(self):
         offset = 0
         for proc in self.processes.values():
             proc.update_offset(offset)
             offset += proc.max_pos() + 1
 
 
+# Global manager singleton.
 _manager = _BarManager()
 
 
