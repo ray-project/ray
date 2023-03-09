@@ -565,7 +565,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               resources,
                               resources,
                               "",
-                              0);
+                              0,
+                              RandomTaskId());
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
@@ -631,6 +632,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto job_id = NextJobId();
 
   WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), job_id);
+  // This fails locally somehow. Guess we reuse the thread in testing.
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
@@ -657,6 +659,14 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   context.ResetCurrentTask();
   context.SetCurrentTask(task_spec);
   ASSERT_EQ(context.GetCurrentTaskID(), task_spec.TaskId());
+
+  auto main_thread_task_id = task_spec.TaskId();
+  auto thread_func2 = [&context, &main_thread_task_id]() {
+    // Verify the main thread task id matches.
+    ASSERT_EQ(context.GetMainThreadOrActorCreationTaskID(), main_thread_task_id);
+  };
+  std::thread async_thread2(thread_func2);
+  async_thread2.join();
 
   // Verify that put index doesn't confict with the return object range.
   ASSERT_EQ(context.GetNextPutIndex(), num_returns + 1);

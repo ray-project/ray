@@ -4,8 +4,9 @@ import copy
 import json
 import os
 from dataclasses import dataclass
+from typing import List, Dict, Optional
 
-from typing import List, Dict
+import ray
 
 
 @dataclass
@@ -378,7 +379,7 @@ GRAFANA_PANELS = [
             ),
             # GPU
             Target(
-                expr="avg(ray_node_gpus_utilization{{{global_filters}}})",
+                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
                 legend="GPU (physical)",
             ),
             # Memory
@@ -527,11 +528,16 @@ PANEL_TEMPLATE = {
 }
 
 
-def generate_grafana_dashboard() -> str:
+def generate_grafana_dashboard(override_uid: Optional[str] = None) -> str:
     base_json = json.load(
         open(os.path.join(os.path.dirname(__file__), "grafana_dashboard_base.json"))
     )
     base_json["panels"] = _generate_grafana_panels()
+    tags = base_json.get("tags", []) or []
+    tags.append(f"rayVersion:{ray.__version__}")
+    base_json["tags"] = tags
+    if override_uid:
+        base_json["uid"] = override_uid
     return json.dumps(base_json, indent=4)
 
 

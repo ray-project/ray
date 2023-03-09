@@ -1,3 +1,4 @@
+import copy
 import os
 import posixpath
 
@@ -161,7 +162,7 @@ def test_block_write_path_provider():
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(ray.get(block)).num_rows()
+            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
                 f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
@@ -245,14 +246,28 @@ def assert_base_partitioned_ds():
         assert ds.schema() is not None
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-        assert (
-            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
-        assert (
-            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
+
+        # For Datasets with long string representations, the format will include
+        # whitespace and newline characters, which is difficult to generalize
+        # without implementing the formatting logic again (from
+        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
+        # characters to test the string contents regardless of the string repr length.
+        def _remove_whitespace(ds_str):
+            for c in ["\n", "\t", " "]:
+                ds_str = ds_str.replace(c, "")
+            return ds_str
+
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(str(ds)), ds
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(repr(ds)), ds
+
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
@@ -270,6 +285,14 @@ def assert_base_partitioned_ds():
         ), f"{actual_sorted_values} != {sorted_values}"
 
     yield _assert_base_partitioned_ds
+
+
+@pytest.fixture
+def restore_dataset_context(request):
+    """Restore any DatasetContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+    yield
+    ray.data.context.DatasetContext._set_current(original)
 
 
 @pytest.fixture(params=[True, False])
@@ -317,16 +340,28 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture(params=[True])
-def enable_optimizer(request):
+@pytest.fixture
+def enable_optimizer():
     ctx = ray.data.context.DatasetContext.get_current()
     original_backend = ctx.new_execution_backend
     original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = request.param
-    ctx.optimizer_enabled = request.param
-    yield request.param
+    ctx.new_execution_backend = True
+    ctx.optimizer_enabled = True
+    yield
     ctx.new_execution_backend = original_backend
     ctx.optimizer_enabled = original_optimizer
+
+
+@pytest.fixture
+def enable_streaming_executor():
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    use_streaming_executor = ctx.use_streaming_executor
+    ctx.new_execution_backend = True
+    ctx.use_streaming_executor = True
+    yield
+    ctx.new_execution_backend = original_backend
+    ctx.use_streaming_executor = use_streaming_executor
 
 
 # ===== Pandas dataset formats =====

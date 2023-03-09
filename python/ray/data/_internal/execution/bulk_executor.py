@@ -5,6 +5,7 @@ from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
+    OutputIterator,
     RefBundle,
     PhysicalOperator,
 )
@@ -24,6 +25,8 @@ class BulkExecutor(Executor):
     """
 
     def __init__(self, options: ExecutionOptions):
+        # Bulk executor always preserves order.
+        options.preserve_order = True
         super().__init__(options)
         self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
         self._executed = False
@@ -79,7 +82,7 @@ class BulkExecutor(Executor):
             )
             return output
 
-        return execute_recursive(dag)
+        return OutputIterator(execute_recursive(dag))
 
     def get_stats(self) -> DatasetStats:
         return self._stats

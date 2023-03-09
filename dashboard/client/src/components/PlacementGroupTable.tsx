@@ -14,10 +14,22 @@ import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useState } from "react";
 import rowStyles from "../common/RowStyles";
-import { PlacementGroup } from "../type/placementGroup";
+import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
+
+const BundleResourceRequirements = ({ bundles }: { bundles: Bundle[] }) => {
+  return (
+    <div>
+      {bundles.map(({ unit_resources }, index) => {
+        return `{${Object.entries(unit_resources || {})
+          .map(([key, val]) => `${key}: ${val}`)
+          .join(", ")}}, `;
+      })}
+    </div>
+  );
+};
 
 const PlacementGroupTable = ({
   placementGroups = [],
@@ -41,6 +53,7 @@ const PlacementGroupTable = ({
     { label: "Name" },
     { label: "Job Id" },
     { label: "State" },
+    { label: "Reserved Resources" },
     { label: "Scheduling Detail" },
   ];
 
@@ -119,45 +132,68 @@ const PlacementGroupTable = ({
           <StateCounter type="placementGroup" list={placementGroupList} />
         </div>
       </div>
-      <Table>
-        <TableHead>
-          <TableRow>
-            {columns.map(({ label }) => (
-              <TableCell align="center" key={label}>
-                <Box display="flex" justifyContent="center" alignItems="center">
-                  {label}
-                </Box>
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {list.map(
-            ({ placement_group_id, name, creator_job_id, state, stats }) => (
-              <TableRow>
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.idCol}
-                    title={placement_group_id}
-                    arrow
-                    interactive
+      <div className={classes.tableContainer}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {columns.map(({ label }) => (
+                <TableCell align="center" key={label}>
+                  <Box
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
                   >
-                    <div>{placement_group_id}</div>
-                  </Tooltip>
+                    {label}
+                  </Box>
                 </TableCell>
-                <TableCell align="center">{name ? name : "-"}</TableCell>
-                <TableCell align="center">{creator_job_id}</TableCell>
-                <TableCell align="center">
-                  <StatusChip type="placementGroup" status={state} />
-                </TableCell>
-                <TableCell align="center">
-                  {stats ? stats.scheduling_state : "-"}
-                </TableCell>
-              </TableRow>
-            ),
-          )}
-        </TableBody>
-      </Table>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {list.map(
+              ({
+                placement_group_id,
+                name,
+                creator_job_id,
+                state,
+                stats,
+                bundles,
+              }) => (
+                <TableRow key={placement_group_id}>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={placement_group_id}
+                      arrow
+                      interactive
+                    >
+                      <div>{placement_group_id}</div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">{name ? name : "-"}</TableCell>
+                  <TableCell align="center">{creator_job_id}</TableCell>
+                  <TableCell align="center">
+                    <StatusChip type="placementGroup" status={state} />
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.OverflowCol}
+                      title={<BundleResourceRequirements bundles={bundles} />}
+                      arrow
+                      interactive
+                    >
+                      <BundleResourceRequirements bundles={bundles} />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    {stats ? stats.scheduling_state : "-"}
+                  </TableCell>
+                </TableRow>
+              ),
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 };

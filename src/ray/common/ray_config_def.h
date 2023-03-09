@@ -97,10 +97,12 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// ignored. This retry counter is only used when the process is killed due to memory, and
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
-RAY_CONFIG(uint64_t, task_oom_retries, 15)
+RAY_CONFIG(uint64_t, task_oom_retries, -1)
 
-/// The worker killing policy to use, as defined in worker_killing_policy.h.
-RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")
+/// The worker killing policy to use, available options are
+/// group_by_owner
+/// retriable_lifo
+RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
@@ -188,6 +190,17 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5)
+
+/// Used by the default hybrid policy only. The scheduler will randomly pick
+/// one node from the top k in the cluster to improve load balancing. The
+/// scheduler guarantees k is at least equal to this fraction * the number of
+/// nodes in the cluster.
+RAY_CONFIG(float, scheduler_top_k_fraction, 0.2);
+
+/// Used by the default hybrid policy only. The scheduler will randomly pick
+/// one node from the top k in the cluster to improve load balancing. The
+/// scheduler guarantees k is at least equal to scheduler_top_k_absolute.
+RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
@@ -427,7 +440,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, false)
+RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -455,9 +468,12 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
-/// will be dropped.
-/// Setting the value to -1 allows for unlimited task events buffered on workers.
-RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
+/// will be dropped. This is set to a large value to avoid worker side data loss.
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 10 * 1000)
+
+/// Max number of task events to be send in a single message to GCS. This caps both
+/// the message size, and also the processing work on GCS.
+RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
@@ -478,7 +494,9 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
+/// -1 means that Ray should automatically set this to the number of nodes in
+/// the cluster.
+RAY_CONFIG(int64_t, max_pending_lease_requests_per_scheduling_category, -1)
 
 /// Wait timeout for dashboard agent register.
 #ifdef _WIN32
@@ -757,3 +775,6 @@ RAY_CONFIG(int64_t,
 /// the mapped plasma pages.
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
+
+/// Whether to kill idle workers of a terminated job.
+RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)

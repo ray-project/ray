@@ -2,7 +2,11 @@ from typing import Iterator, List
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.read_operator import Read
@@ -43,7 +47,7 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
 
     inputs = InputDataBuffer(input_data_factory=get_input_data)
 
-    def do_read(blocks: Iterator[ReadTask]) -> Iterator[Block]:
+    def do_read(blocks: Iterator[ReadTask], ctx: TaskContext) -> Iterator[Block]:
         for read_task in blocks:
             yield from read_task()
 

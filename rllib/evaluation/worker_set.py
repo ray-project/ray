@@ -18,7 +18,7 @@ from typing import (
 
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.core.rl_trainer import TrainerRunner
+from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -146,6 +146,7 @@ class WorkerSet:
             "num_cpus": self._remote_config.num_cpus_per_worker,
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
+            "max_num_worker_restarts": config.max_num_worker_restarts,
         }
 
         # See if we should use a custom RolloutWorker class for testing purpose.
@@ -382,19 +383,22 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker: Optional[Union[RolloutWorker, TrainerRunner]] = None,
+        from_worker_or_trainer: Optional[Union[RolloutWorker, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
     ) -> None:
-        """Syncs model weights from the local worker to all remote workers.
+        """Syncs model weights from the given weight source to all remote workers.
+
+        Weight source can be either a (local) rollout worker or a learner_group. It
+        should just implement a `get_weights` method.
 
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker: Optional local RolloutWorker instance or TrainerRunner
-                instance to sync from.
-                If None (default), sync from this WorkerSet's local worker.
+            from_worker_or_trainer: Optional (local) RolloutWorker instance or
+                LearnerGroup instance to sync from. If None (default),
+                sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
                 weights to. If None (default), sync to all remote workers.
             global_vars: An optional global vars dict to set this
@@ -404,16 +408,23 @@ class WorkerSet:
                 for any sync calls to finish). This significantly improves
                 algorithm performance.
         """
-        if self.local_worker() is None and from_worker is None:
+        if self.local_worker() is None and from_worker_or_trainer is None:
             raise TypeError(
                 "No `local_worker` in WorkerSet, must provide `from_worker` "
                 "arg in `sync_weights()`!"
             )
 
-        # Only sync if we have remote workers or `from_worker` is provided.
+        # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         weights = None
-        if self.num_remote_workers() or from_worker is not None:
-            weights = (from_worker or self.local_worker()).get_weights(policies)
+        if self.num_remote_workers() or from_worker_or_trainer is not None:
+            weights_src = from_worker_or_trainer or self.local_worker()
+
+            if weights_src is None:
+                raise ValueError(
+                    "`from_worker_or_trainer` is None. In this case, workerset "
+                    "should have local_worker. But local_worker is also None."
+                )
+            weights = weights_src.get_weights(policies)
 
             def set_weight(w):
                 w.set_weights(weights, global_vars)
@@ -433,7 +444,7 @@ class WorkerSet:
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
         if self.local_worker() is not None:
-            if from_worker is not None:
+            if from_worker_or_trainer is not None:
                 self.local_worker().set_weights(weights, global_vars=global_vars)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.

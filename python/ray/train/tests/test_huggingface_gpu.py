@@ -1,4 +1,3 @@
-import logging
 import tempfile
 
 import numpy as np
@@ -31,13 +30,25 @@ def create_checkpoint():
         return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
 
 
+class AssertingHuggingFacePredictor(HuggingFacePredictor):
+    def __init__(self, pipeline=None, preprocessor=None, use_gpu: bool = False):
+        super().__init__(pipeline, preprocessor, use_gpu)
+        assert use_gpu
+        assert "cuda" in str(pipeline.device)
+
+
 # TODO(ml-team): Add np.ndarray to batch_type
 @pytest.mark.parametrize("batch_type", [pd.DataFrame])
 @pytest.mark.parametrize("device", [None, 0])
 def test_predict_batch(ray_start_4_cpus, caplog, batch_type, device):
     checkpoint = create_checkpoint()
+    kwargs = {}
+
+    if device is not None:
+        kwargs["device"] = device
+
     predictor = BatchPredictor.from_checkpoint(
-        checkpoint, HuggingFacePredictor, task="text-generation"
+        checkpoint, AssertingHuggingFacePredictor, task="text-generation", **kwargs
     )
 
     # Todo: Ray data does not support numpy string arrays well
@@ -50,12 +61,7 @@ def test_predict_batch(ray_start_4_cpus, caplog, batch_type, device):
     else:
         raise RuntimeError("Invalid batch_type")
 
-    kwargs = {}
-    if device:
-        kwargs["device"] = device
-    with caplog.at_level(logging.WARNING):
-        predictions = predictor.predict(dataset, num_gpus_per_worker=1, **kwargs)
-    assert "enable GPU prediction" not in caplog.text
+    predictions = predictor.predict(dataset, num_gpus_per_worker=1)
 
     assert predictions.count() == 3
 

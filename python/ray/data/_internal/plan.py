@@ -29,13 +29,16 @@ from ray.data._internal.compute import (
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
 from ray.data.context import DatasetContext
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data._internal.execution.interfaces import Executor
 
 
 # Scheduling strategy can be inherited from prev stage if not specified.
@@ -167,7 +170,6 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
-
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -181,7 +183,14 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = capitalize(stage.name)
+                # The stage representation should be in "<stage-name>(...)" format,
+                # e.g. "MapBatches(my_udf)".
+                #
+                # TODO(chengsu): create a class to represent stage name to make it less
+                # fragile to parse.
+                stage_str = stage.name.split("(")
+                stage_str[0] = capitalize(stage_str[0])
+                stage_name = "(".join(stage_str)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
@@ -228,6 +237,45 @@ class ExecutionPlan:
         dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             num_blocks, count, schema_str
         )
+
+        # If the resulting string representation fits in one line, use it directly.
+        SCHEMA_LINE_CHAR_LIMIT = 80
+        MIN_FIELD_LENGTH = 10
+        if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
+            # If the resulting string representation exceeds the line char limit,
+            # first try breaking up each `Dataset` parameter into its own line
+            # and check if each line fits within the line limit. We check the
+            # `schema` param's length, since this is likely the longest string.
+            schema_str_on_new_line = f"\tschema={schema_str}"
+            if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
+                # If the schema cannot fit on a single line, break up each field
+                # into its own line.
+                schema_str = []
+                for n, t in zip(schema.names, schema.types):
+                    if hasattr(t, "__name__"):
+                        t = t.__name__
+                    col_str = f"\t\t{n}: {t}"
+                    # If the field line exceeds the char limit, abbreviate
+                    # the field name to fit while maintaining the full type
+                    if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
+                        shortened_suffix = f"...: {str(t)}"
+                        # Show at least 10 characters of the field name, even if
+                        # we have already hit the line limit with the type.
+                        chars_left_for_col_name = max(
+                            SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
+                            MIN_FIELD_LENGTH,
+                        )
+                        col_str = (
+                            f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
+                        )
+                    schema_str.append(f"{col_str}")
+                schema_str = ",\n".join(schema_str)
+                schema_str = "{\n" + schema_str + "\n\t}"
+            dataset_str = (
+                "Dataset(\n\tnum_blocks={},\n\tnum_rows={},\n\tschema={}\n)".format(
+                    num_blocks, count, schema_str
+                )
+            )
 
         if num_stages == 0:
             plan_str = dataset_str
@@ -450,7 +498,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -462,7 +510,7 @@ class ExecutionPlan:
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
-            Tuple of iterator over output blocks and Dataset stats.
+            Tuple of iterator over output blocks and the executor.
         """
 
         ctx = DatasetContext.get_current()
@@ -470,6 +518,7 @@ class ExecutionPlan:
             return (
                 self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
                 self._snapshot_stats,
+                None,
             )
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -491,7 +540,8 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor.get_stats()
+        self._snapshot_stats = executor.get_stats()
+        return block_iter, self._snapshot_stats, executor
 
     def execute(
         self,
@@ -512,22 +562,31 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         if not ray.available_resources().get("CPU"):
-            logger.get_logger().warning(
-                "Warning: The Ray cluster currently does not have "
-                "any available CPUs. The Dataset job will hang unless more CPUs "
-                "are freed up. A common reason is that cluster resources are "
-                "used by Actors or Tune trials; see the following link "
-                "for more details: "
-                "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
-            )
+            if log_once("cpu_warning"):
+                logger.get_logger().warning(
+                    "Warning: The Ray cluster currently does not have "
+                    "any available CPUs. The Dataset job will hang unless more CPUs "
+                    "are freed up. A common reason is that cluster resources are "
+                    "used by Actors or Tune trials; see the following link "
+                    "for more details: "
+                    "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+                )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
+                )
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
 
-                executor = BulkExecutor(copy.deepcopy(context.execution_options))
+                if context.use_streaming_executor:
+                    executor = StreamingExecutor(
+                        copy.deepcopy(context.execution_options)
+                    )
+                else:
+                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -589,6 +648,10 @@ class ExecutionPlan:
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
         self._in_blocks.clear()
+        self._clear_snapshot()
+
+    def _clear_snapshot(self) -> None:
+        """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
@@ -599,13 +662,16 @@ class ExecutionPlan:
         self._stages_before_snapshot = []
 
     def stats(self) -> DatasetStats:
-        """Return stats for this plan, forcing execution if needed."""
-        self.execute()
+        """Return stats for this plan.
+
+        If the plan isn't executed, an empty stats object will be returned.
+        """
+        if not self._snapshot_stats:
+            return DatasetStats(stages={}, parent=None)
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
-        self.execute()
-        return self._snapshot_stats.to_summary()
+        return self.stats().to_summary()
 
     def _should_clear_input_blocks(
         self,
@@ -667,7 +733,7 @@ class ExecutionPlan:
                 stats = self._snapshot_stats
                 # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
                 # snapshot block memory after the first stage is done executing.
-                self._snapshot_blocks = None
+                self._clear_snapshot()
             else:
                 # Snapshot exists but has been cleared, so we need to recompute from the
                 # source (input blocks).
@@ -737,8 +803,27 @@ class ExecutionPlan:
                 not self.is_read_stage_equivalent()
                 or trailing_randomize_block_order_stage
             )
-            and self._stages_after_snapshot
+            and (
+                self._stages_after_snapshot
+                # If snapshot is cleared, we'll need to recompute from the source.
+                or (
+                    self._snapshot_blocks is not None
+                    and self._snapshot_blocks.is_cleared()
+                    and self._stages_before_snapshot
+                )
+            )
         )
+
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
 
 
 def _pack_args(
@@ -904,6 +989,7 @@ class OneToOneStage(Stage):
 
         def block_fn(
             blocks: Iterable[Block],
+            ctx: TaskContext,
             fn: UDF,
             *fn_args,
             **fn_kwargs,
@@ -921,8 +1007,8 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
-            return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
+            blocks = block_fn1(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
+            return block_fn2(blocks, ctx, *self_fn_args, **self_fn_kwargs)
 
         return OneToOneStage(
             name,
@@ -1015,19 +1101,20 @@ class AllToAllStage(Stage):
         prev_block_fn = prev.block_fn
         if self.block_udf is None:
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
-                yield from prev_block_fn(blocks, *prev_fn_args, **prev_fn_kwargs)
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+                yield from prev_block_fn(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
 
         else:
             self_block_udf = self.block_udf
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
                 blocks = prev_block_fn(
                     blocks,
+                    ctx,
                     *prev_fn_args,
                     **prev_fn_kwargs,
                 )
-                yield from self_block_udf(blocks)
+                yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
             name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
@@ -1103,11 +1190,15 @@ def _rewrite_read_stage(
     )
 
     @_adapt_for_multiple_blocks
-    def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
+    def block_fn(
+        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
+    ) -> Iterator[Block]:
         for block in read_fn():
             yield block
 
-    name = "read"
+    name = in_blocks._read_stage_name or "Read"
+    if isinstance(name, list):
+        name = "->".join(name)
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.
@@ -1151,7 +1242,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
             reorder_buf.append(s)
         else:
             # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage):
+            if isinstance(s, AllToAllStage) or s.name == "write":
                 output.extend(reorder_buf)
                 reorder_buf = []
             output.append(s)
@@ -1222,8 +1313,8 @@ def _adapt_for_multiple_blocks(
     fn: Callable[..., Iterable[Block]],
 ) -> Callable[..., Iterable[Block]]:
     @functools.wraps(fn)
-    def wrapper(blocks: Iterable[Block], *args, **kwargs):
+    def wrapper(blocks: Iterable[Block], ctx: TaskContext, *args, **kwargs):
         for block in blocks:
-            yield from fn(block, *args, **kwargs)
+            yield from fn(block, ctx, *args, **kwargs)
 
     return wrapper

@@ -57,7 +57,7 @@ const columns = [
     ),
   },
   {
-    label: "Logs",
+    label: "Actions",
   },
   { label: "StartTime" },
   { label: "EndTime" },

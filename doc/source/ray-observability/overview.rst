@@ -5,6 +5,13 @@ This section covers a list of available monitoring and debugging tools and featu
 
 This documentation only covers the high-level description of available tools and features. For more details, see :ref:`Ray Observability <observability>`.
 
+Dashboard (Web UI)
+------------------
+Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
+through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
+
+See :ref:`Ray Dashboard <ray-dashboard>` for more details.
+
 Application Logging
 -------------------
 By default, all stdout and stderr of tasks and actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``).
@@ -26,9 +33,9 @@ Exceptions
 Creating a new task or submitting an actor task generates an object reference. When ``ray.get`` is called on the object reference,
 the API raises an exception if anything goes wrong with a related task, actor or object. For example,
 
-- :ref:`RayTaskError <ray-core-exceptions-ray-task-error>` is raised when there's an error from user code that throws an exception.
-- :ref:`RayActorError <ray-core-exceptions-ray-actor-error>` is raised when an actor is dead (by a system failure such as node failure or user-level failure such as an exception from ``__init__`` method). 
-- :ref:`RuntimeEnvSetupError <ray-core-exceptions-runtime-env-setup-error>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
+- :class:`RayTaskError <ray.exceptions.RayTaskError>` is raised when there's an error from user code that throws an exception.
+- :class:`RayActorError <ray.exceptions.RayActorError>` is raised when an actor is dead (by a system failure such as node failure or user-level failure such as an exception from ``__init__`` method).
+- :class:`RuntimeEnvSetupError <ray.exceptions.RuntimeEnvSetupError>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
 
 See :ref:`Exceptions Reference <ray-core-exceptions>` for more details.
 
@@ -79,13 +86,6 @@ The following command will list all the actors from the cluster.
 
 See :ref:`Ray State API <state-api-overview-ref>` for more details.
 
-Dashboard (Web UI)
-------------------
-Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
-through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
-
-See :ref:`Ray Dashboard <ray-dashboard>` for more details.
-
 Debugger
 --------
 Ray has a built-in debugger that allows you to debug your distributed applications.
@@ -134,16 +134,16 @@ Here's an example output.
 
 Metrics
 -------
-Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node), 
-internal stats (e.g., number of actors in the cluster, number of worker failures of the cluster), 
+Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node),
+internal stats (e.g., number of actors in the cluster, number of worker failures of the cluster),
 and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
-to monitor the cluster over time. 
+to monitor the cluster over time.
 
 See :ref:`Ray Metrics <ray-metrics>` for more details.
 
 Profiling
 ---------
-Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:```ray timeline`` <ray-timeline-doc>`. 
+Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:```ray timeline`` <ray-timeline-doc>`.
 
 See :ref:`Profiling <ray-core-profiling>` for more details.
 

@@ -1,4 +1,5 @@
 import logging
+import sys
 from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum, unique
@@ -144,6 +145,12 @@ class SummaryApiOptions:
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
         default_factory=list
     )
+
+    # Change out to summarize the output. There is a summary_by value for each entity.
+    # Tasks: by func_name
+    # Actors: by class
+    # Objects: by callsite
+    summary_by: Optional[str] = None
 
 
 def state_column(*, filterable: bool, detail: bool = False, **kwargs):
@@ -537,18 +544,22 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
-    #: The parent task id.
+    #: The parent task id. If the parent is a normal task, it will be the task's id.
+    #: If the parent runs in a concurrent actor (async actor or threaded actor),
+    #: it will be the actor's creation task id.
     parent_task_id: str = state_column(filterable=True)
     #: The placement group id that's associated with this task.
     placement_group_id: str = state_column(detail=True, filterable=True)
     #: The worker id that's associated with this task.
-    worker_id: str = state_column(detail=True, filterable=True)
+    worker_id: str = state_column(filterable=True)
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
     events: List[dict] = state_column(detail=True, filterable=False)
     #: The list of profile events of the given task.
     profiling_data: List[dict] = state_column(detail=True, filterable=False)
+    #: The time when the task is created. A Unix timestamp in ms.
+    creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task starts to run. A Unix timestamp in ms.
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task is finished or failed. A Unix timestamp in ms.
@@ -726,6 +737,8 @@ class ListApiResponse:
 Summary API schema
 """
 
+DRIVER_TASK_ID_PREFIX = "ffffffffffffffffffffffffffffffffffffffff"
+
 
 @dataclass(init=True)
 class TaskSummaryPerFuncOrClassName:
@@ -739,11 +752,39 @@ class TaskSummaryPerFuncOrClassName:
 
 
 @dataclass
+class Link:
+    #: The type of entity to link to
+    type: str
+    #: The id of the entity to link to
+    id: str
+
+
+@dataclass(init=True)
+class NestedTaskSummary:
+    #: The name of this task group
+    name: str
+    #: A unique identifier for this group
+    key: str
+    #: The type of the class. Equivalent to protobuf TaskType,
+    #: "ACTOR" if it represents an Actor, or "GROUP" if it's a grouping of tasks.
+    type: str
+    #: Unix timestamp to use to sort the task group.
+    timestamp: Optional[int] = None
+    #: State name to the count dict. State name is equivalent to
+    #: the protobuf TaskStatus.
+    state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
+    #: The child
+    children: List["NestedTaskSummary"] = field(default_factory=list)
+    #: A link to more details about this summary.
+    link: Optional[Link] = None
+
+
+@dataclass
 class TaskSummaries:
     #: Group key -> summary.
     #: Right now, we only have func_class_name as a key.
     # TODO(sang): Support the task group abstraction.
-    summary: Dict[str, TaskSummaryPerFuncOrClassName]
+    summary: Union[Dict[str, TaskSummaryPerFuncOrClassName], List[NestedTaskSummary]]
     #: Total Ray tasks.
     total_tasks: int
     #: Total actor tasks.
@@ -753,7 +794,7 @@ class TaskSummaries:
     summary_by: str = "func_name"
 
     @classmethod
-    def to_summary(cls, *, tasks: List[Dict]):
+    def to_summary_by_func_name(cls, *, tasks: List[Dict]) -> "TaskSummaries":
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as TaskState.
         summary = {}
@@ -788,6 +829,270 @@ class TaskSummaries:
             total_tasks=total_tasks,
             total_actor_tasks=total_actor_tasks,
             total_actor_scheduled=total_actor_scheduled,
+            summary_by="func_name",
+        )
+
+    @classmethod
+    def to_summary_by_lineage(cls, *, tasks: List[Dict]) -> "TaskSummaries":
+        """
+        This summarizes tasks by lineage.
+        i.e. A task will be grouped with another task if they have the
+        same parent.
+
+        This does things in 4 steps.
+        Step 1: Iterate through all tasks and keep track of them by id and ownership
+        Step 2: Put the tasks in a tree structure based on ownership
+        Step 3: Merge together siblings in the tree if there are more
+        than one with the same name.
+        Step 4: Total the children
+
+        This can probably be more efficient if we merge together some steps to
+        reduce the amount of iterations but this algorithm produces very easy to
+        understand code. We can optimize in the future.
+        """
+        # NOTE: The argument tasks contains a list of dictionary
+        # that have the same k/v as TaskState.
+
+        tasks_by_id = {}
+        task_group_by_id = {}
+        actor_creation_task_id_for_actor_id = {}
+        summary = []
+        total_tasks = 0
+        total_actor_tasks = 0
+        total_actor_scheduled = 0
+
+        # Step 1
+        # We cannot assume that a parent task always comes before the child task
+        # So we need to keep track of all tasks by ids so we can quickly find the
+        # parent.
+        # We also track the actor creation tasks so we can quickly figure out the
+        # ownership of actors.
+        for task in tasks:
+            tasks_by_id[task["task_id"]] = task
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+            if type_enum == TaskType.ACTOR_CREATION_TASK:
+                actor_creation_task_id_for_actor_id[task["actor_id"]] = task["task_id"]
+
+        def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
+            """
+            Gets an already created task_group
+            OR
+            Creates a task group and puts it in the right place under its parent.
+            For actor tasks, the parent is the Actor that owns it. For all other
+            tasks, the owner is the driver or task that created it.
+
+            Returns None if there is missing data about the task or one of its parents.
+
+            For task groups that represents actors, the id is in the
+            format actor:{actor_id}
+            """
+            if task_id in task_group_by_id:
+                return task_group_by_id[task_id]
+
+            task = tasks_by_id.get(task_id)
+            if not task:
+                logger.debug(f"We're missing data about {task_id}")
+                # We're missing data about this parent. So we're dropping the whole
+                # tree at that node.
+                return None
+
+            # Use name first which allows users to customize the name of
+            # their remote function call using the name option.
+            func_name = task["name"] or task["func_or_class_name"]
+            task_id = task["task_id"]
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+
+            task_group_by_id[task_id] = NestedTaskSummary(
+                name=func_name,
+                key=task_id,
+                type=task["type"],
+                timestamp=task["creation_time_ms"],
+                link=Link(type="task", id=task_id),
+            )
+
+            # Set summary in right place under parent
+            if (
+                type_enum == TaskType.ACTOR_TASK
+                or type_enum == TaskType.ACTOR_CREATION_TASK
+            ):
+                # For actor tasks, the parent is the actor and not the parent task.
+                parent_task_group = get_or_create_actor_task_group(task["actor_id"])
+                if parent_task_group:
+                    parent_task_group.children.append(task_group_by_id[task_id])
+            else:
+                parent_task_id = task["parent_task_id"]
+                if not parent_task_id or parent_task_id.startswith(
+                    DRIVER_TASK_ID_PREFIX
+                ):
+                    summary.append(task_group_by_id[task_id])
+                else:
+                    parent_task_group = get_or_create_task_group(parent_task_id)
+                    if parent_task_group:
+                        parent_task_group.children.append(task_group_by_id[task_id])
+
+            return task_group_by_id[task_id]
+
+        def get_or_create_actor_task_group(
+            actor_id: str,
+        ) -> Optional[NestedTaskSummary]:
+            """
+            Gets an existing task group that represents an actor.
+            OR
+            Creates a task group that represents an actor. The owner of the actor is
+            the parent of the creation_task that created that actor.
+
+            Returns None if there is missing data about the actor or one of its parents.
+            """
+            key = f"actor:{actor_id}"
+            if key not in task_group_by_id:
+                creation_task_id = actor_creation_task_id_for_actor_id.get(actor_id)
+                creation_task = tasks_by_id.get(creation_task_id)
+
+                if not creation_task:
+                    logger.debug(f"We're missing data about actor {actor_id}")
+                    # We're missing data about the parent. So we're dropping the whole
+                    # tree at that node.
+                    return None
+
+                # TODO(aguo): Get actor name from actors state-api.
+                [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
+
+                task_group_by_id[key] = NestedTaskSummary(
+                    name=actor_name,
+                    key=key,
+                    type="ACTOR",
+                    timestamp=task["creation_time_ms"],
+                    link=Link(type="actor", id=actor_id),
+                )
+
+                parent_task_id = creation_task["parent_task_id"]
+                if not parent_task_id or parent_task_id.startswith(
+                    DRIVER_TASK_ID_PREFIX
+                ):
+                    summary.append(task_group_by_id[key])
+                else:
+                    parent_task_group = get_or_create_task_group(parent_task_id)
+                    if parent_task_group:
+                        parent_task_group.children.append(task_group_by_id[key])
+
+            return task_group_by_id[key]
+
+        # Step 2: Create the tree structure based on ownership
+        for task in tasks:
+            task_id = task["task_id"]
+
+            task_group = get_or_create_task_group(task_id)
+
+            if not task_group:
+                # We are probably missing data about this task or one of its parents.
+                continue
+
+            state = task["state"]
+            if state not in task_group.state_counts:
+                task_group.state_counts[state] = 0
+            task_group.state_counts[state] += 1
+
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+            if type_enum == TaskType.NORMAL_TASK:
+                total_tasks += 1
+            elif type_enum == TaskType.ACTOR_CREATION_TASK:
+                total_actor_scheduled += 1
+            elif type_enum == TaskType.ACTOR_TASK:
+                total_actor_tasks += 1
+
+        def merge_sibings_for_task_group(
+            siblings: List[NestedTaskSummary],
+        ) -> Tuple[List[NestedTaskSummary], Optional[int]]:
+            """
+            Merges task summaries with the same name into a group if there are more than
+            one child with that name.
+
+            Args:
+                siblings: A list of NestedTaskSummary's to merge together
+
+            Returns
+                Index 0: A list of NestedTaskSummary's which have been merged
+                Index 1: The smallest timestamp amongst the siblings
+            """
+            if not len(siblings):
+                return siblings, None
+
+            # Group by name
+            groups = {}
+            min_timestamp = None
+
+            for child in siblings:
+                child.children, child_min_timestamp = merge_sibings_for_task_group(
+                    child.children
+                )
+                if child_min_timestamp and child_min_timestamp < (
+                    child.timestamp or sys.maxsize
+                ):
+                    child.timestamp = child_min_timestamp
+
+                if child.name not in groups:
+                    groups[child.name] = NestedTaskSummary(
+                        name=child.name,
+                        key=child.name,
+                        type="GROUP",
+                    )
+                groups[child.name].children.append(child)
+                if child.timestamp and child.timestamp < (
+                    groups[child.name].timestamp or sys.maxsize
+                ):
+                    groups[child.name].timestamp = child.timestamp
+                    if child.timestamp < (min_timestamp or sys.maxsize):
+                        min_timestamp = child.timestamp
+
+            # Take the groups that have more than one children and return it.
+            # For groups with just one child, return the child itself instead of
+            # creating a group.
+            return [
+                group if len(group.children) > 1 else group.children[0]
+                for group in groups.values()
+            ], min_timestamp
+
+        # Step 3
+        summary, _ = merge_sibings_for_task_group(summary)
+
+        def sort_task_groups(task_groups: List[NestedTaskSummary]) -> None:
+            # Sort by timestamp
+            # Put actor creation tasks above other tasks with the same timestamp
+            task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
+            task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
+
+        def calc_total_for_task_group(
+            task_group: NestedTaskSummary,
+        ) -> NestedTaskSummary:
+            """
+            Calculates the total of a group as the sum of all children.
+            Sorts children by timestamp
+            """
+            if not len(task_group.children):
+                return task_group
+
+            for child in task_group.children:
+                totaled = calc_total_for_task_group(child)
+
+                for state, count in totaled.state_counts.items():
+                    task_group.state_counts[state] = (
+                        task_group.state_counts.get(state, 0) + count
+                    )
+
+            sort_task_groups(task_group.children)
+
+            return task_group
+
+        # Step 4
+        summary = [calc_total_for_task_group(task_group) for task_group in summary]
+        sort_task_groups(summary)
+
+        return TaskSummaries(
+            summary=summary,
+            total_tasks=total_tasks,
+            total_actor_tasks=total_actor_tasks,
+            total_actor_scheduled=total_actor_scheduled,
+            summary_by="lineage",
         )
 
 

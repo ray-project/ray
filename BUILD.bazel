@@ -702,6 +702,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
@@ -833,6 +835,7 @@ cc_library(
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
+        "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1181,6 +1184,21 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "hybrid_scheduling_policy_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/policy/hybrid_scheduling_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":scheduler",
+        "@com_google_absl//absl/random:mock_distributions",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1693,7 +1711,7 @@ cc_test(
 
 cc_test(
     name = "pubsub_integration_test",
-    timeout = "short",
+    size = "small",
     srcs = ["src/ray/pubsub/test/integration_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
@@ -1874,7 +1892,7 @@ cc_library(
 
 cc_test(
     name = "gcs_health_check_manager_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
     ],
@@ -2265,6 +2283,7 @@ cc_test(
 
 cc_test(
     name = "gcs_client_test",
+    size = "medium",
     srcs = [
         "src/ray/gcs/gcs_client/test/gcs_client_test.cc",
     ],

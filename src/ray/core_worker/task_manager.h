@@ -304,12 +304,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
-  /// Make a rpc::TaskInfoEntry based on the TaskSpecification.
-  ///
-  /// \param[in] task_spec TaskSpecification of the task.
-  /// \return TaskInfoEntry based on the spec.
-  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
-
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
   ObjectID TaskGeneratorId(const TaskID &task_id) const;

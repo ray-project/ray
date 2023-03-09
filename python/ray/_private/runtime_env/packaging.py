@@ -600,9 +600,6 @@ async def download_and_unpack_package(
         NotImplementedError: If the protocol of the URI is not supported.
 
     """
-    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
-        raise IOError("Failed to download package. (Simulated failure for testing)")
-
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
@@ -621,6 +618,8 @@ async def download_and_unpack_package(
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
+                if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+                    code = None
                 if code is None:
                     raise IOError(
                         f"Failed to download runtime_env file package {pkg_uri} "
@@ -630,7 +629,9 @@ async def download_and_unpack_package(
                         "environment variable "
                         f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
                         " to a value larger than the upload time in seconds "
-                        "(the default is 30). If this fails, try re-running "
+                        "(the default is "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}). "
+                        "If this fails, try re-running "
                         "after making any change to a file in the file package."
                     )
                 code = code or b""
@@ -649,6 +650,11 @@ async def download_and_unpack_package(
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None
+                install_warning = (
+                    "Note that these must be preinstalled "
+                    "on all nodes in the Ray cluster; it is not "
+                    "sufficient to install them in the runtime_env."
+                )
 
                 if protocol == Protocol.S3:
                     try:
@@ -658,7 +664,7 @@ async def download_and_unpack_package(
                         raise ImportError(
                             "You must `pip install smart_open` and "
                             "`pip install boto3` to fetch URIs in s3 "
-                            "bucket."
+                            "bucket. " + install_warning
                         )
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
@@ -670,6 +676,7 @@ async def download_and_unpack_package(
                             "You must `pip install smart_open` and "
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
+                            + install_warning
                         )
                 elif protocol == Protocol.FILE:
                     pkg_uri = pkg_uri[len("file://") :]
@@ -683,7 +690,8 @@ async def download_and_unpack_package(
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs."
+                            f"to fetch {protocol.value.upper()} URIs. "
+                            + install_warning
                         )
 
                 with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:

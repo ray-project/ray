@@ -102,11 +102,12 @@ class Batcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
+        needs_copy = self._ensure_copy
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
-            if self._ensure_copy:
+            if needs_copy:
                 # Copy block if needing to ensure fresh batch copy.
                 block = BlockAccessor.for_block(block)
                 block = block.slice(0, block.num_rows(), copy=True)
@@ -139,13 +140,11 @@ class Batcher(BatcherInterface):
         # blocks consumed on the next batch extraction.
         self._buffer = leftover
         self._buffer_size -= self._batch_size
+        needs_copy = needs_copy and not output.will_build_yield_copy()
         batch = output.build()
-        if self._ensure_copy:
+        if needs_copy:
             # Need to ensure that the batch is a fresh copy.
             batch = BlockAccessor.for_block(batch)
-            # TOOD(Clark): This copy will often be unnecessary, e.g. for pandas
-            # DataFrame batches that have required concatenation to construct, which
-            # always requires a copy. We should elide this copy in those cases.
             batch = batch.slice(0, batch.num_rows(), copy=True)
         return batch
 
