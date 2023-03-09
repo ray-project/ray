@@ -75,28 +75,27 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["env"] = RandomEnv
 
     def _do_check(alg, config, a_name, o_name):
-        if alg == "PPO":
-            # We need to copy here so that this validation does not affect the actual
-            # validation method call further down the line.
-            config_copy = config.copy()
-            config_copy.validate()
-            # If RLModules are enabled, we need to skip a few tests for now:
-            if config_copy._enable_rl_module_api:
-                # Skip PPO cases in which RLModules don't support the given spaces yet.
-                if o_name not in RLMODULE_SUPPORTED_OBSERVATION_SPACES:
-                    logger.warning(
-                        "Skipping PPO test with RLModules for obs space {}".format(
-                            o_name
-                        )
+        # We need to copy here so that this validation does not affect the actual
+        # validation method call further down the line.
+        config_copy = config.copy()
+        config_copy.validate()
+        # If RLModules are enabled, we need to skip a few tests for now:
+        if config_copy._enable_rl_module_api:
+            # Skip PPO cases in which RLModules don't support the given spaces yet.
+            if o_name not in RLMODULE_SUPPORTED_OBSERVATION_SPACES:
+                logger.warning(
+                    "Skipping PPO test with RLModules for obs space {}".format(
+                        o_name
                     )
-                    return
-                if a_name not in RLMODULE_SUPPORTED_ACTION_SPACES:
-                    logger.warning(
-                        "Skipping PPO test with RLModules for action space {}".format(
-                            a_name
-                        )
+                )
+                return
+            if a_name not in RLMODULE_SUPPORTED_ACTION_SPACES:
+                logger.warning(
+                    "Skipping PPO test with RLModules for action space {}".format(
+                        a_name
                     )
-                    return
+                )
+                return
 
         fw = config["framework"]
         action_space = ACTION_SPACES_TO_TEST[a_name]
