@@ -48,6 +48,7 @@ py_test_run_all_notebooks(
         "upload_to_wandb.ipynb",  # Needs credentials
         "torch_detection.ipynb",  # Requires GPUs
         "gptj_batch_prediction.ipynb",  # Requires GPUs
+        "gptj_serving.ipynb",  # Requires GPUs
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
@@ -82,6 +83,7 @@ py_test_run_all_notebooks(
         "pytorch_resnet_batch_prediction.ipynb",
         "torch_detection.ipynb",
         "gptj_batch_prediction.ipynb",
+        "gptj_serving.ipynb",
         "stablediffusion_batch_prediction.ipynb",
     ],
     exclude = [],
