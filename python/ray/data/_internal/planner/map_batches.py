@@ -1,7 +1,9 @@
 import sys
+from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
@@ -18,7 +20,7 @@ def generate_map_batches_fn(
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
     prefetch_batches: int = 0,
     zero_copy_batch: bool = False,
-) -> Callable[[Iterator[Block]], Iterator[Block]]:
+) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
     import numpy as np
     import pandas as pd
@@ -27,7 +29,11 @@ def generate_map_batches_fn(
     context = DatasetContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], batch_fn: BatchUDF, *fn_args, **fn_kwargs
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        batch_fn: BatchUDF,
+        *fn_args,
+        **fn_kwargs,
     ) -> Iterator[Block]:
         DatasetContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
@@ -59,6 +65,16 @@ def generate_map_batches_fn(
             # Apply UDF.
             try:
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
+
+                if not isinstance(batch, GeneratorType):
+                    batch = [batch]
+
+                for b in batch:
+                    validate_batch(b)
+                    # Add output batch to output buffer.
+                    output_buffer.add_batch(b)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
             except ValueError as e:
                 read_only_msgs = [
                     "assignment destination is read-only",
@@ -76,12 +92,6 @@ def generate_map_batches_fn(
                     ) from e
                 else:
                     raise e from None
-
-            validate_batch(batch)
-            # Add output batch to output buffer.
-            output_buffer.add_batch(batch)
-            if output_buffer.has_next():
-                yield output_buffer.next()
 
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(

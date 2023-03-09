@@ -35,6 +35,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -402,9 +403,10 @@ class DQN(SimpleQ):
 
         for _ in range(store_weight):
             # Sample (MultiAgentBatch) from workers.
-            new_sample_batch = synchronous_parallel_sample(
-                worker_set=self.workers, concat=True
-            )
+            with self._timers[SAMPLE_TIMER]:
+                new_sample_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, concat=True
+                )
 
             # Update counters
             self._counters[NUM_AGENT_STEPS_SAMPLED] += new_sample_batch.agent_steps()

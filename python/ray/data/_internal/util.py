@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import List, Union, Optional, TYPE_CHECKING
+from typing import Any, List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
@@ -244,3 +244,156 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
 
 def _is_tensor_schema(column_names: List[str]):
     return column_names == [TENSOR_COLUMN_NAME]
+
+
+def _insert_doc_at_pattern(
+    obj,
+    *,
+    message: str,
+    pattern: str,
+    insert_after: bool = True,
+    directive: Optional[str] = None,
+    skip_matches: int = 0,
+) -> str:
+    if "\n" in message:
+        raise ValueError(
+            "message shouldn't contain any newlines, since this function will insert "
+            f"its own linebreaks when text wrapping: {message}"
+        )
+
+    doc = obj.__doc__.strip()
+    if not doc:
+        doc = ""
+
+    if pattern == "" and insert_after:
+        # Empty pattern + insert_after means that we want to append the message to the
+        # end of the docstring.
+        head = doc
+        tail = ""
+    else:
+        tail = doc
+        i = tail.find(pattern)
+        skip_matches_left = skip_matches
+        while i != -1:
+            if insert_after:
+                # Set offset to the first character after the pattern.
+                offset = i + len(pattern)
+            else:
+                # Set offset to the first character in the matched line.
+                offset = tail[:i].rfind("\n") + 1
+            head = tail[:offset]
+            tail = tail[offset:]
+            skip_matches_left -= 1
+            if skip_matches_left <= 0:
+                break
+            elif not insert_after:
+                # Move past the found pattern, since we're skipping it.
+                tail = tail[i - offset + len(pattern) :]
+            i = tail.find(pattern)
+        else:
+            raise ValueError(
+                f"Pattern {pattern} not found after {skip_matches} skips in docstring "
+                f"{doc}"
+            )
+    # Get indentation of the to-be-inserted text.
+    after_lines = list(filter(bool, tail.splitlines()))
+    if len(after_lines) > 0:
+        lines = after_lines
+    else:
+        lines = list(filter(bool, reversed(head.splitlines())))
+    # Should always have at least one non-empty line in the docstring.
+    assert len(lines) > 0
+    indent = " " * (len(lines[0]) - len(lines[0].lstrip()))
+    # Handle directive.
+    message = message.strip("\n")
+    if directive is not None:
+        base = f"{indent}.. {directive}::\n"
+        message = message.replace("\n", "\n" + indent + " " * 4)
+        message = base + indent + " " * 4 + message
+    else:
+        message = indent + message.replace("\n", "\n" + indent)
+    # Add two blank lines before/after message, if necessary.
+    if insert_after ^ (pattern == "\n\n"):
+        # Only two blank lines before message if:
+        # 1. Inserting message after pattern and pattern is not two blank lines.
+        # 2. Inserting message before pattern and pattern is two blank lines.
+        message = "\n\n" + message
+    if (not insert_after) ^ (pattern == "\n\n"):
+        # Only two blank lines after message if:
+        # 1. Inserting message before pattern and pattern is not two blank lines.
+        # 2. Inserting message after pattern and pattern is two blank lines.
+        message = message + "\n\n"
+
+    # Insert message before/after pattern.
+    parts = [head, message, tail]
+    # Build new docstring.
+    obj.__doc__ = "".join(parts)
+
+
+def _consumption_api(
+    if_more_than_read: bool = False,
+    datasource_metadata: Optional[str] = None,
+    extra_condition: Optional[str] = None,
+    delegate: Optional[str] = None,
+    pattern="Examples:",
+    insert_after=False,
+):
+    """Annotate the function with an indication that it's a consumption API, and that it
+    will trigger Datasets execution.
+    """
+    base = (
+        " will trigger execution of the lazy transformations performed on "
+        "this dataset, and will block until execution completes."
+    )
+    if delegate:
+        message = delegate + base
+    elif not if_more_than_read:
+        message = "This operation" + base
+    else:
+        condition = "If this dataset consists of more than a read, "
+        if datasource_metadata is not None:
+            condition += (
+                f"or if the {datasource_metadata} can't be determined from the "
+                "metadata provided by the datasource, "
+            )
+        if extra_condition is not None:
+            condition += extra_condition + ", "
+        message = condition + "then this operation" + base
+
+    def wrap(obj):
+        _insert_doc_at_pattern(
+            obj,
+            message=message,
+            pattern=pattern,
+            insert_after=insert_after,
+            directive="note",
+        )
+        return obj
+
+    return wrap
+
+
+def ConsumptionAPI(*args, **kwargs):
+    """Annotate the function with an indication that it's a consumption API, and that it
+    will trigger Datasets execution.
+    """
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return _consumption_api()(args[0])
+    return _consumption_api(*args, **kwargs)
+
+
+def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
+    """Split the list into `num_splits` lists.
+
+    The splits will be even if the `num_splits` divides the length of list, otherwise
+    the remainder (suppose it's R) will be allocated to the first R splits (one for
+    each).
+    This is the same as numpy.array_split(). The reason we make this a separate
+    implementation is to allow the heterogeneity in the elements in the list.
+    """
+    assert num_splits > 0
+    q, r = divmod(len(arr), num_splits)
+    splits = [
+        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+    ]
+    return splits

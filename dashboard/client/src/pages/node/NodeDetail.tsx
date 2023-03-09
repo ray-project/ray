@@ -36,7 +36,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const NodeDetailPage = () => {
+const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
   const classes = useStyle();
   const {
     params,
@@ -184,7 +184,13 @@ const NodeDetailPage = () => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/log/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                <Link
+                  to={
+                    newIA
+                      ? `/new/logs/${encodeURIComponent(nodeDetail.logUrl)}`
+                      : `/log/${encodeURIComponent(nodeDetail.logUrl)}`
+                  }
+                >
                   log
                 </Link>
               </Grid>
@@ -225,6 +231,7 @@ const NodeDetailPage = () => {
               <RayletWorkerTable
                 workers={nodeDetail?.workers}
                 actorMap={nodeDetail?.actors}
+                newIA={newIA}
               />
             </TableContainer>
           </React.Fragment>
@@ -235,6 +242,8 @@ const NodeDetailPage = () => {
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
+                newIA={newIA}
+                detailPathPrefix="/new/actors"
               />
             </TableContainer>
           </React.Fragment>

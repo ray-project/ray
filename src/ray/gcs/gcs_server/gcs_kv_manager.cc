@@ -43,6 +43,30 @@ void GcsInternalKVManager::HandleInternalKVGet(
   }
 }
 
+void GcsInternalKVManager::HandleInternalKVMultiGet(
+    rpc::InternalKVMultiGetRequest request,
+    rpc::InternalKVMultiGetReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  for (auto &key : request.keys()) {
+    auto status = ValidateKey(key);
+    if (!status.ok()) {
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      return;
+    }
+  }
+  auto callback =
+      [reply, send_reply_callback](std::unordered_map<std::string, std::string> results) {
+        for (auto &result : results) {
+          auto entry = reply->add_results();
+          entry->set_key(result.first);
+          entry->set_value(result.second);
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      };
+  std::vector<std::string> keys(request.keys().begin(), request.keys().end());
+  kv_instance_->MultiGet(request.namespace_(), keys, std::move(callback));
+}
+
 void GcsInternalKVManager::HandleInternalKVPut(
     rpc::InternalKVPutRequest request,
     rpc::InternalKVPutReply *reply,

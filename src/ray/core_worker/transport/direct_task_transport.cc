@@ -326,14 +326,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
-  if (scheduling_key_entry.pending_lease_requests.size() ==
-      max_pending_lease_requests_per_scheduling_category_) {
+  const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =
+      lease_request_rate_limiter_->GetMaxPendingLeaseRequestsPerSchedulingCategory();
+
+  if (scheduling_key_entry.pending_lease_requests.size() >=
+      kMaxPendingLeaseRequestsPerSchedulingCategory) {
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
-                   << max_pending_lease_requests_per_scheduling_category_;
+                   << kMaxPendingLeaseRequestsPerSchedulingCategory;
     return;
   }
-  RAY_CHECK(scheduling_key_entry.pending_lease_requests.size() <
-            max_pending_lease_requests_per_scheduling_category_);
 
   if (!scheduling_key_entry.AllWorkersBusy()) {
     // There are idle workers, so we don't need more.
@@ -544,6 +545,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
+
+  // Lease more workers if there are still pending tasks and
+  // and we haven't hit the max_pending_lease_requests yet.
+  if (scheduling_key_entry.task_queue.size() >
+          scheduling_key_entry.pending_lease_requests.size() &&
+      scheduling_key_entry.pending_lease_requests.size() <
+          kMaxPendingLeaseRequestsPerSchedulingCategory) {
+    RequestNewWorkerIfNeeded(scheduling_key);
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -652,13 +662,16 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   if (get_task_failure_cause_reply_status.ok()) {
     RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
                    << ray::gcs::RayErrorInfoToString(
-                          get_task_failure_cause_reply.failure_cause());
+                          get_task_failure_cause_reply.failure_cause())
+                   << " fail immedediately: "
+                   << get_task_failure_cause_reply.fail_task_immediately();
     if (get_task_failure_cause_reply.has_failure_cause()) {
       task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
       error_info = std::make_unique<rpc::RayErrorInfo>(
           get_task_failure_cause_reply.failure_cause());
       // TODO(clarng): track and append task retry history to the error message.
     }
+    fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
                    << get_task_failure_cause_reply_status.ToString()

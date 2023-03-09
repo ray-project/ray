@@ -47,7 +47,7 @@ def logging_setup():
 def test_import_module_raises_warnings(module):
     py_cmd = (
         f"import pytest\n"
-        f"with pytest.warns(DeprecationWarning):\n"
+        f"with pytest.raises(DeprecationWarning):\n"
         f"      import {module}\n"
         f"\n"
     )

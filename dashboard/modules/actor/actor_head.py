@@ -14,7 +14,7 @@ from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
-from ray.dashboard.datacenter import DataSource
+from ray.dashboard.datacenter import DataSource, DataOrganizer
 from ray.dashboard.modules.actor import actor_consts
 from ray.dashboard.optional_utils import rest_response
 
@@ -247,6 +247,15 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             # It's not necessary here because the fields are already
             # google formatted when protobuf was converted into dict.
             convert_google_style=False,
+        )
+
+    @routes.get("/logical/actors/{actor_id}")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_actor(self, req) -> aiohttp.web.Response:
+        actor_id = req.match_info.get("actor_id")
+        actors = await DataOrganizer.get_all_actors()
+        return dashboard_optional_utils.rest_response(
+            success=True, message="Actor details fetched.", detail=actors[actor_id]
         )
 
     async def run(self, server):

@@ -14,6 +14,8 @@ Job logs
 Logs for jobs submitted via the :ref:`Ray Jobs API <jobs-overview>` can be retrieved using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>` or using ``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()`` via the :ref:`Python SDK <ray-job-submission-sdk-ref>`.
 The log file consists of the stdout of the entrypoint command of the job.  For the location of the log file on disk, see :ref:`Logging directory structure <logging-directory-structure>`.
 
+.. _ray-worker-logs:
+
 Worker logs
 ~~~~~~~~~~~
 Ray's tasks or actors are executed remotely within Ray's worker processes. Ray has special support to improve the visibility of logs produced by workers.
