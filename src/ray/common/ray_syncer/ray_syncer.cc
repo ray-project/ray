@@ -92,9 +92,7 @@ RayServerBidiReactor::RayServerBidiReactor(
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(const std::string &, bool)> cleanup_cb)
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
-          io_context,
-          remote_node_id,
-          std::move(message_processor)),
+          io_context, remote_node_id, std::move(message_processor)),
       cleanup_cb_(std::move(cleanup_cb)),
       server_context_(server_context) {
   // Send the local node id to the remote
