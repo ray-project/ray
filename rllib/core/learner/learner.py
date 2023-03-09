@@ -373,7 +373,7 @@ class Learner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def compile_results(
         self,
-        batch: NestedDict,
+        batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
         postprocessed_loss: Mapping[str, Any],
         postprocessed_gradients: Mapping[str, Any],
@@ -389,6 +389,11 @@ class Learner:
         Returns:
             A dictionary of results.
         """
+        if not isinstance(batch, MultiAgentBatch):
+            raise ValueError(
+                f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
+            )
+
         loss_numpy = convert_to_numpy(postprocessed_loss)
 
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
@@ -396,7 +401,7 @@ class Learner:
         module_learner_stats = defaultdict(dict)
         # batch.shallow_keys() should contain the module ids that were suppose to be
         # trained in this iteration. Make sure the keys exist in the module.
-        for module_id in batch.shallow_keys():
+        for module_id in batch.policy_batches.keys():
             if module_id not in self._module.keys():
                 raise ValueError(
                     f"Module id {module_id} not found in the module. "
@@ -812,15 +817,15 @@ class Learner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update(
         self,
-        batch: Union[MultiAgentBatch, NestedDict],
+        batch: MultiAgentBatch,
     ) -> Mapping[str, Any]:
         """Performs a single update given a batch of data."""
 
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.
-        batch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(batch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        tensorbatch = self._convert_batch_type(batch)
+        fwd_out = self._module.forward_train(tensorbatch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)

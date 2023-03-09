@@ -255,8 +255,8 @@ class TfLearner(Learner):
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
             # TODO (Avnish): converting to tf tensor and then from nested dict back to
             # dict will most likely hit us in perf. But let's go with this for now.
-            minibatch = self._convert_batch_type(minibatch)
-            update_outs = self._update_fn(minibatch)
+            tensorbatch = self._convert_batch_type(minibatch)
+            update_outs = self._update_fn(tensorbatch)
             loss = update_outs["loss"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
