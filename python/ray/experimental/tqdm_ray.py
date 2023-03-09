@@ -7,13 +7,15 @@ import colorama
 import tqdm as real_tqdm
 
 import ray
-import ray._private.services as services
 
 # Describes the state of a single progress bar.
 ProgressBarState = Dict[str, Any]
 
 # Magic token used to identify Ray TQDM log lines.
 RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
+
+# Global manager singleton.
+_manager: Optional["_BarManager"] = None
 
 
 class tqdm:
@@ -36,6 +38,8 @@ class tqdm:
         _ray_ip: Optional[str] = None,
         _ray_pid: Optional[int] = None,
     ):
+        import ray._private.services as services
+
         if iterable is not None:
             raise NotImplementedError("TODO implement iterable support")
         if position is None:
@@ -185,6 +189,8 @@ class _BarManager:
     """
 
     def __init__(self):
+        import ray._private.services as services
+
         self.ip = services.get_node_ip_address()
         self.processes = {}
 
@@ -236,8 +242,12 @@ class _BarManager:
             offset += proc.max_pos() + 1
 
 
-# Global manager singleton.
-_manager = _BarManager()
+def instance() -> _BarManager:
+    """Get or create a BarManager for this process."""
+    global _manager
+    if _manager is None:
+        _manager = _BarManager()
+    return _manager
 
 
 if __name__ == "__main__":
