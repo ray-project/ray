@@ -1848,7 +1848,7 @@ py_test(
 py_test(
     name = "test_catalog",
     tags = ["team:rllib", "core"],
-    size = "small",
+    size = "medium",
     srcs = ["core/models/tests/test_catalog.py"]
 )
 

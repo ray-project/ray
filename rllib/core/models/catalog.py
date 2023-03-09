@@ -101,7 +101,8 @@ class Catalog:
         This establishes an agreement between encoder and heads about the latent
         dimensions. Encoders can be built to output a latent tensor with
         `latent_dims` dimensions, and heads can be built with tensors of
-        `latent_dims` dimensions as inputs.
+        `latent_dims` dimensions as inputs. This can be safely ignored if this
+        agreement is not needed in case of modifications to the Catalog.
 
         Returns:
             The latent dimensions of the encoder.
@@ -159,7 +160,7 @@ class Catalog:
         """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
-        `Catalog.action_dist_cls_dict`. This can be overridden to build a custom action
+        `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
         distribution as a means of configuring the behavior of a PPORLModuleBase
         implementation.
 
