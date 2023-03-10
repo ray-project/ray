@@ -17,6 +17,7 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
+    @Deprecated(message="Use context property instead", warning=True)
     def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
@@ -33,6 +34,26 @@ class RuntimeContext(object):
                 context["task_id"] = self.task_id
             if self.actor_id is not None:
                 context["actor_id"] = self.actor_id
+
+        return context
+
+    @property
+    def context(self) -> Dict[str, Any]:
+        """Get a dictionary of the current context.
+
+        Returns:
+            dict: Dictionary of the current context.
+        """
+        context = {
+            "job_id": self.get_job_id(),
+            "node_id": self.get_node_id(),
+            "namespace": self.namespace,
+        }
+        if self.worker.mode == ray._private.worker.WORKER_MODE:
+            if self.task_id is not None:
+                context["task_id"] = self.get_task_id()
+            if self.actor_id is not None:
+                context["actor_id"] = self.get_actor_id()
 
         return context
 

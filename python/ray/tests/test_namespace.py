@@ -229,7 +229,7 @@ def test_runtime_context(shutdown_only):
     ray.init(namespace="abc")
     namespace = ray.get_runtime_context().namespace
     assert namespace == "abc"
-    assert namespace == ray.get_runtime_context().get()["namespace"]
+    assert namespace == ray.get_runtime_context().context["namespace"]
 
 
 def test_namespace_validation(shutdown_only):

@@ -59,7 +59,7 @@ def test_was_current_actor_reconstructed(shutdown_only):
         assert ray.get_runtime_context().task_id is not None
         assert ray.get_runtime_context().node_id is not None
         assert ray.get_runtime_context().job_id is not None
-        context = ray.get_runtime_context().get()
+        context = ray.get_runtime_context().context
         assert "actor_id" not in context
         assert context["task_id"] == ray.get_runtime_context().task_id
         assert context["node_id"] == ray.get_runtime_context().node_id
@@ -72,7 +72,7 @@ def test_was_current_actor_reconstructed(shutdown_only):
 
 
 def test_get_context_dict(ray_start_regular):
-    context_dict = ray.get_runtime_context().get()
+    context_dict = ray.get_runtime_context().context
     assert context_dict["node_id"] is not None
     assert context_dict["job_id"] is not None
     assert "actor_id" not in context_dict
@@ -81,7 +81,7 @@ def test_get_context_dict(ray_start_regular):
     @ray.remote
     class Actor:
         def check(self, node_id, job_id):
-            context_dict = ray.get_runtime_context().get()
+            context_dict = ray.get_runtime_context().context
             assert context_dict["node_id"] == node_id
             assert context_dict["job_id"] == job_id
             assert context_dict["actor_id"] is not None
@@ -93,7 +93,7 @@ def test_get_context_dict(ray_start_regular):
 
     @ray.remote
     def task(node_id, job_id):
-        context_dict = ray.get_runtime_context().get()
+        context_dict = ray.get_runtime_context().context
         assert context_dict["node_id"] == node_id
         assert context_dict["job_id"] == job_id
         assert context_dict["task_id"] is not None
