@@ -188,9 +188,14 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
 
+TEST(PrintLogTest, LogTestWithInitEmptyDir) {
+  RayLog::StartRayLog();
+  PrintLog();
+  RayLog::ShutDownRayLog();
+}
+
 TEST(PrintLogTest, LogTestWithInit) {
-  // Test empty app name.
-  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir());
+  RayLog::StartRayLog(ray::GetUserTempDir());
   PrintLog();
   RayLog::ShutDownRayLog();
 }

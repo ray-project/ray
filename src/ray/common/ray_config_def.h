@@ -779,5 +779,5 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 /// Whether to kill idle workers of a terminated job.
 RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 
-/// Whether to use one log file per worker in the pool.
+/// Whether to use one log file per worker in the worker pool.
 RAY_CONFIG(bool, one_log_per_workerpool_worker, false)
