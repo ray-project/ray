@@ -1,59 +1,83 @@
+import torch
 import numpy as np
+from torchvision import transforms
 from typing import Dict
 
 import ray
-from ray.air import Checkpoint
+from ray.data.datasource.partitioning import Partitioning
 from ray.data.preprocessors import BatchMapper
-from ray.air.util.data_batch_conversion import BatchFormat
-from ray.train.predictor import Predictor
 from ray.train.batch_predictor import BatchPredictor
 
 
-def load_trained_model():
-    # Replace this with loading your own model.
-    def model(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        predict = batch["passenger_count"] >= 2
-        return {"score": predict}
+# 1. Load your own data with Ray Data!
+# Start
+s3_uri = "s3://anonymous@air-example-data-2/imagenette2/val/"
+partitioning = Partitioning("dir", field_names=["class"], base_dir=s3_uri)
+ds = ray.data.read_images(
+    s3_uri, size=(256, 256), partitioning=partitioning, mode="RGB"
+)
+# End
 
-    return model
-
-
-input_splits = [
-    f"s3://anonymous@air-example-data/ursa-labs-taxi-data"
-    "/downsampled_2009_full_year_data.parquet"
-    f"/fe41422b01c04169af2a65a83b753e0f_{i:06d}.parquet"
-    for i in range(12)
-]
-ds = ray.data.read_parquet(input_splits)
-
-
-class CustomPredictor(Predictor):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def _predict_numpy(
-        self, data: Dict[str, np.ndarray], **kwargs
-    ) -> Dict[str, np.ndarray]:
-        # Replace this with doing inference with your own model.
-        return self.model(data)
-
-    @classmethod
-    def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "CustomPredictor":
-        return CustomPredictor(checkpoint.to_dict()["model"])
-
-
+# 2. Replace this with your own custom preprocessing logic!
+# Start
 def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    batch["passenger_count"] -= 1.0
-    return batch
+    def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        tensor = torch.as_tensor(batch, dtype=torch.float)
+        # (B, H, W, C) -> (B, C, H, W)
+        tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        # [0., 255.] -> [0., 1.]
+        tensor = tensor.div(255)
+        return tensor
+
+    transform = transforms.Compose(
+        [
+            transforms.Lambda(to_tensor),
+            transforms.CenterCrop(224),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    return {"image": transform(batch["image"]).numpy()}
 
 
-model = load_trained_model()
-predictor = BatchPredictor(
-    checkpoint=Checkpoint.from_dict({"model": model}),
-    predictor_cls=CustomPredictor,
-    preprocessor=BatchMapper(preprocess, batch_format=BatchFormat.NUMPY),
+preprocessor = BatchMapper(fn=preprocess, batch_format="numpy")
+# End
+
+# 3. Replace these with the framework of your choice!
+# Start
+from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+predictor_cls = TorchPredictor
+checkpoint_cls = TorchCheckpoint
+# End
+
+# 4. Replace this with building and loading your own model!
+# Start
+def build_model_checkpoint():
+    from torchvision import models
+
+    # Load the pretrained resnet model and construct a checkpoint
+    model = models.resnet152(pretrained=True)
+    checkpoint = checkpoint_cls.from_model(model=model, preprocessor=preprocessor)
+    return checkpoint
+
+
+checkpoint = build_model_checkpoint()
+# End
+
+# 5. Finally, build the BatchPredictor and perform GPU batch prediction!
+batch_predictor = BatchPredictor(checkpoint=checkpoint, predictor_cls=predictor_cls)
+predictions = batch_predictor.predict(
+    ds,
+    feature_columns=["image"],
+    batch_size=128,
+    min_scoring_workers=4,
+    max_scoring_workers=4,
+    num_gpus_per_worker=1,
 )
 
-results = predictor.predict(ds)
-print(results.show(5))
+# 6. Save predictions to our local filesystem (sharded between multiple files)
+num_shards = 3
+predictions.repartition(num_shards).write_parquet("local:///tmp/predictions")
+
+print(predictions.take(2))
+print("Predictions saved to `/tmp/predictions`!")
