@@ -263,7 +263,7 @@ void RayLog::StartRayLog(const std::string &app_name,
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
-    std::string file_path = JoinPaths(log_dir_, app_name);
+    std::string file_path = JoinPaths(log_dir_, app_name + ".log");
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         file_path, log_rotation_max_size_, log_rotation_file_num_);
     sinks.push_back(file_sink);

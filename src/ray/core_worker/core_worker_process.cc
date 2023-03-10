@@ -95,7 +95,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 #endif
       app_name << "_" << std::to_string(pid);
     }
-    app_name << ".log";
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.

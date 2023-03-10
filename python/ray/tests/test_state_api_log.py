@@ -581,12 +581,13 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
     test_log_text = "test_log_text_日志_{}"
     actor = Actor.remote()
+    pid = ray.get(actor.getpid.remote())
     ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
-        + "/api/v0/logs/stream?&lines=2"
+        + "/api/v0/logs/stream?&lines=3"
         + f"&actor_id={actor._ray_actor_id.hex()}",
         stream=True,
     )
@@ -596,7 +597,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # NOTE: Prefix 1 indicates the stream has succeeded.
     assert (
         next(stream_iterator).decode("utf-8")
-        == "1:actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+        == f"1:actor_name:Actor\n:pid:{pid}\n" + test_log_text.format("XXXXXX") + "\n"
     )
 
     streamed_string = ""

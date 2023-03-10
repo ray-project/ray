@@ -596,7 +596,7 @@ TEST_F(EventTest, TestLogEvent) {
 
   std::vector<std::string> vc;
   ReadContentFromFile(
-      vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log", "[ Event ");
+      vc, log_dir + "/event_test.log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 2);
   // Check ERROR event
   EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
@@ -621,7 +621,7 @@ TEST_F(EventTest, TestLogEvent) {
 
   vc.clear();
   ReadContentFromFile(
-      vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log", "[ Event ");
+      vc, log_dir + "/event_test.log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 4);
   // Check INFO event
   EXPECT_THAT(vc[0], testing::HasSubstr(" I "));
