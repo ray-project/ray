@@ -125,7 +125,7 @@ def test_select_operator_to_run():
     o3.num_active_work_refs = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
     assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
-    # nternal queue size is added to num active tasks.
+    # Internal queue size is added to num active tasks.
     o3.num_active_work_refs = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
     assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
@@ -135,6 +135,10 @@ def test_select_operator_to_run():
     o2.num_active_work_refs = MagicMock(return_value=0)
     o2.internal_queue_size = MagicMock(return_value=2)
     assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
+
+    # Test prioritization of nothrottle ops.
+    o2.throttling_disabled = MagicMock(return_value=True)
+    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
 
 
 def test_dispatch_next_task():
@@ -395,6 +399,31 @@ def test_execution_allowed_downstream_aware_memory_throttling():
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(0.5, 600)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
+
+
+def test_execution_allowed_nothrottle():
+    op = InputDataBuffer([])
+    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    # Above global.
+    assert not _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(1, 1000)},
+        ),
+        ExecutionResources(object_store_memory=900),
+    )
+
+    # Throttling disabled.
+    op.throttling_disabled = MagicMock(return_value=True)
+    assert _execution_allowed(
+        op,
+        TopologyResourceUsage(
+            ExecutionResources(object_store_memory=1000),
+            {op: DownstreamMemoryInfo(1, 1000)},
         ),
         ExecutionResources(object_store_memory=900),
     )

@@ -343,7 +343,7 @@ def _consumption_api(
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
-        "this dataset, and will block until execution completes."
+        "this dataset."
     )
     if delegate:
         message = delegate + base

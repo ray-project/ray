@@ -261,6 +261,48 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
         assert sum(len(output_splits[i]) for i in range(3)) == num_inputs, output_splits
 
 
+def test_split_operator_locality_hints(ray_start_regular_shared):
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    op = OutputSplitter(input_op, 2, equal=False, locality_hints=["node1", "node2"])
+
+    def get_fake_loc(item):
+        if item in [0, 1, 4, 5, 8]:
+            return "node1"
+        else:
+            return "node2"
+
+    def get_bundle_loc(bundle):
+        return get_fake_loc(ray.get(bundle.blocks[0][0])[0])
+
+    op._get_location = get_bundle_loc
+
+    # Feed data and implement streaming exec.
+    output_splits = collections.defaultdict(list)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.inputs_done()
+    while op.has_next():
+        ref = op.get_next()
+        assert ref.owns_blocks, ref
+        for block, _ in ref.blocks:
+            output_splits[ref.output_split_idx].extend(ray.get(block))
+
+    total = 0
+    for i in range(2):
+        if i == 0:
+            node = "node1"
+        else:
+            node = "node2"
+        split = output_splits[i]
+        for item in split:
+            assert get_fake_loc(item) == node
+            total += 1
+
+    assert total == 10, total
+    assert "10 locality hits, 0 misses" in op.progress_str()
+
+
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
