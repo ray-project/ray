@@ -408,7 +408,7 @@ class LearnerGroup:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
 
     def set_is_module_trainable(
-        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool]
+        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool] = None
     ) -> None:
         """Sets the function that determines whether a module is trainable.
 
@@ -417,7 +417,8 @@ class LearnerGroup:
                 and returns a boolean indicating whether the module should be trained
                 on the batch.
         """
-        self._is_module_trainable = is_module_trainable
+        if is_module_trainable is not None:
+            self._is_module_trainable = is_module_trainable
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""

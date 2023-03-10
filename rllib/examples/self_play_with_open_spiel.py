@@ -217,7 +217,7 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 

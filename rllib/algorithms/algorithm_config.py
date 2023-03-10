@@ -2296,7 +2296,7 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if self._enable_rl_module_api is not NotProvided:
+        if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
         else:
             # throw a warning if the user has used this API but not enabled it.
