@@ -1,5 +1,3 @@
-import gymnasium as gym
-from gymnasium.spaces import Box
 import json
 import logging
 import os
@@ -20,10 +18,10 @@ from typing import (
     Union,
 )
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from gym.spaces import Box
+from gymnasium.spaces import Box
 from packaging import version
 
 import ray
