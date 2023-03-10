@@ -15,35 +15,27 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "ray/gcs/autoscaler/node_provider.h"
-#include "ray/gcs/autoscaler/policy.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/autoscaler/autoscaler.h"
 
 namespace ray {
 namespace autoscaler {
 
-class AutoscalerService {
-  public:
-    UpdateResourceUsage();
-}
-
-class Autoscaler {
+// the serivce side of autoscaler.
+class AutoscalerServiceHandler {
  public:
-  Autoscaler(INodeProvider &node_provider,
-             gcs::GcsResourceManager &resource_manager,
-             std::unique_ptr<IAutoscalingPolicy> policy);
+   AutoscalerServiceHandler (std::unique_ptr<Autoscaler> autoscaler);
 
-  void RunOnce();
+   virtual void HandleUpdateClusterLoad(UpdateClusterResourceLoadRequest request,
+                            UpdateClusterResourceLoadResponse *reply,
+                            SendReplyCallback send_reply_callback);
 
-
+  virtual void HandleGetScalingState(GetScalingStateRequest request,
+                                     GetScalingStateResponse *reply,
+                                     SendReplyCallback send_reply_callback);
  private:
-  std::vector<std::pair<rpc::NodeType, int32_t>> GetNodesToLaunch();
-  void LaunchNewNodes(const std::vector<std::pair<rpc::NodeType, int32_t>> &);
+  std::unique_ptr<Autoscaler> autoscaler_;
+  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
 
- private:
-  INodeProvider &node_provider_;
-  gcs::GcsResourceManager &resource_manager_;
-  std::unique_ptr<IAutoscalingPolicy> policy_;
 };
 }  // namespace autoscaler
 }  // namespace ray

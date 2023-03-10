@@ -1,0 +1,68 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.autoscaler.rpc;
+
+// Autoscaler service that subscribes to cluster resource change (through UpdateClusterLoad)
+// and making scaling descisions.
+service Autoscaler {
+  // Update cluste resource load and resource view.
+  rpc UpdateClusterLoad (UpdateClusterResourceLoadRequest) returns (UpdateClusterResourceLoadResponse);
+
+  // Query the scaling decisions.
+  rpc GetScalingState (GetScalingStateRequest) returns (GetScalingStateResponse);
+
+  // potentially both above requests could be streaming
+  // rpc UpdateClusterLoad (UpdateClusterResourceLoadRequest) returns (UpdateClusterResourceLoadResponse);
+  // rpc GetScalingState (GetScalingStateRequest) returns (GetScalingStateResponse);
+}
+
+message UpdateClusterResourceLoadRequest {
+  ResourceUsageBatchData resource_usage_data = 1;
+  map<NodeId, ResourceData> cluster_resource_view = 2;
+  int64 timestamp = 3;
+}
+
+message UpdateClusterResourceLoadResponse {
+}
+
+enum ScalingEventType {
+  SCALINGEVENT_RESOURCE_UPDATED = 0;
+  SCALINGEVENT_UPSCALING_TRIGGERED = 1;
+  SCALINGEVENT_NODE_CREATED = 2;
+  SCALINGEVENT_NODE_STARTED = 3;
+  SCALINGEVENT_NODE_RUNNING = 4;
+  SCALINGEVENT_NODE_TERMINATED = 5;
+}
+
+message ScalingEvent {
+  i64 timestamp = 1;
+  ScalingEventType even_type = 2;
+}
+
+message GetScalingStateRequest {
+  int64 num_events = 1;
+}
+
+message GetScalingStateResponse {
+  repeated Node all_nodes = 1; // include nodes that running, terminating, and starting.
+  repeated ResourceDemand infeasible_requests = 2;
+  i64 last_processed_timestamp = 3;
+  ScalingEvent last_scaling_event = 4; 
+  repeated ScalingEvent autoscaling_events = 5;
+}
+
