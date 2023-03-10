@@ -183,6 +183,7 @@ class SplitCoordinator:
 
             # Fetch next bundle if needed.
             if next_bundle is None:
+                # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             block = next_bundle.blocks.pop()[0]
