@@ -36,8 +36,9 @@ Data Loading and Preprocessing for ML Training
 Use Ray Datasets to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
 Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
-Use Datasets as a last-mile bridge from storage or ETL pipeline outputs to distributed applications and libraries in Ray. Do not use it as a replacement for more general data processing systems.
-Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
+Use Datasets as a last-mile bridge from storage or ETL pipeline outputs to distributed 
+applications and libraries in Ray. Don't use it as a replacement for more general data 
+processing systems.
 
 .. image:: images/dataset-loading-1.png
    :width: 650px
@@ -46,11 +47,8 @@ Its utility is as the last-mile bridge from ETL pipeline outputs to distributed 
 ..
   https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
 
-You can also use Datasets seamlessly with Ray-integrated DataFrame libraries.
-
-.. image:: images/dataset-loading-2.png
-   :width: 650px
-   :align: center
+To learn more about the features Datasets supports, read the 
+:ref:`Datasets User Guide <data_user_guide>`.
 
 -----------------------------
 Datasets for Parallel Compute

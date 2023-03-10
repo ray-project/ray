@@ -10,6 +10,12 @@ is a transformation that applies a
 and returns a new dataset as the result. Datasets transformations can be composed to
 express a chain of computations.
 
+.. tip::
+
+    If you're performing common ML transformations like normalization and label 
+    encoding, create a :class:`~ray.data.preprocessor.Preprocessor` instead. To learn 
+    more, read :ref:`Using Preprocessors <air-preprocessors>`.
+
 .. _transform_datasets_transformations:
 
 ---------------
@@ -373,6 +379,79 @@ The following output types are allowed for per-row UDFs (e.g.,
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
 
+.. _transform_datasets_configuring_batch_size:
+
+----------------------
+Configuring Batch Size
+----------------------
+
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is the canonical parallel
+transformation API for Datasets: it launches parallel tasks over the underlying Datasets
+blocks and maps UDFs over data batches within those tasks, allowing the UDF to
+implement vectorized operations on batches. An important parameter to
+set is ``batch_size``, which controls the size of the batches provided to the UDF.
+
+.. literalinclude:: ./doc_code/transforming_datasets.py
+  :language: python
+  :start-after: __configuring_batch_size_begin__
+  :end-before: __configuring_batch_size_end__
+
+Increasing ``batch_size`` can result in faster execution by better leveraging vectorized
+operations and hardware, reducing batch slicing and concatenation overhead, and overall
+saturation of CPUs/GPUs, but will also result in higher memory utilization, which can
+lead to out-of-memory failures. If encountering OOMs, decreasing your ``batch_size`` may
+help.
+
+.. note::
+  The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
+  (e.g. tables with many columns or a collection of large images).
+
+If you specify a ``batch_size`` that's larger than your ``Dataset`` blocks, Datasets
+will bundle multiple blocks together for a single task in order to better satisfy
+``batch_size``. If ``batch_size`` is a lot larger than your ``Dataset`` blocks (e.g. if
+your dataset was created with too large of a ``parallelism`` and/or the ``batch_size``
+is set to too large of a value for your dataset), the number of parallel tasks
+may be less than expected.
+
+If your ``Dataset`` blocks are smaller than your ``batch_size`` and you want to increase
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
+``batch_size`` to prevent this block bundling. If you think that your ``Dataset`` blocks
+are too small, try decreasing ``parallelism`` during the read to create larger blocks.
+
+.. note::
+  The size of the batches provided to the UDF may be smaller than the provided
+  ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
+  task.
+
+.. note::
+  Block bundling (processing multiple blocks in a single task) will not occur if
+  ``batch_size`` is not set; instead, each task will receive a single block. If a block
+  is smaller than the default ``batch_size`` (4096), then the batch provided to the UDF
+  in that task will the same size as the block, and will therefore be smaller than the
+  default ``batch_size``.
+
+.. _transform_datasets_compute_strategy:
+
+----------------
+Compute Strategy
+----------------
+
+Datasets transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
+or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
+used (with ``compute="tasks"``). For transformations that require expensive setup,
+it's preferrable to use Ray actors, which are stateful and allow setup to be reused
+for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
+Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
+transforms. For a fixed-size actor pool, specify ``ActorPoolStrategy(n, n)``.
+
+The following is an example of using the Ray tasks and actors compute strategy
+for batch inference:
+
+.. literalinclude:: ./doc_code/transforming_datasets.py
+   :language: python
+   :start-after: __dataset_compute_strategy_begin__
+   :end-before: __dataset_compute_strategy_end__
+
 .. _datasets-groupbys:
 
 --------------------------
@@ -463,76 +542,18 @@ with calculated column means.
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 
+--------------
+Shuffling data
+--------------
 
-.. _transform_datasets_configuring_batch_size:
+Call :meth:`Dataset.random_shuffle() <ray.data.Dataset.random_shuffle>` to
+perform a global shuffle.
 
-----------------------
-Configuring Batch Size
-----------------------
+.. doctest::
 
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is the canonical parallel
-transformation API for Datasets: it launches parallel tasks over the underlying Datasets
-blocks and maps UDFs over data batches within those tasks, allowing the UDF to
-implement vectorized operations on batches. An important parameter to
-set is ``batch_size``, which controls the size of the batches provided to the UDF.
+    >>> dataset = ray.data.range(10)
+    >>> dataset.random_shuffle().take_all()  # doctest: +SKIP
+    [7, 0, 9, 3, 5, 1, 4, 2, 8, 6]
 
-.. literalinclude:: ./doc_code/transforming_datasets.py
-  :language: python
-  :start-after: __configuring_batch_size_begin__
-  :end-before: __configuring_batch_size_end__
-
-Increasing ``batch_size`` can result in faster execution by better leveraging vectorized
-operations and hardware, reducing batch slicing and concatenation overhead, and overall
-saturation of CPUs/GPUs, but will also result in higher memory utilization, which can
-lead to out-of-memory failures. If encountering OOMs, decreasing your ``batch_size`` may
-help.
-
-.. note::
-  The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
-  (e.g. tables with many columns or a collection of large images).
-
-If you specify a ``batch_size`` that's larger than your ``Dataset`` blocks, Datasets
-will bundle multiple blocks together for a single task in order to better satisfy
-``batch_size``. If ``batch_size`` is a lot larger than your ``Dataset`` blocks (e.g. if
-your dataset was created with too large of a ``parallelism`` and/or the ``batch_size``
-is set to too large of a value for your dataset), the number of parallel tasks
-may be less than expected.
-
-If your ``Dataset`` blocks are smaller than your ``batch_size`` and you want to increase
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
-``batch_size`` to prevent this block bundling. If you think that your ``Dataset`` blocks
-are too small, try decreasing ``parallelism`` during the read to create larger blocks.
-
-.. note::
-  The size of the batches provided to the UDF may be smaller than the provided
-  ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
-  task.
-
-.. note::
-  Block bundling (processing multiple blocks in a single task) will not occur if
-  ``batch_size`` is not set; instead, each task will receive a single block. If a block
-  is smaller than the default ``batch_size`` (4096), then the batch provided to the UDF
-  in that task will the same size as the block, and will therefore be smaller than the
-  default ``batch_size``.
-
-.. _transform_datasets_compute_strategy:
-
-----------------
-Compute Strategy
-----------------
-
-Datasets transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
-or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
-used (with ``compute="tasks"``). For transformations that require expensive setup,
-it's preferrable to use Ray actors, which are stateful and allow setup to be reused
-for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
-Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
-transforms. For a fixed-size actor pool, specify ``ActorPoolStrategy(n, n)``.
-
-The following is an example of using the Ray tasks and actors compute strategy
-for batch inference:
-
-.. literalinclude:: ./doc_code/transforming_datasets.py
-   :language: python
-   :start-after: __dataset_compute_strategy_begin__
-   :end-before: __dataset_compute_strategy_end__
+For better performance, perform a local shuffle. Read 
+:ref:`Shuffling Data <air-shuffle>` in the AIR user guide to learn more.
