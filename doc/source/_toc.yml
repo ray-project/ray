@@ -75,6 +75,7 @@ parts:
               - file: ray-air/examples/batch_forecasting
               - file: ray-air/examples/pytorch_resnet_batch_prediction
               - file: ray-air/examples/stablediffusion_batch_prediction
+              - file: ray-air/examples/gptj_deepspeed_fine_tuning
               - file: ray-air/examples/gptj_batch_prediction
               - file: ray-air/examples/gptj_serving
               - file: ray-air/examples/dreambooth_finetuning
