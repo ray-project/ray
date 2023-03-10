@@ -37,7 +37,7 @@ This flexibility is a unique characteristic of Ray Datasets.
 Reading Data
 ============
 
-Datasets uses Ray tasks to read data from remote storage. Each read task reads its assigned files and produces an output block:
+Datasets uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
 
 .. image:: images/dataset-read.svg
    :align: center
