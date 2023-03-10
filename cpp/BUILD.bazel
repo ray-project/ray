@@ -21,13 +21,13 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        ":ray_api",
+        ":ray_api_lib",
         ":symbols/ray_api_exported_symbols_linux.lds",
     ],
 )
 
 cc_library(
-    name = "ray_api",
+    name = "ray_api_lib",
     srcs = glob([
         "src/ray/api.cc",
         "src/ray/api/*.cc",
@@ -95,7 +95,7 @@ cc_binary(
         "@bazel_tools//src/conditions:windows": [
             # TODO(SongGuyang): Change to use dynamic library
             # "ray_cpp_lib" when we make it work on Windows.
-            "ray_api",
+            "ray_api_lib",
         ],
         "//conditions:default": [
             "ray_cpp_lib",
@@ -111,7 +111,6 @@ genrule(
     name = "ray_cpp_pkg",
     srcs = [
         "default_worker",
-        "ray_api",
         "libray_api.so",
     ],
     outs = ["ray_cpp_pkg.out"],
@@ -175,7 +174,7 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        "ray_api",
+        "ray_api_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -205,7 +204,7 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        "ray_api",
+        "ray_api_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -228,7 +227,7 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        "ray_api",
+        "ray_api_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -293,7 +292,7 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        "ray_api",
+        "ray_api_lib",
     ],
 )
 
@@ -327,7 +326,7 @@ cc_binary(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        ":ray_api",
+        ":ray_api_lib",
     ],
 )
 
