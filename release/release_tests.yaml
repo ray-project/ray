@@ -593,10 +593,6 @@
     timeout: 1800
     script: bash dreambooth_run.sh
 
-#######################
-# AIR examples
-#######################
-
 
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
