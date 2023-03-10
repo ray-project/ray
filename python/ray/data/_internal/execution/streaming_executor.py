@@ -22,6 +22,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
+    OBJECT_STORE_MEMORY_LIMIT_FRACTION,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
@@ -240,7 +241,10 @@ class StreamingExecutor(Executor, threading.Thread):
             gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
             object_store_memory=base.object_store_memory
             if base.object_store_memory is not None
-            else cluster.get("object_store_memory", 0.0) // 4,
+            else round(
+                OBJECT_STORE_MEMORY_LIMIT_FRACTION
+                * cluster.get("object_store_memory", 0.0)
+            ),
         )
 
     def _report_current_usage(

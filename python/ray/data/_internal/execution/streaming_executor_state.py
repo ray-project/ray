@@ -27,6 +27,10 @@ Topology = Dict[PhysicalOperator, "OpState"]
 # A RefBundle or an exception / end of stream indicator.
 MaybeRefBundle = Union[RefBundle, Exception, None]
 
+# The fraction of the object store capacity that will be used as the default object
+# store memory limit for the streaming executor.
+OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
+
 
 @dataclass
 class TopologyResourceUsage:
@@ -310,6 +314,11 @@ def select_operator_to_run(
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
 
+    # If no ops are allowed to execute due to resource constraints, try to trigger
+    # cluster scale-up.
+    if not ops:
+        _try_to_scale_up_cluster(topology)
+
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
     if (
@@ -328,6 +337,47 @@ def select_operator_to_run(
     return min(
         ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
     )
+
+
+def _try_to_scale_up_cluster(topology: Topology):
+    """Try to scale up the cluster to accomodate the provided in-progress workload.
+
+    This makes a resource request to Ray's autoscaler consisting of the current,
+    aggregate usage of all operators in the DAG + the incremental usage of all operators
+    that are ready for dispatch (i.e. that have inputs queued). If the autoscaler were
+    to grant this resource request, it would allow us to dispatch one task for every
+    ready operator.
+
+    Note that this resource request does not take the global resource limits or the
+    liveness policy into account; it only tries to make the existing resource usage +
+    one more task per ready operator feasible in the cluster.
+
+    Args:
+        topology: The execution state of the in-progress workload for which we wish to
+            request more resources.
+    """
+    # Get resource usage for all ready ops.
+    usage = ExecutionResources()
+    for op, state in topology.items():
+        usage = usage.add(op.current_resource_usage())
+        # Only include incremental resource usage for ops that are ready for
+        # dispatch.
+        if state.num_queued() > 0:
+            # TODO(Clark): Scale up more aggressively by adding incremental resource
+            # usage for more than one bundle in the queue for this op?
+            usage = usage.add(op.incremental_resource_usage())
+    resource_request = {}
+    # Round usage to ints, since autoscaler only accepts integral resource requests.
+    if usage.cpu:
+        resource_request["CPU"] = round(usage.cpu)
+    if usage.gpu:
+        resource_request["GPU"] = round(usage.gpu)
+    if usage.object_store_memory:
+        resource_request["object_store_memory"] = round(
+            usage.object_store_memory / OBJECT_STORE_MEMORY_LIMIT_FRACTION
+        )
+    # Make autoscaler resource request.
+    ray.autoscaler.sdk.request_resources(bundles=[resource_request])
 
 
 def _execution_allowed(

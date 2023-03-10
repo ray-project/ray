@@ -1,9 +1,10 @@
 import collections
 import pytest
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import ray
+from ray.autoscaler.sdk import request_resources
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -125,7 +126,7 @@ def test_select_operator_to_run():
     o3.num_active_work_refs = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
     assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
-    # nternal queue size is added to num active tasks.
+    # Internal queue size is added to num active tasks.
     o3.num_active_work_refs = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
     assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
@@ -246,6 +247,46 @@ def test_execution_allowed():
     assert not _execution_allowed(
         op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
+
+
+def test_resource_constrained_triggers_autoscaling():
+    # Test that dispatch not being possible due to resource limits triggers a scale-up
+    # request to the autoscaler.
+    opt = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator.create(
+        make_transform(lambda block: [b * -1 for b in block]),
+        o1,
+    )
+    o2.num_active_work_refs = MagicMock(return_value=1)
+    o3 = MapOperator.create(
+        make_transform(lambda block: [b * 2 for b in block]),
+        o2,
+    )
+    o3.num_active_work_refs = MagicMock(return_value=1)
+    o4 = MapOperator.create(
+        make_transform(lambda block: [b * 3 for b in block]),
+        o3,
+    )
+    o4.num_active_work_refs = MagicMock(return_value=1)
+    topo = build_streaming_topology(o4, opt)
+    # Make sure only two operator's inqueues has data.
+    topo[o2].inqueues[0].append("dummy")
+    topo[o4].inqueues[0].append("dummy")
+    with patch(
+        "ray.autoscaler.sdk.request_resources", wraps=request_resources
+    ) as mock_request_resources:
+        selected_op = select_operator_to_run(
+            topo,
+            TopologyResourceUsage(ExecutionResources(cpu=3), EMPTY_DOWNSTREAM_USAGE),
+            ExecutionResources(cpu=3),
+            True,
+        )
+        assert selected_op is None
+    # We should request incremental resources for only o2, since it's the only op that's
+    # ready to dispatch.
+    mock_request_resources.assert_called_once_with(bundles=[{"CPU": 5}])
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
