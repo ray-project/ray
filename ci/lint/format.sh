@@ -152,9 +152,9 @@ BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/cloudpickle/*'
     '--force-exclude' 'python/build/*'
     '--force-exclude' 'python/ray/core/src/ray/gcs/*'
+    '--extend-exclude' 'python/ray/serve/tests/test_config_files/syntax_error.py'
     '--force-exclude' 'python/ray/thirdparty_files/*'
     '--force-exclude' 'python/ray/_private/thirdparty/*'
-    '--force-exclude' 'python/ray/serve/tests/test_config_files/syntax_error.py'
 )
 
 GIT_LS_EXCLUDES=(
