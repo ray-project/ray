@@ -1,8 +1,10 @@
 import copy
 import logging
 import sys
+import threading
 from typing import (
     List,
+    Dict,
     Optional,
     Iterator,
     Callable,
@@ -22,7 +24,7 @@ from ray.data._internal.execution.legacy_compat import (
 )
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.interfaces import NodeIdStr
+from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -53,12 +55,15 @@ class StreamSplitDatasetIterator(DatasetIterator):
         See also: `Dataset.streaming_split`.
         """
         ctx = DatasetContext.get_current()
+
+        # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
         coord_actor = SplitCoordinator.options(
             max_concurrency=n,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
         ).remote(ctx, base_dataset, n, equal, locality_hints)
+
         return [
             StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
         ]
@@ -87,11 +92,11 @@ class StreamSplitDatasetIterator(DatasetIterator):
         """Implements DatasetIterator."""
 
         def gen_blocks() -> Iterator[ObjectRef[Block]]:
-            future: ObjectRef[ObjectRef[Block]] = self._coord_actor.get.remote(
-                self._output_split_idx
-            )
+            future: ObjectRef[
+                Optional[ObjectRef[Block]]
+            ] = self._coord_actor.get.remote(self._output_split_idx)
             while True:
-                block_ref: ObjectRef[Block] = ray.get(future)
+                block_ref: Optional[ObjectRef[Block]] = ray.get(future)
                 if not block_ref:
                     break
                 else:
@@ -146,7 +151,9 @@ class SplitCoordinator:
         self._equal = equal
         self._locality_hints = locality_hints
         self._finished = False
-        self._next_block = None
+        self._lock = threading.RLock()
+        # Guarded by self._lock.
+        self._next_bundle: Dict[int, RefBundle] = {}
 
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
@@ -161,18 +168,31 @@ class SplitCoordinator:
             dag_rewrite=add_split_op,
         )
 
-    def get(self, output_split_idx: int) -> ObjectRef[Block]:
+    def get(self, output_split_idx: int) -> Optional[ObjectRef[Block]]:
         """Blocking get operation.
 
-        This is intended to be called concurrently from multiple clients. To avoid
-        deadlock, the concurrency on this actor must be set to at least |nclients|.
+        This is intended to be called concurrently from multiple clients.
         """
         try:
-            if not self._next_block:
-                self._next_block = self._output_iterator.get_next(output_split_idx)
-            block = self._next_block.blocks.pop()[0]
-            if not self._next_block.blocks:
-                self._next_block = None
+            # Ensure there is at least one bundle.
+            with self._lock:
+                if output_split_idx in self._next_bundle:
+                    next_bundle = self._next_bundle[output_split_idx]
+                else:
+                    next_bundle = None
+
+            # Fetch next bundle if needed.
+            if next_bundle is None:
+                next_bundle = self._output_iterator.get_next(output_split_idx)
+
+            block = next_bundle.blocks.pop()[0]
+
+            # Accumulate any remaining blocks in next_bundle map as needed.
+            with self._lock:
+                self._next_bundle[output_split_idx] = next_bundle
+                if not next_bundle.blocks:
+                    del self._next_bundle[output_split_idx]
+
             return block
         except StopIteration:
             return None

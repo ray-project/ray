@@ -41,17 +41,7 @@ def execute_to_legacy_block_iterator(
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
 ) -> Iterator[ObjectRef[Block]]:
-    """Execute a plan with the new executor and return a block iterator.
-
-    Args:
-        executor: The executor to use.
-        plan: The legacy plan to execute.
-        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        dataset_uuid: UUID of the dataset for this execution.
-
-    Returns:
-        The output as a block iterator.
-    """
+    """Same as execute_to_legacy_bundle_iterator but returning blocks."""
     bundle_iter = execute_to_legacy_bundle_iterator(
         executor, plan, allow_clear_input_blocks, dataset_uuid
     )
@@ -67,12 +57,19 @@ def execute_to_legacy_bundle_iterator(
     dataset_uuid: str,
     dag_rewrite=None,
 ) -> Iterator[RefBundle]:
-    """Same as execute_to_legacy_block_iterator but returning bundles.
+    """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
+        executor: The executor to use.
+        plan: The legacy plan to execute.
+        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
+        dataset_uuid: UUID of the dataset for this execution.
         dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
             This is currently used as a legacy hack to inject the OutputSplit operator
             for `Dataset.streaming_split()`.
+
+    Returns:
+        The output as a bundle iterator.
     """
 
     if DatasetContext.get_current().optimizer_enabled:
