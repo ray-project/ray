@@ -2882,22 +2882,24 @@ class AlgorithmConfig(_Config):
                 f"module_spec keys: {list(marl_module_spec.module_specs.keys())}"
             )
 
-        # fill in the missing values from the module spec
+        # fill in the missing values from the default module spec in case it is
+        # SingleAgentRLModuleSpec
         default_spec = self.get_default_rl_module_spec()
-        for module_id in policy_dict:
-            policy_spec = policy_dict[module_id]
-            module_spec = marl_module_spec.module_specs[module_id]
+        if isinstance(default_spec, SingleAgentRLModuleSpec):
+            for module_id in policy_dict:
+                policy_spec = policy_dict[module_id]
+                module_spec = marl_module_spec.module_specs[module_id]
 
-            # TODO (Kourosh): Use update() instead of this if-else logic
-            # module_spec empty fields with default_spec.
-            if module_spec.module_class is None:
-                module_spec.module_class = default_spec.module_class
-            if module_spec.observation_space is None:
-                module_spec.observation_space = policy_spec.observation_space
-            if module_spec.action_space is None:
-                module_spec.action_space = policy_spec.action_space
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = policy_spec.config.get("model", {})
+                # TODO (Kourosh): Use update() instead of this if-else logic
+                # module_spec empty fields with default_spec.
+                if module_spec.module_class is None:
+                    module_spec.module_class = default_spec.module_class
+                if module_spec.observation_space is None:
+                    module_spec.observation_space = policy_spec.observation_space
+                if module_spec.action_space is None:
+                    module_spec.action_space = policy_spec.action_space
+                if module_spec.model_config_dict is None:
+                    module_spec.model_config_dict = policy_spec.config.get("model", {})
 
         return marl_module_spec
 
