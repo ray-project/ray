@@ -1,12 +1,16 @@
 import abc
 from dataclasses import dataclass
+import datetime
 import gymnasium as gym
-from typing import Mapping, Any, TYPE_CHECKING, Optional, Type
+import json
+import pathlib
+from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
     from ray.rllib.core.models.catalog import Catalog
 
+import ray
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -22,10 +26,16 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
+from ray.rllib.utils.serialization import (
+    gym_space_from_dict,
+    gym_space_to_dict,
+    serialize_type,
+    deserialize_type,
+)
 
 
 ModuleID = str
+METADATA_FILE_NAME = "rl_module_metadata.json"
 
 
 @ExperimentalAPI
@@ -90,14 +100,14 @@ class SingleAgentRLModuleSpec:
         """Returns a serialized representation of the spec."""
 
         return {
-            "module_class": self.module_class,
+            "module_class": serialize_type(self.module_class),
             "module_config": self.get_rl_module_config().to_dict(),
         }
 
     @classmethod
     def from_dict(cls, d):
         """Returns a single agent RLModule spec from a serialized representation."""
-        module_class = d["module_class"]
+        module_class = deserialize_type(d["module_class"])
 
         module_config = RLModuleConfig.from_dict(d["module_config"])
         observation_space = module_config.observation_space
@@ -145,22 +155,35 @@ class RLModuleConfig:
         )
 
     def to_dict(self):
-        """Returns a serialized representation of the config."""
+        """Returns a serialized representation of the config.
+
+        NOTE: This should be JSON-able. Users can test this by calling
+            json.dumps(config.to_dict()).
+
+        """
+        catalog_class_path = (
+            serialize_type(type(self.catalog_class)) if self.catalog_class else ""
+        )
         return {
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
             "model_config_dict": self.model_config_dict,
-            "catalog_class": self.catalog_class,
+            "catalog_class_path": catalog_class_path,
         }
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: Dict[str, Any]):
         """Creates a config from a serialized representation."""
+        catalog_class = (
+            None
+            if d["catalog_class_path"] == ""
+            else deserialize_type(d["catalog_class_path"])
+        )
         return cls(
             observation_space=gym_space_from_dict(d["observation_space"]),
             action_space=gym_space_from_dict(d["action_space"]),
             model_config_dict=d["model_config_dict"],
-            catalog_class=d["catalog_class"],
+            catalog_class=catalog_class,
         )
 
 
@@ -393,33 +416,126 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def serialize(self) -> Mapping[str, Any]:
-        """Return the serialized state of the module."""
-        return {
-            "class": self.__class__,
-            "config": self.config.to_dict(),
-            "state": self.get_state(),
-        }
+    def _save_module_metadata(
+        self,
+        checkpoint_dir: Union[str, pathlib.Path],
+        module_state_path: Union[str, pathlib.Path],
+    ):
+        """Saves the metadata of the module to checkpoint_dir.
+
+        Includes:
+            - module class path
+            - module state path
+            - the module config
+            - the ray version used
+            - the ray commit hash used
+            - the date and time of the checkpoint was created
+
+        """
+        if isinstance(checkpoint_dir, str):
+            checkpoint_dir = pathlib.Path(checkpoint_dir)
+        if isinstance(module_state_path, str):
+            module_state_path = pathlib.Path(module_state_path)
+        gmt_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
+        metadata = {}
+        # TODO (Avnishn): Find a way to incorporate the tune registry here.
+        metadata["module_class"] = serialize_type(self.__class__)
+        metadata["module_config"] = self.config.to_dict()
+        metadata["ray_version"] = ray.__version__
+        metadata["ray_commit_hash"] = ray.__commit__
+        metadata["checkpoint_date_time"] = gmt_time
+        metadata["module_state_path"] = str(module_state_path)
+        metadata_path = checkpoint_dir / METADATA_FILE_NAME
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
 
     @classmethod
-    def deserialize(cls, state: Mapping[str, Any]) -> "RLModule":
-        """Construct a module from a serialized state.
+    def _from_metadata_file(cls, metadata_path: Union[str, pathlib.Path]) -> "RLModule":
+        """Constructs a module from the metadata.
 
         Args:
-            state: The serialized state of the module.
-
-        NOTE: this state is typically obtained from `serialize()`.
-
-        NOTE: This method needs to be implemented in order to support
-            checkpointing and fault tolerance.
+            metadata_path: The path to the metadata json file for a module.
 
         Returns:
-            A deserialized RLModule.
+            The module.
         """
-        module_class = state["class"]
-        config = RLModuleConfig.from_dict(state["config"])
-        module = module_class(config)
-        module.set_state(state["state"])
+        if isinstance(metadata_path, str):
+            metadata_path = pathlib.Path(metadata_path)
+        if not metadata_path.exists():
+            raise ValueError("The metadata path was not found.")
+        if not metadata_path.exists():
+            raise ValueError(
+                "While constructing the module from the metadata, the "
+                f"metadata file was not found at {str(metadata_path)}"
+            )
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        module_class = deserialize_type(metadata["module_class"])
+        module_config = RLModuleConfig.from_dict(metadata["module_config"])
+        module = module_class(module_config)
+        return module
+
+    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+        """Saves the weights of this RLmodule to path.
+
+        Args:
+            path: The directory to save the checkpoint to.
+
+        Returns:
+            The path to the saved checkpoint.
+        """
+        raise NotImplementedError
+
+    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLmodule from path.
+
+        Args:
+            path: The directory to load the checkpoint from.
+        """
+        raise NotImplementedError
+
+    def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
+        """Saves the module to a checkpoint directory.
+
+        Args:
+            dir_path: The directory to save the checkpoint to.
+
+        Raises:
+            ValueError: If dir_path is not an absolute path.
+        """
+        path = pathlib.Path(checkpoint_dir_path)
+        if not path.is_absolute():
+            raise ValueError("dir_path must be an absolute path.")
+        path.mkdir(parents=True, exist_ok=True)
+        module_state_path = self.save_state_to_file(path)
+        self._save_module_metadata(path, module_state_path)
+
+    @classmethod
+    def from_checkpoint(cls, checkpoint_dir_path: str) -> None:
+        """Loads the module from a checkpoint directory.
+
+        Args:
+            dir_path: The directory to load the checkpoint from.
+        """
+        path = pathlib.Path(checkpoint_dir_path)
+        if not path.exists():
+            raise ValueError(
+                "While loading from checkpoint there was no directory"
+                " found at {}".format(checkpoint_dir_path)
+            )
+        if not path.is_absolute():
+            raise ValueError("dir_path must be an absolute path.")
+        if not path.is_dir():
+            raise ValueError(
+                "While loading from checkpoint the checkpoint_dir_path "
+                "provided was not a directory."
+            )
+        metadata_path = path / METADATA_FILE_NAME
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        state_path = metadata["module_state_path"]
+        module = cls._from_metadata_file(metadata_path)
+        module.load_state_from_file(state_path)
         return module
 
     @abc.abstractmethod
