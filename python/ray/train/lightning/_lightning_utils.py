@@ -126,9 +126,9 @@ class RayModelCheckpoint(ModelCheckpoint):
         ver: Optional[int] = None,
     ) -> str:
         """
-        Ensure different checkpoint files saved in seperate folders to align with AIR checkpoint format.
+        Change checkpoint files path to align with AIR checkpoint format.
 
-        e.g. './epoch=2-validation_loss=0.12.ckpt' -> './epoch=2-validation_loss=0.12.ckpt/model'
+        e.g. './epoch=2-loss=0.12.ckpt' -> './epoch=2-loss=0.12.ckpt/model'
         """
         filepath = super().format_checkpoint_name(metrics, filename, ver)
         return f"{filepath}/{MODEL_KEY}"

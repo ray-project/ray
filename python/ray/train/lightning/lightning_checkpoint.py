@@ -5,16 +5,13 @@ import tempfile
 import shutil
 
 from inspect import isclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type
+from typing import Optional, Type
 
-from ray.air.checkpoint import Checkpoint
-from ray.util.annotations import PublicAPI
-
-import os
-import shutil
 from ray.air.constants import MODEL_KEY
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.data import Preprocessor
 from ray.train.torch import TorchCheckpoint
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +20,7 @@ logger = logging.getLogger(__name__)
 class LightningCheckpoint(TorchCheckpoint):
     """A :class:`~ray.air.checkpoint.Checkpoint` with Lightning-specific functionality.
 
-    LightningCheckpoint only support file based checkpoint loading. 
+    LightningCheckpoint only support file based checkpoint loading.
     Create this by calling ``LightningCheckpoint.from_directory(ckpt_dir)``,
     ``LightningCheckpoint.from_uri(uri)`` or ``LightningCheckpoint.from_path(path)``
 
@@ -70,9 +67,9 @@ class LightningCheckpoint(TorchCheckpoint):
         """Retrieve the model stored in this checkpoint.
 
         Args:
-            model_class: A subclass of ``pytorch_lightning.LightningModule`` that 
+            model_class: A subclass of ``pytorch_lightning.LightningModule`` that
             defines your model and training logic.
-            load_from_checkpoint_kwargs: Arguments to pass into 
+            load_from_checkpoint_kwargs: Arguments to pass into
             ``model_cls.load_from_checkpoint``
 
         Returns:
@@ -87,8 +84,9 @@ class LightningCheckpoint(TorchCheckpoint):
             ckpt_path = os.path.join(checkpoint_dir, MODEL_KEY)
             if not os.path.exists(ckpt_path):
                 raise RuntimeError(
-                    f"File checkpoint.ckpt not found under the checkpoint directory."
+                    f"File {ckpt_path} not found under the checkpoint directory."
                 )
+
             model = model_class.load_from_checkpoint(
                 ckpt_path, **load_from_checkpoint_kwargs
             )

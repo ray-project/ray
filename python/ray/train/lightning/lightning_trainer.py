@@ -21,7 +21,7 @@ from ray.train.lightning._lightning_utils import (
 )
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, model_checkpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 import logging
@@ -357,8 +357,9 @@ def _lightning_train_loop_per_worker(config):
     # Setup ddp strategy for ray orchestration
     if "strategy" in trainer_config:
         logger.warning(
-            "`strategy` specified in `LightningConfig.trainer_init_config` will be ignored."
-            "LightningTrainer will create a RayDDPStrategy object based on `LightningConfig.ddp_strategy_config`."
+            "`strategy` specified in `LightningConfig.trainer_init_config` will "
+            "be ignored. LightningTrainer will create a RayDDPStrategy object based "
+            "on `LightningConfig.ddp_strategy_config`."
         )
     trainer_config["strategy"] = RayDDPStrategy(ptl_config.ddp_strategy_config)
 
