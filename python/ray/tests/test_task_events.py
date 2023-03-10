@@ -761,9 +761,7 @@ def test_task_logs_info_basic(shutdown_only):
             start_offset = log_info[f"std{type}_start"]
             end_offset = log_info[f"std{type}_end"]
             assert end_offset >= start_offset
-            assert (
-                start_offset > 0
-            ), "offsets should be > 0 with magical log prefix"
+            assert start_offset > 0, "offsets should be > 0 with magical log prefix"
             actual_log = _read_file(file, start_offset, end_offset)
             assert actual_log == expected_logs[f"{task_name}-{type}"]
 
@@ -779,7 +777,7 @@ def test_task_logs_info_basic(shutdown_only):
 
 
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
-    """Test when redirect disabled, no task log info is available 
+    """Test when redirect disabled, no task log info is available
     due to missing log file
     """
     with monkeypatch.context() as m:
