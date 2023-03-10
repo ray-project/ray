@@ -29,7 +29,6 @@ from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-from ray.data import Dataset
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
@@ -630,11 +629,16 @@ def test_execute_to_legacy_block_list(
     enable_optimizer,
     enable_streaming_executor,
 ):
-    ds: Dataset = ray.data.range(10)
+    ds = ray.data.range(10)
+    # Stats not initialized until `ds.iter_rows()` is called
     assert ds._plan._snapshot_stats is None
-    for row in ds.iter_rows():
-        assert row is not None
+
+    for i, row in enumerate(ds.iter_rows()):
+        assert row == i
+
     assert ds._plan._snapshot_stats is not None
+    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert ds._plan._snapshot_stats.time_total_s > 0
 
 
 def test_execute_to_legacy_block_iterator(
@@ -645,8 +649,11 @@ def test_execute_to_legacy_block_iterator(
     ds = ray.data.range(10)
     assert ds._plan._snapshot_stats is None
     for batch in ds.iter_batches():
-        assert batch
+        assert batch is not None
+
     assert ds._plan._snapshot_stats is not None
+    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert ds._plan._snapshot_stats.time_total_s > 0
 
 
 def test_streaming_executor(
