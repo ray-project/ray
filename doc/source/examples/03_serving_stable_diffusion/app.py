@@ -1,9 +1,12 @@
 from io import BytesIO
 
+import ray
 from ray import serve
 from fastapi import FastAPI
 from fastapi.responses import Response
 
+
+NUM_NODES = len(ray.nodes())
 
 app = FastAPI()
 
@@ -39,7 +42,7 @@ def get_runtime_env():
 
 @serve.deployment(
     ray_actor_options={"num_gpus": 1, "runtime_env": get_runtime_env()},
-    autoscaling_config={"min_replicas": 0, "max_replicas": 2},
+    autoscaling_config={"min_replicas": NUM_NODES, "max_replicas": NUM_NODES},
 )
 class StableDiffusionV2:
     def __init__(self):
