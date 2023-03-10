@@ -77,6 +77,7 @@ parts:
               - file: ray-air/examples/stablediffusion_batch_prediction
               - file: ray-air/examples/gptj_batch_prediction
               - file: ray-air/examples/gptj_serving
+              - file: ray-air/examples/dreambooth_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 

@@ -570,6 +570,29 @@
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
 
+
+#######################
+# AIR examples
+#######################
+
+
+# Test additional CPU nodes for preprocessing.
+- name: air_example_dreambooth_finetuning
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: dreambooth_env.yaml
+    cluster_compute: dreambooth_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash dreambooth_run.sh
+
 #######################
 # XGBoost release tests
 #######################
