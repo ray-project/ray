@@ -8,6 +8,9 @@ from ray.data.datasource.partitioning import Partitioning
 from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
 
+# Replace this with your own framework/custom checkpoint/predictors!
+from ray.train.torch import TorchCheckpoint, TorchPredictor
+
 
 # 1. Load your own data with Ray Data!
 # Start
@@ -18,9 +21,12 @@ ds = ray.data.read_images(
 )
 # End
 
+
 # 2. Replace this with your own custom preprocessing logic!
-# Start
+
+
 def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    # Start
     def to_tensor(batch: np.ndarray) -> torch.Tensor:
         tensor = torch.as_tensor(batch, dtype=torch.float)
         # (B, H, W, C) -> (B, C, H, W)
@@ -37,32 +43,32 @@ def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         ]
     )
     return {"image": transform(batch["image"]).numpy()}
+    # End
 
 
 preprocessor = BatchMapper(fn=preprocess, batch_format="numpy")
-# End
 
 # 3. Replace these with the framework of your choice!
 # Start
-from ray.train.torch import TorchCheckpoint, TorchPredictor
-
 predictor_cls = TorchPredictor
 checkpoint_cls = TorchCheckpoint
 # End
 
 # 4. Replace this with building and loading your own model!
-# Start
+
+
 def build_model_checkpoint():
+    # Start
     from torchvision import models
 
     # Load the pretrained resnet model and construct a checkpoint
     model = models.resnet152(pretrained=True)
     checkpoint = checkpoint_cls.from_model(model=model, preprocessor=preprocessor)
     return checkpoint
+    # End
 
 
 checkpoint = build_model_checkpoint()
-# End
 
 # 5. Finally, build the BatchPredictor and perform GPU batch prediction!
 batch_predictor = BatchPredictor(checkpoint=checkpoint, predictor_cls=predictor_cls)
