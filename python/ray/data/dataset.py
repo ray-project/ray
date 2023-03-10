@@ -52,6 +52,7 @@ from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
+from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -147,7 +148,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
-    from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -1146,6 +1147,44 @@ class Dataset(Generic[T]):
         return self.map_batches(process_batch)
 
     @ConsumptionAPI
+    def streaming_split(
+        self,
+        n: int,
+        *,
+        equal: bool = False,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
+    ) -> List[DatasetIterator]:
+        """Returns ``n`` :class:`~ray.data.DatasetIterator`s that can be used to read
+        disjoint subsets of the dataset in parallel.
+
+        This method is the recommended way to consume Datasets from multiple processes
+        (e.g., for distributed training). It requires streaming execution mode.
+
+        The returned iterators are Ray-serializable and can be freely passed to any
+        Ray task or actor.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1000000)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
+            >>> list(it1.iter_batches())  # doctest: +SKIP
+            >>> list(it2.iter_batches())  # doctest: +SKIP
+
+        Args:
+            n: Number of output iterators to return.
+            equal: If True, each output iterator will see an exactly equal number
+                of rows, dropping data if necessary. If False, some iterators may see
+                slightly more or less rows than other, but no data will be dropped.
+            locality_hints: Specify the node ids corresponding to each iterator
+                location. Datasets will try to minimize data movement based on the
+                iterator output locations. This list must have length ``n``.
+
+        Returns:
+            The output iterator splits.
+        """
+        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+
+    @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
@@ -1165,7 +1204,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
-        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             n: Number of child datasets to return.
@@ -1366,7 +1406,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             indices: List of sorted integers which indicate where the dataset
