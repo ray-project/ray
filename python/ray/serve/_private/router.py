@@ -5,7 +5,7 @@ import logging
 import pickle
 import random
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -13,7 +13,7 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
-from ray.serve._private.common import RunningReplicaInfo
+from ray.serve._private.common import RunningReplicaInfo, ReplicaTag
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
@@ -131,9 +131,12 @@ class ReplicaSet:
             self._reset_replica_iterator()
             self.config_updated_event.set()
 
-    def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
+    def _try_assign_replica(
+        self, query: Query
+    ) -> Tuple[Optional[ray.ObjectRef], Optional[ReplicaTag]]:
         """Try to assign query to a replica, return the object ref if succeeded
-        or return None if it can't assign this query to any replicas.
+        or return None if it can't assign this query to any replicas. Also
+        returns the ReplicaTag of the replica that the query was assigned to.
         """
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
@@ -175,8 +178,8 @@ class ReplicaSet:
                     pickle.dumps(query.metadata), *query.args, **query.kwargs
                 )
                 self.in_flight_queries[replica].add(tracker_ref)
-            return user_ref
-        return None
+            return user_ref, replica.replica_tag
+        return None, None
 
     @property
     def _all_query_refs(self):
@@ -218,11 +221,16 @@ class ReplicaSet:
 
         return len(done)
 
-    async def assign_replica(self, query: Query) -> ray.ObjectRef:
+    async def assign_replica(self, query: Query) -> Tuple[ray.ObjectRef, ReplicaTag]:
         """Given a query, submit it to a replica and return the object ref.
         This method will keep track of the in flight queries for each replicas
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
+
+        Return:
+            1. Object ref pointing to the result of the query after it's
+                processed by the replica.
+            2. ReplicaTag of the replica that the query was assigned to.
         """
         endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
@@ -250,12 +258,12 @@ class ReplicaSet:
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
-            assigned_ref = self._try_assign_replica(query)
+            assigned_ref, assigned_replica_tag = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
-        return assigned_ref
+        return assigned_ref, assigned_replica_tag
 
 
 class Router:

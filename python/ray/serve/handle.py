@@ -219,7 +219,7 @@ class RayServeHandle:
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
         )
-        coro = self.router.assign_request(request_metadata, *args, **kwargs)
+        coro, _ = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
     @_wrap_into_async_task
