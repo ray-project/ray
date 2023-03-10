@@ -159,11 +159,11 @@ class OpState:
                 # Scan the queue and look for outputs tagged for the given index.
                 for i in range(len(self.outqueue)):
                     bundle = self.outqueue[i]
-                    if bundle is None:
+                    if bundle is None or isinstance(bundle, Exception):
                         # End of stream for this index! Note that we
                         # do not remove the None, so that it can act
                         # as the termination signal for all indices.
-                        return None
+                        return bundle
                     elif bundle.output_split_idx == output_split_idx:
                         self.outqueue.remove(bundle)
                         return bundle
@@ -324,9 +324,14 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and num bundles processing for backpressure.
+    # Run metadata-only operators first. After that, equally penalize outqueue length
+    # and num bundles processing for backpressure.
     return min(
-        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
+        ops,
+        key=lambda op: (
+            not op.throttling_disabled(),
+            len(topology[op].outqueue) + topology[op].num_processing(),
+        ),
     )
 
 
@@ -353,6 +358,10 @@ def _execution_allowed(
     Returns:
         Whether the op is allowed to run.
     """
+
+    if op.throttling_disabled():
+        return True
+
     assert isinstance(global_usage, TopologyResourceUsage), global_usage
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
