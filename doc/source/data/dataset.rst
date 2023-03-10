@@ -86,8 +86,8 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     ^^^
 
     Understand the key concepts behind Ray Datasets.
-    Learn what :ref:`Datasets <dataset_concept>` and :ref:`Dataset Pipelines <dataset_pipeline_concept>` are
-    and how they get executed in Ray Datasets.
+    Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray
+    Datasets.
 
     +++
     .. link-button:: data_key_concepts
@@ -103,7 +103,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
     :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
     transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
-    :ref:`work with tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
+    or :ref:`work with tensor data <datasets_tensor_support>`.
 
     +++
     .. link-button:: data_user_guide
