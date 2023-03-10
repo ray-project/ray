@@ -446,15 +446,21 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert (
-        str(ds) == "Dataset(\n\tnum_blocks=2,\n\tnum_rows=6,"
-        "\n\tschema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n)"
+    assert str(ds) == (
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=6,\n"
+        "   schema={two: string, "
+        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
+        ")"
     ), ds
-    assert (
-        repr(ds) == "Dataset(\n\tnum_blocks=2,\n\tnum_rows=6,"
-        "\n\tschema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n)"
+    assert repr(ds) == (
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=6,\n"
+        "   schema={two: string, "
+        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
+        ")"
     ), ds
     check_num_computed(ds, 1, 1)
 
