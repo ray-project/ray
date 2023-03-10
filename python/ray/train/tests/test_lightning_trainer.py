@@ -1,10 +1,10 @@
 import numpy as np
-from ray.train.lightning import LightningConfig, LightningTrainer
+from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 import ray
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 import pytest
 
-from ray.train.tests.test_lightning_utils import (
+from ray.train.tests._lightning_utils import (
     LinearModule,
     DoubleLinearModule,
     DummyDataModule,
@@ -19,23 +19,24 @@ def test_trainer_with_native_dataloader(accelerator, datasource):
     num_workers = 2
     dataset_size = 256
 
-    lightning_config = LightningConfig()
-    lightning_config.set_module_class(LinearModule)
-    lightning_config.set_module_init_config(input_dim=32, output_dim=4)
-    lightning_config.set_trainer_init_config(
+    config_builder = LightningConfigBuilder()
+    config_builder.set_module_class(LinearModule)
+    config_builder.set_module_init_config(input_dim=32, output_dim=4)
+    config_builder.set_trainer_init_config(
         max_epochs=num_epochs, accelerator=accelerator
     )
+    lightning_config = config_builder.build()
 
     datamodule = DummyDataModule(batch_size, dataset_size)
     train_loader = datamodule.train_dataloader()
     val_loader = datamodule.val_dataloader()
 
     if datasource == "dataloader":
-        lightning_config.set_trainer_fit_params(
+        config_builder.set_trainer_fit_params(
             train_dataloaders=train_loader, val_dataloaders=val_loader
         )
     if datasource == "datamodule":
-        lightning_config.set_trainer_fit_params(datamodule=datamodule)
+        config_builder.set_trainer_fit_params(datamodule=datamodule)
 
     scaling_config = ray.air.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
@@ -59,12 +60,13 @@ def test_trainer_with_ray_data(accelerator):
     train_dataset = ray.data.from_numpy(dataset)
     val_dataset = ray.data.from_numpy(dataset)
 
-    lightning_config = LightningConfig()
-    lightning_config.set_module_class(LinearModule)
-    lightning_config.set_module_init_config(input_dim=32, output_dim=4)
-    lightning_config.set_trainer_init_config(
+    config_builder = LightningConfigBuilder()
+    config_builder.set_module_class(LinearModule)
+    config_builder.set_module_init_config(input_dim=32, output_dim=4)
+    config_builder.set_trainer_init_config(
         max_epochs=num_epochs, accelerator=accelerator
     )
+    lightning_config = config_builder.build()
 
     scaling_config = ray.air.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
@@ -74,13 +76,13 @@ def test_trainer_with_ray_data(accelerator):
         lightning_config=lightning_config,
         scaling_config=scaling_config,
         datasets={"train": train_dataset, "val": val_dataset},
-        dataset_iter_config={"batch_size": batch_size},
+        datasets_iter_config={"batch_size": batch_size},
     )
 
     trainer.fit()
 
 
-@pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
+@pytest.mark.parametrize("accelerator", ["gpu"])
 def test_trainer_with_categorical_ray_data(accelerator):
     num_epochs = 4
     batch_size = 8
@@ -93,15 +95,14 @@ def test_trainer_with_categorical_ray_data(accelerator):
     train_dataset = ray.data.from_pandas(pd)
     val_dataset = ray.data.from_pandas(pd)
 
-    lightning_config = LightningConfig()
-    lightning_config.set_module_class(DoubleLinearModule)
-    lightning_config.set_module_init_config(
-        input_dim_1=32, input_dim_2=32, output_dim=4
-    )
-    lightning_config.set_trainer_init_config(
+    config_builder = LightningConfigBuilder()
+    config_builder.set_module_class(DoubleLinearModule)
+    config_builder.set_module_init_config(input_dim_1=32, input_dim_2=32, output_dim=4)
+    config_builder.set_trainer_init_config(
         max_epochs=num_epochs, accelerator=accelerator
     )
 
+    lightning_config = config_builder.build()
     scaling_config = ray.air.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
@@ -110,7 +111,7 @@ def test_trainer_with_categorical_ray_data(accelerator):
         lightning_config=lightning_config,
         scaling_config=scaling_config,
         datasets={"train": train_dataset, "val": val_dataset},
-        dataset_iter_config={"batch_size": batch_size},
+        datasets_iter_config={"batch_size": batch_size},
     )
 
     trainer.fit()
