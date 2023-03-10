@@ -14,7 +14,7 @@ import pytest
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
-    RAY_RUNTIME_ENV_SKIP_GITIGNORE,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
@@ -521,19 +521,19 @@ def test_get_gitignore(tmp_path):
     assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
 
 
-@pytest.mark.parametrize("skip_gitignore", [True, False])
+@pytest.mark.parametrize("ignore_gitignore", [True, False])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_travel(tmp_path, skip_gitignore, monkeypatch):
+def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     dir_paths = set()
     file_paths = set()
     item_num = 0
     excludes = []
     root = tmp_path / "test"
 
-    if skip_gitignore:
-        monkeypatch.setenv(RAY_RUNTIME_ENV_SKIP_GITIGNORE, "1")
+    if ignore_gitignore:
+        monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "1")
     else:
-        monkeypatch.delenv(RAY_RUNTIME_ENV_SKIP_GITIGNORE, raising=False)
+        monkeypatch.delenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, raising=False)
 
     def construct(path, excluded=False, depth=0):
         nonlocal item_num
@@ -578,8 +578,8 @@ def test_travel(tmp_path, skip_gitignore, monkeypatch):
         # Add file that should be ignored by gitignore
         with (root / "foo.pyc").open("w") as f:
             f.write("foo")
-        if skip_gitignore:
-            # If skip_gitignore is True, then the file should be visited
+        if ignore_gitignore:
+            # If ignore_gitignore is True, then the file should be visited
             file_paths.add((str(root / "foo.pyc"), "foo"))
 
     construct(root)

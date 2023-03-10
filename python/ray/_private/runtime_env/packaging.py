@@ -15,7 +15,7 @@ from filelock import FileLock
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
-    RAY_RUNTIME_ENV_SKIP_GITIGNORE,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
@@ -250,7 +250,7 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
     """Returns a function that returns True if the path should be excluded.
 
     Returns None if there is no .gitignore file in the path, or if the
-    RAY_RUNTIME_ENV_SKIP_GITIGNORE environment variable is set to 1.
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
 
     Args:
         path: The path to the directory to check for a .gitignore file.
@@ -258,8 +258,8 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
     Returns:
         A function that returns True if the path should be excluded.
     """
-    skip_gitignore = os.environ.get(RAY_RUNTIME_ENV_SKIP_GITIGNORE, "0") == "1"
-    if skip_gitignore:
+    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
+    if ignore_gitignore:
         return None
 
     path = path.absolute()
