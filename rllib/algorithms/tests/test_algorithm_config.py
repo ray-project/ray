@@ -213,15 +213,15 @@ class TestAlgorithmConfig(unittest.TestCase):
         expected_marl_module_class: type = None,
     ):
         """This is a utility function that retrieves the expected marl specs.
-        
+
         Args:
             config: The algorithm config.
-            expected_module_class: This is the expected RLModule class that is going to 
-                be reference in the SingleAgentRLModuleSpec parts of the 
+            expected_module_class: This is the expected RLModule class that is going to
+                be reference in the SingleAgentRLModuleSpec parts of the
                 MultiAgentRLModuleSpec.
-            passed_module_class: This is the RLModule class that is passed into the 
-                module_spec argument of configget_marl_module_spec. The function is 
-                designed so that it will use the passed in module_spec for the 
+            passed_module_class: This is the RLModule class that is passed into the
+                module_spec argument of configget_marl_module_spec. The function is
+                designed so that it will use the passed in module_spec for the
                 SingleAgentRLModuleSpec parts of the MultiAgentRLModuleSpec.
             expected_marl_module_class: This is the expected MultiAgentRLModule class
                 that is going to be reference in the MultiAgentRLModuleSpec.
@@ -306,6 +306,8 @@ class TestAlgorithmConfig(unittest.TestCase):
                 )
 
         ########################################
+        # This is the simplest case where we have to construct the marl module based on
+        # the default specs only.
         config = SingleAgentAlgoConfig().rl_module(_enable_rl_module_api=True)
         config.validate()
 
@@ -319,6 +321,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
+        # This is the case where we pass in a multi-agent RLModuleSpec that asks the
+        # algorithm to assign a specific type of RLModule class to certain module_ids.
         config = SingleAgentAlgoConfig().rl_module(
             _enable_rl_module_api=True,
             rl_module_spec=MultiAgentRLModuleSpec(
@@ -334,7 +338,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
-        # We want to override the default rl module
+        # This is the case where we ask the algorithm to assign a specific type of
+        # RLModule class to ALL module_ids.
         config = SingleAgentAlgoConfig().rl_module(
             _enable_rl_module_api=True,
             rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
@@ -350,8 +355,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         )
         self._assertEqualMARLSpecs(spec, expected)
         ########################################
-        # We now want to tell the algorithm to use a different rl module for each
-        # RLModule
+        # This is an alternative way to ask the algorithm to assign a specific type of
+        # RLModule class to ALL module_ids.
         config = SingleAgentAlgoConfig().rl_module(
             _enable_rl_module_api=True,
             rl_module_spec=MultiAgentRLModuleSpec(
@@ -370,8 +375,9 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
-        # We now want to tell the algorithm to use a heterogeneous rl module for each
-        # RLModule
+        # This is not only assigning a specific type of RLModule class to EACH
+        # module_id, but also defining a new custom MultiAgentRLModule class to be used
+        # in the multi-agent scenario.
         config = SingleAgentAlgoConfig().rl_module(
             _enable_rl_module_api=True,
             rl_module_spec=MultiAgentRLModuleSpec(
@@ -400,7 +406,9 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
-        # default is multi-agent and we need to map policy_dict to marl_specs
+        # This is the case where we ask the algorithm to use its default
+        # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
+        # SingleAgentRLmoduleSpecs.
         config = MultiAgentAlgoConfigWithNoSingleAgentSpec().rl_module(
             _enable_rl_module_api=True
         )
@@ -410,6 +418,10 @@ class TestAlgorithmConfig(unittest.TestCase):
             # situation where we won't know what to use for the base RLModules.
             config.validate()
 
+        ########################################
+        # This is the case where we ask the algorithm to use its default
+        # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
+        # SingleAgentRLmoduleSpecs.
         config = MultiAgentAlgoConfig().rl_module(_enable_rl_module_api=True)
         config.validate()
 

@@ -590,7 +590,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     def additional_update(
         self, module_ids_to_update: Sequence[ModuleID] = None, **kwargs
-    ) -> Mapping[str, Any]:
+    ) -> Mapping[ModuleID, Any]:
         """Apply additional non-gradient based updates to this Trainer.
 
         For example, this could be used to do a polyak averaging update
@@ -602,7 +602,7 @@ class Learner:
 
             class DQNLearner(TorchLearner):
 
-                def additional_update_per_module(self, module_id: str, tau: float):
+                def additional_update_per_module(self, module_id: ModuleID, tau: float):
                     # perform polyak averaging update
                     main = self._module[module_id].main
                     target = self._module[module_id].target
@@ -641,7 +641,7 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     def additional_update_per_module(
-        self, module_id: str, **kwargs
+        self, module_id: ModuleID, **kwargs
     ) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -754,9 +754,8 @@ class Learner:
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         """Check whether the module is compatible with the learner.
 
-        Are they both torch or tf? If there is a random RLModule for example, it will
-        not be a torch or tf module. Therefore we should not consider it during
-        gradient based optimization.
+        For example, if there is a random RLModule, it will not be a torch or tf
+        module. Therefore we should not consider it during gradient based optimization.
 
         Args:
             module: The module to check.
