@@ -411,11 +411,9 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_get_serve_instance_details(ray_start_stop):
-    pizza_import_path = (
-        "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
-    )
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
         "host": "127.0.0.1",
@@ -424,19 +422,11 @@ def test_get_serve_instance_details(ray_start_stop):
             {
                 "name": "app1",
                 "route_prefix": "/app1",
-                "import_path": pizza_import_path,
+                "import_path": world_import_path,
                 "deployments": [
                     {
-                        "name": "Adder",
-                        "ray_actor_options": {
-                            "runtime_env": {"env_vars": {"override_increment": "3"}}
-                        },
-                    },
-                    {
-                        "name": "Multiplier",
-                        "ray_actor_options": {
-                            "runtime_env": {"env_vars": {"override_factor": "4"}}
-                        },
+                        "name": "f",
+                        "ray_actor_options": {"num_cpus": 0.2},
                     },
                 ],
             },
@@ -496,11 +486,8 @@ def test_get_serve_instance_details(ray_start_stop):
 
     # CHECK: all deployments are present
     assert app_details["app1"].deployments_details.keys() == {
-        "app1_DAGDriver",
-        "app1_create_order",
-        "app1_Router",
-        "app1_Adder",
-        "app1_Multiplier",
+        "app1_f",
+        "app1_BasicDriver",
     }
     assert app_details["app2"].deployments_details.keys() == {
         "app2_FastAPIDeployment",
@@ -513,11 +500,10 @@ def test_get_serve_instance_details(ray_start_stop):
         for dep_details in app_details[app].deployments_details.values():
             assert dep_details.deployment_status == DeploymentStatus.HEALTHY
 
-            config = dep_details.deployment_config
-            # If app state = RUNNING, deployments should have reached target # replicas
-            assert dep_details.num_running_replicas == config.num_replicas
             # Route prefix should be app level options eventually
-            assert "route_prefix" not in config.dict(exclude_unset=True)
+            assert "route_prefix" not in dep_details.deployment_config.dict(
+                exclude_unset=True
+            )
     print("Finished checking application details.")
 
 

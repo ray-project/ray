@@ -520,11 +520,6 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 @PublicAPI(stability="alpha")
 class DeploymentDetails(BaseModel, extra=Extra.forbid):
     name: str = Field(description="Deployment name.")
-    num_running_replicas: int = Field(
-        description=(
-            "The number of replicas that are currently RUNNING in this deployment."
-        )
-    )
     deployment_status: DeploymentStatus = Field(
         description="The current status of the deployment."
     )
