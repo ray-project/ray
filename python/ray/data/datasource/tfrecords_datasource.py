@@ -89,7 +89,8 @@ def _convert_example_to_dict(
     for feature_name, feature in example.features.feature.items():
         if tf_schema is not None and feature_name not in schema_dict:
             raise ValueError(
-                f"Missing feature {feature_name} in specified schema: {tf_schema}"
+                f"Found extra unexpected feature {feature_name} "
+                f"not in specified schema: {tf_schema}"
             )
         schema_feature_type = schema_dict.get(feature_name)
         record[feature_name] = _get_feature_value(feature, schema_feature_type)
@@ -116,7 +117,8 @@ def _convert_arrow_table_to_examples(
         for name in arrow_table.column_names:
             if tf_schema is not None and name not in schema_dict:
                 raise ValueError(
-                    f"Missing feature {name} in specified schema: {tf_schema}"
+                    f"Found extra unexpected feature {name} "
+                    f"not in specified schema: {tf_schema}"
                 )
             schema_feature_type = schema_dict.get(name)
             features[name] = _value_to_feature(
@@ -186,7 +188,7 @@ def _get_feature_value(
         value = []
         type_ = pa.null()
     value = list(value)
-    if len(value) == 1:
+    if len(value) == 1 and schema_feature_type is None:
         # Use the value itself if the features contains a single value.
         # This is to give better user experience when writing preprocessing UDF on
         # these single-value lists.

@@ -15,8 +15,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
-@pytest.fixture
-def tf_records_partial(request):
+def tf_records_partial():
     """Underlying data corresponds to `data_partial` fixture."""
     import tensorflow as tf
 
@@ -92,40 +91,37 @@ def tf_records_partial(request):
     ]
 
 
-@pytest.fixture
-def data_partial(request):
-    """TFRecords generated from this corresponds to
-    the `tf_records_partial` fixture."""
+def data_partial(with_tf_schema):
+    """TFRecords generated from this corresponds to `tf_records_partial`."""
     return [
         # Row one.
         {
-            "int_item": 1,
+            "int_item": [1] if with_tf_schema else 1,
             "int_list": [2, 2, 3],
             "int_partial": [],
-            "float_item": 1.0,
+            "float_item": [1.0] if with_tf_schema else 1.0,
             "float_list": [2.0, 3.0, 4.0],
-            "float_partial": 1.0,
-            "bytes_item": b"abc",
+            "float_partial": [1.0] if with_tf_schema else 1.0,
+            "bytes_item": [b"abc"] if with_tf_schema else b"abc",
             "bytes_list": [b"def", b"1234"],
-            "bytes_partial": None,
+            "bytes_partial": [] if with_tf_schema else None,
         },
         # Row two.
         {
-            "int_item": 2,
+            "int_item": [2] if with_tf_schema else 2,
             "int_list": [3, 3, 4],
             "int_partial": [9, 2],
-            "float_item": 2.0,
+            "float_item": [2.0] if with_tf_schema else 2.0,
             "float_list": [5.0, 6.0, 7.0],
-            "float_partial": None,
-            "bytes_item": b"ghi",
+            "float_partial": [] if with_tf_schema else None,
+            "bytes_item": [b"ghi"] if with_tf_schema else b"ghi",
             "bytes_list": [b"jkl", b"5678"],
-            "bytes_partial": b"hello",
+            "bytes_partial": [b"hello"] if with_tf_schema else b"hello",
         },
     ]
 
 
-@pytest.fixture
-def tf_records_empty(request):
+def tf_records_empty():
     """Underlying data corresponds to `data_empty` fixture."""
     import tensorflow as tf
 
@@ -219,39 +215,38 @@ def tf_records_empty(request):
     ]
 
 
-@pytest.fixture
-def data_empty(request):
+def data_empty(with_tf_schema):
     """TFRecords generated from this corresponds to
     the `tf_records_empty` fixture."""
     return [
         # Row one.
         {
-            "int_item": 1,
+            "int_item": [1] if with_tf_schema else 1,
             "int_list": [2, 2, 3],
             "int_partial": [],
             "int_empty": [],
-            "float_item": 1.0,
+            "float_item": [1.0] if with_tf_schema else 1.0,
             "float_list": [2.0, 3.0, 4.0],
-            "float_partial": 1.0,
+            "float_partial": [1.0] if with_tf_schema else 1.0,
             "float_empty": [],
-            "bytes_item": b"abc",
+            "bytes_item": [b"abc"] if with_tf_schema else b"abc",
             "bytes_list": [b"def", b"1234"],
             "bytes_partial": [],
             "bytes_empty": [],
         },
         # Row two.
         {
-            "int_item": 2,
+            "int_item": [2] if with_tf_schema else 2,
             "int_list": [3, 3, 4],
             "int_partial": [9, 2],
             "int_empty": [],
-            "float_item": 2.0,
+            "float_item": [2.0] if with_tf_schema else 2.0,
             "float_list": [5.0, 6.0, 7.0],
             "float_partial": [],
             "float_empty": [],
-            "bytes_item": b"ghi",
+            "bytes_item": [b"ghi"] if with_tf_schema else b"ghi",
             "bytes_list": [b"jkl", b"5678"],
-            "bytes_partial": b"hello",
+            "bytes_partial": [b"hello"] if with_tf_schema else b"hello",
             "bytes_empty": [],
         },
     ]
@@ -297,15 +292,18 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_read_tfrecords(
-    with_tf_schema, ray_start_regular_shared, tmp_path, tf_records_empty
+    with_tf_schema,
+    ray_start_regular_shared,
+    tmp_path,
 ):
     import tensorflow as tf
+    import pandas as pd
 
-    example = tf_records_empty[0]
+    example = tf_records_empty()[0]
 
     tf_schema = None
     if with_tf_schema:
-        tf_schema = _features_to_schema(tf_records_empty[0].features)
+        tf_schema = _features_to_schema(example.features)
 
     path = os.path.join(tmp_path, "data.tfrecords")
     with tf.io.TFRecordWriter(path=path) as writer:
@@ -314,32 +312,54 @@ def test_read_tfrecords(
     ds = ray.data.read_tfrecords(path, tf_schema=tf_schema)
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
-    assert is_int64_dtype(dict(df.dtypes)["int_item"])
+    if with_tf_schema:
+        assert is_object_dtype(dict(df.dtypes)["int_item"])
+    else:
+        assert is_int64_dtype(dict(df.dtypes)["int_item"])
     assert is_object_dtype(dict(df.dtypes)["int_list"])
     assert is_object_dtype(dict(df.dtypes)["int_partial"])
     assert is_object_dtype(dict(df.dtypes)["int_empty"])
 
-    assert is_float_dtype(dict(df.dtypes)["float_item"])
+    if with_tf_schema:
+        assert is_object_dtype(dict(df.dtypes)["float_item"])
+        assert is_object_dtype(dict(df.dtypes)["float_partial"])
+    else:
+        assert is_float_dtype(dict(df.dtypes)["float_item"])
+        assert is_float_dtype(dict(df.dtypes)["float_partial"])
     assert is_object_dtype(dict(df.dtypes)["float_list"])
-    assert is_float_dtype(dict(df.dtypes)["float_partial"])
     assert is_object_dtype(dict(df.dtypes)["float_empty"])
 
+    # In both cases, bytes are of `object` dtype in pandas
     assert is_object_dtype(dict(df.dtypes)["bytes_item"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
     assert is_object_dtype(dict(df.dtypes)["bytes_partial"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
     assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
 
-    assert list(df["int_item"]) == [1]
+    # If the schema is specified, we should not perform the
+    # automatic unwrapping of single-element lists.
+    if with_tf_schema:
+        assert isinstance(df["int_item"], pd.Series)
+        assert df["int_item"].tolist() == [[1]]
+    else:
+        assert list(df["int_item"]) == [1]
     assert np.array_equal(df["int_list"][0], np.array([2, 2, 3]))
     assert np.array_equal(df["int_partial"][0], np.array([], dtype=np.int64))
     assert np.array_equal(df["int_empty"][0], np.array([], dtype=np.int64))
 
-    assert list(df["float_item"]) == [1.0]
+    if with_tf_schema:
+        assert isinstance(df["float_item"], pd.Series)
+        assert df["float_item"].tolist() == [[1.0]]
+    else:
+        assert list(df["float_item"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([2.0, 3.0, 4.0]))
     assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
 
-    assert list(df["bytes_item"]) == [b"abc"]
+    if with_tf_schema:
+        assert isinstance(df["bytes_item"], pd.Series)
+        assert df["bytes_item"].tolist() == [[b"abc"]]
+    else:
+        assert list(df["bytes_item"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"def", b"1234"]))
     assert np.array_equal(df["bytes_partial"][0], np.array([], dtype=np.bytes_))
     assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
@@ -347,7 +367,9 @@ def test_read_tfrecords(
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
-    with_tf_schema, ray_start_regular_shared, tmp_path, tf_records_partial, data_partial
+    with_tf_schema,
+    ray_start_regular_shared,
+    tmp_path,
 ):
     """Test that write_tfrecords writes TFRecords correctly.
 
@@ -360,7 +382,7 @@ def test_write_tfrecords(
 
     # The dataset we will write to a .tfrecords file.
     ds = ray.data.from_items(
-        data_partial,
+        data_partial(with_tf_schema),
         # Here, we specify `parallelism=1` to ensure that all rows end up in the same
         # block, which is required for type inference involving
         # partially missing columns.
@@ -369,7 +391,7 @@ def test_write_tfrecords(
 
     # The corresponding tf.train.Example that we would expect to read
     # from this dataset.
-    expected_records = tf_records_partial
+    expected_records = tf_records_partial()
 
     tf_schema = None
     if with_tf_schema:
@@ -402,8 +424,6 @@ def test_write_tfrecords_empty_features(
     with_tf_schema,
     ray_start_regular_shared,
     tmp_path,
-    tf_records_empty,
-    data_empty,
 ):
     """Test that write_tfrecords writes TFRecords with completely empty features
     correctly (i.e. the case where type inference from partially filled features
@@ -418,11 +438,11 @@ def test_write_tfrecords_empty_features(
     import tensorflow as tf
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(data_empty)
+    ds = ray.data.from_items(data_empty(with_tf_schema))
 
     # The corresponding tf.train.Example that we would expect to read
     # from this dataset.
-    expected_records = tf_records_empty
+    expected_records = tf_records_empty()
 
     if not with_tf_schema:
         with pytest.raises(ValueError):
@@ -459,8 +479,6 @@ def test_readback_tfrecords(
     ray_start_regular_shared,
     tmp_path,
     with_tf_schema,
-    tf_records_partial,
-    data_partial,
 ):
     """
     Test reading back TFRecords written using datasets.
@@ -471,8 +489,8 @@ def test_readback_tfrecords(
     # Here and in the read_tfrecords call below, we specify `parallelism=1`
     # to ensure that all rows end up in the same block, which is required
     # for type inference involving partially missing columns.
-    ds = ray.data.from_items(data_partial, parallelism=1)
-    expected_records = tf_records_partial
+    ds = ray.data.from_items(data_partial(with_tf_schema), parallelism=1)
+    expected_records = tf_records_partial()
 
     tf_schema = None
     if with_tf_schema:
@@ -482,7 +500,7 @@ def test_readback_tfrecords(
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
     # Read the TFRecords.
-    readback_ds = ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema)
+    readback_ds = ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema, parallelism=1)
     _ds_eq_streaming(ds, readback_ds)
 
 
@@ -491,8 +509,6 @@ def test_readback_tfrecords_empty_features(
     ray_start_regular_shared,
     tmp_path,
     with_tf_schema,
-    tf_records_empty,
-    data_empty,
 ):
     """
     Test reading back TFRecords written using datasets.
@@ -500,14 +516,15 @@ def test_readback_tfrecords_empty_features(
     """
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(data_empty)
+    ds = ray.data.from_items(data_empty(with_tf_schema))
     if not with_tf_schema:
         with pytest.raises(ValueError):
             # With no schema specified, this should fail because
             # type inference on completely empty columns is ambiguous.
             ds.write_tfrecords(tmp_path)
     else:
-        expected_records = tf_records_empty
+        ds = ray.data.from_items(data_empty(with_tf_schema), parallelism=1)
+        expected_records = tf_records_empty()
 
         features = expected_records[0].features
         tf_schema = _features_to_schema(features)
@@ -516,7 +533,11 @@ def test_readback_tfrecords_empty_features(
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
 
         # Read the TFRecords.
-        readback_ds = ray.data.read_tfrecords(tmp_path)
+        readback_ds = ray.data.read_tfrecords(
+            tmp_path,
+            tf_schema=tf_schema,
+            parallelism=1,
+        )
         _ds_eq_streaming(ds, readback_ds)
 
 
@@ -543,13 +564,14 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
 
 
 def test_read_with_invalid_schema(
-    ray_start_regular_shared, tmp_path, data_partial, tf_records_partial
+    ray_start_regular_shared,
+    tmp_path,
 ):
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(data_partial, parallelism=1)
-    expected_records = tf_records_partial
+    ds = ray.data.from_items(data_partial(True), parallelism=1)
+    expected_records = tf_records_partial()
 
     # Build fake schema proto with missing/incorrect field name
     tf_schema_wrong_name = schema_pb2.Schema()
@@ -567,7 +589,7 @@ def test_read_with_invalid_schema(
     # Writing with incorrect schema should raise a `ValueError`
     with pytest.raises(ValueError) as e:
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema_wrong_name)
-    assert "Missing feature" in str(e.value.args[0])
+    assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type)
@@ -583,7 +605,7 @@ def test_read_with_invalid_schema(
         ray.data.read_tfrecords(
             tmp_path, tf_schema=tf_schema_wrong_name
         ).fully_executed()
-    assert "Missing feature" in str(e.value.args[0])
+    assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
         ray.data.read_tfrecords(
