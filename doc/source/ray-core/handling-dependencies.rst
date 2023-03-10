@@ -325,7 +325,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
-  Note: For option (1), if your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.  This can be disabled by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
+  Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
   Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
