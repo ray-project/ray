@@ -69,6 +69,25 @@ class TaskEvent {
 /// TaskStatusEvent is generated when a task changes its status.
 class TaskStatusEvent : public TaskEvent {
  public:
+  /// A class that contain data that will be converted to rpc::TaskStateUpdate
+  struct TaskStateUpdate {
+    TaskStateUpdate(const absl::optional<const rpc::RayErrorInfo> &error_info)
+        : error_info_(error_info) {}
+
+    TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
+        : node_id_(node_id), worker_id_(worker_id) {}
+
+   private:
+    friend class TaskStatusEvent;
+
+    /// Node id if it's a SUBMITTED_TO_WORKER status change.
+    const absl::optional<NodeID> node_id_ = absl::nullopt;
+    /// Worker id if it's a SUBMITTED_TO_WORKER status change.
+    const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+    /// Task error info.
+    const absl::optional<rpc::RayErrorInfo> error_info_ = absl::nullopt;
+  };
+
   explicit TaskStatusEvent(
       TaskID task_id,
       JobID job_id,
@@ -76,8 +95,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
-      absl::optional<NodeID> node_id = absl::nullopt,
-      absl::optional<WorkerID> worker_id = absl::nullopt);
+      absl::optional<const TaskStateUpdate> state_update = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -90,10 +108,8 @@ class TaskStatusEvent : public TaskEvent {
   const int64_t timestamp_ = -1;
   /// Pointer to the task spec.
   const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
-  /// Node id if it's a SUBMITTED_TO_WORKER status change.
-  const absl::optional<NodeID> node_id_ = absl::nullopt;
-  /// Worker id if it's a SUBMITTED_TO_WORKER status change.
-  const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+  /// Pointer to the task state update
+  absl::optional<const TaskStateUpdate> state_update_ = absl::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.

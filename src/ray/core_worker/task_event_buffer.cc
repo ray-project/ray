@@ -31,14 +31,12 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     const std::shared_ptr<const TaskSpecification> &task_spec,
-    absl::optional<NodeID> node_id,
-    absl::optional<WorkerID> worker_id)
+    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
       task_spec_(task_spec),
-      node_id_(node_id),
-      worker_id_(worker_id) {}
+      state_update_(state_update) {}
 
 TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    JobID job_id,
@@ -67,22 +65,30 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   }
 
   // Task status update.
-  auto state_updates = rpc_task_events->mutable_state_updates();
+  auto dst_state_update = rpc_task_events->mutable_state_updates();
+  gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, dst_state_update);
 
-  if (node_id_.has_value()) {
+  if (!state_update_.has_value()) {
+    return;
+  }
+
+  if (state_update_->node_id_.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    state_updates->set_node_id(node_id_->Binary());
+    dst_state_update->set_node_id(state_update_->node_id_->Binary());
   }
 
-  if (worker_id_.has_value()) {
+  if (state_update_->worker_id_.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Worker ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    state_updates->set_worker_id(worker_id_->Binary());
+    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
   }
-  gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, state_updates);
+
+  if (state_update_->error_info_.has_value()) {
+    dst_state_update->set_error_type(state_update_->error_info_->error_type());
+  }
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
