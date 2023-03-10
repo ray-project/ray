@@ -74,7 +74,7 @@ require blocks to be partitioned by value or *shuffled*. Datasets uses tasks to 
 style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
 blocks.
 
-Call :meth:`~ray.data.Dataset.repartition` to change the number of blocks.
+Call :meth:`~ray.data.Dataset.repartition` to change the number of blocks in a :class:`~ray.data.Dataset`.
 Repartition has two modes:
 
 * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
