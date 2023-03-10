@@ -77,9 +77,8 @@ Supported File Formats
   Read Parquet files into a tabular ``Dataset``. The Parquet data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks. Although this simple example demonstrates reading a single file, note that
-  Datasets can also read directories of Parquet files, with one tabular block created
-  per file. For Parquet in particular, we also support reading partitioned Parquet
-  datasets with partition column values pulled from the file paths.
+  Datasets can also read directories of Parquet files. We also support reading partitioned
+  Parquet datasets with partition column values pulled from the file paths.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
