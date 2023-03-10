@@ -2897,7 +2897,7 @@ class AlgorithmConfig(_Config):
                     # again here just in case
                     if module_class is None:
                         raise ValueError(
-                            f"The default rl_module spec cannot have an empty "
+                            "The default rl_module spec cannot have an empty "
                             "module_class under its SingleAgentRLModuleSpec."
                         )
                     module_spec.module_class = module_class
