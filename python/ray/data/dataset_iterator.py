@@ -114,7 +114,9 @@ class DatasetIterator(abc.ABC):
 
         Examples:
             >>> import ray
-            >>> for i in ray.data.range(1000000).iterator().iter_rows(): # doctest: +SKIP
+            >>> for i in ray.data.range(1000000)
+                .iterator()
+                .iter_rows(): # doctest: +SKIP
             ...     print(i) # doctest: +SKIP
 
         Time complexity: O(1)
@@ -162,13 +164,10 @@ class DatasetIterator(abc.ABC):
 
         Examples:
             >>> import ray
-            >>> for batch in ray.data.range( # doctest: +SKIP
-            ...     12,
-            ... ).iterator().iter_torch_batches(batch_size=4):
-            ...     print(batch.shape) # doctest: +SKIP
-            torch.Size([4, 1])
-            torch.Size([4, 1])
-            torch.Size([4, 1])
+            >>> for row in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_rows(): # doctest: +SKIP
+            ...     print(row) # doctest: +SKIP
 
         Time complexity: O(1)
 
