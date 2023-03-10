@@ -25,7 +25,7 @@ Text/NLP
 --------
 
 - :doc:`/ray-air/examples/huggingface_text_classification`: How to use Ray AIR to run Hugging Face Transformers fine-tuning on a text classification task.
-- :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`: How to use Ray AIR to run Hugging Face Transformers with DeepSpeed for fine-tuning of a large model.
+- :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`: How to use Ray AIR to run Hugging Face Transformers with DeepSpeed for fine-tuning a large model.
 - :doc:`/ray-air/examples/gptj_batch_prediction`: How to use Ray AIR to do batch prediction with the Hugging Face Transformers GPT-J model.
 
 Image/CV
