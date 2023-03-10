@@ -290,10 +290,9 @@ def run_release_test(
         logger.info(f"Installed python packages:\n{pip_package_string}")
 
         if isinstance(cluster_manager, FullClusterManager):
-            if not no_terminate:
-                register_handler(
-                    lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
-                )
+            register_handler(
+                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
+            )
 
         # Start cluster
         if cluster_id:
