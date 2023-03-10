@@ -9,7 +9,6 @@ from typing import (
     Optional,
     Callable,
     Sequence,
-    Set,
     Hashable,
 )
 
@@ -109,14 +108,6 @@ class TfLearner(Learner):
                 lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
             )
         return gradients_dict
-
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the weights of the underlying MultiAgentRLModule"""
-        module_weights = self._module.get_state()
-        if module_ids is None:
-            return module_weights
-
-        return {k: v for k, v in module_weights.items() if k in module_ids}
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:

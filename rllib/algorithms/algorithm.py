@@ -1867,9 +1867,8 @@ class Algorithm(Trainable):
                 module_spec=SingleAgentRLModuleSpec.from_module(module),
             )
 
-            # TODO (Kourosh): Only allow users to set weights of a particular module
-            weights = self.learner_group.get_weights()
-            self.learner_group.set_weights(weights)
+            weights = policy.get_weights()
+            self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:

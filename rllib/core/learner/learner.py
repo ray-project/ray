@@ -305,6 +305,8 @@ class Learner:
             A dictionary that holds the weights of the modules in a numpy-friendly
             format.
         """
+        module_states = self._module.get_state(module_ids)
+        return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod
     def set_weights(self, weights: Mapping[str, Any]) -> None:

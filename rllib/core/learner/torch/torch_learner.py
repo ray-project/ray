@@ -8,7 +8,6 @@ from typing import (
     Hashable,
     Optional,
     Callable,
-    Set,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -29,7 +28,6 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -100,17 +98,6 @@ class TorchLearner(Learner):
         # for each optimizer call its step function with the gradients
         for optim in self._optim_to_param:
             optim.step()
-
-    @override(Learner)
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the weights of the underlying MultiAgentRLModule"""
-        module_weights = self._module.get_state()
-        if module_ids is None:
-            return module_weights
-
-        return convert_to_numpy(
-            {k: v for k, v in module_weights.items() if k in module_ids}
-        )
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:

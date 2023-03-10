@@ -256,6 +256,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .rl_module(
+            _enable_rl_module_api=True,
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     # This will grab the default from the PPOConfig (it's empty)
@@ -263,8 +264,9 @@ if __name__ == "__main__":
                     "main": SingleAgentRLModuleSpec(catalog_class=PPOCatalog),
                     "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
                 }
-            )
+            ),
         )
+        .training(_enable_learner_api=True)
     )
 
     stop = {
