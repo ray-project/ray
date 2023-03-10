@@ -1,0 +1,10 @@
+port: 8005
+applications:
+  - name: "app1"
+    port: 8000
+    route_prefix: "/app1"
+    import_path: ray.serve.tests.test_config_files.pizza.serve_dag
+  - name: "app2"
+    port: 8010
+    route_prefix: "/app2"
+    import_path: ray.serve.tests.test_config_files.world.DagNode
