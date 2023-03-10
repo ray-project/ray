@@ -38,7 +38,7 @@ class TaskFinisherInterface {
                                    bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
-                                   bool task_failed_due_to_oom) = 0;
+                                   const rpc::RayErrorInfo &error_info) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
@@ -170,10 +170,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Returns true if task can be retried.
   ///
   /// \param[in] task_id ID of the task to be retried.
-  /// \param[in] task_failed_due_to_oom last task attempt failed due to node running out
-  /// of memory.
   /// \return true if task is scheduled to be retried.
-  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override;
+  bool RetryTaskIfPossible(const TaskID &task_id,
+                           const rpc::RayErrorInfo &error_info) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -317,16 +316,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param spec corresponding TaskSpecification of the task
   /// \param status the changed status.
   /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
-  /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
-  /// for SUBMITTED_TO_WORKER status change.
-  /// \param worker_id Worker ID of the worker for which the task's submitted. Only
-  /// applicable for SUBMITTED_TO_WORKER status change.
-  void RecordTaskStatusEvent(int32_t attempt_number,
-                             const TaskSpecification &spec,
-                             rpc::TaskStatus status,
-                             bool include_task_info = false,
-                             absl::optional<NodeID> node_id = absl::nullopt,
-                             absl::optional<WorkerID> worker_id = absl::nullopt);
+  void RecordTaskStatusEvent(
+      int32_t attempt_number,
+      const TaskSpecification &spec,
+      rpc::TaskStatus status,
+      bool include_task_info = false,
+      absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt);
 
  private:
   struct TaskEntry {
@@ -487,7 +483,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
   /// \param status new status.
-  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
+  /// \param error_info Optional error info for task execution.
+  void SetTaskStatus(
+      TaskEntry &task_entry,
+      rpc::TaskStatus status,
+      const absl::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
@@ -503,7 +503,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the retry counter.
   ///
   /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnFailed(TaskEntry &task_entry);
+  void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

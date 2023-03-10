@@ -7,6 +7,7 @@ import numpy as np
 import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
+from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -555,12 +556,19 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
 
     # The lease request should wait inside raylet
     # since there is no available resources.
-    ret = func.remote()
+    ret = func.options(name="task-local-raylet-dead").remote()
     # Waiting for the lease request to reach raylet.
     time.sleep(1)
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
+
+    # Check the task failure states for observability.
+    wait_for_condition(
+        verify_failed_task,
+        name="task-local-raylet-dead",
+        error_type="LOCAL_RAYLET_DIED",
+    )
 
 
 def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):

@@ -138,22 +138,6 @@ inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
   return &(death_cause->creation_task_failure_context());
 }
 
-/// Generate object error type from ActorDeathCause.
-inline rpc::ErrorType GenErrorTypeFromDeathCause(
-    const rpc::ActorDeathCause &death_cause) {
-  if (death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
-    return rpc::ErrorType::ACTOR_DIED;
-  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
-    return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
-  } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
-    return rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR;
-  } else if (death_cause.context_case() == ContextCase::kOomContext) {
-    return rpc::ErrorType::OUT_OF_MEMORY;
-  } else {
-    return rpc::ErrorType::ACTOR_DIED;
-  }
-}
-
 inline const std::string &GetActorDeathCauseString(
     const rpc::ActorDeathCause &death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
@@ -179,17 +163,22 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
   if (death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
       death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+    error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
     error_info.mutable_runtime_env_setup_failed_error()->CopyFrom(
         death_cause.runtime_env_failed_context());
+    error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     *(error_info.mutable_error_message()) =
         death_cause.actor_unschedulable_context().error_message();
+    error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
   } else if (death_cause.context_case() == ContextCase::kOomContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
     *(error_info.mutable_error_message()) = death_cause.oom_context().error_message();
+    error_info.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
+    error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   }
   return error_info;
 }
@@ -268,6 +257,15 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
+}
+
+/// Generate a RayErrorInfo from ErrorType
+inline rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
+                                         const std::string &error_msg = "") {
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(error_type);
+  error_info.set_error_message(error_msg);
+  return error_info;
 }
 
 /// Get the timestamp of the task status if available.
