@@ -52,7 +52,7 @@ For an in-depth guide on creating datasets, read :ref:`Creating Datasets <creati
 Transforming Data
 =================
 
-Datasets use either Ray tasks or Ray actors to transform datasets. By default, Datasets uses tasks.
+Datasets uses either Ray tasks or Ray actors to transform data blocks. By default, Datasets uses tasks.
 
 To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
 :meth:`~ray.data.Dataset.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
