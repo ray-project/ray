@@ -161,6 +161,9 @@ Stage N map: N/N blocks executed in T
 Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
 * In next_batch(): T
 * In format_batch(): T
 * In user code: T
@@ -913,6 +916,9 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context)
 Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
 * In next_batch(): T
 * In format_batch(): T
 * In user code: T
