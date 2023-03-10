@@ -14,9 +14,11 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
 )
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader,
+    ParquetDatasource,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -444,15 +446,21 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+    assert str(ds) == (
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=6,\n"
+        "   schema={two: string, "
+        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
+        ")"
     ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+    assert repr(ds) == (
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=6,\n"
+        "   schema={two: string, "
+        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
+        ")"
     ), ds
     check_num_computed(ds, 1, 1)
 
@@ -927,6 +935,11 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
     ray.data.range_tensor(1000, shape=(1000,)).write_parquet(path)
     ds = ray.data.read_parquet(path, batch_size=10)
     assert ds.count() == 1000
+
+
+def test_parquet_datasource_names(ray_start_regular_shared):
+    assert ParquetBaseDatasource().get_name() == "ParquetBulk"
+    assert ParquetDatasource().get_name() == "Parquet"
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
