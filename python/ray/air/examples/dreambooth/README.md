@@ -20,7 +20,7 @@ The full code repository can be found here:
 ## How it works
 
 For an up-to-date description of how the code works, 
-[https://docs.ray.io/en/master/ray-air/examples/dreambooth_finetuning.html](please refer to the example in our documentation). 
+[please refer to the example in our documentation](https://docs.ray.io/en/master/ray-air/examples/dreambooth_finetuning.html). 
 
 
 ## Run the example
