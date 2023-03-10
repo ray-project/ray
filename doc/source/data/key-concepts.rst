@@ -100,7 +100,7 @@ Fault tolerance
 ===============
 
 Datasets performs *lineage reconstruction* to recover data. If an application error or
-hardware failure occurs, Datasets recreates lost blocks by re-executing tasks.
+system failure occurs, Datasets recreates lost blocks by re-executing tasks.
 
 Fault tolerance isn't supported in two cases:
 
