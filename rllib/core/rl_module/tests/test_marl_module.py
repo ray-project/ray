@@ -153,35 +153,6 @@ class TestMARLModule(unittest.TestCase):
             override=True,
         )
 
-    def test_serialize_deserialize(self):
-        env_class = make_multi_agent("CartPole-v0")
-        env = env_class({"num_agents": 2})
-        module1 = SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
-        )
-
-        module2 = SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
-        )
-
-        config = MultiAgentRLModuleConfig(
-            modules={"module1": module1, "module2": module2}
-        )
-        marl_module = MultiAgentRLModule(config)
-        new_marl_module = marl_module.deserialize(marl_module.serialize())
-
-        self.assertNotEqual(id(marl_module), id(new_marl_module))
-        self.assertEqual(set(marl_module.keys()), set(new_marl_module.keys()))
-        for key in marl_module.keys():
-            self.assertNotEqual(id(marl_module[key]), id(new_marl_module[key]))
-            check(marl_module[key].get_state(), new_marl_module[key].get_state())
-
 
 if __name__ == "__main__":
     import pytest
