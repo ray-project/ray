@@ -11,6 +11,8 @@ from ray.train.batch_predictor import BatchPredictor
 # Replace this with your own framework/custom checkpoint/predictors!
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 
+ray.init()
+NUM_NODES = len(ray.nodes())
 
 # 1. Load your own data with Ray Data!
 # Start
@@ -76,8 +78,8 @@ predictions = batch_predictor.predict(
     ds,
     feature_columns=["image"],
     batch_size=128,
-    min_scoring_workers=4,
-    max_scoring_workers=4,
+    min_scoring_workers=NUM_NODES,
+    max_scoring_workers=NUM_NODES,
     num_gpus_per_worker=1,
 )
 
