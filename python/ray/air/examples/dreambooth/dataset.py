@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 
 def get_train_dataset(args, image_resolution=512):
     """Build a Ray Dataset for fine-tuning DreamBooth model."""
-    # Now load image sets.
+    # Load images into Ray Dataset
     instance_dataset = read_images(args.instance_images_dir)
     class_dataset = read_images(args.class_images_dir)
 
@@ -61,6 +61,7 @@ def get_train_dataset(args, image_resolution=512):
     class_dataset = preprocessor.transform(class_dataset).add_column(
         "prompt_ids", lambda df: [class_prompt_ids] * len(df)
     )
+    # ---
 
     # Now, zip the images up.
     final_size = min(instance_dataset.count(), class_dataset.count())
