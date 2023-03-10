@@ -30,7 +30,6 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
     Executor,
-    OutputIterator,
     PhysicalOperator,
     RefBundle,
     TaskContext,
