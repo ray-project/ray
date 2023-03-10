@@ -115,7 +115,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
   can use the constructor of the class for stateful setup, and it is only invoked once
   per worker actor.
 
-  Callable classes are useful if you need to load an expensive state (such as a neural network) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
+  Callable classes are useful if you need to load expensive state (such as a model) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
 
   .. note::
     These transformation APIs take the uninstantiated callable class as an argument,
