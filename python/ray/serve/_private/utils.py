@@ -9,7 +9,7 @@ import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import Dict, Iterable, List, Tuple, TypeVar, Union
+from typing import Dict, Iterable, List, Tuple, TypeVar, Union, Any
 
 import fastapi.encoders
 import numpy as np
@@ -497,3 +497,28 @@ def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
             camel_dict[key] = val
 
     return camel_dict
+
+
+class ExpiringSet():
+    """Set wrapper class that invalidates contents based on deadline.
+    
+    Args:
+        lifespan_s: The duration in seconds that any item in the set is valid.
+    """
+
+    def __init__(self, lifespan_s: int):
+        self.content_deadlines = dict()
+        self.lifespan_s = lifespan_s
+    
+    def add(self, item: Any) -> float:
+        deadline = time.time() + self.lifespan_s
+        self.contents[item] = deadline
+        return deadline
+    
+    def __contains__(self, item: Any):
+        if time.time() > self.content_deadlines.get(item, -1):
+            # Delete expired content
+            self.content_deadlines.pop(item, -1)
+            return False
+        else:
+            return True
