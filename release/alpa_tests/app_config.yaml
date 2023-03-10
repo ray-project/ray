@@ -15,7 +15,6 @@ python:
 post_build_cmds:
   # Install nightly wheel.
   - pip3 install --upgrade pip
-  - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   # Install Alpa from source for now.
   # TODO(jungong) : pip install alpa after next release.
   - git clone https://github.com/alpa-projects/alpa.git
@@ -27,5 +26,9 @@ post_build_cmds:
   - pip3 install --no-cache-dir nvidia-tensorrt==7.2.3.4
   # Huggingface transformers.
   - pip3 install -U transformers
+  # Install testing wheel after Alpa dependencies, since Alpa's setup.py requires
+  # Ray 2.1.0 right now, and would have overridden the installed version if this
+  # order is reversed.
+  - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   # Sanity check.
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
