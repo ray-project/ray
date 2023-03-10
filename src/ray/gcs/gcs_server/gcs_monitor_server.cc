@@ -58,14 +58,12 @@ GcsMonitorServer::GcsMonitorServer(
     ClusterResourceManager &cluster_resource_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager,
-    InternalKVInterface &internal_kv
-                                   )
+    InternalKVInterface &internal_kv)
     : gcs_node_manager_(gcs_node_manager),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_resource_manager_(gcs_resource_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
-      internal_kv_(internal_kv)
-{}
+      internal_kv_(internal_kv) {}
 
 void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
                                            rpc::GetRayVersionReply *reply,
@@ -190,11 +188,11 @@ void GcsMonitorServer::HandleGetSchedulingStatus(
   PopulatePlacementGroupDemands(reply);
 
   auto key = "autoscaler_resource_request_pb2";
-  internal_kv_.Get("", key, [reply, send_reply_callback](std::optional<std::string> res){
+  internal_kv_.Get("", key, [reply, send_reply_callback](std::optional<std::string> res) {
     if (res != std::nullopt) {
       auto resource_request = reply->add_resource_requests();
       resource_request->ParseFromString(*res);
-    } 
+    }
 
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });

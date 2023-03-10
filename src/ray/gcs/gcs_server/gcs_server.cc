@@ -601,8 +601,7 @@ void GcsServer::InitMonitorServer() {
       gcs_placement_group_manager_,
       // This value comes from derefenceing a unique_ptr, so it could be unsafe
       // to store. Should we switch to shared_ptrs and pass that instead?
-      kv_manager_->GetInstance()
-                                                       );
+      kv_manager_->GetInstance());
   monitor_grpc_service_.reset(
       new rpc::MonitorGrpcService(main_service_, *monitor_server_));
   rpc_server_.RegisterService(*monitor_grpc_service_);

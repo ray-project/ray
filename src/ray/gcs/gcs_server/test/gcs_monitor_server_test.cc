@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
 #include <future>
+#include <memory>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -74,13 +74,11 @@ std::shared_ptr<gcs::GcsPlacementGroup> ConstructPlacementGroupDemand(
 class GcsMonitorServerTest : public ::testing::Test {
  public:
   GcsMonitorServerTest()
-      :
-    callback_thread_([this](){
-      boost::asio::io_service::work work(io_context_);
-      io_context_.run();
-
-    }),
-    mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
+      : callback_thread_([this]() {
+          boost::asio::io_service::work work(io_context_);
+          io_context_.run();
+        }),
+        mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
         cluster_resource_manager_(),
         mock_resource_manager_(
             std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
@@ -91,8 +89,7 @@ class GcsMonitorServerTest : public ::testing::Test {
                         cluster_resource_manager_,
                         mock_resource_manager_,
                         mock_placement_group_manager_,
-                        internal_kv_
-                        ) {}
+                        internal_kv_) {}
 
   ~GcsMonitorServerTest() {
     io_context_.stop();
@@ -168,8 +165,10 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   std::promise<void> reply_promise;
   std::future<void> reply_future = reply_promise.get_future();
   auto send_reply_callback = [&reply_promise](ray::Status status,
-                                        std::function<void()> f1,
-                                                std::function<void()> f2) { reply_promise.set_value(); };
+                                              std::function<void()> f1,
+                                              std::function<void()> f2) {
+    reply_promise.set_value();
+  };
 
   NodeID id_1 = NodeID::FromRandom();
   NodeID id_2 = NodeID::FromRandom();
@@ -178,7 +177,6 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   {
     // Setup ray.autoscaler.sdk.request_resources
     rpc::ResourceRequest request;
-
   }
   {
     // Setup resource demand mocks.

@@ -36,8 +36,7 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
       ClusterResourceManager &cluster_resource_manager,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager,
-      InternalKVInterface &internal_kv
-                            );
+      InternalKVInterface &internal_kv);
 
   void HandleGetRayVersion(rpc::GetRayVersionRequest request,
                            rpc::GetRayVersionReply *reply,

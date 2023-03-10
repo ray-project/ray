@@ -143,11 +143,16 @@ def test_scheduling_status_autoscaler_sdk_request_resources(monitor_stub):
 
         num_requests = len(response.resource_requests) == 1
         num_bundles = len(response.resource_requests[0].bundles) == 1
-        bundle_contents = response.resource_requests[0].bundles[0].resources == {"CPU": 1}
-        request_type = response.resource_requests[0].resource_request_type == monitor_pb2.ResourceRequest.ResourceRequestType.MIN_RESOURCES
+        bundle_contents = response.resource_requests[0].bundles[0].resources == {
+            "CPU": 1
+        }
+        request_type = (
+            response.resource_requests[0].resource_request_type
+            == monitor_pb2.ResourceRequest.ResourceRequestType.MIN_RESOURCES
+        )
         print(response)
         print(f"{num_requests=} {num_bundles=} {bundle_contents=} {request_type=}")
-        return   num_requests and  num_bundles and bundle_contents and  request_type
+        return num_requests and num_bundles and bundle_contents and request_type
 
     wait_for_condition(condition)
 
