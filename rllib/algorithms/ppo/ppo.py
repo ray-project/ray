@@ -17,6 +17,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -41,6 +42,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    ALL_MODULES,
 )
 
 if TYPE_CHECKING:
@@ -128,11 +130,15 @@ class PPOConfig(PGConfig):
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(module_class=PPOTorchRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
+            )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -144,6 +150,10 @@ class PPOConfig(PGConfig):
             )
 
             return PPOTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
+
+            return PPOTfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -356,11 +366,6 @@ class PPO(Algorithm):
             return PPOTF1Policy
         else:
             if config._enable_rl_module_api:
-                if config.eager_tracing:
-                    raise ValueError(
-                        "The TensorFlow PPO with RLModule does not support "
-                        "eager tracing yet."
-                    )
                 from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
                     PPOTfPolicyWithRLModule,
                 )
@@ -416,12 +421,10 @@ class PPO(Algorithm):
             # the train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
-            # TODO (Kourosh): We need to make a better design for the hierarchy of the
-            # train results, so that all the policy ids end up in the same level.
             # TODO (Kourosh): We should also not be using train_results as a message
             # passing medium to infer whcih policies to update. We could use
             # policies_to_train variable that is given by the user to infer this.
-            policies_to_update = set(train_results["loss"].keys()) - {"total_loss"}
+            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
         else:
             policies_to_update = list(train_results.keys())
 
@@ -457,7 +460,7 @@ class PPO(Algorithm):
                 # TODO (Kourosh): Train results don't match the old format. The thing
                 # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
                 # we need get here?
-                pid: train_results["loss"][pid].get("mean_kl_loss")
+                pid: train_results[pid][LEARNER_STATS_KEY].get("mean_kl_loss")
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.

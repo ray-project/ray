@@ -38,7 +38,7 @@ class GcsActorSchedulerMockTest : public Test {
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
     actor_table = std::make_unique<GcsActorTable>(store_client);
-    gcs_node_manager = std::make_unique<MockGcsNodeManager>();
+    gcs_node_manager = std::make_unique<GcsNodeManager>(nullptr, nullptr, nullptr);
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
@@ -85,7 +85,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
-  std::unique_ptr<MockGcsNodeManager> gcs_node_manager;
+  std::unique_ptr<GcsNodeManager> gcs_node_manager;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>

@@ -775,7 +775,10 @@ class EagerTFPolicyV2(Policy):
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
-        self._re_trace_counter += 1
+        # NOTE: On the new RLModule API, we won't trace the sampling side, so we should
+        # not increment this counter to trigger excess re-tracing error.
+        if not self.config.get("_enable_rl_module_api", False):
+            self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -786,7 +789,28 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if is_overridden(self.action_sampler_fn):
+            if self.config.get("_enable_rl_module_api", False):
+
+                if explore:
+                    fwd_out = self.model.forward_exploration(input_dict)
+                else:
+                    fwd_out = self.model.forward_inference(input_dict)
+
+                action_dist = fwd_out[SampleBatch.ACTION_DIST]
+                if explore:
+                    actions, logp = action_dist.sample(return_logp=True)
+                else:
+                    actions = action_dist.sample()
+                    logp = None
+                state_out = fwd_out.get("state_out", {})
+
+                # anything but action_dist and state_out is an extra fetch
+                for k, v in fwd_out.items():
+                    if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                        extra_fetches[k] = v
+                dist_inputs = None
+
+            elif is_overridden(self.action_sampler_fn):
                 dist_inputs = None
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
@@ -820,26 +844,13 @@ class EagerTFPolicyV2(Policy):
                         for i, s in enumerate(state_batches):
                             input_dict[f"state_in_{i}"] = s
                     self._lazy_tensor_dict(input_dict)
-                    if self.config["_enable_rl_module_api"]:
-                        if explore:
-                            fwd_out = self.model.forward_exploration(input_dict)
-                        else:
-                            fwd_out = self.model.forward_inference(input_dict)
-                    else:
-                        dist_inputs, state_out, extra_fetches = self.model(input_dict)
+                    dist_inputs, state_out, extra_fetches = self.model(input_dict)
                 else:
                     dist_inputs, state_out = self.model(
                         input_dict, state_batches, seq_lens
                     )
-                if self.config["_enable_rl_module_api"]:
-                    action_dist = fwd_out[SampleBatch.ACTION_DIST]
-                    dist_inputs = None
-                    state_out = fwd_out.get("state_out", {})
-                    for k, v in fwd_out.items():
-                        if k not in [SampleBatch.ACTION_DIST, "state_out"]:
-                            extra_fetches[k] = v
-                else:
-                    action_dist = self.dist_class(dist_inputs, self.model)
+
+                action_dist = self.dist_class(dist_inputs, self.model)
 
                 # Get the exploration action from the forward results.
                 actions, logp = self.exploration.get_exploration_action(

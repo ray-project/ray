@@ -832,7 +832,7 @@ class TestDeployApp:
         )
 
     def test_deploy_multi_app_overwrite_apps(self, client: ServeControllerClient):
-        """Check that overwriting multiple applications works as expected."""
+        """Check that redeploying different apps with same names works as expected."""
 
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
@@ -875,6 +875,94 @@ class TestDeployApp:
         )
         wait_for_condition(
             lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
+        )
+
+    def test_deploy_multi_app_overwrite_apps2(self, client: ServeControllerClient):
+        """Check that deploying a new set of applications removes old ones."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = ServeDeploySchema.parse_obj(
+            {
+                "host": "127.0.0.1",
+                "port": 8000,
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": world_import_path,
+                    },
+                    {
+                        "name": "app2",
+                        "route_prefix": "/app2",
+                        "import_path": pizza_import_path,
+                    },
+                ],
+            }
+        )
+        # Deploy app1 and app2
+        client.deploy_apps(test_config)
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Deploy app3
+        new_config = ServeDeploySchema.parse_obj(
+            {
+                "host": "127.0.0.1",
+                "port": 8000,
+                "applications": [
+                    {
+                        "name": "app3",
+                        "route_prefix": "/app3",
+                        "import_path": pizza_import_path,
+                        "deployments": [
+                            {
+                                "name": "Adder",
+                                "user_config": {
+                                    "increment": 3,
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }
+        )
+        client.deploy_apps(new_config)
+
+        def check_dead():
+            actors = list_actors(
+                filters=[
+                    ("ray_namespace", "=", SERVE_NAMESPACE),
+                    ("state", "=", "ALIVE"),
+                ]
+            )
+            for actor in actors:
+                assert (
+                    "app1" not in actor["class_name"]
+                    and "app2" not in actor["class_name"]
+                )
+            return True
+
+        # Deployments from app1 and app2 should be deleted
+        wait_for_condition(check_dead)
+
+        # App1 and App2 should be gone
+        assert requests.get("http://localhost:8000/app1").status_code != 200
+        assert (
+            requests.post("http://localhost:8000/app2", json=["ADD", 2]).status_code
+            != 200
+        )
+
+        # App3 should be up and running
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).json()
+            == "5 pizzas please!"
         )
 
     def test_deploy_app_runtime_env(self, client: ServeControllerClient):
@@ -1114,6 +1202,72 @@ class TestServeRequestProcessingTimeoutS:
         assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
         serve.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+        },
+    ],
+    indirect=True,
+)
+def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
+    """Test max_concurrent_queries can be honorded with long poll timeout
+
+    issue: https://github.com/ray-project/ray/issues/32652
+    """
+
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    async def f():
+        await signal_actor.wait.remote()
+        return "hello"
+
+    handle = serve.run(f.bind())
+    first_ref = handle.remote()
+
+    # Clear all the internal longpoll client objects within handle
+    # long poll client will receive new updates from long poll host,
+    # this is to simulate the longpoll timeout
+    object_snapshots1 = handle.router.long_poll_client.object_snapshots
+    handle.router.long_poll_client._reset()
+    wait_for_condition(
+        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
+    )
+    object_snapshots2 = handle.router.long_poll_client.object_snapshots
+
+    # Check object snapshots between timeout interval
+    assert object_snapshots1.keys() == object_snapshots2.keys()
+    assert len(object_snapshots1.keys()) == 1
+    key = list(object_snapshots1.keys())[0]
+    assert (
+        object_snapshots1[key][0].actor_handle != object_snapshots2[key][0].actor_handle
+    )
+    assert (
+        object_snapshots1[key][0].actor_handle._actor_id
+        == object_snapshots2[key][0].actor_handle._actor_id
+    )
+
+    # Make sure the inflight queries still one
+    assert len(handle.router._replica_set.in_flight_queries) == 1
+    key = list(handle.router._replica_set.in_flight_queries.keys())[0]
+    assert len(handle.router._replica_set.in_flight_queries[key]) == 1
+
+    # Make sure the first request is being run.
+    replicas = list(handle.router._replica_set.in_flight_queries.keys())
+    assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
+    # First ref should be still ongoing
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(first_ref, timeout=1)
+    # Unblock the first request.
+    signal_actor.send.remote()
+    assert ray.get(first_ref) == "hello"
+
+    serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):

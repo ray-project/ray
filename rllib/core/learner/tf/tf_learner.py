@@ -1,4 +1,6 @@
 import logging
+import numpy as np
+import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
@@ -7,6 +9,7 @@ from typing import (
     Optional,
     Callable,
     Sequence,
+    Set,
     Hashable,
 )
 
@@ -94,14 +97,30 @@ class TfLearner(Learner):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
-    def get_weights(self) -> Mapping[str, Any]:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
+    def postprocess_gradients(
+        self, gradients_dict: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        grad_clip = self._optimizer_config.get("grad_clip", None)
+        assert isinstance(
+            grad_clip, (int, float, type(None))
+        ), "grad_clip must be a number"
+        if grad_clip is not None:
+            gradients_dict = tf.nest.map_structure(
+                lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
+            )
+        return gradients_dict
+
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the weights of the underlying MultiAgentRLModule"""
+        module_weights = self._module.get_state()
+        if module_ids is None:
+            return module_weights
+
+        return {k: v for k, v in module_weights.items() if k in module_ids}
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        # TODO (Kourosh) Implement this.
-        raise NotImplementedError
+        self._module.set_state(weights)
 
     @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
@@ -136,10 +155,11 @@ class TfLearner(Learner):
         # tf.function. This messes with input spec checking. Other fields of
         # the sample batch are possibly modified by tf.function which may lead
         # to unwanted consequences. We'll need to further investigate this.
-        batch = NestedDict(batch.policy_batches)
-        for key, value in batch.items():
-            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        return batch.asdict()
+        ma_batch = NestedDict(batch.policy_batches)
+        for key, value in ma_batch.items():
+            if isinstance(value, np.ndarray):
+                ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        return ma_batch
 
     @override(Learner)
     def add_module(
@@ -216,7 +236,6 @@ class TfLearner(Learner):
     ) -> Mapping[str, Any]:
         # TODO (Kourosh): The update of learner is vastly differnet than the base
         # class. So we need to unify them.
-
         if set(batch.policy_batches.keys()) != set(self._module.keys()):
             raise ValueError(
                 "Batch keys must match module keys. Learner does not "
@@ -239,6 +258,7 @@ class TfLearner(Learner):
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
             result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+            self._check_result(result)
             results.append(result)
 
         # Reduce results across all minibatches, if necessary.
@@ -252,6 +272,10 @@ class TfLearner(Learner):
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
+            # TODO (Kourosh): We need to go back to NestedDict because that's the
+            # constraint on forward_train and compute_loss APIs. This seems to be
+            # in-efficient. Make it efficient.
+            _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
@@ -260,9 +284,24 @@ class TfLearner(Learner):
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
+
+            # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
+            # needed for compiling the results in a later step (e.g. in
+            # compile_results), but it should not contain anything but tensors, None or
+            # ExtensionTypes, otherwise the tf.function will yell at us because it
+            # won't be able to convert the returned objects to a tensor representation
+            # (for internal reasons). So, in here, we remove anything from fwd_out that
+            # is not a tensor, None or ExtensionType.
+            def filter_fwd_out(x):
+                if isinstance(
+                    x, (tf.Tensor, type(None), tf.experimental.ExtensionType)
+                ):
+                    return x
+                return None
+
             return {
                 "loss": loss,
-                "fwd_out": fwd_out,
+                "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
                 "postprocessed_gradients": gradients,
             }
 

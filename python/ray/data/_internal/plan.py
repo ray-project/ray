@@ -170,7 +170,6 @@ class ExecutionPlan:
         Returns:
             The string representation of this execution plan.
         """
-
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -238,6 +237,45 @@ class ExecutionPlan:
         dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             num_blocks, count, schema_str
         )
+
+        # If the resulting string representation fits in one line, use it directly.
+        SCHEMA_LINE_CHAR_LIMIT = 80
+        MIN_FIELD_LENGTH = 10
+        if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
+            # If the resulting string representation exceeds the line char limit,
+            # first try breaking up each `Dataset` parameter into its own line
+            # and check if each line fits within the line limit. We check the
+            # `schema` param's length, since this is likely the longest string.
+            schema_str_on_new_line = f"\tschema={schema_str}"
+            if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
+                # If the schema cannot fit on a single line, break up each field
+                # into its own line.
+                schema_str = []
+                for n, t in zip(schema.names, schema.types):
+                    if hasattr(t, "__name__"):
+                        t = t.__name__
+                    col_str = f"\t\t{n}: {t}"
+                    # If the field line exceeds the char limit, abbreviate
+                    # the field name to fit while maintaining the full type
+                    if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
+                        shortened_suffix = f"...: {str(t)}"
+                        # Show at least 10 characters of the field name, even if
+                        # we have already hit the line limit with the type.
+                        chars_left_for_col_name = max(
+                            SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
+                            MIN_FIELD_LENGTH,
+                        )
+                        col_str = (
+                            f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
+                        )
+                    schema_str.append(f"{col_str}")
+                schema_str = ",\n".join(schema_str)
+                schema_str = "{\n" + schema_str + "\n\t}"
+            dataset_str = (
+                "Dataset(\n\tnum_blocks={},\n\tnum_rows={},\n\tschema={}\n)".format(
+                    num_blocks, count, schema_str
+                )
+            )
 
         if num_stages == 0:
             plan_str = dataset_str
@@ -610,6 +648,10 @@ class ExecutionPlan:
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
         self._in_blocks.clear()
+        self._clear_snapshot()
+
+    def _clear_snapshot(self) -> None:
+        """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
@@ -691,7 +733,7 @@ class ExecutionPlan:
                 stats = self._snapshot_stats
                 # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
                 # snapshot block memory after the first stage is done executing.
-                self._snapshot_blocks = None
+                self._clear_snapshot()
             else:
                 # Snapshot exists but has been cleared, so we need to recompute from the
                 # source (input blocks).
@@ -761,8 +803,27 @@ class ExecutionPlan:
                 not self.is_read_stage_equivalent()
                 or trailing_randomize_block_order_stage
             )
-            and self._stages_after_snapshot
+            and (
+                self._stages_after_snapshot
+                # If snapshot is cleared, we'll need to recompute from the source.
+                or (
+                    self._snapshot_blocks is not None
+                    and self._snapshot_blocks.is_cleared()
+                    and self._stages_before_snapshot
+                )
+            )
         )
+
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
 
 
 def _pack_args(
@@ -1135,7 +1196,9 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = "read"
+    name = in_blocks._read_stage_name or "Read"
+    if isinstance(name, list):
+        name = "->".join(name)
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.
