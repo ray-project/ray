@@ -84,9 +84,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in RLMODULE_SUPPORTED_OBSERVATION_SPACES:
                 logger.warning(
-                    "Skipping PPO test with RLModules for obs space {}".format(
-                        o_name
-                    )
+                    "Skipping PPO test with RLModules for obs space {}".format(o_name)
                 )
                 return
             if a_name not in RLMODULE_SUPPORTED_ACTION_SPACES:
