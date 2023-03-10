@@ -123,7 +123,7 @@ def run(checkpoint_path):
     info = {}
     reward = 0
     step = 0
-    while not done:
+    while not terminated and not truncated:
         step += 1
         actions, state_out, info = policy.compute_actions_from_raw_input_dict(
             env_ids=["env_1"],
