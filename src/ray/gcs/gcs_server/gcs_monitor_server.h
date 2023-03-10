@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -34,7 +35,9 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
       std::shared_ptr<GcsNodeManager> gcs_node_manager,
       ClusterResourceManager &cluster_resource_manager,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
-      std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager);
+      std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager,
+      InternalKVInterface &internal_kv
+                            );
 
   void HandleGetRayVersion(rpc::GetRayVersionRequest request,
                            rpc::GetRayVersionReply *reply,
@@ -57,6 +60,7 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
   ClusterResourceManager &cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  InternalKVInterface &internal_kv_;
 };
 
 }  // namespace gcs

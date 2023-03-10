@@ -20,6 +20,8 @@ def env_integer(key, default):
     return default
 
 
+AUTOSCALER_RESOURCE_REQUEST_PROTO_KEY = b"autoscaler_resource_request_pb2"
+
 # Whether autoscaler cluster status logging is enabled. Set to 0 disable.
 AUTOSCALER_STATUS_LOG = env_integer("RAY_ENABLE_CLUSTER_STATUS_LOG", 1)
 

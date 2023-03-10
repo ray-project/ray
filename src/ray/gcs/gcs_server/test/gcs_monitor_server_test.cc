@@ -14,12 +14,14 @@
 // limitations under the License.
 
 #include <memory>
+#include <future>
 
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_monitor_server.h"
+#include "ray/gcs/gcs_server/store_client_kv.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -72,16 +74,30 @@ std::shared_ptr<gcs::GcsPlacementGroup> ConstructPlacementGroupDemand(
 class GcsMonitorServerTest : public ::testing::Test {
  public:
   GcsMonitorServerTest()
-      : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
+      :
+    callback_thread_([this](){
+      boost::asio::io_service::work work(io_context_);
+      io_context_.run();
+
+    }),
+    mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
         cluster_resource_manager_(),
         mock_resource_manager_(
             std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
         mock_placement_group_manager_(
             std::make_shared<gcs::MockGcsPlacementGroupManager>(*mock_resource_manager_)),
+        internal_kv_(std::make_unique<gcs::InMemoryStoreClient>(io_context_)),
         monitor_server_(mock_node_manager_,
                         cluster_resource_manager_,
                         mock_resource_manager_,
-                        mock_placement_group_manager_) {}
+                        mock_placement_group_manager_,
+                        internal_kv_
+                        ) {}
+
+  ~GcsMonitorServerTest() {
+    io_context_.stop();
+    callback_thread_.join();
+  }
 
   absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceUsages() {
     return mock_resource_manager_->node_resource_usages_;
@@ -104,10 +120,13 @@ class GcsMonitorServerTest : public ::testing::Test {
 
  protected:
   instrumented_io_context io_context_;
+  std::thread callback_thread_;
   std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
   std::shared_ptr<gcs::MockGcsPlacementGroupManager> mock_placement_group_manager_;
+  // gcs::InMemoryStoreClient internal_kv_;
+  gcs::StoreClientInternalKV internal_kv_;
   gcs::GcsMonitorServer monitor_server_;
 };
 
@@ -146,15 +165,21 @@ TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
 TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   rpc::GetSchedulingStatusRequest request;
   rpc::GetSchedulingStatusReply reply;
-  bool replied = false;
-  auto send_reply_callback = [&replied](ray::Status status,
+  std::promise<void> reply_promise;
+  std::future<void> reply_future = reply_promise.get_future();
+  auto send_reply_callback = [&reply_promise](ray::Status status,
                                         std::function<void()> f1,
-                                        std::function<void()> f2) { replied = true; };
+                                                std::function<void()> f2) { reply_promise.set_value(); };
 
   NodeID id_1 = NodeID::FromRandom();
   NodeID id_2 = NodeID::FromRandom();
   NodeID id_3 = NodeID::FromRandom();
 
+  {
+    // Setup ray.autoscaler.sdk.request_resources
+    rpc::ResourceRequest request;
+
+  }
   {
     // Setup resource demand mocks.
     rpc::ResourcesData data;
@@ -222,8 +247,8 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   }
 
   monitor_server_.HandleGetSchedulingStatus(request, &reply, send_reply_callback);
+  reply_future.get();
 
-  ASSERT_TRUE(replied);
   {
     // Check the node_statuses field looks good.
     ASSERT_EQ(reply.node_statuses().size(), 1);
