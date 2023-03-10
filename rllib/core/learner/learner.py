@@ -290,7 +290,6 @@ class Learner:
             gradients: A dictionary of gradients, in the same format as self._params.
         """
 
-    @abc.abstractmethod
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule.
 

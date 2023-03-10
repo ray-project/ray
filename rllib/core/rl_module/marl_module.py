@@ -231,7 +231,9 @@ class MultiAgentRLModule(RLModule):
         return self._run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
-    def get_state(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+    def get_state(
+        self, module_ids: Optional[Set[ModuleID]] = None
+    ) -> Mapping[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
         This method returns the state of each module specified by module_ids. If
@@ -255,7 +257,7 @@ class MultiAgentRLModule(RLModule):
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
+    def set_state(self, state_dict: Mapping[ModuleID, Any]) -> None:
         """Sets the state of the multi-agent module.
 
         It is assumed that the state_dict is a mapping from module IDs to their
@@ -322,7 +324,7 @@ class MultiAgentRLModule(RLModule):
         forward_fn_name: str,
         batch: NestedDict[Any],
         **kwargs,
-    ) -> Dict[ModuleID, Mapping[str, Any]]:
+    ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
 
         It uses forward_fn_name to get the forward pass method from the RLModule

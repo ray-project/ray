@@ -220,7 +220,7 @@ class TestAlgorithmConfig(unittest.TestCase):
                 be reference in the SingleAgentRLModuleSpec parts of the
                 MultiAgentRLModuleSpec.
             passed_module_class: This is the RLModule class that is passed into the
-                module_spec argument of configget_marl_module_spec. The function is
+                module_spec argument of get_marl_module_spec. The function is
                 designed so that it will use the passed in module_spec for the
                 SingleAgentRLModuleSpec parts of the MultiAgentRLModuleSpec.
             expected_marl_module_class: This is the expected MultiAgentRLModule class

@@ -217,7 +217,7 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
@@ -256,7 +256,6 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .rl_module(
-            _enable_rl_module_api=True,
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
                     # This will grab the default from the PPOConfig (it's empty)
@@ -266,7 +265,6 @@ if __name__ == "__main__":
                 }
             ),
         )
-        .training(_enable_learner_api=True)
     )
 
     stop = {
