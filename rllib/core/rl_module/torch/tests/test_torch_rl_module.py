@@ -1,4 +1,5 @@
 import gymnasium as gym
+import tempfile
 import torch
 from typing import Mapping
 import unittest
@@ -100,7 +101,7 @@ class TestRLModule(unittest.TestCase):
         state2_after = module2.get_state()
         check(state, state2_after)
 
-    def test_serialize_deserialize(self):
+    def test_checkpointing(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
@@ -109,20 +110,11 @@ class TestRLModule(unittest.TestCase):
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module.save_to_checkpoint(tmpdir)
+            new_module = DiscreteBCTorchModule.from_checkpoint(tmpdir)
 
-        # create a new module from the old module
-        new_module = module.deserialize(module.serialize())
-
-        # check that the new module is the same type
-        self.assertIsInstance(new_module, type(module))
-
-        # check that a parameter of their's is the same
-        self.assertEqual(new_module.input_dim, module.input_dim)
-
-        # check that their states are the same
         check(module.get_state(), new_module.get_state())
-
-        # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
 
 
