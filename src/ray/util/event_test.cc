@@ -595,8 +595,7 @@ TEST_F(EventTest, TestLogEvent) {
   RAY_EVENT(FATAL, "label") << "test fatal";
 
   std::vector<std::string> vc;
-  ReadContentFromFile(
-      vc, log_dir + "/event_test.log", "[ Event ");
+  ReadContentFromFile(vc, log_dir + "/event_test.log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 2);
   // Check ERROR event
   EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
@@ -620,8 +619,7 @@ TEST_F(EventTest, TestLogEvent) {
   RAY_EVENT(FATAL, "label") << "test fatal 2";
 
   vc.clear();
-  ReadContentFromFile(
-      vc, log_dir + "/event_test.log", "[ Event ");
+  ReadContentFromFile(vc, log_dir + "/event_test.log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 4);
   // Check INFO event
   EXPECT_THAT(vc[0], testing::HasSubstr(" I "));
