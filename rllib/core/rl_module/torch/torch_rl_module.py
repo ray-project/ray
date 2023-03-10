@@ -1,7 +1,9 @@
-from typing import Any, Mapping
+import pathlib
+from typing import Any, Mapping, Union
+
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
 
@@ -26,6 +28,24 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
+
+    @override(RLModule)
+    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        module_state_path = path / "module_state.pt"
+        torch.save(self.state_dict(), str(module_state_path))
+        return str(module_state_path)
+
+    @override(RLModule)
+    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        if not path.exists():
+            raise ValueError(
+                f"While loading state from path, the path does not exist: {path}"
+            )
+        self.set_state(torch.load(str(path)))
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

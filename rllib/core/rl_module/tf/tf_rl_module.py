@@ -1,4 +1,5 @@
-from typing import Any, Mapping
+import pathlib
+from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -41,6 +42,20 @@ class TfRLModule(RLModule, tf.keras.Model):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.set_weights(state_dict)
+
+    @override(RLModule)
+    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        module_state_dir = path / "module_state"
+        module_state_dir.mkdir(parents=True, exist_ok=True)
+        module_state_path = module_state_dir / "module_state"
+        self.save_weights(str(module_state_path), save_format="tf")
+        return str(module_state_path)
+
+    @override(RLModule)
+    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+        self.load_weights(path)
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
