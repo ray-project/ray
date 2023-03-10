@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+import json
+import pathlib
 import pprint
 from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
 
@@ -8,9 +10,15 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    RLMODULE_METADATA_FILE_NAME,
+    RLMODULE_METADTATA_STATE_PATH_KEY,
+    SingleAgentRLModuleSpec,
+)
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
 
 ModuleID = str
@@ -260,6 +268,32 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
+    @override(RLModule)
+    def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
+        path = pathlib.Path(checkpoint_dir_path)
+        path.mkdir(parents=True, exist_ok=True)
+        self.config = MultiAgentRLModuleSpec.from_module(self).get_marl_config()
+        for module_id, module in self._rl_modules.items():
+            module.save_to_checkpoint(str(path / module_id))
+        self._save_module_metadata(path, None)
+
+    @classmethod
+    @override(RLModule)
+    def from_checkpoint(cls, checkpoint_dir_path: str) -> None:
+        path = pathlib.Path(checkpoint_dir_path)
+        metadata_path = path / RLMODULE_METADATA_FILE_NAME
+        marl_module = cls._from_metadata_file(metadata_path)
+        for module_id in marl_module.keys():
+            submodule = marl_module[module_id]
+            submodule_metadata_path = path / module_id / RLMODULE_METADATA_FILE_NAME
+            with open(submodule_metadata_path, "r") as f:
+                submodule_metadata = json.load(f)
+            submodule_weights_path = submodule_metadata[
+                RLMODULE_METADTATA_STATE_PATH_KEY
+            ]
+            submodule.load_state_from_file(submodule_weights_path)
+        return marl_module
+
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
 
@@ -341,6 +375,7 @@ class MultiAgentRLModuleSpec:
     def get_marl_config(self) -> "MultiAgentRLModuleConfig":
         return MultiAgentRLModuleConfig(modules=self.module_specs)
 
+    @OverrideToImplementCustomLogic
     def build(
         self, module_id: Optional[ModuleID] = None
     ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:

@@ -31,16 +31,14 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        if isinstance(path, str):
-            path = pathlib.Path(path)
+        path = pathlib.Path(path)
         module_state_path = path / "module_state.pt"
         torch.save(self.state_dict(), str(module_state_path))
         return str(module_state_path)
 
     @override(RLModule)
     def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        if isinstance(path, str):
-            path = pathlib.Path(path)
+        path = pathlib.Path(path)
         if not path.exists():
             raise ValueError(
                 f"While loading state from path, the path does not exist: {path}"
@@ -85,6 +83,14 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     @override(RLModule)
     def set_state(self, *args, **kwargs):
         self.module.set_state(*args, **kwargs)
+
+    @override(RLModule)
+    def save_state_to_file(self, *args, **kwargs) -> str:
+        return self.module.save_state_to_file(*args, **kwargs)
+
+    @override(RLModule)
+    def load_state_from_file(self, *args, **kwargs):
+        self.module.load_state_from_file(*args, **kwargs)
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

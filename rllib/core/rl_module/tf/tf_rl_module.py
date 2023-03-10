@@ -45,8 +45,7 @@ class TfRLModule(RLModule, tf.keras.Model):
 
     @override(RLModule)
     def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        if isinstance(path, str):
-            path = pathlib.Path(path)
+        path = pathlib.Path(path)
         module_state_dir = path / "module_state"
         module_state_dir.mkdir(parents=True, exist_ok=True)
         module_state_path = module_state_dir / "module_state"
@@ -55,7 +54,7 @@ class TfRLModule(RLModule, tf.keras.Model):
 
     @override(RLModule)
     def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        self.load_weights(path)
+        self.load_weights(str(path))
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

@@ -35,7 +35,14 @@ from ray.rllib.utils.serialization import (
 
 
 ModuleID = str
-METADATA_FILE_NAME = "rl_module_metadata.json"
+RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
+RLMODULE_METADATA_CLS_KEY = "module_class"
+RLMODULE_METADATA_CFG_KEY = "module_config"
+RLMODULE_METADATA_CFG_CLS_KEY = "module_config_class"
+RLMODULE_METADTATA_STATE_PATH_KEY = "module_state_path"
+RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
+RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
+RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 
 
 @ExperimentalAPI
@@ -404,33 +411,33 @@ class RLModule(abc.ABC):
     def _save_module_metadata(
         self,
         checkpoint_dir: Union[str, pathlib.Path],
-        module_state_path: Union[str, pathlib.Path],
+        module_state_path: Union[str, pathlib.Path, Type[None]],
     ):
         """Saves the metadata of the module to checkpoint_dir.
 
         Includes:
             - module class path
-            - module state path
+            - module state path (if provided)
             - the module config
+            - the module config class path
             - the ray version used
             - the ray commit hash used
             - the date and time of the checkpoint was created
 
         """
-        if isinstance(checkpoint_dir, str):
-            checkpoint_dir = pathlib.Path(checkpoint_dir)
-        if isinstance(module_state_path, str):
-            module_state_path = pathlib.Path(module_state_path)
+        checkpoint_dir = pathlib.Path(checkpoint_dir)
         gmt_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
         metadata = {}
         # TODO (Avnishn): Find a way to incorporate the tune registry here.
-        metadata["module_class"] = serialize_type(self.__class__)
-        metadata["module_config"] = self.config.to_dict()
-        metadata["ray_version"] = ray.__version__
-        metadata["ray_commit_hash"] = ray.__commit__
-        metadata["checkpoint_date_time"] = gmt_time
-        metadata["module_state_path"] = str(module_state_path)
-        metadata_path = checkpoint_dir / METADATA_FILE_NAME
+        metadata[RLMODULE_METADATA_CLS_KEY] = serialize_type(self.__class__)
+        metadata[RLMODULE_METADATA_CFG_KEY] = self.config.to_dict()
+        metadata[RLMODULE_METADATA_CFG_CLS_KEY] = serialize_type(self.config.__class__)
+        metadata[RLMODULE_METADATA_RAY_VERSION_KEY] = ray.__version__
+        metadata[RLMODULE_METADATA_RAY_COMMIT_HASH_KEY] = ray.__commit__
+        metadata[RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY] = gmt_time
+        if module_state_path:
+            metadata[RLMODULE_METADTATA_STATE_PATH_KEY] = module_state_path
+        metadata_path = checkpoint_dir / RLMODULE_METADATA_FILE_NAME
         with open(metadata_path, "w") as f:
             json.dump(metadata, f)
 
@@ -444,10 +451,7 @@ class RLModule(abc.ABC):
         Returns:
             The module.
         """
-        if isinstance(metadata_path, str):
-            metadata_path = pathlib.Path(metadata_path)
-        if not metadata_path.exists():
-            raise ValueError("The metadata path was not found.")
+        metadata_path = pathlib.Path(metadata_path)
         if not metadata_path.exists():
             raise ValueError(
                 "While constructing the module from the metadata, the "
@@ -456,7 +460,8 @@ class RLModule(abc.ABC):
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
         module_class = deserialize_type(metadata["module_class"])
-        module_config = RLModuleConfig.from_dict(metadata["module_config"])
+        module_config_class = deserialize_type(metadata["module_config_class"])
+        module_config = module_config_class.from_dict(metadata["module_config"])
         module = module_class(module_config)
         return module
 
@@ -489,8 +494,6 @@ class RLModule(abc.ABC):
             ValueError: If dir_path is not an absolute path.
         """
         path = pathlib.Path(checkpoint_dir_path)
-        if not path.is_absolute():
-            raise ValueError("dir_path must be an absolute path.")
         path.mkdir(parents=True, exist_ok=True)
         module_state_path = self.save_state_to_file(path)
         self._save_module_metadata(path, module_state_path)
@@ -508,14 +511,12 @@ class RLModule(abc.ABC):
                 "While loading from checkpoint there was no directory"
                 " found at {}".format(checkpoint_dir_path)
             )
-        if not path.is_absolute():
-            raise ValueError("dir_path must be an absolute path.")
         if not path.is_dir():
             raise ValueError(
                 "While loading from checkpoint the checkpoint_dir_path "
                 "provided was not a directory."
             )
-        metadata_path = path / METADATA_FILE_NAME
+        metadata_path = path / RLMODULE_METADATA_FILE_NAME
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
         state_path = metadata["module_state_path"]
