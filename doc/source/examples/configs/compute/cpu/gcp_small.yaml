@@ -1,5 +1,4 @@
 cloud: anyscale_gce_cloud
-max_workers: 0
 allowed_azs:
 - us-west1-a
 head_node_type:

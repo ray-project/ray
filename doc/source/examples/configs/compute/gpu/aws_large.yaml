@@ -1,0 +1,12 @@
+cloud: anyscale_v2_default_cloud
+max_workers: 0
+allowed_azs:
+- us-west-2a
+head_node_type:
+  name: head_node_type
+  instance_type: g4dn.4xlarge
+worker_node_types:
+- name: gpu_worker
+  instance_type: g4dn.4xlarge
+  min_workers: 3
+  max_workers: 3
