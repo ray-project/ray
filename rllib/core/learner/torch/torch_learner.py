@@ -71,7 +71,7 @@ class TorchLearner(Learner):
                 torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
             )
             for key in self._module.keys()
-            if isinstance(self._module[key], nn.Module)
+            if self._is_module_compatible_with_learner(self._module[key])
         ]
 
     @override(Learner)

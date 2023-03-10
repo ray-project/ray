@@ -72,10 +72,11 @@ class TfLearner(Learner):
         lr = self._optimizer_config["lr"]
         return [
             (
-                self._module[key].trainable_variables,
+                self.get_parameters(self._module[key]),
                 tf.keras.optimizers.Adam(learning_rate=lr),
             )
             for key in self._module.keys()
+            if self._is_module_compatible_with_learner(self._module[key])
         ]
 
     @override(Learner)
@@ -92,8 +93,16 @@ class TfLearner(Learner):
         # This is probably because of the way that we are iterating over the
         # parameters in the optim_to_param_dictionary
         for optim, param_ref_seq in self._optim_to_param.items():
-            variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
-            gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
+            variable_list = [
+                self._params[param_ref]
+                for param_ref in param_ref_seq
+                if gradients[param_ref] is not None
+            ]
+            gradient_list = [
+                gradients[param_ref]
+                for param_ref in param_ref_seq
+                if gradients[param_ref] is not None
+            ]
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)

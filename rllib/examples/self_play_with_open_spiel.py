@@ -286,6 +286,7 @@ if __name__ == "__main__":
             run_config=air.RunConfig(
                 stop=stop,
                 verbose=2,
+                failure_config=air.FailureConfig(fail_fast="raise"),
                 progress_reporter=CLIReporter(
                     metric_columns={
                         "training_iteration": "iter",
