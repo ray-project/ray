@@ -364,6 +364,15 @@ class PhysicalOperator(Operator):
         """
         return []
 
+    def throttling_disabled(self) -> bool:
+        """Whether to disable resource throttling for this operator.
+
+        This should return True for operators that only manipulate bundle metadata
+        (e.g., the OutputSplitter operator). This hints to the execution engine that
+        these operators should not be throttled based on resource usage.
+        """
+        return False
+
     def num_active_work_refs(self) -> int:
         """Return the number of active work refs.
 
