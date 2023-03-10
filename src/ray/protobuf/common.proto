@@ -214,7 +214,7 @@ message RayErrorInfo {
     string error_message = 4;
   }
   // The type of error that caused the exception.
-  optional ErrorType error_type = 11;
+  ErrorType error_type = 11;
 }
 
 message OutOfMemoryErrorContext {
