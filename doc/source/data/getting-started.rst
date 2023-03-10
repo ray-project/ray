@@ -62,7 +62,17 @@ transform datasets. Ray executes transformations in parallel for performance at 
 .. testoutput::
 
     MapBatches(transform_batch)
-    +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+    +- Dataset(
+          num_blocks=...,
+          num_rows=150,
+          schema={
+             sepal length (cm): double,
+             sepal width (cm): double,
+             petal length (cm): double,
+             petal width (cm): double,
+             target: int64
+          }
+    )
 
 To learn more about transforming datasets, read
 :ref:`Transforming datasets <transforming_datasets>`.
