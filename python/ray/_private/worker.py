@@ -3008,8 +3008,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator] (note, this setting is
-            experimental).
+            receive an ObjectRef[ObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.
