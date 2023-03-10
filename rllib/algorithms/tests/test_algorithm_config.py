@@ -212,6 +212,24 @@ class TestAlgorithmConfig(unittest.TestCase):
         passed_module_class: type = None,
         expected_marl_module_class: type = None,
     ):
+        """This is a utility function that retrieves the expected marl specs.
+        
+        Args:
+            config: The algorithm config.
+            expected_module_class: This is the expected RLModule class that is going to 
+                be reference in the SingleAgentRLModuleSpec parts of the 
+                MultiAgentRLModuleSpec.
+            passed_module_class: This is the RLModule class that is passed into the 
+                module_spec argument of configget_marl_module_spec. The function is 
+                designed so that it will use the passed in module_spec for the 
+                SingleAgentRLModuleSpec parts of the MultiAgentRLModuleSpec.
+            expected_marl_module_class: This is the expected MultiAgentRLModule class
+                that is going to be reference in the MultiAgentRLModuleSpec.
+
+        Returns:
+            Tuple of the returned MultiAgentRLModuleSpec from config.
+            get_marl_module_spec() and the expected MultiAgentRLModuleSpec.
+        """
         from ray.rllib.policy.policy import PolicySpec
 
         if expected_marl_module_class is None:
