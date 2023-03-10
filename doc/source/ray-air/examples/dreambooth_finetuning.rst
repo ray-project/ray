@@ -13,7 +13,11 @@ This example leverages Ray Data for data loading and Ray Train for distributed t
 Data loading
 ^^^^^^^^^^^^
 
-Link to full code: `dataset.py <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/dataset.py>`_
+.. note::
+    You can find the latest version of the code here: `dataset.py <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/dataset.py>`_
+
+    The latest version might differ slightly from the code presented here.
+
 
 We use Ray Data for data loading. The code has three interesting parts.
 
@@ -56,7 +60,12 @@ We apply all of this in final step:
 Distributed training
 ^^^^^^^^^^^^^^^^^^^^
 
-Link to full code: `train.py <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/train.py>`_
+
+.. note::
+    You can find the latest version of the code here: `train.py <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/train.py>`_
+
+    The latest version might differ slightly from the code presented here.
+
 
 The central part of the training code is the *training function*. This function accepts a configuration dict that contains the hyperparameters. It then defines a regular PyTorch training loop.
 
@@ -90,9 +99,22 @@ Configuring the scale
 ^^^^^^^^^^^^^^^^^^^^^
 
 In the TorchTrainer, we can easily configure our scale. 
-The above example runs training on 2 workers with 2 GPUs each - i.e. on 4 GPUs. 
+The above example uses the ``num_workers`` argument to specify the number
+of workers. This defaults to 2 workers with 2 GPUs each - so 4 GPUs in total.
 
-To run the example on 8 GPUs, just set the number of workers to 4!
+To run the example on 8 GPUs, just set the number of workers to 4 using ``--num-workers=4``!
+Or you can change the scaling config directly:
+
+.. code-block:: diff
+
+     scaling_config=ScalingConfig(
+         use_gpu=True,
+    -    num_workers=args.num_workers,
+    +    num_workers=4,
+         resources_per_worker={
+             "GPU": 2,
+         },
+     )
 
 If you're running multi-node training, you should make sure that all nodes have access to a shared
 storage (e.g. via NFS or EFS). In the example script below, you can adjust this location with the
