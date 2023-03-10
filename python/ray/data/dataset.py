@@ -1154,8 +1154,8 @@ class Dataset(Generic[T]):
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
     ) -> List[DatasetIterator]:
-        """Returns ``n`` :class:`~ray.data.DatasetIterator`s that can be used to read
-        disjoint subsets of the dataset in parallel.
+        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+        be used to read disjoint subsets of the dataset in parallel.
 
         This method is the recommended way to consume Datasets from multiple processes
         (e.g., for distributed training). It requires streaming execution mode.
