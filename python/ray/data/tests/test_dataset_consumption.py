@@ -1613,6 +1613,43 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     assert schema == ds.schema()
 
 
+def test_dataset_plan_as_string(ray_start_cluster):
+    ds = ray.data.read_parquet("example://iris.parquet")
+    assert ds._plan.get_plan_as_string() == (
+        "Dataset(\n"
+        "   num_blocks=1,\n"
+        "   num_rows=150,\n"
+        "   schema={\n"
+        "      sepal.length: double,\n"
+        "      sepal.width: double,\n"
+        "      petal.length: double,\n"
+        "      petal.width: double,\n"
+        "      variety: string\n"
+        "   }\n"
+        ")"
+    )
+    for _ in range(5):
+        ds = ds.map_batches(lambda x: x)
+    assert ds._plan.get_plan_as_string() == (
+        "MapBatches(<lambda>)\n"
+        "+- MapBatches(<lambda>)\n"
+        "   +- MapBatches(<lambda>)\n"
+        "      +- MapBatches(<lambda>)\n"
+        "         +- MapBatches(<lambda>)\n"
+        "            +- Dataset(\n"
+        "                  num_blocks=1,\n"
+        "                  num_rows=150,\n"
+        "                  schema={\n"
+        "                     sepal.length: double,\n"
+        "                     sepal.width: double,\n"
+        "                     petal.length: double,\n"
+        "                     petal.width: double,\n"
+        "                     variety: string\n"
+        "                  }\n"
+        "               )"
+    )
+
+
 class LoggerWarningCalled(Exception):
     """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
