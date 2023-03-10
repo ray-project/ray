@@ -57,7 +57,7 @@ Datasets use either Ray tasks or Ray actors to transform datasets. By default, D
 To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
 :meth:`~ray.data.Dataset.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
 pool of Ray actors. This allows you to cache expensive state initialization
-(e.g., for GPU-based tasks).
+(e.g., model loading for GPU-based tasks).
 
 .. image:: images/dataset-map.svg
    :align: center
