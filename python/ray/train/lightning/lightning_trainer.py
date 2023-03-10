@@ -26,6 +26,8 @@ from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 import logging
 
+from ray.util.annotations import DeveloperAPI
+
 logger = logging.getLogger(__name__)
 
 
@@ -259,6 +261,9 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        if not lightning_config:
+            lightning_config = LightningConfigBuilder().build()
+
         train_loop_config = {
             "lightning_config": lightning_config,
             "datasets_iter_config": datasets_iter_config,
@@ -268,7 +273,7 @@ class LightningTrainer(TorchTrainer):
             run_config = RunConfig()
 
         run_config.checkpoint_config = self._create_air_checkpoint_config(
-            lightning_config.model_checkpoint_config
+            lightning_config["_model_checkpoint_config"]
         )
 
         super(LightningTrainer, self).__init__(
@@ -283,6 +288,7 @@ class LightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    @DeveloperAPI
     def _create_air_checkpoint_config(
         self, model_checkpoint_config: Optional[Dict] = None
     ) -> CheckpointConfig:
@@ -326,6 +332,7 @@ def _lightning_train_loop_per_worker(config):
     module_class = ptl_config["_module_class"]
     module_init_config = ptl_config["_module_init_config"]
     ddp_strategy_config = ptl_config["_ddp_strategy_config"]
+    model_checkpoint_config = ptl_config["_model_checkpoint_config"]
 
     # Prepare data
     datamodule = trainer_fit_params.get("datamodule", None)
@@ -389,7 +396,7 @@ def _lightning_train_loop_per_worker(config):
 
     # AIR needs a RayModelCheckpoint for metircs logging anyway.
     trainer_config["enable_checkpointing"] = True
-    callbacks.append(RayModelCheckpoint(**ptl_config.model_checkpoint_config))
+    callbacks.append(RayModelCheckpoint(**model_checkpoint_config))
 
     trainer_config["callbacks"] = callbacks
 

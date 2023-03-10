@@ -401,6 +401,14 @@ py_test(
 )
 
 py_test(
+    name = "test_lightning_checkpoint",
+    size = "medium",
+    srcs = ["tests/test_lightning_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_lightning_trainer",
     size = "medium",
     srcs = ["tests/test_lightning_trainer.py"],
