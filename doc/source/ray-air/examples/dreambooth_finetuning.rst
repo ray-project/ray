@@ -138,9 +138,9 @@ We expect that the training time should benefit from scale and decreases when ru
 more workers and GPUs.
 
 
-.. image:: images/dreambooth_throughput.png
-   :target: images/dreambooth_throughput.png
-   :alt: DreamBooth throughput
+.. image:: images/dreambooth_training.png
+   :target: images/dreambooth_training.png
+   :alt: DreamBooth training times
 
 
 .. list-table::
