@@ -45,11 +45,7 @@ def test_trainer_with_native_dataloader(accelerator, datasource):
         lightning_config=lightning_config, scaling_config=scaling_config
     )
 
-    results = trainer.fit()
-    # TODO(yunxuanx): Add assertion after support metrics logging
-    # assert results.metrics["epoch"] == num_epochs - 1
-    # assert results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
-    # assert "loss" in results.metrics
+    trainer.fit()
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
@@ -81,7 +77,7 @@ def test_trainer_with_ray_data(accelerator):
         dataset_iter_config={"batch_size": batch_size},
     )
 
-    results = trainer.fit()
+    trainer.fit()
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
@@ -117,7 +113,7 @@ def test_trainer_with_categorical_ray_data(accelerator):
         dataset_iter_config={"batch_size": batch_size},
     )
 
-    results = trainer.fit()
+    trainer.fit()
 
 
 if __name__ == "__main__":

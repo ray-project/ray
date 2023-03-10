@@ -56,7 +56,7 @@ class LightningConfig:
             raise ValueError("'module_class' must be a class, not a class instance.")
         if not issubclass(module_class, pl.LightningModule):
             raise ValueError(
-                "'module_class' must be a subclass of 'pytorch_lightning.LightningModule'"
+                "'module_class' must be a subclass of 'pl.LightningModule'!"
             )
         self.module_class = module_class
         return self
@@ -120,14 +120,14 @@ class LightningTrainer(TorchTrainer):
     ``lightning_module_init_config``.
 
     For data ingestion, the LightningTrainer will then either convert the Ray Dataset
-    shards to a ``pytorch_lightning.LightningDataModule``, or directly use the datamodule
-    if provided by users.
+    shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
+    datamodule if provided by users.
 
     The trainer will also create a ModelCheckpoint callback based on the configuration
     provided in ``model_checkpoint_config``. Notice that all the other ModelCheckpoint
     callbacks specified in ``lightning_trainer_config`` will be ignored.
 
-    Then, the training function will initialize an instance of ``pytorch_lightning.Trainer``
+    Then, the training function will initialize an instance of ``pl.Trainer``
     using the arguments provided in ``trainer_init_config`` and then run
     ``pytorch_lightning.Trainer.fit``.
 
@@ -183,9 +183,16 @@ class LightningTrainer(TorchTrainer):
                     return optimizer
 
             # Prepare MNIST Datasets
-            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            mnist_train = MNIST('/tmp/data', train=True, download=True, transform=transform)
-            mnist_val = MNIST('/tmp/data', train=False, download=True, transform=transform)
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,))]
+            )
+            mnist_train = MNIST(
+                './data', train=True, download=True, transform=transform
+            )
+            mnist_val = MNIST(
+                './data', train=False, download=True, transform=transform
+            )
             train_loader = DataLoader(mnist_train, batch_size=32, shuffle=True)
             val_loader = DataLoader(mnist_val, batch_size=32, shuffle=False)
 
@@ -193,9 +200,13 @@ class LightningTrainer(TorchTrainer):
             lightning_config.set_module_class(MNISTClassifier)
             lightning_config.set_module_init_config(lr=1e-3, feature_dim=128)
             lightning_config.set_trainer_init_config(max_epochs=5, accelerator="gpu")
-            lightning_config.set_trainer_fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
+            lightning_config.set_trainer_fit_params(
+                train_dataloaders=train_loader, val_dataloaders=val_loader
+            )
 
-            scaling_config = ScalingConfig(num_workers=2, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1})
+            scaling_config = ScalingConfig(
+                num_workers=2, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+            )
             trainer = LightningTrainer(
                 lightning_config=lightning_config,
                 scaling_config=scaling_config,
@@ -273,11 +284,6 @@ def _lightning_train_loop_per_worker(config):
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
     if train_ray_dataset:
-        if not dataset_iter_config:
-            raise RuntimeError(
-                "'dataset_iter_config' cannot be None if you want to use Ray Dataset for training."
-            )
-
         if datamodule:
             logger.warning(
                 "Using Ray datasets as primary input. The 'datamodule' defined in "
@@ -327,8 +333,9 @@ def _lightning_train_loop_per_worker(config):
     for callback in trainer_config.get("callbacks", []):
         if isinstance(callback, ModelCheckpoint):
             logger.warning(
-                "LightningTrainer only initialized one ModelCheckpoint callback based on"
-                " `LightningConfig.model_checkpoint_config`. All other checkpoint callbacks are ignored."
+                "LightningTrainer will create a Ray ModelCheckpoint callback "
+                "based on `LightningConfig.model_checkpoint_config`. All the other"
+                " ModelCheckpoint callbacks are ignored."
             )
         else:
             callbacks.append(callback)
