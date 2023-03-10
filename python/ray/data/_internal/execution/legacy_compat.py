@@ -53,7 +53,11 @@ def execute_to_legacy_block_iterator(
         The output as a block iterator.
     """
     if DatasetContext.get_current().optimizer_enabled:
-        dag, stats = get_execution_plan(plan._logical_plan).dag, None
+        dag = get_execution_plan(plan._logical_plan).dag
+        if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
+            stats = plan._snapshot_stats
+        else:
+            stats = plan._in_stats
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
 

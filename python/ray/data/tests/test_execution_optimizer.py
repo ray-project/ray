@@ -595,26 +595,28 @@ def test_aggregate_e2e(
         assert row.as_pydict() == {"value": idx, "count()": 1}
 
 
-def test_plan_initial_stats(
+def test_execute_to_legacy_block_list(
     ray_start_regular_shared,
     enable_optimizer,
     enable_streaming_executor,
 ):
-    ds: Dataset = ray.data.range(100)
-    ds2: Dataset = ray.data.range(200)
-    ds_union = ds.union(ds2).fully_executed()
-    ds_union_stats_summary = ds_union._plan.stats_summary()
+    ds: Dataset = ray.data.range(10)
+    assert ds._plan._snapshot_stats is None
+    for row in ds.iter_rows():
+        assert row is not None
+    assert ds._plan._snapshot_stats is not None
 
-    assert len(ds_union_stats_summary.stages_stats) == 1
 
-    ds_union_stage_stats = ds_union_stats_summary.stages_stats[0]
-    assert ds_union_stage_stats.stage_name == "union"
-    assert ds_union_stage_stats.time_total_s > 0
-
-    ds_union_parent_stats = ds_union_stats_summary.parents
-    assert len(ds_union_parent_stats) == 2
-    assert ds_union_parent_stats[0] == ds._plan.stats_summary()
-    assert ds_union_parent_stats[1] == ds2._plan.stats_summary()
+def test_execute_to_legacy_block_iterator(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(10)
+    assert ds._plan._snapshot_stats is None
+    for batch in ds.iter_batches():
+        assert batch
+    assert ds._plan._snapshot_stats is not None
 
 
 def test_streaming_executor(
