@@ -10,6 +10,11 @@ except ModuleNotFoundError:
 
 from ray.train.lightning.lightning_trainer import LightningTrainer, LightningConfig
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+from ray.train.lightning.lightning_predictor import LightningPredictor
 
-
-__all__ = ["LightningTrainer", "LightningConfig", "LightningCheckpoint"]
+__all__ = [
+    "LightningTrainer",
+    "LightningConfig",
+    "LightningCheckpoint",
+    "LightningPredictor",
+]
