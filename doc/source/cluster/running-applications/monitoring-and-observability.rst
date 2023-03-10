@@ -89,10 +89,10 @@ below.
 
 Prometheus
 ^^^^^^^^^^
-Ray supports prometheus for emitting and recording time-series metrics.
+Ray supports Prometheus for emitting and recording time-series metrics.
 See :ref:`metrics <ray-metrics>` for more details of the metrics emitted.
-When using Prometheus in a Ray cluster, one must decide where they want to host prometheus and then configure
-Prometheus so that Prometheus can scrape the metrics from Ray.
+To use Prometheus in a Ray cluster, decide where to host it, then configure
+it so that it can scrape the metrics from Ray.
 
 Scraping metrics
 ################
@@ -202,24 +202,24 @@ Ray Cluster information. Here, we will use a Python script and the
 
 Grafana
 ^^^^^^^
-Ray dashboard integrates with grafana to show visualizations of time-series metrics.
+Ray dashboard integrates with Grafana to show visualizations of time-series metrics.
 
 .. image:: images/graphs.png
     :align: center
 
-First, you must decide where you want to host Grafana. One common place is to run it on the head node of the cluster.
-See :ref:`here <grafana>` for instructions on how to install Grafana and how to use the default Grafana configurations
+First decide where to host Grafana. A common location is on the head node of the cluster.
+See :ref:`instructions <grafana>` for installing Grafana and using the default Grafana configurations
 exported by Ray.
 
-Next, the head node must be able to access Prometheus and Grafana and the browser of the dashboard user
-must be able to access Grafana. You can configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
+Next, the head node must be able to access Prometheus and Grafana, and the browser of the dashboard user
+must be able to access Grafana. Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
 and `RAY_GRAFANA_IFRAME_HOST` environment variables.
 
-* `RAY_GRAFANA_HOST` should be set to an address that the head node can use to access Grafana.
-* `RAY_PROMETHEUS_HOST` should be set to an address the head node can use to access Prometheus.
-* `RAY_GRAFANA_IFRAME_HOST` can be set to an address for the user's browsers to use to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST` will be equal to `RAY_GRAFANA_HOST`.
+* Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana.
+* Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
+*  You can set`RAY_GRAFANA_IFRAME_HOST` to an address for the user's browsers to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST` is equal to `RAY_GRAFANA_HOST`.
 
-For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
+For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value
 to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
 
 
@@ -228,7 +228,7 @@ to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
 Using an existing Grafana instance
 ##################################
 
-When you want to use existing Grafana instance, before starting your Ray cluster you will need to setup environment variable `RAY_GRAFANA_HOST` with an URL of your Grafana. After starting Ray, you can find Grafana dashboard json at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
+To use an existing Grafana instance, set up the environment variable `RAY_GRAFANA_HOST` environment variable with a URL of your Grafana, before starting your Ray cluster. After starting Ray, find the Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
 
 If Grafana reports that datasource is not found, you can `add a datasource variable <https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable>`_ and using `JSON model view <https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model>`_ change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
 
