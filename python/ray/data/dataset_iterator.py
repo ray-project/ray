@@ -114,10 +114,9 @@ class DatasetIterator(abc.ABC):
 
         Examples:
             >>> import ray
-            >>> for i in ray.data.range(1000000)
-                .iterator()
-                .iter_rows(): # doctest: +SKIP
-            ...     print(i) # doctest: +SKIP
+            >>> dataset = ray.data.range(10)
+            >>> next(iter(dataset.iterator().iter_rows()))
+            0
 
         Time complexity: O(1)
 

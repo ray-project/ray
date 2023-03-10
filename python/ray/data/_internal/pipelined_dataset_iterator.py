@@ -64,7 +64,7 @@ class PipelinedDatasetIterator(DatasetIterator):
 
     def __getattr__(self, name):
         if name == "_base_dataset_pipeline":
-            raise AttributeError()
+            raise AttributeError
 
         if hasattr(self._base_dataset_pipeline, name):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
