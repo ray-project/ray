@@ -9,6 +9,7 @@ import pprint
 import time
 import traceback
 from typing import Callable, Dict, List, Optional
+from ray.experimental.state.api import list_tasks
 import ray
 from ray.actor import ActorHandle
 
@@ -306,3 +307,15 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     print("State api actor is ready now.")
     actor.start.remote()
     return actor
+
+
+def verify_failed_task(name: str, error_type: str) -> bool:
+    """
+    Check if a task with 'name' has failed with the exact error type 'error_type'
+    """
+    tasks = list_tasks(filters=[("name", "=", name)])
+    assert len(tasks) == 1, tasks
+    t = tasks[0]
+    assert t["state"] == "FAILED", t
+    assert t["error_type"] == error_type, t
+    return True
