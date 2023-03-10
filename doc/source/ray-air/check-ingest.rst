@@ -133,8 +133,7 @@ Shuffling Data
 
 Shuffling or data randomization is important for training high-quality models.
 
-By default, AIR reads data files (blocks) in a random order and shuffles the blocks
-assigned to each dataset shard. You can disable this behaviour by setting
+By default, AIR shuffles the assignment of data blocks (files) to dataset shards between epochs. You can disable this behavior by setting
 ``randomize_block_order`` to ``False`` in your :class:`~ray.air.config.DatasetConfig`.
 
 To randomize data records within a file, perform a local or global shuffle.
