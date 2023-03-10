@@ -593,6 +593,23 @@
     timeout: 1800
     script: bash dreambooth_run.sh
 
+
+- name: air_example_gptj_deepspeed_fine_tuning
+  group: AIR examples
+  working_dir: air_examples/gptj_deepspeed_finetuning
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: gptj_deepspeed_env.yaml
+    cluster_compute: gptj_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+
 #######################
 # XGBoost release tests
 #######################
