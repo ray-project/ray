@@ -309,6 +309,40 @@ def test_deploy_http_override(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_put_duplicate_apps(ray_start_stop):
+    """If a config with duplicate app names is deployed, `serve deploy` should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "duplicate_app_names.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+        assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_put_duplicate_routes(ray_start_stop):
+    """If a config with duplicate routes is deployed, the PUT request should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "duplicate_app_routes.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+        assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
 
