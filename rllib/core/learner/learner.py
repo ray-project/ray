@@ -401,14 +401,7 @@ class Learner:
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
         module_learner_stats = defaultdict(dict)
-        # batch.shallow_keys() should contain the module ids that were suppose to be
-        # trained in this iteration. Make sure the keys exist in the module.
         for module_id in batch.policy_batches.keys():
-            if module_id not in self._module.keys():
-                raise ValueError(
-                    f"Module id {module_id} not found in the module. "
-                    f"Available module ids: {self._module.keys()}"
-                )
             module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
@@ -445,8 +438,8 @@ class Learner:
                 parameter group that share the same optimizer object, if None, the
                 default optimizer_cls will be used with all the parameters from the
                 module.
-            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
-                should be provided.
+            optimizer_cls: The optimizer class to use. If None, the optimizer_cls of the
+                first parameter in the current list of parameters will be used.
         """
         self.__check_if_build_called()
         module = module_spec.build()
@@ -705,6 +698,13 @@ class Learner:
         """
         self.__check_if_build_called()
 
+        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
+        if len(missing_module_ids) > 0:
+            raise ValueError(
+                "Batch contains module ids that are not in the learner: "
+                f"{missing_module_ids}"
+            )
+
         batch_iter = (
             MiniBatchCyclicIterator
             if minibatch_size is not None
@@ -755,7 +755,8 @@ class Learner:
         """Check whether the module is compatible with the learner.
 
         For example, if there is a random RLModule, it will not be a torch or tf
-        module. Therefore we should not consider it during gradient based optimization.
+        module, but rather it is a numpy module. Therefore we should not consider it
+        during gradient based optimization.
 
         Args:
             module: The module to check.
@@ -821,7 +822,6 @@ class Learner:
         batch: MultiAgentBatch,
     ) -> Mapping[str, Any]:
         """Performs a single update given a batch of data."""
-
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)

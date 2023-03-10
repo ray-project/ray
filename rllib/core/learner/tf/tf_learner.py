@@ -25,6 +25,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -129,7 +130,7 @@ class TfLearner(Learner):
         return optimizer_cls(learning_rate=lr)
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
-        return isinstance(module, tf.keras.Model)
+        return isinstance(module, TfRLModule)
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -230,10 +231,11 @@ class TfLearner(Learner):
     ) -> Mapping[str, Any]:
         # TODO (Kourosh): The update of learner is vastly differnet than the base
         # class. So we need to unify them.
-        if set(batch.policy_batches.keys()) != set(self._module.keys()):
+        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
+        if len(missing_module_ids) > 0:
             raise ValueError(
-                "Batch keys must match module keys. Learner does not "
-                "currently support training of only some modules and not others"
+                "Batch contains module ids that are not in the learner: "
+                f"{missing_module_ids}"
             )
 
         batch_iter = (

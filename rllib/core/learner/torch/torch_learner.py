@@ -16,6 +16,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
@@ -146,7 +147,7 @@ class TorchLearner(Learner):
 
         # we need to ddpify the module that was just added to the pool
         module = self._module[module_id]
-        if isinstance(module, torch.nn.Module):
+        if isinstance(module, TorchRLModule):
             self._module[module_id].to(self._device)
             if self.distributed:
                 self._module.add_module(
@@ -194,11 +195,11 @@ class TorchLearner(Learner):
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
         if self._distributed:
-            if isinstance(self._module, torch.nn.Module):
+            if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(self._module)
             else:
                 for key in self._module.keys():
-                    if isinstance(self._module[key], torch.nn.Module):
+                    if isinstance(self._module[key], TorchRLModule):
                         self._module.add_module(
                             key, TorchDDPRLModule(self._module[key]), override=True
                         )

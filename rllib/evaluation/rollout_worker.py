@@ -1408,7 +1408,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
 
-        print(list(self.policy_map.keys()))
         return self.policy_map[policy_id]
 
     @DeveloperAPI

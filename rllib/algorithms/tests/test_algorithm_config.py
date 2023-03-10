@@ -395,8 +395,14 @@ class TestAlgorithmConfig(unittest.TestCase):
         )
         self._assertEqualMARLSpecs(spec, expected)
 
-        # this is expected to return CustomRLModule1 instead of CustomRLModule3 which
-        # is passed in. Because the default for p1, p2 is to use CustomRLModule1
+        # This is expected to return CustomRLModule1 instead of CustomRLModule3 which
+        # is passed in. Because the default for p1, p2 is to use CustomRLModule1. The
+        # passed module_spec only sets a default to fall back onto in case the
+        # module_id is not specified in the original MultiAgentRLModuleSpec. Since P1
+        # and P2 are both assigned to CustomeRLModule1, the passed module_spec will not
+        # be used. This is the expected behavior for adding a new modules to a
+        # multi-agent RLModule that is not defined in the original
+        # MultiAgentRLModuleSpec.
         spec, expected = self._get_expected_marl_spec(
             config,
             CustomRLModule1,
@@ -413,10 +419,11 @@ class TestAlgorithmConfig(unittest.TestCase):
             _enable_rl_module_api=True
         )
 
-        with self.assertRaises(ValueError):
-            # the config does not set any single agent rl module specs. This is a
-            # situation where we won't know what to use for the base RLModules.
-            config.validate()
+        self.assertRaisesRegex(
+            ValueError,
+            "Module_specs cannot be None",
+            lambda: config.validate(),
+        )
 
         ########################################
         # This is the case where we ask the algorithm to use its default

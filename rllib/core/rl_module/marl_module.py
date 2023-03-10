@@ -387,7 +387,7 @@ class MultiAgentRLModuleSpec:
     def __post_init__(self):
         if self.module_specs is None:
             raise ValueError(
-                "module_specs cannot be None. It should be either a "
+                "Module_specs cannot be None. It should be either a "
                 "SingleAgentRLModuleSpec or a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
