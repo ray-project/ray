@@ -386,8 +386,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             )
         except DataSourceUnavailable as e:
             return self._reply(
-                success=False, 
-                error_message=str(e), 
+                success=False,
+                error_message=str(e),
                 result=None,
                 reason=str(e),
             )
