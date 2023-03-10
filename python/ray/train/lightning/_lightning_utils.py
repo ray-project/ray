@@ -1,5 +1,6 @@
 import os
 import logging
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 import torch
 from torch import Tensor
 from copy import deepcopy
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class RayDDPStrategy(DDPStrategy):
-    """Subclass of DDPStrategy that ensures DDP training correctly with Ray orchestration."""
+    """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
 
     @property
     def root_device(self) -> torch.device:
@@ -81,27 +82,28 @@ class RayDataModule(pl.LightningDataModule):
         val_dataset: Optional["Dataset"] = None,
     ) -> None:
         super().__init__()
-        self.train_dataset = train_dataset
-        self.val_dataset = val_dataset
-        self.dataset_iter_config = dataset_iter_config
 
-        if not self.dataset_iter_config:
+        if not dataset_iter_config:
             raise RuntimeError(
-                "To use Ray Datasets with LightningTrainer, you must provide `datasets_iter_config`!"
+                "To use Ray Datasets with LightningTrainer, you must specify "
+                " `datasets_iter_config` in LightningConfig!"
             )
 
-    def train_dataloader(self):
-        ds = RayIterableDataset(self.train_dataset, self.dataset_iter_config)
-        return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
-
-    def val_dataloader(self):
-        if self.val_dataset:
-            ds = RayIterableDataset(self.val_dataset, self.dataset_iter_config)
+        def _train_dataloader() -> TRAIN_DATALOADERS:
+            assert train_dataset
+            ds = RayIterableDataset(train_dataset, dataset_iter_config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
-        else:
-            raise RuntimeError(
-                "val_dataset is None. Please provide your validation ray dataset when initializing the `LightningTrainer`."
-            )
+
+        def _val_dataloader() -> EVAL_DATALOADERS:
+            assert val_dataset
+            ds = RayIterableDataset(val_dataset, dataset_iter_config)
+            return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
+
+        if train_dataset:
+            self.train_dataloader = _train_dataloader
+
+        if val_dataset:
+            self.val_dataloader = _val_dataloader
 
 
 class RayModelCheckpoint(ModelCheckpoint):
