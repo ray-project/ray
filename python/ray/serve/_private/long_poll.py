@@ -136,7 +136,7 @@ class LongPollClient:
             logger.error("The event loop is closed, shutting down long poll client.")
             self.is_running = False
 
-    def _process_update(self, updates: Dict[str, UpdatedObject]):
+    def _process_update(self, updates: Dict[KeyType, UpdatedObject]):
         if isinstance(updates, (ray.exceptions.RayActorError)):
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
