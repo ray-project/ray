@@ -143,6 +143,11 @@ DEFINE_stats(grpc_server_req_finished,
              ("Method"),
              (),
              ray::stats::COUNT);
+DEFINE_stats(grpc_server_reply_dropped_on_error,
+             "Number of reply dropped when error status is returned",
+             ("Method"),
+             (),
+             ray::stats::COUNT);
 
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,

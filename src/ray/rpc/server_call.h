@@ -253,6 +253,13 @@ class ServerCallImpl : public ServerCall {
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
+    if (!status.ok() &&
+        !google::protobuf::util::MessageDifferencer::Equivalent(*reply_, Reply())) {
+      RAY_LOG_EVERY_N(WARNING, 10000)
+          << "Reply = " << reply_->DebugString()
+          << " will be dropped due to non ok status = " << status;
+      ray::stats::STATS_grpc_server_reply_dropped_on_error.Record(1, call_name_);
+    }
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 

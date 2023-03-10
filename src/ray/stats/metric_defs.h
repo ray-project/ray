@@ -62,6 +62,7 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+DECLARE_stats(grpc_server_reply_dropped_on_error);
 
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
