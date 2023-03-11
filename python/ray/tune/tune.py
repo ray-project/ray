@@ -482,6 +482,7 @@ def run(
 
     # from now on, on head node.
     air_usage.set_air_scenario_in_head_node()
+    air_usage.parse_and_set_trainable(run_or_experiment)
     ray._private.usage.usage_lib.record_library_usage("tune")
 
     all_start = time.time()

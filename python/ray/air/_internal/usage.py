@@ -106,9 +106,7 @@ def set_air_scenario_in_head_node():
     # may be called multiple times, but the following times are no-op.
     # And unset all env vars.
     assert not ray.util.client.ray.is_connected()
-    if (
-        not AIR_RAY_CLIENT_MODE_ENV_VAR in os.environ
-    ):  # not coming from ray client
+    if AIR_RAY_CLIENT_MODE_ENV_VAR not in os.environ:  # not coming from ray client
         assert (
             AIR_TRAINABLE_ENV_VAR not in os.environ
             and AIR_ENTRYPOINT_ENV_VAR not in os.environ
@@ -163,6 +161,7 @@ def parse_and_set_trainable(trainable: "TrainableTypeOrTrainer"):
         elif isinstance(trainable, Trainable):
             result = "custom_class_trainable"
         else:
+            # experiments may fall into this path.
             result = "other"
     _air_scenario.trainable = result
 

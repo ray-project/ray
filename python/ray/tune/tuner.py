@@ -268,7 +268,12 @@ class Tuner:
             return Tuner(_tuner_internal=tuner_internal)
         else:
             tuner_internal = _force_on_current_node(
-                ray.remote(num_cpus=0)(TunerInternal)
+                ray.remote(
+                    runtime_env={
+                        "env_vars": air_usage.get_air_scenario_env_vars_to_propagate()
+                    },
+                    num_cpus=0,
+                )(TunerInternal)
             ).remote(
                 restore_path=path,
                 resume_config=resume_config,
