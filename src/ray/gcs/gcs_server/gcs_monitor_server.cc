@@ -187,8 +187,7 @@ void GcsMonitorServer::HandleGetSchedulingStatus(
   PopulateResourceDemands(reply);
   PopulatePlacementGroupDemands(reply);
 
-  auto key = "autoscaler_resource_request_pb2";
-  internal_kv_.Get("", key, [reply, send_reply_callback](std::optional<std::string> res) {
+  internal_kv_.Get("", AUTOSCALER_SDK_REQUEST_RESOURCES_KEY, [reply, send_reply_callback](std::optional<std::string> res) {
     if (res != std::nullopt) {
       auto resource_request = reply->add_resource_requests();
       resource_request->ParseFromString(*res);

@@ -122,7 +122,6 @@ class GcsMonitorServerTest : public ::testing::Test {
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
   std::shared_ptr<gcs::MockGcsPlacementGroupManager> mock_placement_group_manager_;
-  // gcs::InMemoryStoreClient internal_kv_;
   gcs::StoreClientInternalKV internal_kv_;
   gcs::GcsMonitorServer monitor_server_;
 };
@@ -175,8 +174,30 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   NodeID id_3 = NodeID::FromRandom();
 
   {
+
     // Setup ray.autoscaler.sdk.request_resources
     rpc::ResourceRequest request;
+    request.set_resource_request_type(rpc::ResourceRequest_ResourceRequestType::
+                                      ResourceRequest_ResourceRequestType_MIN_RESOURCES);
+    request.set_count(1);
+
+    absl::flat_hash_map<std::string, double> resource_map1 = {{"CPU", 1}, {"GPU", 1}};
+    rpc::ResourceBundle *bundle1 = request.add_bundles();
+    bundle1->mutable_resources()->insert(resource_map1.begin(), resource_map1.end());
+
+    absl::flat_hash_map<std::string, double> resource_map2 = {{"custom", 0.1}};
+    rpc::ResourceBundle *bundle2 = request.add_bundles();
+    bundle2->mutable_resources()->insert(resource_map2.begin(), resource_map2.end());
+
+    std::string buf;
+    ASSERT_TRUE(request.SerializeToString(&buf));
+    internal_kv_.Put(
+                     "",
+                     gcs::AUTOSCALER_SDK_REQUEST_RESOURCES_KEY,
+                     buf,
+                     true,
+                     [](bool success){}
+                     );
   }
   {
     // Setup resource demand mocks.
@@ -265,13 +286,14 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   }
   {
     // Check the resource requests field looks good.
-    ASSERT_EQ(reply.resource_requests().size(), 8);
+    ASSERT_EQ(reply.resource_requests().size(), 9);
 
     bool cpu_found = false;
     bool custom_found = false;
     bool cpu_and_custom_found = false;
     bool found_pending_pg = false;
     bool found_infeasible_pg = false;
+    bool found_request_resources = false;
 
     for (const auto &request : reply.resource_requests()) {
       RAY_LOG(ERROR) << request.DebugString();
@@ -303,6 +325,14 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
       } else if (request.resource_request_type() ==
                  rpc::ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION) {
         found_infeasible_pg = true;
+      } else if (request.resource_request_type() ==
+                rpc::ResourceRequest_ResourceRequestType_MIN_RESOURCES) {
+        ASSERT_EQ(request.count(), 1);
+        ASSERT_EQ(request.bundles().size(), 2);
+        ASSERT_EQ(request.bundles()[0].resources().at("CPU") , 1);
+        ASSERT_EQ(request.bundles()[0].resources().at("GPU") , 1);
+        ASSERT_EQ(request.bundles()[1].resources().at("custom") , 0.1);
+        found_request_resources = true;
       }
     }
 
@@ -311,6 +341,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     ASSERT_TRUE(cpu_and_custom_found);
     ASSERT_TRUE(found_pending_pg);
     ASSERT_TRUE(found_infeasible_pg);
+    ASSERT_TRUE(found_request_resources);
   }
 }
 
