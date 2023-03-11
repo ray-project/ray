@@ -268,6 +268,7 @@ class PPOConfig(PGConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+
         # Call super's validation method.
         super().validate()
 
@@ -405,7 +406,8 @@ class PPO(Algorithm):
             # that we don't have to do this back and forth
             # communication between driver and the remote
             # trainer workers
-
+            is_module_trainable = self.workers.local_worker().is_policy_to_train
+            self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
@@ -465,6 +467,7 @@ class PPO(Algorithm):
             }
             # triggers a special update method on RLOptimizer to update the KL values.
             self.learner_group.additional_update(
+                module_ids_to_update=policies_to_update,
                 sampled_kl_values=kl_dict,
                 timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
             )
