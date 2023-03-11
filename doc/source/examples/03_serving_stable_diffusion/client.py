@@ -1,3 +1,4 @@
+import argparse
 import aiohttp
 import asyncio
 import os
@@ -6,10 +7,7 @@ import requests
 import time
 import uuid
 
-import ray
 
-ray.init()
-NUM_NODES = len(ray.nodes())
 ENDPOINT = "http://localhost:8000/imagine"
 spinner = halo.Halo(text="Generating image...", spinner="dots")
 
@@ -30,6 +28,13 @@ async def main():
             "`serve run app:entrypoint` in another terminal yet?"
         ) from e
 
+    num_images = int(
+        input(
+            "How many images do you want to generate for each prompt? "
+            "(Ex: The number of replicas you set for `server.py`): "
+        )
+    )
+
     while True:
         example_prompt = "dog reading a newspaper in 4k hd ultra realistic"
         prompt = input(f"Enter a prompt (ex: '{example_prompt}'): ")
@@ -39,7 +44,7 @@ async def main():
 
         async with aiohttp.ClientSession() as session:
             tasks = []
-            for i in range(NUM_NODES):
+            for i in range(num_images):
                 tasks.append(generate_image(session, prompt))
             images = await asyncio.gather(*tasks)
 
