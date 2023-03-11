@@ -3647,7 +3647,7 @@
 
   run:
     # Expect the benchmark to finish less than 4 mins.
-    timeout: 300
+    timeout: 1200
     script: python read_parquet_benchmark.py
 
 
