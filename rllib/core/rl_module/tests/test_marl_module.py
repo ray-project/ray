@@ -215,6 +215,7 @@ class TestMARLModule(unittest.TestCase):
         )
         # check that after removing a module, the checkpoint is correct
         with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = "/tmp/test_marl_module"
             module.save_to_checkpoint(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())

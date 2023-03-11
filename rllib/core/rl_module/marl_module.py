@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 import json
 import pathlib
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
+from typing import Iterator, Mapping, Any, Union, Dict, Optional, Sequence, Type
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -20,6 +20,7 @@ from ray.rllib.core.rl_module.rl_module import (
 # TODO (Kourosh): change this to module_id later to enforce consistency
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.serialization import serialize_type, deserialize_type
 
 ModuleID = str
 
@@ -268,14 +269,47 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
+    def save_state_to_dir(self, dir: Union[str, pathlib.Path]) -> str:
+        """Saves the weights of this MultiAgentRLModule to dir.
+
+        Args:
+            dir: The directory to save the checkpoint to.
+
+        Returns:
+            The path to the saved checkpoint.
+        """
+        dir = pathlib.Path(dir)
+        dir.mkdir(parents=True, exist_ok=True)
+        for module_id, module in self._rl_modules.items():
+            module.save_to_checkpoint(str(dir / module_id))
+
+    def load_state_from_dir(self, dir: Union[str, pathlib.Path],
+                            modules_to_load: Sequence) -> None:
+        """Loads the weights of an MultiAgentRLModule from dir.
+
+        Args:
+            dir: The directory to load the checkpoint from.
+            modules_to_load: The modules to load from the checkpoint. If None, all
+        """
+        dir = pathlib.Path(dir)
+        modules_to_load = set(modules_to_load)
+        if not modules_to_load:
+            modules_to_load = set(self._rl_modules.keys())
+        dir.mkdir(parents=True, exist_ok=True)
+        for module_id, module in self._rl_modules.items():
+            if module_id not in modules_to_load:
+                continue
+            submodule_path = dir / module_id
+            if not submodule_path.exists():
+                raise ValueError(f"Submodule {module_id} not found in checkpoint.")
+            module.save_to_checkpoint(str(dir / module_id))
+
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
-        self.config = MultiAgentRLModuleSpec.from_module(self).get_marl_config()
-        for module_id, module in self._rl_modules.items():
-            module.save_to_checkpoint(str(path / module_id))
-        self._save_module_metadata(path, None)
+        self.save_state_to_dir(path)
+        self._save_module_metadata(path, MultiAgentRLModuleSpec)
 
     @classmethod
     @override(RLModule)
@@ -443,6 +477,27 @@ class MultiAgentRLModuleSpec:
                 "should be a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
+
+    def to_dict(self):
+        """Converts the MultiAgentRLModuleSpec to a dictionary."""
+        return {
+            "marl_module_class": serialize_type(self.marl_module_class),
+            "module_specs": {
+                module_id: module_spec.to_dict()
+                for module_id, module_spec in self.module_specs.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, d) -> "MultiAgentRLModuleSpec":
+        """Creates a MultiAgentRLModuleSpec from a dictionary."""
+        return MultiAgentRLModuleSpec(
+            marl_module_class=deserialize_type(d["marl_module_class"]),
+            module_specs={
+                module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
+                for module_id, module_spec in d["module_specs"].items()
+            },
+        )
 
 
 @ExperimentalAPI

@@ -7,7 +7,7 @@ import pathlib
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, MultiAgentRLModuleSpec
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
@@ -36,9 +36,8 @@ from ray.rllib.utils.serialization import (
 
 ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
-RLMODULE_METADATA_CLS_KEY = "module_class"
-RLMODULE_METADATA_CFG_KEY = "module_config"
-RLMODULE_METADATA_CFG_CLS_KEY = "module_config_class"
+RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
+RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
 RLMODULE_METADTATA_STATE_PATH_KEY = "module_state_path"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
@@ -407,36 +406,83 @@ class RLModule(abc.ABC):
     @abc.abstractmethod
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
+    
+    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+        """Saves the weights of this RLmodule to path.
 
-    def _save_module_metadata(
-        self,
-        checkpoint_dir: Union[str, pathlib.Path],
-        module_state_path: Union[str, pathlib.Path, Type[None]],
-    ):
-        """Saves the metadata of the module to checkpoint_dir.
+        Args:
+            path: The directory to save the checkpoint to.
+
+        Returns:
+            The path to the saved checkpoint.
+        """
+        raise NotImplementedError
+
+    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLmodule from path.
+
+        Args:
+            path: The directory to load the checkpoint from.
+        """
+        raise NotImplementedError
+
+    def _module_metadata(
+        self, 
+        module_spec_class: Union[Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]],
+        additional_metadata: Optional[Mapping[str, Any]] = None
+    ) -> Mapping[str, Any]:
+        """Returns the metadata of the module.
+
+        This method is used to save the metadata of the module to the checkpoint.
 
         Includes:
-            - module class path
+            - module spec class (e.g SingleAgentRLModuleSpec or MultiAgentRLModuleSpec)
+            - module spec serialized to a dict
             - module state path (if provided)
-            - the module config
-            - the module config class path
             - the ray version used
             - the ray commit hash used
             - the date and time of the checkpoint was created
 
+        Args:
+            module_spec_class: The module spec class that can be used to construct this
+                module.
+            additional_metadata: Any additional metadata to be added to metadata.
+
+        Returns:
+            A dict of json serializable the metadata.
         """
-        checkpoint_dir = pathlib.Path(checkpoint_dir)
-        gmt_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
         metadata = {}
+        gmt_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
+
         # TODO (Avnishn): Find a way to incorporate the tune registry here.
-        metadata[RLMODULE_METADATA_CLS_KEY] = serialize_type(self.__class__)
-        metadata[RLMODULE_METADATA_CFG_KEY] = self.config.to_dict()
-        metadata[RLMODULE_METADATA_CFG_CLS_KEY] = serialize_type(self.config.__class__)
+        metadata[RLMODULE_METADATA_SPEC_CLASS_KEY] = serialize_type(module_spec_class)
+        metadata[RLMODULE_METADATA_SPEC_KEY] = module_spec_class.from_module(self).to_dict()
         metadata[RLMODULE_METADATA_RAY_VERSION_KEY] = ray.__version__
         metadata[RLMODULE_METADATA_RAY_COMMIT_HASH_KEY] = ray.__commit__
         metadata[RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY] = gmt_time
-        if module_state_path:
-            metadata[RLMODULE_METADTATA_STATE_PATH_KEY] = module_state_path
+        if not additional_metadata:
+            additional_metadata = {}
+        metadata.update(**additional_metadata)
+        return metadata
+
+    def _save_module_metadata(
+        self,
+        checkpoint_dir: Union[str, pathlib.Path],
+        module_spec_class: Union[Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]],
+        additional_metadata: Mapping[str, Any] = None,
+
+    ):
+        """Saves the metadata of the module to checkpoint_dir.
+        
+        Args:
+            checkpoint_dir: The directory to save the metadata to.
+            additional_metadata: Additional metadata to save.
+        
+        """
+        if not additional_metadata:
+            additional_metadata = {}
+        checkpoint_dir = pathlib.Path(checkpoint_dir)
+        metadata = self._module_metadata(module_spec_class, additional_metadata)
         metadata_path = checkpoint_dir / RLMODULE_METADATA_FILE_NAME
         with open(metadata_path, "w") as f:
             json.dump(metadata, f)
@@ -459,36 +505,16 @@ class RLModule(abc.ABC):
             )
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
-        module_class = deserialize_type(metadata["module_class"])
-        module_config_class = deserialize_type(metadata["module_config_class"])
-        module_config = module_config_class.from_dict(metadata["module_config"])
-        module = module_class(module_config)
+        module_spec_class = deserialize_type(metadata[RLMODULE_METADATA_SPEC_CLASS_KEY])
+        module_spec = module_spec_class.from_dict(metadata[RLMODULE_METADATA_SPEC_KEY])
+        module = module_spec.build()
         return module
-
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        """Saves the weights of this RLmodule to path.
-
-        Args:
-            path: The directory to save the checkpoint to.
-
-        Returns:
-            The path to the saved checkpoint.
-        """
-        raise NotImplementedError
-
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLmodule from path.
-
-        Args:
-            path: The directory to load the checkpoint from.
-        """
-        raise NotImplementedError
 
     def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
         """Saves the module to a checkpoint directory.
 
         Args:
-            dir_path: The directory to save the checkpoint to.
+            checkpoint_dir_path: The directory to save the checkpoint to.
 
         Raises:
             ValueError: If dir_path is not an absolute path.
@@ -496,14 +522,15 @@ class RLModule(abc.ABC):
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
         module_state_path = self.save_state_to_file(path)
-        self._save_module_metadata(path, module_state_path)
+        additional_metadata = {RLMODULE_METADTATA_STATE_PATH_KEY: module_state_path}
+        self._save_module_metadata(path, SingleAgentRLModuleSpec, additional_metadata)
 
     @classmethod
     def from_checkpoint(cls, checkpoint_dir_path: str) -> None:
         """Loads the module from a checkpoint directory.
 
         Args:
-            dir_path: The directory to load the checkpoint from.
+            checkpoint_dir_path: The directory to load the checkpoint from.
         """
         path = pathlib.Path(checkpoint_dir_path)
         if not path.exists():
