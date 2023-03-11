@@ -7,7 +7,7 @@ import torch
 
 import ray
 from ray.train.lightning import LightningCheckpoint, LightningPredictor
-from ray.train.tests.test_lightning_utils import (
+from ray.train.tests._lightning_utils import (
     LightningMNISTClassifier,
     LightningMNISTModelConfig,
 )
