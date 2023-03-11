@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
+from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -231,34 +231,47 @@ class MultiAgentRLModule(RLModule):
         return self._run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(
+        self, module_ids: Optional[Set[ModuleID]] = None
+    ) -> Mapping[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
-        The default implementation loops all modules and calls their get_state method.
-        Override this method if you want to change the get_state behavior.
+        This method returns the state of each module specified by module_ids. If
+        module_ids is None, the state of all modules is returned.
 
+        Args:
+            module_ids: The module IDs to get the state of. If None, the state of all
+                modules is returned.
         Returns:
             A nested state dict with the first layer being the module ID and the second
-            is the state of the module.
+            is the state of the module. The returned dict values are framework-specific
+            tensors.
         """
+
+        if module_ids is None:
+            module_ids = self._rl_modules.keys()
+
         return {
-            module_id: module.get_state()
-            for module_id, module in self._rl_modules.items()
+            module_id: self._rl_modules[module_id].get_state()
+            for module_id in module_ids
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        """Sets the state dict of the multi-agent module.
+    def set_state(self, state_dict: Mapping[ModuleID, Any]) -> None:
+        """Sets the state of the multi-agent module.
 
-        The default implementation is a mapping from independent module IDs to their
-        corresponding RLModule state_dicts. Override this method to customize the
-        state_dict for custom more advanced multi-agent use cases.
+        It is assumed that the state_dict is a mapping from module IDs to their
+        corressponding state. This method sets the state of each module by calling
+        their set_state method. If you want to set the state of some of the RLModules
+        within this MultiAgentRLModule your state_dict can only include the state of
+        those RLModules. Override this method to customize the state_dict for custom
+        more advanced multi-agent use cases.
 
         Args:
             state_dict: The state dict to set.
         """
-        for module_id, module in self._rl_modules.items():
-            module.set_state(state_dict[module_id])
+        for module_id, state in state_dict.items():
+            self._rl_modules[module_id].set_state(state)
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
@@ -268,7 +281,7 @@ class MultiAgentRLModule(RLModule):
         forward_fn_name: str,
         batch: NestedDict[Any],
         **kwargs,
-    ) -> Dict[ModuleID, Mapping[str, Any]]:
+    ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
 
         It uses forward_fn_name to get the forward pass method from the RLModule
@@ -333,7 +346,7 @@ class MultiAgentRLModuleSpec:
     def __post_init__(self):
         if self.module_specs is None:
             raise ValueError(
-                "module_specs cannot be None. It should be either a "
+                "Module_specs cannot be None. It should be either a "
                 "SingleAgentRLModuleSpec or a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
