@@ -17,6 +17,10 @@ from ray.util.placement_group import (
     placement_group_table,
     remove_placement_group,
 )
+from ray.util.scheduling_cluster import (
+    scheduling_cluster,
+    SchedulingCluster,
+)
 from ray.util.serialization import deregister_serializer, register_serializer
 
 
@@ -65,4 +69,6 @@ __all__ = [
     "register_serializer",
     "deregister_serializer",
     "list_named_actors",
+    "scheduling_cluster",
+    "SchedulingCluster",
 ]

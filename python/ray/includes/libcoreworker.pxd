@@ -112,7 +112,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string &extension_data, CActorID *actor_id)
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
-            CPlacementGroupID *placement_group_id)
+            CPlacementGroupID *placement_group_id,
+            c_bool is_scheduling_cluster)
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(

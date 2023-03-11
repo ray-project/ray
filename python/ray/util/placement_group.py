@@ -40,10 +40,9 @@ class PlacementGroup:
     def __init__(
         self,
         id: "ray._raylet.PlacementGroupID",
-        bundle_cache: Optional[List[Dict]] = None,
     ):
         self.id = id
-        self.bundle_cache = bundle_cache
+        self.bundle_cache = None
 
     @property
     def is_empty(self):
@@ -131,6 +130,7 @@ def placement_group(
     name: str = "",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
+    is_scheduling_cluster=False,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -217,12 +217,20 @@ def placement_group(
             "placement group `lifetime` argument must be either `None` or 'detached'"
         )
 
+    if ray.get_runtime_context()._get_scheduling_cluster() is not None:
+        bundles = (
+            ray.get_runtime_context()
+            ._get_scheduling_cluster()
+            ._rewrite_placement_group_bundles(bundles)
+        )
+
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
         strategy,
         detached,
         _max_cpu_fraction_per_node,
+        is_scheduling_cluster,
     )
 
     return PlacementGroup(placement_group_id)

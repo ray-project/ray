@@ -16,6 +16,7 @@ class RuntimeContext(object):
     def __init__(self, worker):
         assert worker is not None
         self.worker = worker
+        self._scheduling_cluster = None
 
     def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
@@ -261,6 +262,12 @@ class RuntimeContext(object):
         """
         pg_id = self.worker.placement_group_id
         return pg_id.hex() if not pg_id.is_nil() else None
+
+    def _get_scheduling_cluster(self):
+        return self._scheduling_cluster
+
+    def _set_scheduling_cluster(self, scheduling_cluster) -> None:
+        self._scheduling_cluster = scheduling_cluster
 
     @property
     def should_capture_child_tasks_in_placement_group(self):

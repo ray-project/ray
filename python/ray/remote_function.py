@@ -325,6 +325,12 @@ class RemoteFunction:
             _warn_if_using_deprecated_placement_group(task_options, 4)
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
+        if ray.get_runtime_context()._get_scheduling_cluster() is not None:
+            resources = (
+                ray.get_runtime_context()
+                ._get_scheduling_cluster()
+                ._rewrite_resource_requirements(resources)
+            )
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -384,6 +390,7 @@ class RemoteFunction:
                 assert (
                     not self._is_cross_language
                 ), "Cross language remote function cannot be executed locally."
+
             object_refs = worker.core_worker.submit_task(
                 self._language,
                 self._function_descriptor,

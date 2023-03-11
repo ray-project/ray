@@ -2119,7 +2119,8 @@ cdef class CoreWorker:
                             c_vector[unordered_map[c_string, double]] bundles,
                             c_string strategy,
                             c_bool is_detached,
-                            double max_cpu_fraction_per_node):
+                            double max_cpu_fraction_per_node,
+                            c_bool is_scheduling_cluster):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -2146,7 +2147,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 max_cpu_fraction_per_node),
-                            &c_placement_group_id))
+                            &c_placement_group_id,
+                            is_scheduling_cluster))
 
         return PlacementGroupID(c_placement_group_id.Binary())
 

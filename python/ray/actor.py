@@ -965,6 +965,15 @@ class ActorClass:
                 )
             )
 
+        if (not isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)) and (
+            ray.get_runtime_context()._get_scheduling_cluster() is not None
+        ):
+            resources = (
+                ray.get_runtime_context()
+                ._get_scheduling_cluster()
+                ._rewrite_resource_requirements(resources)
+            )
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

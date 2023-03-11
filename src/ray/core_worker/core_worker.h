@@ -770,7 +770,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
       const PlacementGroupCreationOptions &placement_group_creation_options,
-      PlacementGroupID *placement_group_id);
+      PlacementGroupID *placement_group_id,
+      bool is_scheduling_cluster = false);
 
   /// Remove a placement group. Note that this operation is synchronous.
   ///

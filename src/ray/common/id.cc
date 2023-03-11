@@ -305,11 +305,16 @@ uint32_t JobID::ToInt() {
   return value;
 }
 
-PlacementGroupID PlacementGroupID::Of(const JobID &job_id) {
+PlacementGroupID PlacementGroupID::Of(const JobID &job_id, bool is_scheduling_cluster) {
   // No need to set transport type for a random object id.
   // No need to assign put_index/return_index bytes.
   std::string data(PlacementGroupID::kUniqueBytesLength, 0);
   FillRandom(&data);
+  if (is_scheduling_cluster) {
+    data[0] = 1;
+  } else {
+    data[0] = 0;
+  }
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == kLength);
   return PlacementGroupID::FromBinary(data);

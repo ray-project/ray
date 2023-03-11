@@ -348,9 +348,11 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   /// \param job_id The job id to which this actor belongs.
   ///
   /// \return The random `PlacementGroupID`.
-  static PlacementGroupID Of(const JobID &job_id);
+  static PlacementGroupID Of(const JobID &job_id, bool is_scheduling_cluster = false);
 
   static PlacementGroupID FromRandom() = delete;
+
+  bool IsSchedulingCluster() const { return id_[0] == 1; }
 
   /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}

@@ -2046,7 +2046,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
-    PlacementGroupID *return_placement_group_id) {
+    PlacementGroupID *return_placement_group_id,
+    bool is_scheduling_cluster) {
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
@@ -2058,7 +2059,8 @@ Status CoreWorker::CreatePlacementGroup(
       }
     }
   }
-  const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
+  const PlacementGroupID placement_group_id =
+      PlacementGroupID::Of(GetCurrentJobId(), is_scheduling_cluster);
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
       placement_group_id,
