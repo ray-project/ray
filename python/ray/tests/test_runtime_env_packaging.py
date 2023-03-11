@@ -12,7 +12,10 @@ from shutil import copytree, make_archive, rmtree
 import pytest
 
 from ray._private.gcs_utils import GcsClient
-from ray._private.ray_constants import KV_NAMESPACE_PACKAGE
+from ray._private.ray_constants import (
+    KV_NAMESPACE_PACKAGE,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+)
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
     MAC_OS_ZIP_HIDDEN_DIR_NAME,
@@ -30,6 +33,7 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
+    _get_gitignore,
 )
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -510,13 +514,26 @@ class TestParseUri:
         assert package_name == gcs_uri.split("/")[-1]
 
 
+def test_get_gitignore(tmp_path):
+    gitignore_path = tmp_path / ".gitignore"
+    gitignore_path.write_text("*.pyc")
+    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.pyc")) is True
+    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
+
+
+@pytest.mark.parametrize("ignore_gitignore", [True, False])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_travel(tmp_path):
+def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     dir_paths = set()
     file_paths = set()
     item_num = 0
     excludes = []
     root = tmp_path / "test"
+
+    if ignore_gitignore:
+        monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "1")
+    else:
+        monkeypatch.delenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, raising=False)
 
     def construct(path, excluded=False, depth=0):
         nonlocal item_num
@@ -552,6 +569,18 @@ def test_travel(tmp_path):
                 else:
                     file_paths.add((str(path / uid), str(v)))
             item_num += 1
+
+        # Add gitignore file
+        gitignore = root / ".gitignore"
+        gitignore.write_text("*.pyc")
+        file_paths.add((str(gitignore), "*.pyc"))
+
+        # Add file that should be ignored by gitignore
+        with (root / "foo.pyc").open("w") as f:
+            f.write("foo")
+        if ignore_gitignore:
+            # If ignore_gitignore is True, then the file should be visited
+            file_paths.add((str(root / "foo.pyc"), "foo"))
 
     construct(root)
     exclude_spec = _get_excludes(root, excludes)
