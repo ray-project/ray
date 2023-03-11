@@ -1444,7 +1444,8 @@ class Policy(metaclass=ABCMeta):
             return
 
         # To avoid a circular dependency problem cause by SampleBatch.
-        from ray.rllib.connectors.connector import ConnectorContext, get_connector
+        from ray.rllib.connectors.connector import ConnectorContext
+        from ray.rllib.connectors.registry import get_connector
 
         def _restore(cfg):
             ctx: ConnectorContext = ConnectorContext.from_policy(self)
