@@ -240,12 +240,31 @@ def _resolve_blocks(
         An iterator over resolved blocks.
     """
 
+    hit = 0
+    miss = 0
+    unknown = 0
     for block_ref in block_ref_iter:
         if block_ref is not None:
             stats_timer = stats.iter_get_s.timer() if stats else nullcontext()
+            # Count the number of blocks that we hit locally or miss (so have to
+            # fetch from remote node). This is to measure the effectiveness of
+            # prefetch.
+            loc = ray.experimental.get_object_locations([block_ref])
+            nodes = loc[block_ref]["node_ids"]
+            if nodes:
+                current = ray.get_runtime_context().get_node_id()
+                if current in nodes:
+                    hit += 1
+                else:
+                    miss += 1
+            else:
+                unknown += 1
             with stats_timer:
                 block = ray.get(block_ref)
             yield block
+    stats.iter_blocks_local = hit
+    stats.iter_blocks_remote = miss
+    stats.iter_unknown_location = unknown
 
 
 def _prefetch_blocks(

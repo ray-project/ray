@@ -29,7 +29,7 @@ You can train DQN with the following commands:
 
     <div class="termynal" data-termynal>
         <span data-ty="input">pip install "ray[rllib]" tensorflow</span>
-        <span data-ty="input">rllib train --algo DQN --env CartPole-v1</span>
+        <span data-ty="input">rllib train --algo DQN --env CartPole-v1 --stop  '{"training_iteration": 30}'</span>
     </div>
 
 .. margin::
@@ -43,7 +43,7 @@ RLlib supports any Farama-Foundation Gymnasium environment, as well as a number 
 It also supports a large number of algorithms (see :ref:`rllib-algorithms-doc`) to
 choose from.
 
-Running the above will return one of the `checkpoints` that get generated during training,
+Running the above will return one of the `checkpoints` that get generated during training after 30 training iterations,
 as well as a command that you can use to evaluate the trained algorithm.
 You can evaluate the trained algorithm with the following command (assuming the checkpoint path is called ``checkpoint``):
 

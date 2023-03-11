@@ -207,6 +207,58 @@ def test_put_bad_schema(ray_start_stop, put_url: str):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_put_duplicate_apps(ray_start_stop):
+    """If a config with duplicate app names is deployed, the PUT request should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/a",
+                "import_path": "module.graph",
+            },
+            {
+                "name": "app1",
+                "route_prefix": "/b",
+                "import_path": "module.graph",
+            },
+        ],
+    }
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=config, timeout=5)
+    assert put_response.status_code == 400 and "ValidationError" in put_response.text
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_put_duplicate_routes(ray_start_stop):
+    """If a config with duplicate routes is deployed, the PUT request should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/alice",
+                "import_path": "module.graph",
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/alice",
+                "import_path": "module.graph",
+            },
+        ],
+    }
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=config, timeout=5)
+    assert put_response.status_code == 400 and "ValidationError" in put_response.text
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_delete(ray_start_stop):
     config = {
         "import_path": "dir.subdir.a.add_and_sub.serve_dag",
