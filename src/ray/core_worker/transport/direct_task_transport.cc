@@ -539,7 +539,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             }
           }
         }
-
+        error_info.set_error_type(error_type);
         while (!tasks_to_fail.empty()) {
           auto &task_spec = tasks_to_fail.front();
           if (task_spec.IsActorCreationTask() &&
@@ -656,7 +656,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
                          task_id,
-                         /*task_failed_due_to_oom*/ false)) {
+                         gcs::GetRayErrorInfo(
+                             rpc::ErrorType::TASK_EXECUTION_EXCEPTION))) {
             task_finisher_->CompletePendingTask(
                 task_id, reply, addr.ToProto(), reply.is_application_error());
           }

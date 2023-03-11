@@ -1,7 +1,9 @@
-from typing import Any, Mapping
+import pathlib
+from typing import Any, Mapping, Union
+
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
 
@@ -28,6 +30,24 @@ class TorchRLModule(nn.Module, RLModule):
         self.load_state_dict(state_dict)
 
     @override(RLModule)
+    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        module_state_path = path / "module_state.pt"
+        torch.save(self.state_dict(), str(module_state_path))
+        return str(module_state_path)
+
+    @override(RLModule)
+    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        if not path.exists():
+            raise ValueError(
+                f"While loading state from path, the path does not exist: {path}"
+            )
+        self.set_state(torch.load(str(path)))
+
+    @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Makes the module distributed."""
         # TODO (Avnish): Implement this.
@@ -40,10 +60,10 @@ class TorchRLModule(nn.Module, RLModule):
         return False
 
 
-class TorchDDPRLModule(nn.parallel.DistributedDataParallel, RLModule):
+class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
-        # we do not want to call RLModule.__init__ here because it will all we need is
+        # we do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
 
     @override(RLModule)

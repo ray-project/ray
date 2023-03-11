@@ -35,6 +35,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -50,7 +51,8 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
+from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
+from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -146,7 +148,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
-    from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -286,7 +288,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -801,7 +803,11 @@ class Dataset(Generic[T]):
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64, col3: int64})
+            +- Dataset(
+                num_blocks=10,
+                num_rows=10,
+                schema={col1: int64, col2: int64, col3: int64}
+            )
 
 
         Time complexity: O(dataset size / parallelism)
@@ -1141,6 +1147,44 @@ class Dataset(Generic[T]):
         return self.map_batches(process_batch)
 
     @ConsumptionAPI
+    def streaming_split(
+        self,
+        n: int,
+        *,
+        equal: bool = False,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
+    ) -> List[DatasetIterator]:
+        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+        be used to read disjoint subsets of the dataset in parallel.
+
+        This method is the recommended way to consume Datasets from multiple processes
+        (e.g., for distributed training). It requires streaming execution mode.
+
+        The returned iterators are Ray-serializable and can be freely passed to any
+        Ray task or actor.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1000000)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
+            >>> list(it1.iter_batches())  # doctest: +SKIP
+            >>> list(it2.iter_batches())  # doctest: +SKIP
+
+        Args:
+            n: Number of output iterators to return.
+            equal: If True, each output iterator will see an exactly equal number
+                of rows, dropping data if necessary. If False, some iterators may see
+                slightly more or less rows than other, but no data will be dropped.
+            locality_hints: Specify the node ids corresponding to each iterator
+                location. Datasets will try to minimize data movement based on the
+                iterator output locations. This list must have length ``n``.
+
+        Returns:
+            The output iterator splits.
+        """
+        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+
+    @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
@@ -1160,7 +1204,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
-        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             n: Number of child datasets to return.
@@ -1361,7 +1406,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             indices: List of sorted integers which indicate where the dataset
@@ -2029,7 +2075,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -2097,7 +2143,13 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(ZipStage(other))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        other_logical_plan = other._logical_plan
+        if logical_plan is not None and other_logical_plan is not None:
+            op = Zip(logical_plan.dag, other_logical_plan.dag)
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset[T]":
@@ -2819,7 +2871,7 @@ class Dataset(Generic[T]):
             It is recommended to use ``DatasetIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return BulkDatasetIterator(self)
+        return DatasetIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -2843,33 +2895,8 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-        # During row-based ops, we also choose a batch format that lines up with the
-        # current dataset format in order to eliminate unnecessary copies and type
-        # conversions.
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            # TODO: calling dataset_format() triggers bulk execution.
-            batch_format = "default"
-        else:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                # Dataset is empty or cleared, so fall back to "default".
-                batch_format = "default"
-            else:
-                batch_format = (
-                    "pyarrow"
-                    if dataset_format == BlockFormat.ARROW
-                    else "pandas"
-                    if dataset_format == BlockFormat.PANDAS
-                    else "default"
-                )
-        for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
-        ):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
-                yield row
+
+        return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
     @ConsumptionAPI
     def iter_batches(
@@ -3221,7 +3248,17 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+            Dataset(
+               num_blocks=1,
+               num_rows=150,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
+            )
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -3242,7 +3279,17 @@ class Dataset(Generic[T]):
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
-            +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+            +- Dataset(
+               num_blocks=1,
+               num_rows=150,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
+            )
             >>> ds.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
