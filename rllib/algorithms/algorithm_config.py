@@ -2901,7 +2901,7 @@ class AlgorithmConfig(_Config):
             )
 
         # Fill in the missing values from the specs that we already have. By combining
-        # PolicySpecs and the defaul RLModuleSpec.
+        # PolicySpecs and the default RLModuleSpec.
         default_spec = self.get_default_rl_module_spec()
         for module_id in policy_dict:
             policy_spec = policy_dict[module_id]
