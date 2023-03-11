@@ -647,7 +647,6 @@ class Policy(metaclass=ABCMeta):
                 "policy config but will not synchronize them."
             )
             self.init_connectors(self.config)
-            # maybe_get_filters_for_syncing(self, name)
 
         for old_kwarg in [
             "state_batches",
@@ -886,7 +885,6 @@ class Policy(metaclass=ABCMeta):
     def reset_connectors(self, env_id) -> None:
         """Reset action- and agent-connectors for this policy."""
         self.agent_connectors.reset(env_id=env_id)
-        self.action_connectors.reset(env_id=env_id)
 
     @DeveloperAPI
     def compute_single_action(

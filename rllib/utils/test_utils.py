@@ -452,14 +452,14 @@ def check_compute_single_action(
             return True
 
         obs_space = getattr(
-            pol.observation_space, "original_space", pol.observation_space
+            what.observation_space, "original_space", what.observation_space
         )
         obs = obs_space.sample()
         if isinstance(obs_space, Box):
             obs = np.clip(obs, -1.0, 1.0)
 
         if method_to_test == "input_dict":
-            action, _, _ = pol.compute_actions_from_raw_input_dict(
+            action, _, _ = what.compute_actions_from_raw_input_dict(
                 input_dict={
                     SampleBatch.NEXT_OBS: [obs],
                     SampleBatch.REWARDS: [0],
@@ -490,6 +490,7 @@ def check_compute_single_action(
                 clip=clip,
             )[0][0]
             assert action_space.contains(action)
+        what.reset_connectors(0)
 
     # Loop through: Policy vs Algorithm; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
