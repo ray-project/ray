@@ -35,6 +35,7 @@ import numpy as np
 from tqdm import tqdm
 
 import alpa
+from alpa.global_env import global_config
 from alpa.model.model_util import DynamicScale, TrainState
 import jax
 import jax.numpy as jnp
@@ -255,45 +256,8 @@ def save_checkpoint(state, model, tokenizer, training_args):
     tokenizer.save_pretrained(training_args.output_dir)
 
 
-def main():
-    # Global initialization.
-    alpa.init(cluster="ray")
-    tf.config.experimental.set_visible_devices([], "GPU")
-
-    # See all possible arguments in src/transformers/training_args.py
-    # or by passing the --help flag to this script.
-    # We now keep distinct sets of args, for a cleaner separation of concerns.
-    parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments)
-    )
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-
-    if os.path.exists(training_args.output_dir) and os.listdir(training_args.output_dir):
-        raise ValueError(
-            f"Directory ({training_args.output_dir}) already exists and is not empty."
-        )
-
-    logger.info(f"Training/evaluation parameters {training_args}")
-
-    setup_logging()
-
-    # Load pretrained model and tokenizer
-
-    # Distributed training:
-    config = AutoConfig.from_pretrained(model_args.model_name_or_path)
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        use_fast=False,
-    )
-
-    assert model_args.model_name_or_path, "model_name_or_path is required"
-    model = FlaxAutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,
-        config=config,
-        dtype=getattr(jnp, "float16"),
-        use_auth_token=None,
-    )
-
+def build_dataset(data_args, tokenizer):
+    # TODO(jungong) : replace huggingface dataset with Ray dataset.
     dataset = load_dataset(
         "text",
         data_files={
@@ -336,6 +300,55 @@ def main():
     if data_args.max_train_samples is not None:
         max_train_samples = min(len(train_dataset), data_args.max_train_samples)
         train_dataset = train_dataset.select(range(max_train_samples))
+
+    return train_dataset
+
+
+def main():
+    # Global initialization.
+    alpa.init(cluster="ray")
+
+    tf.config.experimental.set_visible_devices([], "GPU")
+
+    # "cupy" doesn't really work, use "xla_extension" instead.
+    global_config.nccl_mode = "xla_extension"
+
+    # See all possible arguments in src/transformers/training_args.py
+    # or by passing the --help flag to this script.
+    # We now keep distinct sets of args, for a cleaner separation of concerns.
+    parser = HfArgumentParser(
+        (ModelArguments, DataTrainingArguments, TrainingArguments)
+    )
+    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+    if os.path.exists(training_args.output_dir) and os.listdir(training_args.output_dir):
+        raise ValueError(
+            f"Directory ({training_args.output_dir}) already exists and is not empty."
+        )
+
+    logger.info(f"Training/evaluation parameters {training_args}")
+
+    setup_logging()
+
+    # Load pretrained model and tokenizer
+
+    # Distributed training:
+    config = AutoConfig.from_pretrained(model_args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.model_name_or_path,
+        use_fast=False,
+    )
+
+    assert model_args.model_name_or_path, "model_name_or_path is required"
+    model = FlaxAutoModelForCausalLM.from_pretrained(
+        model_args.model_name_or_path,
+        config=config,
+        dtype=getattr(jnp, "float16"),
+        use_auth_token=None,
+    )
+
+    # Training dataset.
+    train_dataset = build_dataset(data_args, tokenizer)
 
     # Adjust batch size and num_micro_batches for small datasets
     num_devices = alpa.get_global_num_devices()
