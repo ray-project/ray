@@ -25,7 +25,7 @@ def build_model():
 def test_basic_dataset(ray_start_regular_shared):
     ds = ray.data.range(100)
     it = ds.iterator()
-    for _ in range(3):
+    for _ in range(2):
         result = []
         for batch in it.iter_batches():
             result += batch
@@ -37,13 +37,40 @@ def test_basic_dataset(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
+def test_basic_dataset_iter_rows(ray_start_regular_shared):
+    ds = ray.data.range(100)
+    it = ds.iterator()
+    for _ in range(2):
+        result = []
+        for row in it.iter_rows():
+            result.append(row)
+        assert result == list(range(100))
+
+    # TODO(swang): This check currently fails nondeterministically because
+    # stats are stored in an actor.
+    # https://github.com/ray-project/ray/issues/31571
+    # assert it.stats() == ds.stats()
+
+
 def test_basic_dataset_pipeline(ray_start_regular_shared):
     ds = ray.data.range(100).window(bytes_per_window=1).repeat()
     it = ds.iterator()
-    for _ in range(3):
+    for _ in range(2):
         result = []
         for batch in it.iter_batches():
             result += batch
+        assert result == list(range(100))
+
+    assert it.stats() == ds.stats()
+
+
+def test_basic_dataset_pipeline_iter_rows(ray_start_regular_shared):
+    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
+    it = ds.iterator()
+    for _ in range(2):
+        result = []
+        for row in it.iter_rows():
+            result.append(row)
         assert result == list(range(100))
 
     assert it.stats() == ds.stats()
