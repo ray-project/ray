@@ -46,7 +46,7 @@ For example, in the following pipeline, the ``map(func)`` transformation only oc
 
 **Pipeline**:
 
-.. image:: images/dataset-repeat-1.svg
+.. image:: ../images/dataset-repeat-1.svg
 
 .. important::
 
@@ -110,4 +110,3 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # 3
     # === Window 5 ===
     # 4
-

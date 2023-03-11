@@ -28,7 +28,7 @@ soon!).
     +++
     .. link-button:: nyc_taxi_basic_processing
         :type: ref
-        :text: Processing NYC taxi data using Ray Datasets
+        :text: Processing the NYC taxi dataset
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/taxi.png
@@ -36,7 +36,7 @@ soon!).
     +++
     .. link-button:: batch_training
         :type: ref
-        :text: Batch Training on NYC taxi data using Ray Datasets
+        :text: Batch Training with Ray Datasets
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/ocr.jpg
@@ -44,7 +44,7 @@ soon!).
     +++
     .. link-button:: ocr_example
         :type: ref
-        :text: Optical character recognition using Ray Datasets
+        :text: Scaling OCR with Ray Datasets
         :classes: btn-link btn-block stretched-link
 
 
@@ -66,4 +66,30 @@ cluster.
     .. link-button:: big_data_ingestion
         :type: ref
         :text: Large-scale ML Ingest
+        :classes: btn-link btn-block stretched-link
+
+
+Other Examples
+--------------
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/dataset-repeat-2.svg
+
+    +++
+    .. link-button:: advanced-pipelines
+        :type: ref
+        :text: Advanced Pipeline Examples
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: ../images/dataset-arch.svg
+
+    +++
+    .. link-button:: random-access
+        :type: ref
+        :text: Random Data Access (Experimental)
         :classes: btn-link btn-block stretched-link
