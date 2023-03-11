@@ -57,7 +57,7 @@ TUNE_RUN_EXP = "tune.run_experiment"
 # Mainly for telemetry purposes but may also be used for formatting air console output.
 @dataclass
 class AIRScenario:
-    # One of TRAINER_FIT, TUNER_FIT, TUNE_RUN, and TUNE_RUN_EXP.
+    # One of TRAINER_FIT, TUNER_RESTORE, TUNER_FIT, TUNE_RUN, and TUNE_RUN_EXP.
     entrypoint = None
 
     ray_client_mode = None
