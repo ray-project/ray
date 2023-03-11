@@ -570,6 +570,46 @@
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
 
+
+#######################
+# AIR examples
+#######################
+
+
+# Test additional CPU nodes for preprocessing.
+- name: air_example_dreambooth_finetuning
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: dreambooth_env.yaml
+    cluster_compute: dreambooth_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash dreambooth_run.sh
+
+
+- name: air_example_gptj_deepspeed_fine_tuning
+  group: AIR examples
+  working_dir: air_examples/gptj_deepspeed_finetuning
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: gptj_deepspeed_env.yaml
+    cluster_compute: gptj_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+
 #######################
 # XGBoost release tests
 #######################
@@ -3421,18 +3461,6 @@
       num_nodes: 65
 
 
-  smoke_test:
-    frequency: nightly
-    cluster:
-      cluster_env: app_config.yaml
-      cluster_compute: distributed_smoke_test.yaml
-    run:
-      timeout: 3600
-      script: python distributed/test_many_tasks.py --num-tasks=100
-      wait_for_nodes:
-        num_nodes: 2
-
-
 - name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
@@ -4002,10 +4030,6 @@
 
   stable: false
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
-
   frequency: nightly
   team: data
   cluster:
@@ -4019,17 +4043,12 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
 
   stable: false
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
 
   frequency: nightly
   team: data
@@ -4044,8 +4063,6 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-
-    type: sdk_command
 
 #####################
 # Observability tests
