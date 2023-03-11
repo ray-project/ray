@@ -2,6 +2,7 @@ from collections import deque
 import copy
 import json
 import logging
+from contextlib import contextmanager
 from numbers import Number
 import os
 from pathlib import Path
@@ -184,6 +185,24 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
             f"trial dirname '{relative_logdir_old}' already exists."
         )
     return relative_logdir
+
+
+@contextmanager
+def _change_working_directory(trial):
+    """Context manager changing working directory to trial logdir.
+    Used in local mode.
+
+    For non-local mode it is no-op.
+    """
+    if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+        old_dir = os.getcwd()
+        try:
+            os.chdir(trial.logdir)
+            yield
+        finally:
+            os.chdir(old_dir)
+    else:
+        yield
 
 
 @DeveloperAPI
