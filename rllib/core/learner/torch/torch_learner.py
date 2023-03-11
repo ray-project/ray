@@ -8,7 +8,6 @@ from typing import (
     Hashable,
     Optional,
     Callable,
-    Set,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -17,6 +16,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
@@ -29,7 +29,6 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -72,6 +71,7 @@ class TorchLearner(Learner):
                 torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
             )
             for key in self._module.keys()
+            if self._is_module_compatible_with_learner(self._module[key])
         ]
 
     @override(Learner)
@@ -99,17 +99,6 @@ class TorchLearner(Learner):
         # for each optimizer call its step function with the gradients
         for optim in self._optim_to_param:
             optim.step()
-
-    @override(Learner)
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the weights of the underlying MultiAgentRLModule"""
-        module_weights = self._module.get_state()
-        if module_ids is None:
-            return module_weights
-
-        return convert_to_numpy(
-            {k: v for k, v in module_weights.items() if k in module_ids}
-        )
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
@@ -157,11 +146,13 @@ class TorchLearner(Learner):
         )
 
         # we need to ddpify the module that was just added to the pool
-        self._module[module_id].to(self._device)
-        if self.distributed:
-            self._module.add_module(
-                module_id, TorchDDPRLModule(self._module[module_id]), override=True
-            )
+        module = self._module[module_id]
+        if isinstance(module, TorchRLModule):
+            self._module[module_id].to(self._device)
+            if self.distributed:
+                self._module.add_module(
+                    module_id, TorchDDPRLModule(module), override=True
+                )
 
     @override(Learner)
     def build(self) -> None:
@@ -204,13 +195,17 @@ class TorchLearner(Learner):
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
         if self._distributed:
-            if isinstance(self._module, torch.nn.Module):
+            if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(self._module)
             else:
                 for key in self._module.keys():
-                    self._module.add_module(
-                        key, TorchDDPRLModule(self._module[key]), override=True
-                    )
+                    if isinstance(self._module[key], TorchRLModule):
+                        self._module.add_module(
+                            key, TorchDDPRLModule(self._module[key]), override=True
+                        )
+
+    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+        return isinstance(module, nn.Module)
 
     @override(Learner)
     def _make_module(self) -> MultiAgentRLModule:
@@ -224,4 +219,5 @@ class TorchLearner(Learner):
             module.to(self._device)
         else:
             for key in module.keys():
-                module[key].to(self._device)
+                if isinstance(module[key], torch.nn.Module):
+                    module[key].to(self._device)

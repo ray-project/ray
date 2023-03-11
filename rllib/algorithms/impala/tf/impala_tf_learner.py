@@ -3,7 +3,7 @@ import numpy as np
 from typing import Any, List, Mapping
 import tree
 
-from ray.rllib import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -170,7 +170,7 @@ class ImpalaTfLearner(TfLearner):
     @override(TfLearner)
     def compile_results(
         self,
-        batch: SampleBatch,
+        batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
         postprocessed_loss: Mapping[str, Any],
         postprocessed_gradients: Mapping[str, Any],
