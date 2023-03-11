@@ -118,6 +118,7 @@ class RayModelCheckpoint(ModelCheckpoint):
     def setup(self, *args, **kwargs) -> None:
         super().setup(*args, **kwargs)
         self.last_best_k_models = {}
+        self.last_best_model_path = None
 
     def format_checkpoint_name(
         self,
@@ -152,7 +153,8 @@ class RayModelCheckpoint(ModelCheckpoint):
                 filepath = new_checkpoint.pop()
         else:
             # Capture frequency-based checkpoint
-            filepath = self.best_model_path
+            if self.last_best_model_path != self.best_model_path:
+                filepath = self.best_model_path
 
         # Report latest saved checkpoint
         # Note that AIR only takes the checkpoint of rank 0.
@@ -168,6 +170,7 @@ class RayModelCheckpoint(ModelCheckpoint):
                 )
 
         self.last_best_k_models = deepcopy(self.best_k_models)
+        self.last_best_model_path = self.best_model_path
         session.report(**kwargs)
 
     def on_train_batch_end(
