@@ -23,7 +23,8 @@ namespace ray {
 namespace gcs {
 
 // NOTE: This needs to be kept in sync with ray.autoscaler._private.constants.
-const std::string AUTOSCALER_SDK_REQUEST_RESOURCES_KEY = "autoscaler_resource_request_pb2";
+const std::string AUTOSCALER_SDK_REQUEST_RESOURCES_KEY =
+    "autoscaler_resource_request_pb2";
 
 /// Extract the necessary fields from GcsPlacementGroup in order to populate a
 /// rpc::ResourceRequest message.

@@ -187,14 +187,16 @@ void GcsMonitorServer::HandleGetSchedulingStatus(
   PopulateResourceDemands(reply);
   PopulatePlacementGroupDemands(reply);
 
-  internal_kv_.Get("", AUTOSCALER_SDK_REQUEST_RESOURCES_KEY, [reply, send_reply_callback](std::optional<std::string> res) {
-    if (res != std::nullopt) {
-      auto resource_request = reply->add_resource_requests();
-      resource_request->ParseFromString(*res);
-    }
+  internal_kv_.Get("",
+                   AUTOSCALER_SDK_REQUEST_RESOURCES_KEY,
+                   [reply, send_reply_callback](std::optional<std::string> res) {
+                     if (res != std::nullopt) {
+                       auto resource_request = reply->add_resource_requests();
+                       resource_request->ParseFromString(*res);
+                     }
 
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
+                     send_reply_callback(Status::OK(), nullptr, nullptr);
+                   });
 }
 
 }  // namespace gcs

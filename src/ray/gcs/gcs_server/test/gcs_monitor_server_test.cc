@@ -174,11 +174,11 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   NodeID id_3 = NodeID::FromRandom();
 
   {
-
     // Setup ray.autoscaler.sdk.request_resources
     rpc::ResourceRequest request;
-    request.set_resource_request_type(rpc::ResourceRequest_ResourceRequestType::
-                                      ResourceRequest_ResourceRequestType_MIN_RESOURCES);
+    request.set_resource_request_type(
+        rpc::ResourceRequest_ResourceRequestType::
+            ResourceRequest_ResourceRequestType_MIN_RESOURCES);
     request.set_count(1);
 
     absl::flat_hash_map<std::string, double> resource_map1 = {{"CPU", 1}, {"GPU", 1}};
@@ -192,12 +192,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     std::string buf;
     ASSERT_TRUE(request.SerializeToString(&buf));
     internal_kv_.Put(
-                     "",
-                     gcs::AUTOSCALER_SDK_REQUEST_RESOURCES_KEY,
-                     buf,
-                     true,
-                     [](bool success){}
-                     );
+        "", gcs::AUTOSCALER_SDK_REQUEST_RESOURCES_KEY, buf, true, [](bool success) {});
   }
   {
     // Setup resource demand mocks.
@@ -326,12 +321,12 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
                  rpc::ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION) {
         found_infeasible_pg = true;
       } else if (request.resource_request_type() ==
-                rpc::ResourceRequest_ResourceRequestType_MIN_RESOURCES) {
+                 rpc::ResourceRequest_ResourceRequestType_MIN_RESOURCES) {
         ASSERT_EQ(request.count(), 1);
         ASSERT_EQ(request.bundles().size(), 2);
-        ASSERT_EQ(request.bundles()[0].resources().at("CPU") , 1);
-        ASSERT_EQ(request.bundles()[0].resources().at("GPU") , 1);
-        ASSERT_EQ(request.bundles()[1].resources().at("custom") , 0.1);
+        ASSERT_EQ(request.bundles()[0].resources().at("CPU"), 1);
+        ASSERT_EQ(request.bundles()[0].resources().at("GPU"), 1);
+        ASSERT_EQ(request.bundles()[1].resources().at("custom"), 0.1);
         found_request_resources = true;
       }
     }
