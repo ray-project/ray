@@ -7,23 +7,23 @@ ray.init()
 @ray.remote
 class Actor:
     def run_code(self):
-        #import torch
+        import torch
         pass
 
 @ray.remote
 def task():
-    #import torch
+    import torch
     pass
 
-def main(metrics_actor, num_runs, num_tasks_or_actors, use_actors):
+def main(metrics_actor, num_runs, num_tasks_or_actors_per_run, use_actors):
     import time
 
     def with_actors():
-        actors = [Actor.remote() for _ in range(num_tasks_or_actors)]
+        actors = [Actor.remote() for _ in range(num_tasks_or_actors_per_run)]
         ray.get([actor.run_code.remote() for actor in actors])
 
     def with_tasks():
-        ray.get([task.remote() for _ in range(num_tasks_or_actors)])
+        ray.get([task.remote() for _ in range(num_tasks_or_actors_per_run)])
 
     func_to_measure = with_actors if use_actors else with_tasks
     
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('--metrics_actor_name', type=str)
     parser.add_argument('--metrics_actor_namespace', type=str)
     parser.add_argument('--num_runs', type=int)
-    parser.add_argument('--num_tasks_or_actors', type=int)
+    parser.add_argument('--num_tasks_or_actors_per_run', type=int)
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--with_actors', action='store_true')
@@ -58,6 +58,6 @@ if __name__ == '__main__':
     sys.exit(main(
         metrics_actor,
         args.num_runs,
-        args.num_tasks_or_actors,
+        args.num_tasks_or_actors_per_run,
         args.with_actors,
     ))

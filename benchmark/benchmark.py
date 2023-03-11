@@ -21,6 +21,9 @@ How will the job report metrics?
 The job can dump a line-json to a log file in /tmp
 We can run 
 
+i think this benchmark won't show improvement with prestarting workers
+so maybe need a sleep? or report first one
+
 """
 
 import ray
@@ -41,19 +44,40 @@ metrics_actor = MetricsActor.options(
     namespace=namespace,
 ).remote()
 
-num_runs = 10
-num_tasks_or_actors = os.cpu_count()
 
-async def run():
+total_num_tasks_or_actors = os.cpu_count() * 10
+num_jobs = 10
+with_tasks = False
+
+num_cpus_used_per_task_or_actor = 1
+num_tasks_or_actors_per_run = os.cpu_count()
+
+num_runs = total_num_tasks_or_actors // num_tasks_or_actors_per_run
+num_runs_per_job = num_runs // num_jobs
+
+async def run(metrics_actor_name, metrics_actor_namespace, num_jobs, num_runs, num_tasks_or_actors_per_run, with_tasks):
     client = JobSubmissionClient("http://127.0.0.1:8265")
-    job_id = client.submit_job(
-        entrypoint=f"python script.py --metrics_actor_name {name} --metrics_actor_namespace {namespace} "
-                    f"--num_runs {num_runs} --num_tasks_or_actors {num_tasks_or_actors}"
-                    f"--with_tasks",
-        runtime_env={"working_dir": "./"}
-    )
-    async for lines in client.tail_job_logs(job_id):
-        print(lines, end="")
+
+    task_or_actor_arg = "--with_tasks" if with_tasks else "--with_actors"
+    for _ in range(num_jobs):
+        job_id = client.submit_job(
+            entrypoint=f"python script.py "
+                        f"--metrics_actor_name {name} "
+                        f"--metrics_actor_namespace {namespace} "
+                        f"--num_runs {num_runs} "
+                        f"--num_tasks_or_actors_per_run {num_tasks_or_actors_per_run} "
+                        f"{task_or_actor_arg}",
+            runtime_env={"working_dir": "./"}
+        )
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
 
 import asyncio
-asyncio.run(run())
+asyncio.run(run(
+    name,
+    namespace,
+    num_jobs,
+    num_runs_per_job,
+    num_tasks_or_actors_per_run,
+    with_tasks,
+))
