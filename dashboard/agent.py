@@ -48,7 +48,18 @@ except AttributeError:
 
 logger = logging.getLogger(__name__)
 
-aiogrpc.init_grpc_aio()
+# We would want to suppress deprecating warnings from aiogrpc library
+# with the usage of asyncio.get_event_loop() in python version >=3.10
+# This could be removed once https://github.com/grpc/grpc/issues/32526
+# is released, and we used higher versions of grpcio that that.
+if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+        aiogrpc.init_grpc_aio()
+else:
+    aiogrpc.init_grpc_aio()
 
 
 class DashboardAgent:
