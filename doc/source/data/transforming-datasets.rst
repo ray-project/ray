@@ -551,6 +551,7 @@ perform a global shuffle.
 
 .. doctest::
 
+    >>> import ray
     >>> dataset = ray.data.range(10)
     >>> dataset.random_shuffle().take_all()  # doctest: +SKIP
     [7, 0, 9, 3, 5, 1, 4, 2, 8, 6]
