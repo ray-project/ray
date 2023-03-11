@@ -5,16 +5,12 @@ from typing import Dict
 
 import ray
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.preprocessors import BatchMapper
-from ray.train.batch_predictor import BatchPredictor
 
-# Replace this with your own framework/custom checkpoint/predictors!
-from ray.train.torch import TorchCheckpoint, TorchPredictor
 
 ray.init()
 NUM_NODES = len(ray.nodes())
 
-# 1. Load your own data with Ray Data!
+# 1. Replace this to load your own data with Ray Data!
 # Start
 s3_uri = "s3://anonymous@air-example-data-2/imagenette2/val/"
 partitioning = Partitioning("dir", field_names=["class"], base_dir=s3_uri)
@@ -24,10 +20,8 @@ ds = ray.data.read_images(
 # End
 
 
-# 2. Replace this with your own custom preprocessing logic!
-
-
 def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    # 2. Replace this with your own custom preprocessing logic!
     # Start
     def to_tensor(batch: np.ndarray) -> torch.Tensor:
         tensor = torch.as_tensor(batch, dtype=torch.float)
@@ -48,42 +42,42 @@ def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     # End
 
 
-preprocessor = BatchMapper(fn=preprocess, batch_format="numpy")
-
-# 3. Replace these with the framework of your choice!
-# Start
-predictor_cls = TorchPredictor
-checkpoint_cls = TorchCheckpoint
-# End
-
-# 4. Replace this with building and loading your own model!
+ds = ds.map_batches(fn=preprocess, batch_format="numpy")
 
 
-def build_model_checkpoint():
-    # Start
-    from torchvision import models
+class PredictCallable:
+    def __init__(self):
+        # 3. Load your model in a custom `Callable` class that will perform inference!
+        # Replace this with your own model initialization:
+        # Start
+        from torchvision import models
 
-    # Load the pretrained resnet model and construct a checkpoint
-    model = models.resnet152(pretrained=True)
-    checkpoint = checkpoint_cls.from_model(model=model, preprocessor=preprocessor)
-    return checkpoint
-    # End
+        self.model = models.resnet152(pretrained=True)
+        self.model.eval()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+        # End
+
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        # Replace this with your own model inference logic:
+        # Start
+        input_data = torch.as_tensor(batch["image"], device=self.device)
+        with torch.no_grad():
+            result = self.model(input_data)
+        return {"predictions": result.cpu().numpy()}
+        # End
 
 
-checkpoint = build_model_checkpoint()
-
-# 5. Finally, build the BatchPredictor and perform GPU batch prediction!
-batch_predictor = BatchPredictor(checkpoint=checkpoint, predictor_cls=predictor_cls)
-predictions = batch_predictor.predict(
-    ds,
-    feature_columns=["image"],
+# 4. Finally, perform batch prediction!
+predictions = ds.map_batches(
+    PredictCallable,
     batch_size=128,
-    min_scoring_workers=NUM_NODES,
-    max_scoring_workers=NUM_NODES,
-    num_gpus_per_worker=1,
+    compute=ray.data.ActorPoolStrategy(min_size=NUM_NODES, max_size=NUM_NODES),
+    num_gpus=1,
+    batch_format="numpy",
 )
 
-# 6. Save predictions to our local filesystem (sharded between multiple files)
+# 5. Save predictions to the local filesystem (sharded between multiple files)
 num_shards = 3
 predictions.repartition(num_shards).write_parquet("local:///tmp/predictions")
 
