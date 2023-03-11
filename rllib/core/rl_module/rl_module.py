@@ -7,7 +7,10 @@ import pathlib
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, MultiAgentRLModuleSpec
+    from ray.rllib.core.rl_module.marl_module import (
+        MultiAgentRLModule,
+        MultiAgentRLModuleSpec,
+    )
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
@@ -406,7 +409,7 @@ class RLModule(abc.ABC):
     @abc.abstractmethod
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
-    
+
     def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
         """Saves the weights of this RLmodule to path.
 
@@ -427,9 +430,11 @@ class RLModule(abc.ABC):
         raise NotImplementedError
 
     def _module_metadata(
-        self, 
-        module_spec_class: Union[Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]],
-        additional_metadata: Optional[Mapping[str, Any]] = None
+        self,
+        module_spec_class: Union[
+            Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
+        ],
+        additional_metadata: Optional[Mapping[str, Any]] = None,
     ) -> Mapping[str, Any]:
         """Returns the metadata of the module.
 
@@ -456,7 +461,9 @@ class RLModule(abc.ABC):
 
         # TODO (Avnishn): Find a way to incorporate the tune registry here.
         metadata[RLMODULE_METADATA_SPEC_CLASS_KEY] = serialize_type(module_spec_class)
-        metadata[RLMODULE_METADATA_SPEC_KEY] = module_spec_class.from_module(self).to_dict()
+        metadata[RLMODULE_METADATA_SPEC_KEY] = module_spec_class.from_module(
+            self
+        ).to_dict()
         metadata[RLMODULE_METADATA_RAY_VERSION_KEY] = ray.__version__
         metadata[RLMODULE_METADATA_RAY_COMMIT_HASH_KEY] = ray.__commit__
         metadata[RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY] = gmt_time
@@ -468,16 +475,17 @@ class RLModule(abc.ABC):
     def _save_module_metadata(
         self,
         checkpoint_dir: Union[str, pathlib.Path],
-        module_spec_class: Union[Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]],
+        module_spec_class: Union[
+            Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
+        ],
         additional_metadata: Mapping[str, Any] = None,
-
     ):
         """Saves the metadata of the module to checkpoint_dir.
-        
+
         Args:
             checkpoint_dir: The directory to save the metadata to.
             additional_metadata: Additional metadata to save.
-        
+
         """
         if not additional_metadata:
             additional_metadata = {}

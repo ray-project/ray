@@ -283,8 +283,9 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.save_to_checkpoint(str(dir / module_id))
 
-    def load_state_from_dir(self, dir: Union[str, pathlib.Path],
-                            modules_to_load: Sequence) -> None:
+    def load_state_from_dir(
+        self, dir: Union[str, pathlib.Path], modules_to_load: Sequence
+    ) -> None:
         """Loads the weights of an MultiAgentRLModule from dir.
 
         Args:
