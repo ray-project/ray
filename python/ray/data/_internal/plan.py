@@ -241,12 +241,14 @@ class ExecutionPlan:
         # If the resulting string representation fits in one line, use it directly.
         SCHEMA_LINE_CHAR_LIMIT = 80
         MIN_FIELD_LENGTH = 10
+        INDENT_STR = " " * 3
+        trailing_space = " " * (max(num_stages, 0) * 3)
         if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
             # If the resulting string representation exceeds the line char limit,
             # first try breaking up each `Dataset` parameter into its own line
             # and check if each line fits within the line limit. We check the
             # `schema` param's length, since this is likely the longest string.
-            schema_str_on_new_line = f"\tschema={schema_str}"
+            schema_str_on_new_line = f"{trailing_space}{INDENT_STR}schema={schema_str}"
             if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
                 # If the schema cannot fit on a single line, break up each field
                 # into its own line.
@@ -254,7 +256,7 @@ class ExecutionPlan:
                 for n, t in zip(schema.names, schema.types):
                     if hasattr(t, "__name__"):
                         t = t.__name__
-                    col_str = f"\t\t{n}: {t}"
+                    col_str = f"{trailing_space}{INDENT_STR * 2}{n}: {t}"
                     # If the field line exceeds the char limit, abbreviate
                     # the field name to fit while maintaining the full type
                     if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
@@ -268,13 +270,17 @@ class ExecutionPlan:
                         col_str = (
                             f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
                         )
-                    schema_str.append(f"{col_str}")
+                    schema_str.append(col_str)
                 schema_str = ",\n".join(schema_str)
-                schema_str = "{\n" + schema_str + "\n\t}"
-            dataset_str = (
-                "Dataset(\n\tnum_blocks={},\n\tnum_rows={},\n\tschema={}\n)".format(
-                    num_blocks, count, schema_str
+                schema_str = (
+                    "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
+            dataset_str = (
+                f"Dataset("
+                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
+                f"\n{trailing_space}{INDENT_STR}num_rows={count},"
+                f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
+                f"\n{trailing_space})"
             )
 
         if num_stages == 0:

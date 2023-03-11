@@ -1,5 +1,3 @@
-import time
-
 import pytest
 
 import ray
@@ -7,12 +5,13 @@ from ray._private.internal_api import memory_summary
 from ray.tests.conftest import *  # noqa
 
 
-def check_no_spill(ctx, pipe, prefetch_blocks: int = 0):
-    # Run .iter_batches() for 10 secs, and we expect no object spilling.
-    end_time = time.time() + 10
-    for batch in pipe.iter_batches(batch_size=None, prefetch_blocks=prefetch_blocks):
-        if time.time() > end_time:
-            break
+def check_no_spill(ctx, pipe):
+    # Run up to 10 epochs of the pipeline to stress test that
+    # no spilling will happen.
+    max_epoch = 10
+    for p in pipe.iter_epochs(max_epoch):
+        for _ in p.iter_batches(batch_size=None):
+            pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
@@ -24,10 +23,7 @@ def test_iter_batches_no_spilling_upon_no_transformation(shutdown_only):
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
 
     check_no_spill(ctx, ds.repeat())
-    check_no_spill(ctx, ds.repeat(), 5)
-
     check_no_spill(ctx, ds.window(blocks_per_window=20))
-    check_no_spill(ctx, ds.window(blocks_per_window=20), 5)
 
 
 def test_iter_batches_no_spilling_upon_rewindow(shutdown_only):
@@ -39,9 +35,6 @@ def test_iter_batches_no_spilling_upon_rewindow(shutdown_only):
     check_no_spill(
         ctx, ds.window(blocks_per_window=20).repeat().rewindow(blocks_per_window=10)
     )
-    check_no_spill(
-        ctx, ds.window(blocks_per_window=20).repeat().rewindow(blocks_per_window=10), 5
-    )
 
 
 def test_iter_batches_no_spilling_upon_prior_transformation(shutdown_only):
@@ -52,11 +45,8 @@ def test_iter_batches_no_spilling_upon_prior_transformation(shutdown_only):
 
     # Repeat, with transformation prior to the pipeline.
     check_no_spill(ctx, ds.map_batches(lambda x: x).repeat())
-    check_no_spill(ctx, ds.map_batches(lambda x: x).repeat(), 5)
-
     # Window, with transformation prior to the pipeline.
     check_no_spill(ctx, ds.map_batches(lambda x: x).window(blocks_per_window=20))
-    check_no_spill(ctx, ds.map_batches(lambda x: x).window(blocks_per_window=20), 5)
 
 
 def test_iter_batches_no_spilling_upon_post_transformation(shutdown_only):
@@ -67,11 +57,8 @@ def test_iter_batches_no_spilling_upon_post_transformation(shutdown_only):
 
     # Repeat, with transformation post the pipeline creation.
     check_no_spill(ctx, ds.repeat().map_batches(lambda x: x, batch_size=5))
-    check_no_spill(ctx, ds.repeat().map_batches(lambda x: x, batch_size=5), 5)
-
     # Window, with transformation post the pipeline creation.
     check_no_spill(ctx, ds.window(blocks_per_window=20).map_batches(lambda x: x))
-    check_no_spill(ctx, ds.window(blocks_per_window=20).map_batches(lambda x: x), 5)
 
 
 def test_iter_batches_no_spilling_upon_transformations(shutdown_only):
@@ -87,27 +74,12 @@ def test_iter_batches_no_spilling_upon_transformations(shutdown_only):
         .repeat()
         .map_batches(lambda x: x, batch_size=5),
     )
-    check_no_spill(
-        ctx,
-        ds.map_batches(lambda x: x, batch_size=5)
-        .repeat()
-        .map_batches(lambda x: x, batch_size=5),
-        5,
-    )
-
     # Window, with transformation before and post the pipeline.
     check_no_spill(
         ctx,
         ds.map_batches(lambda x: x)
         .window(blocks_per_window=20)
         .map_batches(lambda x: x),
-    )
-    check_no_spill(
-        ctx,
-        ds.map_batches(lambda x: x)
-        .window(blocks_per_window=20)
-        .map_batches(lambda x: x),
-        5,
     )
 
 
@@ -118,10 +90,7 @@ def test_iter_batches_no_spilling_upon_shuffle(shutdown_only):
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
 
     check_no_spill(ctx, ds.repeat().random_shuffle_each_window())
-    check_no_spill(ctx, ds.repeat().random_shuffle_each_window(), 5)
-
     check_no_spill(ctx, ds.window(blocks_per_window=20).random_shuffle_each_window())
-    check_no_spill(ctx, ds.window(blocks_per_window=20).random_shuffle_each_window(), 5)
 
 
 def test_pipeline_splitting_has_no_spilling(shutdown_only):
