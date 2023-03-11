@@ -99,4 +99,25 @@ enum TagKey {
   // Logical operators, stored in JSON format with operator name and count.
   // Example: {"MapBatches": 2, "Filter": 1}
   DATA_LOGICAL_OPS = 400;
+
+  // AIR
+  // AIR trainer, or custom trainable/training func is used.
+  // Example: AIR_TorchTrainer
+  TRAINER = 401;
+  // The search algorithm used for tune.
+  // Example: BOHB
+  SEARCH_ALGORITHM = 402;
+  // The scheduler algorithm used for tune.
+  // Example: PBT
+  SCHEDULER_ALGORITHM = 403;
+  // Experiment tracking framework
+  // Example: ["mlflow", "wandb"]
+  EXPERIMENT_TRACKING_FRAMEWORK = 404;
+  // Example:
+  // Trainer.fit
+  // Tuner.restore
+  // Tuner.fit
+  // tune.run
+  // tune.run_experiment
+  AIR_ENTRYPOINT = 405;
 }

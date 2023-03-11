@@ -12,6 +12,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
 from ray.air._internal.uri_utils import URI
+from ray.air._internal import usage as air_usage
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
@@ -80,6 +81,8 @@ class TunerInternal:
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
     ):
+        air_usage.set_air_scenario_in_head_node()
+
         from ray.train.trainer import BaseTrainer
 
         if isinstance(trainable, BaseTrainer):

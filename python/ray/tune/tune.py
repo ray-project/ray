@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -436,6 +437,8 @@ def run(
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
+    air_usage.set_entrypoint(air_usage.TUNE_RUN)
+
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
     elif trial_executor:
@@ -472,9 +475,15 @@ def run(
 
     del remote_run_kwargs
 
+    # from now on, on head node.
+    air_usage.set_air_scenario_in_head_node()
     ray._private.usage.usage_lib.record_library_usage("tune")
 
     all_start = time.time()
+
+    air_usage.parse_and_set_search_algorithm(search_alg)
+    air_usage.parse_and_set_scheduler_algorithm(scheduler)
+    air_usage.record_experiment_tracking_framework(callbacks)
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
@@ -769,6 +778,8 @@ def run(
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
 
+    air_usage.set_more_than_one_trial(search_alg.total_samples)
+
     # Calls setup on callbacks
     runner.setup_experiments(
         experiments=experiments, total_num_samples=search_alg.total_samples
@@ -782,6 +793,11 @@ def run(
         metric=metric,
         mode=mode,
     )
+
+    air_usage.record_trainable_usage()
+    air_usage.record_search_algorithm()
+    air_usage.record_scheduler_algorithm()
+
     while not runner.is_finished() and not experiment_interrupted_event.is_set():
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
@@ -873,6 +889,8 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
+    air_usage.set_entrypoint(air_usage.TUNE_RUN_EXP)
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -883,7 +901,12 @@ def run_experiments(
         _ray_auto_init()
 
     if _remote:
-        remote_run = ray.remote(num_cpus=0)(run_experiments)
+        remote_run = ray.remote(
+            runtime_env={
+                "env_vars": air_usage.get_air_scenario_env_vars_to_propagate()
+            },
+            num_cpus=0,
+        )(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
         remote_run = _force_on_current_node(remote_run)
@@ -904,6 +927,9 @@ def run_experiments(
                 _remote=False,
             )
         )
+
+    # From now on, running on head node, setting `air_scenario`.
+    air_usage.set_air_scenario_in_head_node()
 
     # This is important to do this here
     # because it schematize the experiments

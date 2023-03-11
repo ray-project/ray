@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 import warnings
 
 import ray
+from ray.air._internal import usage as air_usage
 
 from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
@@ -143,6 +144,8 @@ class Tuner:
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
 
+        air_usage.set_entrypoint(air_usage.TUNER_FIT)
+
         if _tuner_internal:
             if not self._is_ray_client:
                 self._local_tuner = kwargs[_TUNER_INTERNAL]
@@ -154,8 +157,14 @@ class Tuner:
             if not self._is_ray_client:
                 self._local_tuner = TunerInternal(**kwargs)
             else:
+                # populate env vars to set the AIR workload scenario.
                 self._remote_tuner = _force_on_current_node(
-                    ray.remote(num_cpus=0)(TunerInternal)
+                    ray.remote(
+                        runtime_env={
+                            "env_vars": air_usage.get_air_scenario_env_vars_to_propagate()  # noqa
+                        },
+                        num_cpus=0,
+                    )(TunerInternal)
                 ).remote(**kwargs)
 
     @classmethod
@@ -246,6 +255,8 @@ class Tuner:
             resume_errored=resume_errored,
             restart_errored=restart_errored,
         )
+
+        air_usage.set_entrypoint(air_usage.TUNER_RESTORE)
 
         if not ray.util.client.ray.is_connected():
             tuner_internal = TunerInternal(
