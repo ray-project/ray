@@ -167,6 +167,39 @@ def test_default_file_metadata_provider(caplog, fs, data_path, endpoint_url):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+
+    path1 = os.path.join(data_path, "test1.csv")
+    path2 = os.path.join(data_path, "test2.csv")
+    paths = [path1, path2]
+    paths_with_missing = paths + [os.path.join(data_path, "missing.csv")]
+    paths, fs = _resolve_paths_and_filesystem(paths, fs)
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+
+    meta_provider = DefaultFileMetadataProvider()
+    file_paths, _ = meta_provider.expand_paths(
+        paths_with_missing, fs, ignore_missing_paths=True
+    )
+
+    assert len(file_paths) == 2
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
