@@ -1,12 +1,23 @@
-from io import BytesIO
-
-import ray
-from ray import serve
+import argparse
 from fastapi import FastAPI
 from fastapi.responses import Response
+from io import BytesIO
+import time
+
+from ray import serve
+
+try:
+    import torch
+    from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+except ImportError as e:
+    raise RuntimeError(
+        "Did you install requirements with `pip install -r requirements.txt`?"
+    ) from e
 
 
-NUM_NODES = len(ray.nodes())
+parser = argparse.ArgumentParser()
+parser.add_argument("--num-replicas", type=int, default=1)
+args = parser.parse_args()
 
 app = FastAPI()
 
@@ -32,23 +43,16 @@ class APIIngress:
         return Response(content=file_stream.getvalue(), media_type="image/png")
 
 
-def get_runtime_env():
-    # Read in the requirements.txt and install these packages in the environment
-    # of each worker.
-    with open("requirements.txt", "r") as f:
-        requirements = f.read().splitlines()
-    return {"pip": requirements}
-
-
 @serve.deployment(
-    ray_actor_options={"num_gpus": 1, "runtime_env": get_runtime_env()},
-    autoscaling_config={"min_replicas": NUM_NODES, "max_replicas": NUM_NODES},
+    ray_actor_options={"num_gpus": 1},
+    autoscaling_config={
+        "min_replicas": args.num_replicas,
+        "max_replicas": args.num_replicas,
+    },
 )
 class StableDiffusionV2:
     def __init__(self):
         # Delay imports, since packages will only be installed on the replicas
-        import torch
-        from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
 
         model_id = "stabilityai/stable-diffusion-2"
 
@@ -71,3 +75,7 @@ class StableDiffusionV2:
 entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # Run the script with `serve run app:entrypoint` to start the serve application
+if __name__ == "__main__":
+    serve.run(entrypoint, port=8000, name="serving_stable_diffusion_template")
+    while True:
+        time.sleep(0.5)
