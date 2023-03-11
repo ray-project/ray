@@ -18,6 +18,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 if TYPE_CHECKING:
     from ray.tune import Trainable
     from ray.tune.callback import Callback
+    from ray.tune.experiment import Experiment
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import SearchAlgorithm, Searcher
     from ray.tune.search import ConcurrencyLimiter
@@ -25,6 +26,9 @@ if TYPE_CHECKING:
 
     TrainableType = Union[str, Callable, Type[Trainable]]
     TrainableTypeOrTrainer = Union[TrainableType, BaseTrainer]
+    TrainableTypeOrTrainerOrExperiment = Union[
+        TrainableTypeOrTrainer, "Experiment", Typing_Seq["Experiment"]
+    ]
 
 
 # All possible entrypoint combinations...
@@ -138,7 +142,7 @@ def set_entrypoint(entrypoint: str):
         _air_scenario.entrypoint = _air_scenario.entrypoint or entrypoint
 
 
-def parse_and_set_trainable(trainable: "TrainableTypeOrTrainer"):
+def parse_and_set_trainable(trainable: "TrainableTypeOrTrainerOrExperiment"):
     if _air_scenario.trainable is not None:
         # already parsed in the original entrypoint.
         return
@@ -161,8 +165,18 @@ def parse_and_set_trainable(trainable: "TrainableTypeOrTrainer"):
         elif isinstance(trainable, Trainable):
             result = "custom_class_trainable"
         else:
-            # experiments may fall into this path.
-            result = "other"
+            from ray.tune.experiment import Experiment
+
+            if isinstance(trainable, Experiment):
+                result = "experiment"
+            elif (
+                isinstance(trainable, Sequence)
+                and len(trainable) > 0
+                and isinstance(trainable[0], Experiment)
+            ):
+                result = "experiments" if len(trainable) > 1 else "experiment"
+            else:
+                result = "other"
     _air_scenario.trainable = result
 
 
@@ -186,7 +200,7 @@ def parse_and_set_search_algorithm(
         else:
             result = "invalid"
     elif isinstance(algorithm, Searcher):
-        if algorithm.__class__.startswith("ray.tune.search"):
+        if algorithm.__module__.startswith("ray.tune.search"):
             result = algorithm.__class__.__name__
         else:
             # We don't want to expose custom search/scheduler functions.
@@ -219,7 +233,7 @@ def parse_and_set_scheduler_algorithm(
         else:
             result = "invalid"
     elif isinstance(scheduler, TrialScheduler):
-        if scheduler.__class__.startswith("ray.tune.schedulers"):
+        if scheduler.__module__.startswith("ray.tune.schedulers"):
             result = scheduler.__class__.__name__
         else:
             # We don't want to expose custom search/scheduler functions.
