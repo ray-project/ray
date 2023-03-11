@@ -107,7 +107,7 @@ def set_air_scenario_in_head_node():
     # And unset all env vars.
     assert not ray.util.client.ray.is_connected()
     if (
-        not os.environ.get(AIR_RAY_CLIENT_MODE_ENV_VAR) == "1"
+        not AIR_RAY_CLIENT_MODE_ENV_VAR in os.environ
     ):  # not coming from ray client
         assert (
             AIR_TRAINABLE_ENV_VAR not in os.environ
