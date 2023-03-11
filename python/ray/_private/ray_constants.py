@@ -82,6 +82,9 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
+# If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
+# when using a local working_dir or py_modules.
+RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
