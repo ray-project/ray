@@ -262,9 +262,11 @@ def _resolve_blocks(
             with stats_timer:
                 block = ray.get(block_ref)
             yield block
-    stats.iter_blocks_local = hit
-    stats.iter_blocks_remote = miss
-    stats.iter_unknown_location = unknown
+
+    if stats:
+        stats.iter_blocks_local = hit
+        stats.iter_blocks_remote = miss
+        stats.iter_unknown_location = unknown
 
 
 def _prefetch_blocks(
