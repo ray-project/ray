@@ -7,7 +7,8 @@
 Training in Tune (tune.Trainable, session.report)
 =================================================
 
-Training can be done with either a **Function API** (:ref:`session.report <tune-function-docstring>`) or **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
+Training can be done with either a **Function API** (:ref:`session.report <tune-function-docstring>`) or
+**Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
 For the sake of example, let's maximize this objective function:
 
@@ -19,10 +20,10 @@ For the sake of example, let's maximize this objective function:
 .. _tune-function-api:
 
 Function Trainable API
------------------------------
+----------------------
 
-The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
-one for each Tune trial.
+Use the Function API to define a custom training function that Tune runs in Ray actor processes. Each trial is placed
+into a Ray actor process and runs in parallel.
 
 The ``config`` argument in the function is a dictionary populated automatically by Ray Tune and corresponding to
 the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
@@ -51,10 +52,10 @@ It's also possible to return a final set of metrics to Tune by returning them fr
     :start-after: __function_api_return_final_metrics_start__
     :end-before: __function_api_return_final_metrics_end__
 
-You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
-such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
+Note that Ray Tune outputs extra values in addition to the user reported metrics,
+such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation of these values.
 
-See how to configure checkpoint for function trainable :ref:`here <tune-function-trainable-checkpointing>`.
+See how to configure checkpointing for a function trainable :ref:`here <tune-function-trainable-checkpointing>`.
 
 .. _tune-class-api:
 

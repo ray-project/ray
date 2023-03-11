@@ -1,44 +1,48 @@
 .. _tune-storage-options:
 
+How to Configure Storage Options for a Distributed Tune Experiment?
+===================================================================
+
+Before diving into storage options, let's first take a look at what are the types of data stored by Ray Tune.
+There are mainly three types of data.
+
 .. _tune-persisted-experiment-data:
 
-What types of data are stored by Tune
--------------------------------------
+Types of data stored by Tune
+----------------------------
 
 Experiment Checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Experiment-level checkpoints save the experiment state. This includes the state of the searcher,
-the list of trials and their statuses (e.g. PENDING, RUNNING, TERMINATED, ERROR), and
-metadata pertaining to each trial (e.g. hyperparameter configuration, some derived trial results
+the list of trials and their statuses (e.g., PENDING, RUNNING, TERMINATED, ERROR), and
+metadata pertaining to each trial (e.g., hyperparameter configuration, some derived trial results
 (min, max, last), etc).
 
 Trial Checkpoints
 ~~~~~~~~~~~~~~~~~
 
-Trial-level checkpoints capture the per-trial state. They are saved by the :ref:`trainable <tune_60_seconds_trainables>` itself.
-This often includes the model and optimizer states. Here are a few uses of trial checkpoints:
+Trial-level checkpoints capture the per-trial state. They are saved by the
+:ref:`trainable <tune_60_seconds_trainables>` itself. This often includes the model and optimizer states.
+Following are a few uses of trial checkpoints:
 
-- If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
+- If the trial is interrupted for some reason (e.g., on spot instances), it can be resumed from the
   last state. No training time is lost.
-- Some searchers/schedulers pause trials to free resources so that other trials can train in
+- Some searchers or schedulers pause trials to free up resources for other trials to train in
   the meantime. This only makes sense if the trials can then continue training from the latest state.
 - The checkpoint can be later used for other downstream tasks like batch inference.
 
-We will talk more about how to save and load trial checkpoints here: :ref:`here <tune-trial-checkpoint>`.
+Learn saving and loading trial checkpoints here: :ref:`here <tune-trial-checkpoint>`.
 
 Trial Results
 ~~~~~~~~~~~~~
 
-Metrics reported by trials get saved and logged to their respective trial directories.
-This is the data stored in csv/json format as well as tensorboard format (events.out.tfevents.*)
+Metrics reported by trials are saved and logged to their respective trial directories.
+This is the data stored in CSV, JSON or Tensorboard (events.out.tfevents.*) formats.
 that can be inspected by Tensorboard and used for post-experiment analysis.
 
-
-How to Configure Storage Options for a Distributed Tune Experiment?
-===================================================================
-
-Tune allows for easy storage configuration for the above types of experiment data.
+Experiment data storage is critical in distributed setting
+----------------------------------------------------------
 
 When running Tune in a distributed setting, trials run on many different machines,
 which means that experiment outputs such as model checkpoints will be spread all across the cluster.

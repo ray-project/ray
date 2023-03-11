@@ -308,8 +308,8 @@ It wraps around another scheduler and uses its decisions.
     which will let your model know about the new resources assigned. You can also obtain the current trial resources
     by calling ``Trainable.trial_resources``.
 
-* If you are using the functional API for tuning, the current trial resources can be
-    obtained by calling `tune.get_trial_resources()` inside the training function.
+* If you are using the functional API for tuning, get the current trial resources obtained by calling
+    `tune.get_trial_resources()` inside the training function.
     The function should be able to :ref:`load and save checkpoints <tune-function-trainable-checkpointing>`
     (the latter preferably every iteration).
 
