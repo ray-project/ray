@@ -1,3 +1,4 @@
+import argparse
 import torch
 import numpy as np
 from torchvision import transforms
@@ -7,22 +8,25 @@ import ray
 from ray.data.datasource.partitioning import Partitioning
 
 
-ray.init()
-NUM_NODES = len(ray.nodes())
+parser = argparse.ArgumentParser()
+parser.add_argument("--num-workers", type=int, default=1)
+parser.add_argument("--no-gpu", action="store_true", default=False)
+args = parser.parse_args()
 
-# 1. Replace this to load your own data with Ray Data!
-# Start
+
+# <Replace this to load your own data with Ray Data>
+# <Start>
 s3_uri = "s3://anonymous@air-example-data-2/imagenette2/val/"
 partitioning = Partitioning("dir", field_names=["class"], base_dir=s3_uri)
 ds = ray.data.read_images(
     s3_uri, size=(256, 256), partitioning=partitioning, mode="RGB"
 )
-# End
+# <End>
 
 
 def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    # 2. Replace this with your own custom preprocessing logic!
-    # Start
+    # <Replace this with your own custom preprocessing logic>
+    # <Start>
     def to_tensor(batch: np.ndarray) -> torch.Tensor:
         tensor = torch.as_tensor(batch, dtype=torch.float)
         # (B, H, W, C) -> (B, C, H, W)
@@ -39,7 +43,7 @@ def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         ]
     )
     return {"image": transform(batch["image"]).numpy()}
-    # End
+    # <End>
 
 
 ds = ds.map_batches(fn=preprocess, batch_format="numpy")
@@ -47,37 +51,40 @@ ds = ds.map_batches(fn=preprocess, batch_format="numpy")
 
 class PredictCallable:
     def __init__(self):
-        # 3. Load your model in a custom `Callable` class that will perform inference!
-        # Replace this with your own model initialization:
-        # Start
+        # <Replace this with your own model initialization>
+        # <Start>
         from torchvision import models
 
         self.model = models.resnet152(pretrained=True)
         self.model.eval()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
-        # End
+        # <End>
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        # Replace this with your own model inference logic:
-        # Start
+        # <Replace this with your own model inference logic>
+        # <Start>
         input_data = torch.as_tensor(batch["image"], device=self.device)
         with torch.no_grad():
             result = self.model(input_data)
         return {"predictions": result.cpu().numpy()}
-        # End
+        # <End>
 
 
-# 4. Finally, perform batch prediction!
+# Finally, perform batch prediction!
 predictions = ds.map_batches(
     PredictCallable,
     batch_size=128,
-    compute=ray.data.ActorPoolStrategy(min_size=NUM_NODES, max_size=NUM_NODES),
-    num_gpus=1,
+    compute=ray.data.ActorPoolStrategy(
+        # Fix the number of batch inference workers to a specified value.
+        min_size=args.num_workers,
+        max_size=args.num_workers,
+    ),
+    num_gpus=0 if args.no_gpu else 1,
     batch_format="numpy",
 )
 
-# 5. Save predictions to the local filesystem (sharded between multiple files)
+# Save predictions to the local filesystem (sharded between multiple files)
 num_shards = 3
 predictions.repartition(num_shards).write_parquet("local:///tmp/predictions")
 
