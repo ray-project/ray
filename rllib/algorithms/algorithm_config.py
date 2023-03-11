@@ -2901,7 +2901,7 @@ class AlgorithmConfig(_Config):
             )
 
         # Fill in the missing values from the specs that we already have. By combining
-        # PolicySpecs and the defaul RLModuleSpec.
+        # PolicySpecs and the default RLModuleSpec.
         default_spec = self.get_default_rl_module_spec()
         for module_id in policy_dict:
             policy_spec = policy_dict[module_id]
@@ -2930,6 +2930,24 @@ class AlgorithmConfig(_Config):
                         "is passed in nor in the default module spec used in "
                         "the algorithm."
                     )
+            if module_spec.catalog_class is None:
+                if isinstance(default_spec, SingleAgentRLModuleSpec):
+                    module_spec.catalog_class = default_spec.catalog_class
+                elif isinstance(default_spec.module_specs, SingleAgentRLModuleSpec):
+                    catalog_class = default_spec.module_specs.catalog_class
+                    module_spec.catalog_class = catalog_class
+                elif module_id in default_spec.module_specs:
+                    module_spec.catalog_class = default_spec.module_specs[
+                        module_id
+                    ].catalog_class
+                else:
+                    raise ValueError(
+                        f"Catalog class for module {module_id} cannot be inferred. "
+                        f"It is neither provided in the rl_module_spec that "
+                        "is passed in nor in the default module spec used in "
+                        "the algorithm."
+                    )
+
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
