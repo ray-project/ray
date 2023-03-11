@@ -492,7 +492,7 @@ def _get_file_infos(
         for (file_path, file_size) in _expand_directory(path, filesystem):
             file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
-        file_info.append(path, file_info.size)
+        file_infos.append((path, file_info.size))
     elif file_info.type == FileType.NotFound and ignore_missing_path:
         pass
     else:
