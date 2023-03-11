@@ -388,7 +388,14 @@ class _FileBasedDatasourceReader(Reader):
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = map(
             list,
-            zip(*meta_provider.expand_paths(paths, self._filesystem, partitioning, ignore_missing_paths=ignore_missing_paths)),
+            zip(
+                *meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
+                )
+            ),
         )
 
         if ignore_missing_paths and len(self._paths) == 0:

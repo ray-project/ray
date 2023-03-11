@@ -219,6 +219,7 @@ def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
 
     assert len(file_paths) == 2
 
+
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [

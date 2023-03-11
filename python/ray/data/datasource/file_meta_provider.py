@@ -200,7 +200,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
                 "`FastFileMetadataProvider`. All paths must exist when "
                 "using `FastFileMetadataProvider`."
             )
-        
+
         logger.warning(
             f"Skipping expansion of {len(paths)} path(s). If your paths contain "
             f"directories or if file size collection is required, try rerunning this "
@@ -429,7 +429,7 @@ def _expand_paths(
 def _get_file_infos_serial(
     paths: List[str],
     filesystem: "pyarrow.fs.FileSystem",
-    ignore_missing_paths: bool = False
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     for path in paths:
         yield from _get_file_infos(path, filesystem, ignore_missing_paths)
@@ -478,9 +478,7 @@ def _get_file_infos_parallel(
 
 
 def _get_file_infos(
-    path: str,
-    filesystem: "pyarrow.fs.FileSystem",
-    ignore_missing_path: bool = False
+    path: str, filesystem: "pyarrow.fs.FileSystem", ignore_missing_path: bool = False
 ) -> List[Tuple[str, int]]:
     """Get the file info for all files at or under the provided path."""
     from pyarrow.fs import FileType
@@ -505,7 +503,7 @@ def _expand_directory(
     path: str,
     filesystem: "pyarrow.fs.FileSystem",
     exclude_prefixes: Optional[List[str]] = None,
-    ignore_missing_path: bool = False
+    ignore_missing_path: bool = False,
 ) -> List[Tuple[str, int]]:
     """
     Expand the provided directory path to a list of file paths.
