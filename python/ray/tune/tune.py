@@ -452,7 +452,12 @@ def run(
         _ray_auto_init()
 
     if _remote:
-        remote_run = ray.remote(num_cpus=0)(run)
+        remote_run = ray.remote(
+            runtime_env={
+                "env_vars": air_usage.get_air_scenario_env_vars_to_propagate()
+            },
+            num_cpus=0,
+        )(run)
 
         # Make sure tune.run is called on the sever node.
         remote_run = _force_on_current_node(remote_run)

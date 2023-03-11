@@ -70,7 +70,7 @@ class AIRScenario:
     scheduler_alg = None
 
 
-# The following two are fields specifically set by ray client and accessed at the
+# The following three are fields specifically set by ray client and accessed at the
 # head node to set the corresponding field in `AIRScenario`.
 AIR_RAY_CLIENT_MODE_ENV_VAR = "AIR_RAY_CLIENT_MODE"
 AIR_TRAINABLE_ENV_VAR = "AIR_TRAINABLE"
