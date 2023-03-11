@@ -2935,13 +2935,6 @@ class AlgorithmConfig(_Config):
                     module_spec.catalog_class = default_spec.catalog_class
                 elif isinstance(default_spec.module_specs, SingleAgentRLModuleSpec):
                     catalog_class = default_spec.module_specs.catalog_class
-                    # This should be already checked in validate() but we check it
-                    # again here just in case
-                    if catalog_class is None:
-                        raise ValueError(
-                            "The default rl_module spec cannot have an empty "
-                            "catalog_class under its SingleAgentRLModuleSpec."
-                        )
                     module_spec.catalog_class = catalog_class
                 elif module_id in default_spec.module_specs:
                     module_spec.catalog_class = default_spec.module_specs[
