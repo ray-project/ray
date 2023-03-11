@@ -2895,33 +2895,8 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-        # During row-based ops, we also choose a batch format that lines up with the
-        # current dataset format in order to eliminate unnecessary copies and type
-        # conversions.
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            # TODO: calling dataset_format() triggers bulk execution.
-            batch_format = "default"
-        else:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                # Dataset is empty or cleared, so fall back to "default".
-                batch_format = "default"
-            else:
-                batch_format = (
-                    "pyarrow"
-                    if dataset_format == BlockFormat.ARROW
-                    else "pandas"
-                    if dataset_format == BlockFormat.PANDAS
-                    else "default"
-                )
-        for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
-        ):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
-                yield row
+
+        return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
     @ConsumptionAPI
     def iter_batches(
