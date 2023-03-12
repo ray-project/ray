@@ -84,9 +84,11 @@ class BayesOptSearch(Searcher):
         random_search_steps: Number of initial random searches.
             This is necessary to avoid initial local overfitting
             of the Bayesian process.
-        analysis: Optionally, the previous analysis
-            to integrate.
         verbose: Sets verbosity level for BayesOpt packages.
+        patience: If patience is set and we've repeated a trial numerous times,
+            we terminate the experiment.
+        skip_duplicate: skip duplicate config
+        analysis: Optionally, the previous analysis to integrate.
 
     Tune automatically converts search spaces to BayesOptSearch's format:
 
