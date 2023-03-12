@@ -19,6 +19,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.algorithms.algorithm import AlgorithmConfig
 from ray.rllib.utils import add_mixins, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
@@ -253,13 +254,11 @@ def build_policy_class(
             # Set up the config from possible default-config fn and given
             # config arg.
             if get_default_config:
-                default_config = get_default_config()
-                if type(default_config) is dict:
+                # AlgorithmConfigs are initialized with default values, so no need to
+                # merge them here.
+                if not isinstance(config, AlgorithmConfig):
                     config = dict(get_default_config(), **config)
-                else:
-                    # If default config is not a dict, assume it is an instance of
-                    # AlgorithmConfig.
-                    default_config.update_from_dict(config)
+
             self.config = config
 
             # Set the DL framework for this Policy.

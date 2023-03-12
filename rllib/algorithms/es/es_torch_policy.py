@@ -5,6 +5,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
+import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -12,7 +13,6 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.algorithms.es.es import ESConfig
 
 torch, _ = try_import_torch()
 
@@ -125,7 +125,7 @@ ESTorchPolicy = build_policy_class(
     name="ESTorchPolicy",
     framework="torch",
     loss_fn=None,
-    get_default_config=ESConfig,
+    get_default_config=lambda: ray.rllib.algorithms.es.es.DEFAULT_CONFIG,
     before_init=before_init,
     after_init=after_init,
     make_model_and_action_dist=make_model_and_action_dist,
