@@ -11,6 +11,9 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import get_trainable_cls
 
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 
 rllib_dir = str(Path(__file__).parent.parent.absolute())
 
@@ -180,6 +183,14 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             )
             .resources(num_gpus=0)
             .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "pol0": SingleAgentRLModuleSpec(),
+                        "pol1": SingleAgentRLModuleSpec(),
+                    }
+                ),
+            )
         )
 
         stop = {"episode_reward_mean": 100.0}
@@ -194,6 +205,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                     checkpoint_frequency=1, checkpoint_at_end=True
                 ),
                 local_dir=tmp_dir,
+                failure_config=air.FailureConfig(fail_fast="raise"),
             ),
         ).fit()
 
