@@ -234,14 +234,18 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_task_info(
-        self, timeout: int = None, limit: int = None, job_id: Optional[str] = None
+        self,
+        timeout: int = None,
+        limit: int = None,
+        job_id: Optional[str] = None,
+        exclude_driver: bool = True,
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
         if job_id:
             job_id = JobID(hex_to_binary(job_id)).binary()
         request = GetTaskEventsRequest(
-            limit=limit, exclude_driver_task=True, job_id=job_id
+            limit=limit, exclude_driver=exclude_driver, job_id=job_id
         )
         reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply

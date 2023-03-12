@@ -148,6 +148,7 @@ def wandb_mixin(func: Callable):
 )
 class WandbTrainableMixin:
     _wandb = wandb
+    _is_mixin = True
 
     def __init__(self, config: Dict, *args, **kwargs):
         if not isinstance(self, Trainable):

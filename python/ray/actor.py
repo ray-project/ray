@@ -1189,7 +1189,7 @@ class ActorHandle:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
             )
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in ["__ray_terminate__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -1316,10 +1316,13 @@ def _modify_class(cls):
             "'class ClassName(object):' instead of 'class ClassName:'."
         )
 
-    # Modify the class to have an additional method that will be used for
-    # terminating the worker.
+    # Modify the class to have additional methods
+    # for checking actor alive status and to terminate the worker.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
+
+        def __ray_ready__(self):
+            return True
 
         def __ray_terminate__(self):
             worker = ray._private.worker.global_worker

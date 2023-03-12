@@ -134,6 +134,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
+from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
@@ -774,10 +775,17 @@ cdef void execute_task(
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=inspect.iscoroutinefunction)) == 0:
+                    error_message = (
+                        "Failed to create actor. The failure reason "
+                        "is that you set the async flag, but the actor does not "
+                        "have any coroutine functions.")
                     raise RayActorError(
-                        f"Failed to create the actor {core_worker.get_actor_id()}. "
-                        "The failure reason is that you set the async flag, "
-                        "but the actor has no any coroutine function.")
+                        ActorDiedErrorContext(
+                            error_message=error_message,
+                            actor_id=core_worker.get_actor_id(),
+                            class_name=class_name
+                            )
+                        )
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
@@ -804,11 +812,6 @@ cdef void execute_task(
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
-            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                     and function_name == "__ray_terminate__") and
-                    ray._config.memory_monitor_refresh_ms() == 0):
-                worker.memory_monitor.raise_if_low_memory()
-
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
@@ -2645,10 +2648,7 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()

@@ -1,20 +1,23 @@
-import logging
-import queue
 import threading
+import time
 import os
 from typing import Iterator, Optional
 
 import ray
+from ray.data.context import DatasetContext
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
     ExecutionResources,
+    OutputIterator,
     RefBundle,
     PhysicalOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor_state import (
     Topology,
+    TopologyResourceUsage,
     OpState,
     build_streaming_topology,
     process_completed_tasks,
@@ -23,7 +26,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
@@ -38,16 +41,19 @@ class StreamingExecutor(Executor, threading.Thread):
     """
 
     def __init__(self, options: ExecutionOptions):
-        # TODO: implement stats recording. We might want to mutate a single stats
-        # object as data is streamed through (similar to how iterating over the output
-        # data updates the stats object in legacy code).
-        self._stats: Optional[DatasetStats] = None
+        self._start_time: Optional[float] = None
+        self._initial_stats: Optional[DatasetStats] = None
+        self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
+        self._output_info: Optional[ProgressBar] = None
+
+        # The executor can be shutdown while still running.
+        self._shutdown_lock = threading.RLock()
+        self._shutdown = False
 
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
         # generator `yield`s.
-        self._runner_thread_out = queue.Queue(maxsize=1)
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
 
@@ -62,60 +68,110 @@ class StreamingExecutor(Executor, threading.Thread):
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+        self._initial_stats = initial_stats
+        self._start_time = time.perf_counter()
         if not isinstance(dag, InputDataBuffer):
-            logger.info("Executing DAG %s", dag)
+            logger.get_logger().info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology, self._stats = build_streaming_topology(dag, self._options)
+        self._topology = build_streaming_topology(dag, self._options)
+        self._output_info = ProgressBar(
+            "Output", dag.num_outputs_total() or 1, len(self._topology)
+        )
         _validate_topology(self._topology, self._get_or_refresh_resource_limits())
 
         self._output_node: OpState = self._topology[dag]
         self.start()
 
-        # Drain items from the runner thread until completion.
-        try:
-            item = self._runner_thread_out.get()
-            while item is not None:
-                if isinstance(item, Exception):
-                    raise item
-                else:
-                    yield item
-                item = self._runner_thread_out.get()
-        finally:
-            for op in self._topology:
-                op.shutdown()
+        class StreamIterator(OutputIterator):
+            def __init__(self, outer: Executor):
+                self._outer = outer
+
+            def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+                try:
+                    item = self._outer._output_node.get_output_blocking(
+                        output_split_idx
+                    )
+                    # Translate the special sentinel values for MaybeRefBundle into
+                    # exceptions.
+                    if item is None:
+                        raise StopIteration
+                    elif isinstance(item, Exception):
+                        raise item
+                    else:
+                        # Otherwise return a concrete RefBundle.
+                        self._outer._output_info.update(1)
+                        return item
+                except Exception:
+                    self._outer.shutdown()
+                    raise
+
+        return StreamIterator(self)
+
+    def shutdown(self):
+        with self._shutdown_lock:
+            if self._shutdown:
+                return
+            self._shutdown = True
+            # Give the scheduling loop some time to finish processing.
+            self.join(timeout=2.0)
+            # Freeze the stats and save it.
+            self._final_stats = self._generate_stats()
+            stats_summary_string = self._final_stats.to_summary().to_string(
+                include_parent=False
+            )
+            context = DatasetContext.get_current()
+            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                stats_summary_string,
+            )
+            # Close the progress bars from top to bottom to avoid them jumping
+            # around in the console after completion.
             if self._global_info:
                 self._global_info.close()
+            for op, state in self._topology.items():
+                op.shutdown()
+                if state.progress_bar:
+                    state.progress_bar.close()
+            if self._output_info:
+                self._output_info.close()
 
     def run(self):
         """Run the control loop in a helper thread.
 
-        Results are returned via the `self._runner_thread_out` queue.
+        Results are returned via the output node's outqueue.
         """
         try:
             # Run scheduling loop until complete.
-            while self._scheduling_loop_step(self._topology):
-                while self._output_node.outqueue:
-                    self._runner_thread_out.put(self._output_node.outqueue.pop(0))
-
-            # Handle any leftover outputs.
-            while self._output_node.outqueue:
-                self._runner_thread_out.put(self._output_node.outqueue.pop(0))
+            while self._scheduling_loop_step(self._topology) and not self._shutdown:
+                pass
         except Exception as e:
             # Propagate it to the result iterator.
-            self._runner_thread_out.put(e)
+            self._output_node.outqueue.append(e)
         finally:
             # Signal end of results.
-            self._runner_thread_out.put(None)
+            self._output_node.outqueue.append(None)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
 
         The stats object will be updated as streaming execution progresses.
         """
-        assert self._stats, self._stats
-        return self._stats
+        if self._final_stats:
+            return self._final_stats
+        else:
+            return self._generate_stats()
+
+    def _generate_stats(self) -> DatasetStats:
+        """Create a new stats object reflecting execution status so far."""
+        stats = self._initial_stats or DatasetStats(stages={}, parent=None)
+        for op in self._topology:
+            if isinstance(op, InputDataBuffer):
+                continue
+            builder = stats.child_builder(op.name, override_start_time=self._start_time)
+            stats = builder.build_multistage(op.get_stats())
+            stats.extra_metrics = op.get_metrics()
+        return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
         """Run one step of the scheduling loop.
@@ -130,29 +186,45 @@ class StreamingExecutor(Executor, threading.Thread):
         """
 
         if DEBUG_TRACE_SCHEDULING:
-            logger.info("Scheduling loop step...")
+            logger.get_logger().info("Scheduling loop step...")
 
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         process_completed_tasks(topology)
-        for op_state in topology.values():
-            op_state.refresh_progress_bar()
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
-        cur_usage = self._get_current_usage(topology)
+        cur_usage = TopologyResourceUsage.of(topology)
         self._report_current_usage(cur_usage, limits)
-        op = select_operator_to_run(topology, cur_usage, limits)
+        op = select_operator_to_run(
+            topology,
+            cur_usage,
+            limits,
+            ensure_at_least_one_running=self._consumer_idling(),
+        )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage = self._get_current_usage(topology)
-            op = select_operator_to_run(topology, cur_usage, limits)
+            cur_usage = TopologyResourceUsage.of(topology)
+            op = select_operator_to_run(
+                topology,
+                cur_usage,
+                limits,
+                ensure_at_least_one_running=self._consumer_idling(),
+            )
+
+        # Update the progress bar to reflect scheduling decisions.
+        for op_state in topology.values():
+            op_state.refresh_progress_bar()
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
+
+    def _consumer_idling(self) -> bool:
+        """Returns whether the user thread is blocked on topology execution."""
+        return len(self._output_node.outqueue) == 0
 
     def _get_or_refresh_resource_limits(self) -> ExecutionResources:
         """Return concrete limits for use at the current time.
@@ -171,26 +243,20 @@ class StreamingExecutor(Executor, threading.Thread):
             else cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_current_usage(self, topology: Topology) -> ExecutionResources:
-        cur_usage = ExecutionResources()
-        for op, state in topology.items():
-            cur_usage = cur_usage.add(op.current_resource_usage())
-            if isinstance(op, InputDataBuffer):
-                continue  # Don't count input refs towards dynamic memory usage.
-            for bundle in state.outqueue:
-                cur_usage.object_store_memory += bundle.size_bytes()
-        return cur_usage
-
     def _report_current_usage(
-        self, cur_usage: ExecutionResources, limits: ExecutionResources
+        self, cur_usage: TopologyResourceUsage, limits: ExecutionResources
     ) -> None:
         if self._global_info:
             self._global_info.set_description(
                 "Resource usage vs limits: "
-                f"{cur_usage.cpu}/{limits.cpu} CPU, "
-                f"{cur_usage.gpu}/{limits.gpu} GPU, "
-                f"{cur_usage.object_store_memory_str()}/"
+                f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
+                f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
+                f"{cur_usage.overall.object_store_memory_str()}/"
                 f"{limits.object_store_memory_str()} object_store_memory"
+            )
+        if self._output_info:
+            self._output_info.set_description(
+                f"output: {len(self._output_node.outqueue)} queued"
             )
 
 
@@ -232,7 +298,7 @@ def _debug_dump_topology(topology: Topology) -> None:
     Args:
         topology: The topology to debug.
     """
-    logger.info("vvv scheduling trace vvv")
+    logger.get_logger().info("vvv scheduling trace vvv")
     for i, (op, state) in enumerate(topology.items()):
-        logger.info(f"{i}: {state.summary_str()}")
-    logger.info("^^^ scheduling trace ^^^")
+        logger.get_logger().info(f"{i}: {state.summary_str()}")
+    logger.get_logger().info("^^^ scheduling trace ^^^")

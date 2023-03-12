@@ -4,10 +4,11 @@ import json
 
 from dataclasses import asdict, fields
 from itertools import islice
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from datetime import datetime
 
 from ray._private.ray_constants import env_integer
+from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
@@ -252,7 +253,7 @@ class StateAPIManager:
 
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["placement_group_id", "creator_job_id"],
+                fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -373,13 +374,15 @@ class StateAPIManager:
         """
         job_id = None
         for filter in option.filters:
-            if filter[0] == "job_id":
+            if filter[0] == "job_id" and filter[1] == "=":
+                # Filtering by job_id == xxxx, pass it to source side filtering.
                 # tuple consists of (job_id, predicate, value)
                 job_id = filter[2]
-
         try:
             reply = await self._client.get_all_task_info(
-                timeout=option.timeout, job_id=job_id
+                timeout=option.timeout,
+                job_id=job_id,
+                exclude_driver=option.exclude_driver,
             )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
@@ -391,7 +394,7 @@ class StateAPIManager:
             task_state = {}
             task_info = task_attempt.get("task_info", {})
             state_updates = task_attempt.get("state_updates", [])
-            profiling_data = task_attempt.get("profiling_data", {})
+            profiling_data = task_attempt.get("profile_events", {})
             if profiling_data:
                 for event in profiling_data["events"]:
                     # End/start times are recorded in ns. We convert them to ms.
@@ -418,12 +421,13 @@ class StateAPIManager:
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id", "worker_id"]),
+                (state_updates, ["node_id", "worker_id", "error_type"]),
             ]
             for src, keys in mappings:
                 for key in keys:
                     task_state[key] = src.get(key)
 
+            task_state["creation_time_ms"] = None
             task_state["start_time_ms"] = None
             task_state["end_time_ms"] = None
             events = []
@@ -431,7 +435,8 @@ class StateAPIManager:
             for state in common_pb2.TaskStatus.keys():
                 key = f"{state.lower()}_ts"
                 if key in state_updates:
-                    # timestamp is recorded in ns.
+                    # timestamp is recorded as nanosecond from the backend.
+                    # We need to convert it to the second.
                     ts_ms = int(state_updates[key]) // 1e6
                     events.append(
                         {
@@ -439,6 +444,8 @@ class StateAPIManager:
                             "created_ms": ts_ms,
                         }
                     )
+                    if state == "PENDING_ARGS_AVAIL":
+                        task_state["creation_time_ms"] = ts_ms
                     if state == "RUNNING":
                         task_state["start_time_ms"] = ts_ms
                     if state == "FINISHED" or state == "FAILED":
@@ -689,24 +696,41 @@ class StateAPIManager:
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        summary_by = option.summary_by or "func_name"
+        if summary_by not in ["func_name", "lineage"]:
+            raise ValueError('summary_by must be one of "func_name" or "lineage".')
+
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
                 timeout=option.timeout,
                 limit=RAY_MAX_LIMIT_FROM_API_SERVER,
                 filters=option.filters,
+                detail=summary_by == "lineage",
             )
         )
-        summary = StateSummary(
-            node_id_to_summary={
-                "cluster": TaskSummaries.to_summary(tasks=result.result)
-            }
-        )
+        if summary_by == "func_name":
+            summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
+        else:
+            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
+        summary = StateSummary(node_id_to_summary={"cluster": summary_results})
+        warnings = result.warnings
+        if (
+            summary_results.total_actor_scheduled
+            + summary_results.total_actor_tasks
+            + summary_results.total_tasks
+            < result.num_filtered
+        ):
+            warnings = warnings or []
+            warnings.append(
+                "There is missing data in this aggregation. "
+                "Possibly due to task data being evicted to preserve memory."
+            )
         return SummaryApiResponse(
             total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            warnings=result.warnings,
+            warnings=warnings,
             num_after_truncation=result.num_after_truncation,
             num_filtered=result.num_filtered,
         )
@@ -756,6 +780,13 @@ class StateAPIManager:
             num_after_truncation=result.num_after_truncation,
             num_filtered=result.num_filtered,
         )
+
+    async def generate_task_timeline(self, job_id: Optional[str]) -> List[dict]:
+        filters = [("job_id", "=", job_id)] if job_id else None
+        result = await self.list_tasks(
+            option=ListApiOptions(detail=True, filters=filters, limit=10000)
+        )
+        return chrome_tracing_dump(result.result)
 
     def _message_to_dict(
         self,

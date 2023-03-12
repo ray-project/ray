@@ -536,6 +536,13 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
+
+            # the environment is expecting action for at least one agent
+            if len(action_dict) == 0:
+                raise ValueError(
+                    "The environment is expecting action for at least one agent."
+                )
+
             for i, action in action_dict.items():
                 obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[
                     i
@@ -655,11 +662,14 @@ class MultiAgentEnvWrapper(BaseEnv):
             assert isinstance(terminateds, dict), "Not a multi-agent terminateds dict!"
             assert isinstance(truncateds, dict), "Not a multi-agent truncateds dict!"
             assert isinstance(infos, dict), "Not a multi-agent info dict!"
-            if isinstance(obs, dict) and set(infos).difference(set(obs)):
-                raise ValueError(
-                    "Key set for infos must be a subset of obs: "
-                    "{} vs {}".format(infos.keys(), obs.keys())
-                )
+            if isinstance(obs, dict):
+                info_diff = set(infos).difference(set(obs))
+                if info_diff and info_diff != {"__common__"}:
+                    raise ValueError(
+                        "Key set for infos must be a subset of obs (plus optionally "
+                        "the '__common__' key for infos concerning all/no agents): "
+                        "{} vs {}".format(infos.keys(), obs.keys())
+                    )
             if "__all__" not in terminateds:
                 raise ValueError(
                     "In multi-agent environments, '__all__': True|False must "

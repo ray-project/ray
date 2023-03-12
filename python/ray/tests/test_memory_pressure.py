@@ -1,5 +1,4 @@
 from math import ceil
-import os
 import sys
 import time
 
@@ -15,6 +14,7 @@ from ray._private.test_utils import wait_for_condition, raw_metrics
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
+from ray.experimental.state.api import list_tasks
 from ray.experimental.state.state_manager import StateDataSourceClient
 
 
@@ -140,7 +140,7 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
     addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
@@ -152,7 +152,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
@@ -169,7 +169,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
+def test_restartable_actor_throws_oom_error(
     ray_with_memory_monitor,
 ):
     addr = ray_with_memory_monitor
@@ -178,7 +178,33 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
+
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="MemoryManager.ActorEviction.Total",
+        value=2.0,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_restartable_actor_oom_retry_off_throws_oom_error(
+    ray_with_memory_monitor_no_oom_retry,
+):
+    addr = ray_with_memory_monitor_no_oom_retry
+    leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold + 0.1
+    )
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
@@ -210,28 +236,6 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
-    )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
-def test_retryable_task_killed_by_memory_monitor_with_oom_error(
-    ray_with_memory_monitor,
-):
-    addr = ray_with_memory_monitor
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(allocate_memory.options(max_retries=1).remote(bytes_to_alloc))
-
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=100,
-        addr=addr,
-        tag="MemoryManager.TaskEviction.Total",
-        value=2.0,
     )
 
 
@@ -297,7 +301,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
     actor_id = ray.get(oom_actor.get_actor_id.remote())
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
         )
@@ -316,10 +320,10 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
     for actor in result.actor_table_data:
         if actor.actor_id.hex() == actor_id:
             assert actor.death_cause
-            assert actor.death_cause.actor_died_error_context
+            assert actor.death_cause.oom_context
             assert (
                 expected_worker_eviction_message
-                in actor.death_cause.actor_died_error_context.error_message
+                in actor.death_cause.oom_context.error_message
             )
             verified = True
     assert verified
@@ -336,7 +340,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
-            allocate_memory.options(max_retries=0).remote(
+            allocate_memory.options(max_retries=0, name="allocate_memory").remote(
                 allocate_bytes=bytes_to_alloc,
                 allocate_interval_s=0,
                 post_allocate_sleep_s=1000,
@@ -352,8 +356,16 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
         verified = True
     assert verified
 
-    # TODO(clarng): verify task info once state_api_client.get_task_info
-    # returns the crashed task.
+    def verify_oom_task_error():
+        tasks = list_tasks(filters=[("name", "=", "allocate_memory")])
+        print(tasks)
+        assert len(tasks) == 1, "no retries should be expected."
+        assert tasks[0]["state"] == "FAILED"
+        assert tasks[0]["error_type"] == "OUT_OF_MEMORY"
+        return True
+
+    wait_for_condition(verify_oom_task_error)
+
     # TODO(clarng): verify log info once state api can dump log info
 
 
@@ -392,6 +404,10 @@ def test_task_oom_only_uses_oom_retry(
     ray_with_memory_monitor,
 ):
     addr = ray_with_memory_monitor
+
+    leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
+    ray.get(leaker.allocate.remote(1))
+
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -474,21 +490,27 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_legacy_memory_monitor_disabled_by_oom_killer():
-    os.environ["RAY_MEMORY_MONITOR_ERROR_THRESHOLD"] = "0.5"
-    with ray.init(
-        _system_config={
-            "memory_monitor_refresh_ms": 50,
-            "memory_usage_threshold": 0.9,
-            "min_memory_free_bytes": -1,
-        },
-    ):
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.7)
-        leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-        ray.get(leaker.allocate.remote(bytes_to_alloc))
+def test_last_task_of_the_group_fail_immediately():
+    @ray.remote(max_retries=-1)
+    def infinite_retry_task():
+        chunks = []
+        bytes_per_chunk = 1024 * 1024 * 1024
+        while True:
+            chunks.append([0] * bytes_per_chunk)
+            time.sleep(5)
 
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
-        ray.get(leaker.allocate.remote(allocate_bytes=bytes_to_alloc, sleep_time_s=10))
+    with ray.init() as addr:
+        with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+            ray.get(infinite_retry_task.remote())
+
+        wait_for_condition(
+            has_metric_tagged_with_value,
+            timeout=10,
+            retry_interval_ms=100,
+            addr=addr,
+            tag="MemoryManager.TaskEviction.Total",
+            value=1.0,
+        )
 
 
 if __name__ == "__main__":

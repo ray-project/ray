@@ -56,10 +56,15 @@ class _DatasetStatsBuilder:
     called with the final blocks of the new dataset, the time delta is
     saved as part of the stats."""
 
-    def __init__(self, stage_name: str, parent: "DatasetStats"):
+    def __init__(
+        self,
+        stage_name: str,
+        parent: "DatasetStats",
+        override_start_time: Optional[float],
+    ):
         self.stage_name = stage_name
         self.parent = parent
-        self.start_time = time.perf_counter()
+        self.start_time = override_start_time or time.perf_counter()
 
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
@@ -197,7 +202,7 @@ class DatasetStats:
         self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
-        self.parents: List["DatasetStats"] = parent
+        self.parents: List["DatasetStats"] = parent or []
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -218,13 +223,25 @@ class DatasetStats:
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
 
+        # Block fetch stats during iteration.
+        # These are stats about locations of blocks when the iterator is trying to
+        # consume them. The iteration performance will be affected depending on
+        # whether the block is in the local object store of the node where the
+        # iterator is running.
+        # This serves as an indicator of block prefetching effectiveness.
+        self.iter_blocks_local: int = 0
+        self.iter_blocks_remote: int = 0
+        self.iter_unknown_location: int = 0
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
 
-    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+    def child_builder(
+        self, name: str, override_start_time: Optional[float] = None
+    ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
-        return _DatasetStatsBuilder(name, self)
+        return _DatasetStatsBuilder(name, self, override_start_time)
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
@@ -272,6 +289,9 @@ class DatasetStats:
             self.iter_format_batch_s,
             self.iter_user_s,
             self.iter_total_s,
+            self.iter_blocks_local,
+            self.iter_blocks_remote,
+            self.iter_unknown_location,
         )
         stats_summary_parents = []
         if self.parents is not None:
@@ -351,11 +371,11 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
-        out += str(self.iter_stats)
         if self.extra_metrics:
             indent = "\t" if stage_stats_summary.is_substage else ""
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+        out += str(self.iter_stats)
         return out
 
     def get_total_wall_time(self) -> float:
@@ -609,6 +629,12 @@ class IterStatsSummary:
     user_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+    # Num of blocks that are in local object store
+    iter_blocks_local: int
+    # Num of blocks that are in remote node and have to fetch locally
+    iter_blocks_remote: int
+    # Num of blocks with unknown locations
+    iter_unknown_location: int
 
     def __str__(self) -> str:
         out = ""
@@ -622,6 +648,11 @@ class IterStatsSummary:
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "* Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
+            )
             out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
             out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
             out += "* In user code: {}\n".format(fmt(self.user_time.get()))

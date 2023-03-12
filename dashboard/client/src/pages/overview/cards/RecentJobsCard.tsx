@@ -40,7 +40,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
-  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 4);
+  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>

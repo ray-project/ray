@@ -188,6 +188,9 @@ class TaskCounter {
                        rpc::TaskStatus status,
                        bool is_retry) {
     absl::MutexLock l(&mu_);
+    // Add a no-op increment to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Increment({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -201,6 +204,9 @@ class TaskCounter {
                          rpc::TaskStatus status,
                          bool is_retry) {
     absl::MutexLock l(&mu_);
+    // Add a no-op decrement to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Decrement({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -1145,6 +1151,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
+      const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
       bool include_job_config = false);
   void SetCurrentTaskId(const TaskID &task_id,
@@ -1462,6 +1469,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // A class to subscribe object status from other raylets/workers.
   std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
+  // Rate limit the concurrent pending lease requests for submitting
+  // tasks.
+  std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
+
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
@@ -1569,5 +1580,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
 };
 
+// Lease request rate-limiter based on cluster node size.
+// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
+class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
+ public:
+  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
+  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+
+ private:
+  const size_t kMinConcurrentLeaseCap;
+  std::atomic<size_t> num_alive_nodes_;
+};
 }  // namespace core
 }  // namespace ray

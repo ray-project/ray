@@ -61,9 +61,38 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
+
 ```console
 $ serve run tutorial_tensorflow:mnist_model
 ```
+
+:::{note}
+If you see the following error:
+
+```console
+TypeError: Descriptors cannot not be created directly.
+    If this call came from a _pb2.py file, your generated code is out of date and must be regenerated with protoc >= 3.19.0.
+    If you cannot immediately regenerate your protos, some other possible workarounds are:   
+     1. Downgrade the protobuf package to 3.20.x or lower.
+     2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
+```
+
+You can downgrade the protobuf package to 3.20.x or lower in your Docker image, or tell Ray to do it at runtime by specifying a [runtime environment](runtime-environments):
+
+Open a new YAML file called `tf_env.yaml` for runtime environment.
+
+```yaml
+pip:
+ - protobuf==3.20.3
+```
+
+Then, run the following command to deploy the model with the runtime environment.
+
+```console
+$ serve run --runtime-env tf_env.yaml tutorial_tensorflow:mnist_model
+```
+
+:::
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 

@@ -3,7 +3,10 @@ import numpy as np
 
 from ray.rllib.models.specs.specs_np import NPTensorSpec
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.checker import check_input_specs
+from ray.rllib.models.specs.checker import (
+    check_input_specs,
+    convert_to_canonical_format,
+)
 
 
 class TypeClass1:
@@ -95,6 +98,43 @@ class TestSpecDict(unittest.TestCase):
         }
 
         spec_2.validate(tensor_5)
+
+    def test_key_existance_specs(self):
+
+        # One level of keys
+        spec1 = convert_to_canonical_format(["foo", "bar"])
+
+        # # This should pass
+        data1 = {"foo": 1, "bar": 2}
+        spec1.validate(data1)
+
+        # This should also pass
+        data2 = {"foo": {"tar": 1}, "bar": 2}
+        spec1.validate(data2)
+
+        # This should fail
+        data3 = {"foo": 1}
+        self.assertRaises(ValueError, lambda: spec1.validate(data3))
+
+        # nested specs for keys
+        spec2 = convert_to_canonical_format([("foo", "bar"), "tar"])
+
+        # This should pass
+        data4 = {"foo": {"bar": 1}, "tar": 2}
+        spec2.validate(data4)
+
+        # This should fail
+        data5 = {"foo": 2, "tar": 2}
+        self.assertRaises(ValueError, lambda: spec2.validate(data5))
+
+        # Another way to describe nested specs for keys
+        spec3 = convert_to_canonical_format({"foo": ["bar"], "tar": None})
+
+        # This should pass
+        spec3.validate(data4)
+
+        # This should fail
+        self.assertRaises(ValueError, lambda: spec3.validate(data5))
 
     def test_spec_check_integration(self):
         """Tests the integration of SpecDict with the check_input_specs."""

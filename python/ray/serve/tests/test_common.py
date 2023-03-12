@@ -9,6 +9,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatus,
     ApplicationStatusInfo,
+    RunningReplicaInfo,
 )
 from ray.serve.generated.serve_pb2 import (
     StatusOverview as StatusOverviewProto,
@@ -183,6 +184,23 @@ class TestStatusOverview:
         reconstructed_info = StatusOverview.from_proto(deserialized_proto)
 
         assert status_info == reconstructed_info
+
+
+def test_running_replica_info():
+    """Test hash value of RunningReplicaInfo"""
+
+    class FakeActorHandler:
+        def __init__(self, actor_id):
+            self._actor_id = actor_id
+
+    fake_h1 = FakeActorHandler("1")
+    fake_h2 = FakeActorHandler("1")
+    assert fake_h1 != fake_h2
+    replica1 = RunningReplicaInfo("my_deployment", "1", fake_h1, 1, False)
+    replica2 = RunningReplicaInfo("my_deployment", "1", fake_h2, 1, False)
+    replica3 = RunningReplicaInfo("my_deployment", "1", fake_h2, 1, True)
+    assert replica1._hash == replica2._hash
+    assert replica3._hash != replica1._hash
 
 
 if __name__ == "__main__":

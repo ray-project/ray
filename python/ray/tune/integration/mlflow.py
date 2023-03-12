@@ -169,6 +169,8 @@ def mlflow_mixin(func: Callable):
     )
 )
 class MLflowTrainableMixin:
+    _is_mixin = True
+
     def __init__(self, config: Dict, *args, **kwargs):
         self.mlflow_util = _MLflowLoggerUtil()
 

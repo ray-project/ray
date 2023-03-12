@@ -3,7 +3,6 @@ import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import EventTable from "../../components/EventTable";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { Metrics } from "../metrics";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
@@ -58,16 +57,6 @@ export const OverviewPage = () => {
         startExpanded
       >
         <EventTable />
-      </CollapsibleSection>
-
-      {/* TODO (aguo): Make section match the design */}
-      <CollapsibleSection
-        className={classes.section}
-        title="Node metrics"
-        startExpanded
-        keepRendered
-      >
-        <Metrics />
       </CollapsibleSection>
     </div>
   );

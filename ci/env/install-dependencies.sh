@@ -367,7 +367,6 @@ install_pip_packages() {
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    rm -rf "${SITE_PACKAGES}"/ruamel* # https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
@@ -446,6 +445,11 @@ install_pip_packages() {
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     "${SCRIPT_DIR}"/install-horovod.sh
+  fi
+
+  # install hdfs if needed.
+  if [ "${INSTALL_HDFS-}" = 1 ]; then
+    "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

@@ -13,7 +13,7 @@ from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
-    ResultsError,
+    FetchResultError,
     LocalEnvSetupError,
     ClusterNodesWaitTimeout,
     CommandTimeout,
@@ -121,7 +121,7 @@ class ClientRunner(CommandRunner):
             with open(path, "rt") as fp:
                 return json.load(fp)
         except Exception as e:
-            raise ResultsError(
+            raise FetchResultError(
                 f"Could not load local results from client command: {e}"
             ) from e
 
@@ -132,7 +132,11 @@ class ClientRunner(CommandRunner):
         return self._fetch_json(self.metrics_output_json)
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         logger.info(
             f"Running command using Ray client on cluster "

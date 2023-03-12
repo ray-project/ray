@@ -25,6 +25,8 @@ NUM_NODES = 4
 
 # RandomTest setup constants
 CPUS_PER_NODE = 10
+NUM_ITERATIONS = 350
+ACTIONS_PER_ITERATION = 20
 
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
@@ -60,7 +62,7 @@ ray.init(
 serve.start(detached=True)
 
 
-@ray.remote
+@ray.remote(max_restarts=-1, max_task_retries=-1)
 class RandomKiller:
     def __init__(self, kill_period_s=1):
         self.kill_period_s = kill_period_s
@@ -95,15 +97,15 @@ class RandomKiller:
 
 
 class RandomTest:
-    def __init__(self, max_deployments=1):
+    def __init__(self, random_killer_handle, max_deployments=1):
         self.max_deployments = max_deployments
         self.weighted_actions = [
             (self.create_deployment, 1),
             (self.verify_deployment, 4),
         ]
         self.deployments = []
-        self.random_killer = RandomKiller.remote()
 
+        self.random_killer = random_killer_handle
         for _ in range(max_deployments):
             self.create_deployment()
         self.random_killer.run.remote()
@@ -138,11 +140,10 @@ class RandomTest:
                 time.sleep(0.01)
 
     def run(self):
-        iteration = 0
         start_time = time.time()
         previous_time = start_time
-        while True:
-            for _ in range(20):
+        for iteration in range(NUM_ITERATIONS):
+            for _ in range(ACTIONS_PER_ITERATION):
                 actions, weights = zip(*self.weighted_actions)
                 action_chosen = random.choices(actions, weights=weights)[0]
                 print(f"Executing {action_chosen}")
@@ -150,12 +151,10 @@ class RandomTest:
 
             new_time = time.time()
             print(
-                "Iteration {}:\n"
-                "  - Iteration time: {}.\n"
-                "  - Absolute time: {}.\n"
-                "  - Total elapsed time: {}.".format(
-                    iteration, new_time - previous_time, new_time, new_time - start_time
-                )
+                f"Iteration {iteration}:\n"
+                f"  - Iteration time: {new_time - previous_time}.\n"
+                f"  - Absolute time: {new_time}.\n"
+                f"  - Total elapsed time: {new_time - start_time}."
             )
             update_progress(
                 {
@@ -166,11 +165,11 @@ class RandomTest:
                 }
             )
             previous_time = new_time
-            iteration += 1
 
             if RAY_UNIT_TEST:
                 break
 
 
-tester = RandomTest(max_deployments=NUM_NODES * CPUS_PER_NODE)
+random_killer = RandomKiller.remote()
+tester = RandomTest(random_killer, max_deployments=NUM_NODES * CPUS_PER_NODE)
 tester.run()

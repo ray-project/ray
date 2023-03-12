@@ -14,9 +14,11 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
 )
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader,
+    ParquetDatasource,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -29,6 +31,17 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 from pytest_lazyfixture import lazy_fixture
+
+
+def check_num_computed(ds, expected, streaming_expected) -> None:
+    # When streaming executor is on, the _num_computed() is affected only
+    # by the ds.schema() which will still partial read the blocks, but will
+    # not affected by operations like take() as it's executed via streaming
+    # executor.
+    if not ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        assert ds._plan.execute()._num_computed() == expected
+    else:
+        assert ds._plan.execute()._num_computed() == streaming_expected
 
 
 @pytest.mark.parametrize(
@@ -122,11 +135,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 1)
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
@@ -139,11 +152,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 1)
 
     # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    values = [[s["one"], s["two"]] for s in ds.take_all()]
+    check_num_computed(ds, 2, 1)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -201,7 +214,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     )
 
     # Expect to lazily compute all metadata correctly.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -217,11 +230,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 2)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -278,7 +291,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert ds._meta_count() is None
 
     # Expect to lazily compute all metadata correctly.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -294,11 +307,11 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 2)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -319,7 +332,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 0)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -368,7 +381,7 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert ds._meta_count() is None
 
     # Expect to lazily compute all metadata correctly.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -384,11 +397,11 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 2)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -427,27 +440,33 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+    assert str(ds) == (
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=6,\n"
+        "   schema={two: string, "
+        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
+        ")"
     ), ds
-    assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+    assert repr(ds) == (
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=6,\n"
+        "   schema={two: string, "
+        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
+        ")"
     ), ds
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 1)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 1)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -479,7 +498,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -489,7 +508,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
@@ -513,7 +532,7 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     )
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -527,11 +546,11 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 1)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 1)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -560,7 +579,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), parallelism=1, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 0)
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks
@@ -568,7 +587,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), parallelism=2, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 0)
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -581,7 +600,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._plan.execute()._num_computed() == 2
+    check_num_computed(ds, 2, 0)
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
@@ -611,17 +630,17 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     ds = ray.data.read_parquet(data_path, filesystem=fs, parallelism=parallelism)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    check_num_computed(ds, 0, 0)
     assert ds.count() == num_dfs * 3
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == num_dfs, input_files
-    assert ds._plan.execute()._num_computed() == 1
+    check_num_computed(ds, 1, 1)
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    assert ds._plan.execute()._num_computed() == parallelism
+    check_num_computed(ds, parallelism, 1)
     assert sorted(values) == list(range(3 * num_dfs))
 
 
@@ -916,6 +935,57 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
     ray.data.range_tensor(1000, shape=(1000,)).write_parquet(path)
     ds = ray.data.read_parquet(path, batch_size=10)
     assert ds.count() == 1000
+
+
+def test_parquet_datasource_names(ray_start_regular_shared):
+    assert ParquetBaseDatasource().get_name() == "ParquetBulk"
+    assert ParquetDatasource().get_name() == "Parquet"
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    ds = ray.data.read_parquet(data_path)
+
+    # Force reads.
+    blocks = ds.get_internal_block_refs()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {node1_id, node2_id}
 
 
 if __name__ == "__main__":

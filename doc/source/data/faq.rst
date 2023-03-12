@@ -47,7 +47,7 @@ integrations in production below:
   `DeltaCAT <https://github.com/ray-project/deltacat>`__.
 * Shopify is using Ray Datasets for ML ingest and batch inference in their ML platform,
   `Merlin <https://shopify.engineering/merlin-shopify-machine-learning-platform>`__.
-* Ray Datasets is used as the data processing engine for the 
+* Ray Datasets is used as the data processing engine for the
   `Ray-based Apache Beam runner <https://github.com/ray-project/ray_beam_runner>`__.
 * Ray Datasets is used as the preprocessing and batch inference engine for
   :ref:`Ray AIR <air>`.
@@ -134,11 +134,6 @@ TensorFlow datasets
   `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__
   for distributed data loading and prevents code from being seamlessly scaled to larger
   clusters.
-* **Lazy execution:** Datasets executed operations eagerly by default, while TensorFlow
-  datasets are lazy by default. The formter provides easier iterative development and
-  debuggability, and when needing the optimizations that become available with lazy execution,
-  Ray Datasets has a lazy execution mode that you can turn on when productionizing your
-  integration.
 * **Generic distributed data processing:** Datasets is more general: it can handle
   generic distributed operations, including global per-epoch shuffling,
   which would otherwise have to be implemented by stitching together two separate
@@ -187,7 +182,7 @@ has a few advantages:
   prefetching, pipelining data transfer with compute.
 * Ray Datasets takes care of orchestrating the tasks, batching the data, and managing
   the memory.
-* With :ref:`Ray Datasets pipelining <dataset_pipeline_concept>`, Ray Datasets allows you to
+* With Ray Datasets pipelining, you can
   precisely configure pipelining of preprocessing with batch inference, allowing you to
   easily tweak parallelism vs. pipelining to maximize your GPU utilization.
 * Ray Datasets provides a broad and performant I/O layer, which you would otherwise have
@@ -212,7 +207,7 @@ Does all of my data need to fit into memory?
 No, with Ray's support for :ref:`spilling objects to disk <object-spilling>`, you only
 need to be able to fit your data into memory OR disk. However, keeping your data in
 distributed memory may speed up your workload, which can be done on arbitrarily large
-datasets by windowing them, creating :ref:`pipelines <dataset_pipeline_concept>`.
+datasets by windowing them, creating pipelines.
 
 How much data can Ray Datasets handle?
 ======================================
@@ -236,14 +231,12 @@ How do I do streaming/online data loading and processing?
 =========================================================
 
 Streaming data loading and data processing can be accomplished by using
-:ref:`DatasetPipelines <dataset_pipeline_concept>`. By windowing a dataset, you can
+dataset pipelines. By windowing a dataset, you can
 stream data transformations across subsets of the data, even windowing down to the
 reading of each file.
 
-See the :ref:`pipelining feature guide <data_pipeline_usage>` for more information.
-
-When should I use :ref:`pipelining <dataset_pipeline_concept>`?
-===============================================================
+When should I use pipelining?
+=============================
 
 Pipelining is useful in a few scenarios:
 

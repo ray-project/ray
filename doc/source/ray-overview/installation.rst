@@ -203,7 +203,8 @@ You can install and use Ray C++ API as follows.
 M1 Mac (Apple Silicon) Support
 ------------------------------
 
-Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
+Ray has experimental support for machines running Apple Silicon (such as M1 macs).
+Multi-node clusters are untested. To get started with local Ray development:
 
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
 
@@ -221,7 +222,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
 #. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
 
-   * ``pip uninstall grpcio; conda install grpcio=1.43.0``
+   * ``pip uninstall grpcio; conda install grpcio=1.43.0 -c conda-forge``
 
 #. Install Ray as you normally would.
 
@@ -236,7 +237,8 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 Windows Support
 ---------------
 
-Windows support is currently in beta. Please submit any issues you encounter on
+Windows support is currently in beta, and multi-node Ray clusters are untested.
+Please submit any issues you encounter on
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
