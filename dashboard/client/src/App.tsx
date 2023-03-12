@@ -23,6 +23,9 @@ import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
+import { ServeApplicationDetailPage } from "./pages/serve/ServeApplicationDetailPage";
+import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
+import { ServePage } from "./pages/serve/ServePage";
 import { getNodeList } from "./service/node";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
@@ -43,7 +46,7 @@ const NodeDetail = React.lazy(() => import("./pages/node/NodeDetail"));
 const RAY_DASHBOARD_THEME_KEY = "ray-dashboard-theme";
 
 // a global map for relations
-type GlobalContextType = {
+export type GlobalContextType = {
   nodeMap: { [key: string]: string };
   nodeMapByIp: { [key: string]: string };
   ipLogMap: { [key: string]: string };
@@ -245,6 +248,13 @@ const App = () => {
                       />
                       <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
+                  </Route>
+                  <Route element={<ServePage />} path="serve">
+                    <Route element={<ServeApplicationsListPage />} path="" />
+                    <Route
+                      element={<ServeApplicationDetailPage />}
+                      path="applications/:name"
+                    />
                   </Route>
                   <Route element={<Actors newIA />} path="actors" />
                   <Route element={<ActorDetailPage />} path="actors/:id" />

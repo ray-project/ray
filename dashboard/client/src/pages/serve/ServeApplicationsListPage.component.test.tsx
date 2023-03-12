@@ -1,0 +1,75 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import React from "react";
+import { getServeApplications } from "../../service/serve";
+import { ServeApplicationStatus } from "../../type/serve";
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
+import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
+
+jest.mock("../../service/serve");
+
+const mockGetServeApplications = jest.mocked(getServeApplications);
+
+describe("ServeApplicationsListPage", () => {
+  it("renders list", async () => {
+    expect.assertions(8);
+
+    mockGetServeApplications.mockResolvedValue({
+      data: {
+        host: "1.2.3.4",
+        port: 8000,
+        application_details: {
+          home: {
+            name: "home",
+            route_prefix: "/",
+            app_message: null,
+            app_status: ServeApplicationStatus.RUNNING,
+            deployed_app_config: {
+              import_path: "home:graph",
+            },
+            deployment_timestamp: new Date().getTime() / 1000,
+            deployments_details: {
+              FirstDeployment: {},
+              SecondDeployment: {},
+            },
+          },
+          "second-app": {
+            name: "second-app",
+            route_prefix: "/second-app",
+            app_message: null,
+            app_status: ServeApplicationStatus.DEPLOYING,
+            deployed_app_config: {
+              import_path: "second_app:graph",
+            },
+            deployment_timestamp: new Date().getTime() / 1000,
+            deployments_details: {
+              ThirdDeployment: {},
+            },
+          },
+        },
+      },
+    } as any);
+
+    render(<ServeApplicationsListPage />, { wrapper: TEST_APP_WRAPPER });
+
+    const user = userEvent.setup();
+
+    await screen.findByText("Serve details");
+    expect(screen.getByText("1.2.3.4")).toBeVisible();
+    expect(screen.getByText("8000")).toBeVisible();
+
+    // First row
+    expect(screen.getByText("home")).toBeVisible();
+    expect(screen.getByText("/")).toBeVisible();
+    expect(screen.getByText("RUNNING")).toBeVisible();
+
+    // Second row
+    expect(screen.getByText("second-app")).toBeVisible();
+    expect(screen.getByText("/second-app")).toBeVisible();
+    expect(screen.getByText("DEPLOYING")).toBeVisible();
+
+    // Config dialog
+    user.click(screen.getAllByText("See config")[0]);
+    await screen.findByText(/"import_path": "home:graph"/);
+  });
+});

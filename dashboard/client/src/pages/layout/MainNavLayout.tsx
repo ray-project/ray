@@ -141,6 +141,12 @@ const NAV_ITEMS = [
     path: "/new/jobs",
     id: "jobs",
   },
+  // TODO(aguo): Add this nav button in once the page is fully implemented.
+  // {
+  //   title: "Serve",
+  //   path: "/new/serve",
+  //   id: "serve",
+  // },
   {
     title: "Cluster",
     path: "/new/cluster",
