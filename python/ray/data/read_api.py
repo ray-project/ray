@@ -312,11 +312,8 @@ def read_datasource(
             soft=False,
         )
         get_read_tasks = cached_remote_fn(
-            _get_read_tasks,
-            retry_exceptions=False,
-            num_cpus=0,
-            scheduling_strategy=scheduling_strategy,
-        )
+            _get_read_tasks, retry_exceptions=False, num_cpus=0
+        ).options(scheduling_strategy=scheduling_strategy)
 
         requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
