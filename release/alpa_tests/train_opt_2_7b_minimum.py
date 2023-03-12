@@ -321,7 +321,9 @@ def main():
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    if os.path.exists(training_args.output_dir) and os.listdir(training_args.output_dir):
+    if os.path.exists(training_args.output_dir) and os.listdir(
+        training_args.output_dir
+    ):
         raise ValueError(
             f"Directory ({training_args.output_dir}) already exists and is not empty."
         )
