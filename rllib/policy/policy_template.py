@@ -254,13 +254,11 @@ def build_policy_class(
             # Set up the config from possible default-config fn and given
             # config arg.
             if get_default_config:
-                default_config = get_default_config()
-                if isinstance(default_config, AlgorithmConfig):
-                    # If default config is not a dict, assume it is an instance of
-                    # AlgorithmConfig.
-                    default_config.update_from_dict(config)
-                else:
+                # AlgorithmConfigs are initialized with default values, so no need to
+                # merge them here.
+                if not isinstance(config, AlgorithmConfig):
                     config = dict(get_default_config(), **config)
+
             self.config = config
 
             # Set the DL framework for this Policy.
