@@ -425,45 +425,56 @@ class Policy(metaclass=ABCMeta):
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from sampled environment data.
 
-        Simple example:
-            >>> from ray.rllib.algorithms.ppo import PPOConfig # doctest: +SKIP
-            >>> algo = PPOConfig().build(env="CartPole-v1") # doctest: +SKIP
-            >>> algo.train() # doctest: +SKIP
-            >>> policy = algo.get_policy() # doctest: +SKIP
-            >>> env = gym.make("CartPole-v1") # doctest: +SKIP
-            >>> obs = env.reset() # doctest: +SKIP
-            >>> reward, done, info = 0, False, {} # doctest: +SKIP
-            >>> while not done: # doctest: +SKIP
-            >>>     [action], _, _ = policy.compute_actions_from_raw_input_dict( # doctest: +SKIP # noqa
-            >>>         { # doctest: +SKIP
-            >>>             SampleBatch.OBS: [obs], # doctest: +SKIP
-            >>>             SampleBatch.REWARDS: [reward], # doctest: +SKIP
-            >>>             SampleBatch.DONES: [done], # doctest: +SKIP
-            >>>             SampleBatch.INFOS: [info] # doctest: +SKIP
-            >>>         } # doctest: +SKIP
-            >>>     ) # doctest: +SKIP
-            >>>     obs, reward, done, info = env.step(action) # doctest: +SKIP
+        .. code-block:: python
 
-        Batched example:
-            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole # doctest: +SKIP # noqa
-            >>> algo = PPOConfig().build(env=MultiAgentCartPole) # doctest: +SKIP
-            >>> algo.train() # doctest: +SKIP
-            >>> policy = algo.get_policy() # doctest: +SKIP
-            >>> env = MultiAgentCartPole({"num_agents": 2}) # doctest: +SKIP
-            >>> obses = env.reset() # doctest: +SKIP
-            >>> rewards, dones, infos = {0: 0, 1: 0}, # doctest: +SKIP
-            >>>                         {0: False, 1: False}, # doctest: +SKIP
-            >>>                         {0: {}, 1: {}} # doctest: +SKIP
-            >>> while not all(dones.values()): # doctest: +SKIP
-            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input_dict( # doctest: +SKIP # noqa
-            >>>         { # doctest: +SKIP
-            >>>             SampleBatch.OBS: [obses[0], obses[1]], # doctest: +SKIP
-            >>>             SampleBatch.REWARDS:[rewards[0], rewards[1]], # doctest: +SKIP
-            >>>             SampleBatch.DONES:[dones[0], dones[1]], # doctest: +SKIP
-            >>>             SampleBatch.INFOS:[infos[0], infos[1]] # doctest: +SKIP
-            >>>         } # doctest: +SKIP
-            >>>     ) # doctest: +SKIP
-            >>>     obs, reward, done, info = env.step({0: action1, 1: action2}) # doctest: +SKIP # noqa
+            # Simple-agent example:
+
+            import gymnasium as gym
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.policy.sample_batch import SampleBatch
+
+            algo = PPOConfig().build(env="CartPole-v1")
+            algo.train()
+            policy = algo.get_policy()
+            env = gym.make("CartPole-v1")
+            obs, info = env.reset()
+            reward, terminated, truncated = 0, False, False
+            while not terminated:
+                [action], _, _ = policy.compute_actions_from_raw_input_dict(
+                    {
+                        SampleBatch.OBS: [obs],
+                        SampleBatch.REWARDS: [reward],
+                        SampleBatch.TERMINATEDS: [terminated],
+                        SampleBatch.TRUNCATEDS: [truncated],
+                        SampleBatch.INFOS: [info]
+                    }
+                )
+                obs, reward, terminated, truncated, info = env.step(action)
+
+            # Batched multi-agent example:
+
+            from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+            from ray.rllib.policy.sample_batch import SampleBatch
+            from ray.rllib.algorithms.ppo import PPOConfig
+
+            algo = PPOConfig().build(env=MultiAgentCartPole)
+            algo.train()
+            policy = algo.get_policy()
+            env = MultiAgentCartPole({"num_agents": 2})
+            obss, infos = env.reset()
+            rewards, terminateds, truncateds = {0: 0, 1: 0},\
+                                               {0: False, 1: False, "__all__": False}, \
+                                               {0: False, 1: False}
+            while not terminateds["__all__"]:
+                [action1, action2], _, _ = policy.compute_actions_from_raw_input_dict({
+                SampleBatch.OBS: [obss[0], obss[1]],
+                SampleBatch.REWARDS:[rewards[0], rewards[1]],
+                SampleBatch.TERMINATEDS:[terminateds[0], terminateds[1]],
+                SampleBatch.TRUNCATEDS:[truncateds[0], truncateds[1]],
+                SampleBatch.INFOS:[infos[0], infos[1]]
+                })
+                obs, reward, terminateds, truncateds, info = env.step({0: action1, \
+                                                                       1: action2})
 
         Args:
             input_dict: A SampleBatch or input dict containing tensors to compute
@@ -527,7 +538,8 @@ class Policy(metaclass=ABCMeta):
         return self.compute_actions_from_raw_input(
             next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
             reward_batch=input_dict[SampleBatch.REWARDS],
-            dones_batch=input_dict[SampleBatch.DONES],
+            terminateds_batch=input_dict[SampleBatch.TERMINATEDS],
+            truncateds_batch=input_dict[SampleBatch.TRUNCATEDS],
             info_batch=input_dict[SampleBatch.INFOS],
             timestep_batch=input_dict.get(SampleBatch.T),
             explore=explore,
@@ -565,7 +577,8 @@ class Policy(metaclass=ABCMeta):
         self,
         next_obs_batch: List[TensorStructType],
         reward_batch: List[TensorStructType],
-        dones_batch: List[TensorStructType],
+        terminateds_batch: List[TensorStructType],
+        truncateds_batch: List[TensorStructType],
         info_batch: List[Dict[str, list]],
         t_batch: Optional[List[int]] = None,
         explore: bool = None,
@@ -580,46 +593,58 @@ class Policy(metaclass=ABCMeta):
         Calls to policy models and action distribution functions are wrapped with
         connectors.
 
-        Simple example:
-            >>> from ray.rllib.algorithms.ppo import PPOConfig # doctest: +SKIP
-            >>> algo = PPOConfig().build(env="CartPole-v1") # doctest: +SKIP
-            >>> algo.train() # doctest: +SKIP
-            >>> policy = algo.get_policy() # doctest: +SKIP
-            >>> env = gym.make("CartPole-v1") # doctest: +SKIP
-            >>> obs = env.reset() # doctest: +SKIP
-            >>> reward, done, info = 0, False, {} # doctest: +SKIP
-            >>> while not done: # doctest: +SKIP
-            >>>     [action], _, _ = policy.compute_actions_from_raw_input( # doctest: +SKIP # noqa
-            >>>         next_obs_batch=[obs], # doctest: +SKIP
-            >>>         reward_batch=[reward], # doctest: +SKIP
-            >>>         dones_batch=[done], # doctest: +SKIP
-            >>>         info_batch=[info] # doctest: +SKIP
-            >>>     ) # doctest: +SKIP
-            >>>     obs, reward, done, info = env.step(action) # doctest: +SKIP
+        ... code-block:: python
 
-        Batched example:
-            >>> from ray.rllib.examples.env.multi_agent import MultiAgentCartPole # doctest: +SKIP # noqa
-            >>> algo = PPOConfig().build(env=MultiAgentCartPole) # doctest: +SKIP
-            >>> algo.train() # doctest: +SKIP
-            >>> policy = algo.get_policy() # doctest: +SKIP
-            >>> env = MultiAgentCartPole({"num_agents": 2}) # doctest: +SKIP
-            >>> obses = env.reset() # doctest: +SKIP
-            >>> rewards, dones, infos = {0: 0, 1: 0}, # doctest: +SKIP
-            >>>                         {0: False, 1: False}, # doctest: +SKIP
-            >>>                         {0: {}, 1: {}} # doctest: +SKIP
-            >>> while not all(dones.values()): # doctest: +SKIP
-            >>>     [action1, action2], _, _ = policy.compute_actions_from_raw_input( # doctest: +SKIP # noqa
-            >>>         next_obs_batch=[obses[0], obses[1]], # doctest: +SKIP
-            >>>         reward_batch=[rewards[0], rewards[1]], # doctest: +SKIP
-            >>>         dones_batch=[dones[0], dones[1]], # doctest: +SKIP
-            >>>         info_batch=[infos[0], infos[1]] # doctest: +SKIP
-            >>>     ) # doctest: +SKIP
-            >>>     obs, reward, done, info = env.step({0: action1, 1: action2}) # doctest: +SKIP # noqa
+            # Single-agent example:
+
+            import gymnasium as gym
+            from ray.rllib.algorithms.ppo import PPOConfig
+
+            algo = PPOConfig().build(env="CartPole-v1")
+            algo.train()
+            policy = algo.get_policy()
+            env = gym.make("CartPole-v1")
+            obs, info = env.reset()
+            reward, terminated, truncated = 0, False, False
+            for i in range(5):
+                [action], _, _ = policy.compute_actions_from_raw_input(
+                    next_obs_batch=[obs],
+                    reward_batch=[reward],
+                    terminateds_batch=[terminated],
+                    truncateds_batch=[truncated],
+                    info_batch=[info]
+                )
+                obs, reward, terminated, truncated, info = env.step(action)
+
+            # Batched multi-agent example:
+
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+
+            algo = PPOConfig().build(env=MultiAgentCartPole)
+            algo.train()
+            policy = algo.get_policy()
+            env = MultiAgentCartPole({"num_agents": 2})
+            obss, infos = env.reset()
+            rewards, terminateds, truncateds = {0: 0, 1: 0}, \
+                                                      {0: False, 1: False,
+                                                       "__all__": False}, \
+                                                      {0: False, 1: False}
+            while not terminateds["__all__"]:
+                [action1, action2], _, _ = policy.compute_actions_from_raw_input(
+                    next_obs_batch=[obss[0], obss[1]],
+                    reward_batch=[rewards[0], rewards[1]],
+                    terminateds_batch=[terminateds[0], terminateds[1]],
+                    truncateds_batch=[truncateds[0], truncateds[1]],
+                    info_batch=[infos[0], infos[1]])
+                obss, rewards, terminateds, truncateds, infos = env.step({0: action1,
+                                                                           1: action2})
 
         Args:
             next_obs_batch: Batch of observations, one per agent.
             reward_batch: Batch of rewards, one per agent.
-            dones_batch: batch of dones, one per agent.
+            terminateds_batch: batch of terminateds, one per agent.
+            truncateds_batch: batch of truncateds, one per agent.
             info_batch: Batch of infos, one per agent.
             t_batch: Batch of timesteps, one per agent. If None, we assume the
                 subsequent timestep when building trajectories from this input data.
@@ -690,8 +715,15 @@ class Policy(metaclass=ABCMeta):
         _reward_batch = (
             [None] * len(next_obs_batch) if reward_batch is None else reward_batch
         )
-        _dones_batch = (
-            [None] * len(next_obs_batch) if dones_batch is None else dones_batch
+        _terminateds_batch = (
+            [None] * len(next_obs_batch)
+            if terminateds_batch is None
+            else terminateds_batch
+        )
+        _truncateds_batch = (
+            [None] * len(next_obs_batch)
+            if truncateds_batch is None
+            else truncateds_batch
         )
         _info_batch = [None] * len(next_obs_batch) if info_batch is None else info_batch
         _t_batch = [None] * len(next_obs_batch) if t_batch is None else t_batch
@@ -701,7 +733,8 @@ class Policy(metaclass=ABCMeta):
         for (
             agent_obs,
             agent_reward,
-            agent_done,
+            agent_terminated,
+            agent_truncated,
             agent_info,
             agent_t,
             env_id,
@@ -709,7 +742,8 @@ class Policy(metaclass=ABCMeta):
         ) in zip(
             next_obs_batch,
             _reward_batch,
-            _dones_batch,
+            _terminateds_batch,
+            _truncateds_batch,
             _info_batch,
             _t_batch,
             env_ids,
@@ -718,16 +752,16 @@ class Policy(metaclass=ABCMeta):
             values_dict = {
                 SampleBatch.ENV_ID: env_id,
                 SampleBatch.AGENT_INDEX: agent_id,
-                # Last action (SampleBatch.ACTIONS) column will be populated by
-                # StateBufferConnector.
-                # Reward received after taking action at timestep t.
                 SampleBatch.NEXT_OBS: agent_obs,
             }
-            # If rewards, dones and infos are not provided, assume they are not required
+            # If rewards, terminateds, truncateds or infos are not provided,
+            # assume they are not required
             if agent_reward is not None:
                 values_dict[SampleBatch.REWARDS] = agent_reward
-            if agent_done is not None:
-                values_dict[SampleBatch.DONES] = agent_done
+            if agent_terminated is not None:
+                values_dict[SampleBatch.TRUNCATEDS] = agent_terminated
+            if agent_truncated is not None:
+                values_dict[SampleBatch.TRUNCATEDS] = agent_truncated
             if agent_info is not None:
                 values_dict[SampleBatch.INFOS] = agent_info
             if agent_t is not None:
@@ -785,8 +819,10 @@ class Policy(metaclass=ABCMeta):
             }
             if reward_batch is not None:
                 input_dict[SampleBatch.REWARDS] = reward_batch[agent_idx]
-            if dones_batch is not None:
-                input_dict[SampleBatch.DONES] = dones_batch[agent_idx]
+            if terminateds_batch is not None:
+                input_dict[SampleBatch.TERMINATEDS] = terminateds_batch[agent_idx]
+            if truncateds_batch is not None:
+                input_dict[SampleBatch.TRUNCATEDS] = truncateds_batch[agent_idx]
             if info_batch is not None:
                 input_dict[SampleBatch.INFOS] = info_batch[agent_idx]
             if t_batch is not None:

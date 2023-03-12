@@ -463,7 +463,8 @@ def check_compute_single_action(
                 input_dict={
                     SampleBatch.NEXT_OBS: [obs],
                     SampleBatch.REWARDS: [0],
-                    SampleBatch.DONES: [False],
+                    SampleBatch.TERMINATEDS: [False],
+                    SampleBatch.TRUNCATEDS: [False],
                     SampleBatch.INFOS: [{}],
                 },
                 explore=explore,
@@ -481,7 +482,8 @@ def check_compute_single_action(
             action = what.compute_actions_from_raw_input(
                 next_obs_batch=[obs],
                 reward_batch=[0],
-                dones_batch=[False],
+                terminateds_batch=[False],
+                truncateds_batch=[False],
                 info_batch=[{}],
                 explore=explore,
                 timestep=timestep,
