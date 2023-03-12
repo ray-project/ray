@@ -582,8 +582,8 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
     app_message: str = Field(
         description="A message that gives more insight into the application status."
     )
-    deployment_timestamp: float = Field(
-        description="The time at which the application was deployed"
+    last_deployed_s: float = Field(
+        description="The time at which the application was deployed."
     )
     deployed_app_config: ServeApplicationSchema = Field(
         description=(
