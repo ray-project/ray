@@ -251,13 +251,17 @@ class TestPPO(unittest.TestCase):
             a_ = trainer.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
             )
+
             # Test whether this is really the argmax action over the logits.
-            if fw != "tf":
+            # TODO (Kourosh): Only meaningful in the ModelV2 stack.
+            config.validate()
+            if not config._enable_rl_module_api and fw != "tf":
                 last_out = trainer.get_policy().model.last_output()
                 if fw == "torch":
                     check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
                 else:
                     check(a_, np.argmax(last_out.numpy(), 1)[0])
+
             for _ in range(50):
                 a = trainer.compute_single_action(
                     obs,
