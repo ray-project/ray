@@ -19,7 +19,7 @@ def test_distributed_tqdm_remote():
         except Exception as e:
             print(e)
         print("foo wait")
-        time.sleep(999)
+        time.sleep(999)  # Keep the bar open.
 
     foo.remote()
 

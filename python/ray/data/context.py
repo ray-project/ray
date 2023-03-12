@@ -105,7 +105,7 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
 )
 
 # Set this env var to enable distributed tqdm (experimental).
-DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "0")))
+DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
