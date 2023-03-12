@@ -175,6 +175,6 @@ class JobRunner(CommandRunner):
                 path, os.path.join(self._DEFAULT_ARTIFACTS_DIR, file_name)
             )
         except Exception as e:
-            raise ResultsError(
+            raise FetchResultError(
                 f"Could not fetch artifact file from session: {e}"
             ) from e

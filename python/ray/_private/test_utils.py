@@ -17,7 +17,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 import uuid
 
 import requests

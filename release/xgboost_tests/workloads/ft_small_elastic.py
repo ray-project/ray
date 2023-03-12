@@ -92,3 +92,5 @@ if __name__ == "__main__":
         )
 
     print("PASSED.")
+    with open("/tmp/ckpt_ids.txt", "w") as f:
+        f.write("test")

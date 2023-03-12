@@ -202,15 +202,4 @@ class SDKRunner(CommandRunner):
         return self._fetch_json(self.metrics_output_json)
 
     def fetch_artifact(self, path: str):
-        try:
-            # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
-            if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
-                os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
-            file_name = os.path.basename(path)
-            self.file_manager.download(
-                path, os.path.join(self._DEFAULT_ARTIFACTS_DIR, file_name)
-            )
-        except Exception as e:
-            raise ResultsError(
-                f"Could not fetch artifact file from session: {e}"
-            ) from e
+        pass
