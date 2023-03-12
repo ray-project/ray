@@ -16,7 +16,7 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
 
     Note: Dynamic arguments should not be passed in directly,
     and should be set with ``options`` instead:
-    ``cached_remote_fn(**static_args).options(**dynamic_args)``.
+    ``cached_remote_fn(fn, **static_args).options(**dynamic_args)``.
 
     """
     if fn not in CACHED_FUNCTIONS:
