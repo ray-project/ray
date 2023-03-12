@@ -401,6 +401,7 @@ def main():
         f"  Global train batch size (w. parallel & distributed) = {train_batch_size}"
     )
     logger.info(f"  Total optimization steps = {total_train_steps}")
+    logger.info(f"  NCCL mode = {global_config.nccl_mode}")
 
     train_time = 0
     train_metrics = []
