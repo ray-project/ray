@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PG, PGConfig
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -13,7 +13,7 @@ class LocalModeTest(unittest.TestCase):
         ray.shutdown()
 
     def test_local(self):
-        cf = DEFAULT_CONFIG.copy()
+        cf = PGConfig()
         cf["model"]["fcnet_hiddens"] = [10]
         cf["num_workers"] = 2
 
