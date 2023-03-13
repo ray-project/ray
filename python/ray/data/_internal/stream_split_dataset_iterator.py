@@ -14,12 +14,11 @@ from typing import (
 )
 
 import ray
-from ray.data._internal.util import _get_batch_format
+from ray.data._internal.util import _best_batch_format
 
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data.block import Block, BlockAccessor, DataBatch, T
+from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
-from ray.data.row import TableRow
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.legacy_compat import (
     execute_to_legacy_bundle_iterator,
@@ -117,18 +116,6 @@ class StreamSplitDatasetIterator(DatasetIterator):
             shuffle_seed=local_shuffle_seed,
         )
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
-        # During row-based ops, we also choose a batch format that lines up with the
-        # current dataset format in order to eliminate unnecessary copies and type
-        # conversions.
-        batch_format = _get_batch_format(self._base_dataset)
-        for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
-        ):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
-                yield row
-
     def stats(self) -> str:
         """Implements DatasetIterator."""
         return self._base_dataset.stats()
@@ -136,6 +123,9 @@ class StreamSplitDatasetIterator(DatasetIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DatasetIterator."""
         return self._base_dataset.schema()
+
+    def _best_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+        return _best_batch_format(self._base_dataset)
 
 
 @ray.remote(num_cpus=0)
