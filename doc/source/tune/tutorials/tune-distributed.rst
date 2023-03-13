@@ -226,7 +226,7 @@ both in the single node and distributed setting.
 
 For example, let's say a node is pre-empted or crashes while a trial is still executing on that node.
 Assuming that a checkpoint for this trial exists (and in the distributed setting,
-:ref:`some form of persistent storage is configured to access the trial's checkpoint <tune-storage>`),
+:ref:`some form of persistent storage is configured to access the trial's checkpoint <tune-storage-options>`),
 Tune waits until available resources are available to begin executing the trial again from where it left off.
 If no checkpoint is found, the trial will restart from scratch.
 See :ref:`here for information on checkpointing <tune-trial-checkpoint>`.
