@@ -116,6 +116,15 @@ def _resolve_class_path(module) -> Type:
         return getattr(module, class_name)
 
 
+def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
+    if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
+        raise ValueError(
+            "rl_module_spec must be an instance of "
+            "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+            f"Got {type(module_spec)} instead."
+        )
+
+
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
@@ -901,17 +910,26 @@ class AlgorithmConfig(_Config):
                 # compatibility for now. User only needs to set num_rollout_workers.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
-        # resolve rl_module_spec class
-        if self._enable_rl_module_api and self.rl_module_spec is None:
-            self.rl_module_spec = self.get_default_rl_module_spec()
-            if not isinstance(
-                self.rl_module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)
-            ):
-                raise ValueError(
-                    "rl_module_spec must be an instance of "
-                    "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
-                    f"Got {type(self.rl_module_spec)} instead."
-                )
+        if self._enable_rl_module_api:
+            default_rl_module_spec = self.get_default_rl_module_spec()
+            _check_rl_module_spec(default_rl_module_spec)
+
+            if self.rl_module_spec is not None:
+                # Merge provided RL Module spec class with defaults
+                _check_rl_module_spec(self.rl_module_spec)
+                # We can only merge if we have SingleAgentRLModuleSpecs.
+                # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
+                if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
+                    if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                        default_rl_module_spec.update(self.rl_module_spec)
+                        self.rl_module_spec = default_rl_module_spec
+                    elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
+                        raise ValueError(
+                            "Cannot merge MultiAgentRLModuleSpec with "
+                            "SingleAgentRLModuleSpec!"
+                        )
+            else:
+                self.rl_module_spec = default_rl_module_spec
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
@@ -2283,9 +2301,9 @@ class AlgorithmConfig(_Config):
         Args:
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
-                observation_space, action_space, or the model_config is not specified
-                it will be inferred from the env and other parts of the algorithm
-                config object.
+                observation_space, action_space, catalog_class, or the model_config is
+                not specified it will be inferred from the env and other parts of the
+                algorithm config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
@@ -2296,7 +2314,7 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if self._enable_rl_module_api is not NotProvided:
+        if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
         else:
             # throw a warning if the user has used this API but not enabled it.
@@ -2775,10 +2793,14 @@ class AlgorithmConfig(_Config):
 
     def get_marl_module_spec(
         self,
+        *,
         policy_dict: Dict[str, PolicySpec],
-        policies_to_train: Callable[[PolicyID, SampleBatchType], bool],
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
+
+        policy_dict could be a partial dict of the policies that we need to turn into
+        an equivalent multi-agent RLModule spec.
 
         Args:
             policy_dict: The policy spec dict. Using this dict, we can determine the
@@ -2787,47 +2809,144 @@ class AlgorithmConfig(_Config):
                 they will get auto-filled with these values obtrained from the policy
                 spec dict. Here we are relying on the policy's logic for infering these
                 values from other sources of information (e.g. environement)
-            policies_to_train: The policies to train. This can be optionally used to
-                construct the MultiAgentRLModuleSpec (if necessary).
+            module_spec: The single-agent RLModule spec to use for constructing the
+                multi-agent RLModule spec. If None, the default RLModule spec for this
+                algorithm will be used.
         """
         # TODO (Kourosh): When we replace policy entirely there will be no need for
         # this function to map policy_dict to marl_module_specs anymore. The module
         # spec will be directly given by the user or inferred from env and spaces.
 
+        # TODO (Kourosh): Raise an error if the config is not frozen (validated)
         # If the module is single-agent convert it to multi-agent spec
+
         if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
+            # if module_spec is provided, use it otherwise use the self.rl_module_spec
+            single_agent_spec = module_spec or self.rl_module_spec
             marl_module_spec = MultiAgentRLModuleSpec(
                 module_specs={
-                    k: copy.deepcopy(self.rl_module_spec) for k in policy_dict.keys()
+                    k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                 },
             )
-        elif isinstance(self.rl_module_spec, MultiAgentRLModuleSpec):
-            marl_module_spec = self.rl_module_spec
-
-            if isinstance(marl_module_spec.module_specs, SingleAgentRLModuleSpec):
-                # the individual module specs are not given, it is given as one
-                # SingleAgentRLModuleSpec to be re-used for all
-                marl_module_spec.module_specs = {
-                    k: copy.deepcopy(marl_module_spec.module_specs)
-                    for k in policy_dict.keys()
-                }
-
-            # otherwise it is assumed that the module specs are given as a dict that
-            # match the sampler's policy dict
         else:
-            raise ValueError(
-                "RLModuleSpec must be either SingleAgentRLModuleSpec "
-                f"or MultiAgentRLModuleSpec got {type(self.rl_module_spec)} instead."
-            )
+            cur_marl_module_spec = self.rl_module_spec
+            default_rl_module = self.get_default_rl_module_spec()
+
+            if isinstance(default_rl_module, SingleAgentRLModuleSpec):
+                # Default is single-agent but the user has provided a multi-agent spec
+                # so the use-case is multi-agent. We need to inherit the multi-agent
+                # class from self.rl_module_spec and fill in the module_specs dict.
+                # If the user provided a multi-agent spec, we use that for the values,
+                # otherwise we see if they have provided a multi-agent spec that
+                # specifies the SingleAgentRLModuleSpec to use instead of the default,
+                # in that case, we use that spec for the values. otherwise we use
+                # the default spec for the values.
+                if isinstance(
+                    cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
+                ):
+                    # The individual module specs are defined by the user
+                    single_agent_spec = module_spec or cur_marl_module_spec.module_specs
+                    module_specs = {
+                        k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
+                    }
+                else:
+                    # The individual module specs are not defined by the user,
+                    # so we use the default
+                    single_agent_spec = module_spec or default_rl_module
+                    module_specs = {
+                        k: copy.deepcopy(
+                            cur_marl_module_spec.module_specs.get(k, single_agent_spec)
+                        )
+                        for k in policy_dict.keys()
+                    }
+
+                marl_module_spec = cur_marl_module_spec.__class__(
+                    marl_module_class=cur_marl_module_spec.marl_module_class,
+                    module_specs=module_specs,
+                )
+            else:
+                # Default is multi-agent and user wants to override it. In this case,
+                # we have two options: 1) the user provided a multi-agent spec, in
+                # which case we use that for the values, 2) self.rl_module_spec is a
+                # spec that defines SingleAgentRLModuleSpecs to be used for everything.
+                # In this case, we need to use that spec for the values.
+                if module_spec is None:
+                    if isinstance(
+                        cur_marl_module_spec.module_specs, SingleAgentRLModuleSpec
+                    ):
+                        # The individual module specs are not given, it is given as one
+                        # SingleAgentRLModuleSpec to be re-used for all
+                        single_agent_spec = cur_marl_module_spec.module_specs
+                    else:
+                        raise ValueError(
+                            "MultiAgentRLModuleSpec is given but no module_spec is "
+                            "provided when adding a policy."
+                        )
+                else:
+                    single_agent_spec = module_spec
+
+                marl_module_spec = cur_marl_module_spec.__class__(
+                    marl_module_class=cur_marl_module_spec.marl_module_class,
+                    module_specs={
+                        k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
+                    },
+                )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
         if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
-            raise ValueError("Policy dict and module spec have different keys!")
+            raise ValueError(
+                "Policy dict and module spec have different keys! \n"
+                f"policy_dict keys: {list(policy_dict.keys())} \n"
+                f"module_spec keys: {list(marl_module_spec.module_specs.keys())}"
+            )
 
-        # fill in the missing values from the module spec
+        # Fill in the missing values from the specs that we already have. By combining
+        # PolicySpecs and the default RLModuleSpec.
+        default_spec = self.get_default_rl_module_spec()
         for module_id in policy_dict:
             policy_spec = policy_dict[module_id]
             module_spec = marl_module_spec.module_specs[module_id]
+            if module_spec.module_class is None:
+                if isinstance(default_spec, SingleAgentRLModuleSpec):
+                    module_spec.module_class = default_spec.module_class
+                elif isinstance(default_spec.module_specs, SingleAgentRLModuleSpec):
+                    module_class = default_spec.module_specs.module_class
+                    # This should be already checked in validate() but we check it
+                    # again here just in case
+                    if module_class is None:
+                        raise ValueError(
+                            "The default rl_module spec cannot have an empty "
+                            "module_class under its SingleAgentRLModuleSpec."
+                        )
+                    module_spec.module_class = module_class
+                elif module_id in default_spec.module_specs:
+                    module_spec.module_class = default_spec.module_specs[
+                        module_id
+                    ].module_class
+                else:
+                    raise ValueError(
+                        f"Module class for module {module_id} cannot be inferred. "
+                        f"It is neither provided in the rl_module_spec that "
+                        "is passed in nor in the default module spec used in "
+                        "the algorithm."
+                    )
+            if module_spec.catalog_class is None:
+                if isinstance(default_spec, SingleAgentRLModuleSpec):
+                    module_spec.catalog_class = default_spec.catalog_class
+                elif isinstance(default_spec.module_specs, SingleAgentRLModuleSpec):
+                    catalog_class = default_spec.module_specs.catalog_class
+                    module_spec.catalog_class = catalog_class
+                elif module_id in default_spec.module_specs:
+                    module_spec.catalog_class = default_spec.module_specs[
+                        module_id
+                    ].catalog_class
+                else:
+                    raise ValueError(
+                        f"Catalog class for module {module_id} cannot be inferred. "
+                        f"It is neither provided in the rl_module_spec that "
+                        "is passed in nor in the default module spec used in "
+                        "the algorithm."
+                    )
 
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
@@ -3060,7 +3179,7 @@ class AlgorithmConfig(_Config):
             # Recommend setting tracing to True for speedups.
             logger.info(
                 f"Executing eagerly (framework='{self.framework_str}'),"
-                f" with eager_tracing={self.framework_str}. For "
+                f" with eager_tracing={self.eager_tracing}. For "
                 "production workloads, make sure to set eager_tracing=True"
                 "  in order to match the speed of tf-static-graph "
                 "(framework='tf'). For debugging purposes, "
