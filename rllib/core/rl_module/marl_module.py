@@ -520,6 +520,7 @@ class MultiAgentRLModuleSpec:
                 for module_id, module_spec in d["module_specs"].items()
             },
         )
+
     def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
         """Updates this spec with the other spec.
 
