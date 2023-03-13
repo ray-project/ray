@@ -814,10 +814,10 @@ class JobManager:
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_resources=entrypoint_resources,
         )
-        num_added = await self._job_info_client.put_info(
+        new_key_added = await self._job_info_client.put_info(
             submission_id, job_info, overwrite=False
         )
-        if num_added == 0:
+        if not new_key_added:
             raise ValueError(
                 f"Job with submission_id {submission_id} already exists. "
                 "Please use a different submission_id."

@@ -191,7 +191,7 @@ class JobInfoStorageClient:
 
     async def put_info(
         self, job_id: str, job_info: JobInfo, overwrite: bool = True
-    ) -> int:
+    ) -> bool:
         """Put job info to the internal kv store.
 
         Args:
@@ -200,9 +200,7 @@ class JobInfoStorageClient:
             overwrite: Whether to overwrite the existing job info.
 
         Returns:
-            The number of keys added. If overwrite is True, this will be 1 if the
-                key was added and 0 if the key was updated. If overwrite is False,
-                this will be 1 if the key was added and 0 if the key already exists.
+            True if a new key is added.
         """
         added_num = await self._gcs_aio_client.internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
@@ -210,7 +208,7 @@ class JobInfoStorageClient:
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        return added_num
+        return added_num == 1
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(
