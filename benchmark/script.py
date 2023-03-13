@@ -7,16 +7,18 @@ ray.init()
 @ray.remote
 class Actor:
     def run_code(self):
-        import torch
+        #import torch
+        #import tensorflow
         pass
 
 @ray.remote
 def task():
-    import torch
+    #import torch
     pass
 
-def main(metrics_actor, num_runs, num_tasks_or_actors_per_run, use_actors):
+def main(metrics_actor, num_runs, num_tasks_or_actors_per_run, use_actors, with_gpu):
     import time
+    # TODO GPU
 
     def with_actors():
         actors = [Actor.remote() for _ in range(num_tasks_or_actors_per_run)]
@@ -46,6 +48,10 @@ if __name__ == '__main__':
     group.add_argument('--with_actors', action='store_true')
     group.add_argument('--with_tasks', action='store_true')
 
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--with_gpu', action='store_true')
+    group.add_argument('--without_gpu', action='store_true')
+
     args = parser.parse_args()
 
     metrics_actor = ray.get_actor(
@@ -60,4 +66,5 @@ if __name__ == '__main__':
         args.num_runs,
         args.num_tasks_or_actors_per_run,
         args.with_actors,
+        args.with_gpu,
     ))
