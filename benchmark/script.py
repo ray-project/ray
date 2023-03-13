@@ -7,16 +7,13 @@ ray.init()
 @ray.remote
 class Actor:
     def run_code(self):
-        #import torch
-        #import tensorflow
-        pass
+        import torch
 
 @ray.remote
 def task():
-    #import torch
-    pass
+    import torch
 
-def main(metrics_actor, num_runs, num_tasks_or_actors_per_run, use_actors, with_gpu):
+def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, use_actors, with_gpu):
     import time
     # TODO GPU
 
@@ -34,13 +31,14 @@ def main(metrics_actor, num_runs, num_tasks_or_actors_per_run, use_actors, with_
         start = time.time()
         func_to_measure()
         dur_s = time.time() - start
-        ray.get(metrics_actor.submit.remote(dur_s))
+        ray.get(metrics_actor.submit.remote(test_name, dur_s))
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--metrics_actor_name', type=str)
     parser.add_argument('--metrics_actor_namespace', type=str)
+    parser.add_argument('--test_name', type=str)
     parser.add_argument('--num_runs', type=int)
     parser.add_argument('--num_tasks_or_actors_per_run', type=int)
 
@@ -63,6 +61,7 @@ if __name__ == '__main__':
 
     sys.exit(main(
         metrics_actor,
+        args.test_name,
         args.num_runs,
         args.num_tasks_or_actors_per_run,
         args.with_actors,
