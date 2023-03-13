@@ -20,11 +20,17 @@ from ray.tune.registry import get_trainable_cls
 
 def get_mean_action(alg, obs):
     out = []
-    for _ in range(2000):
+    for _ in range(5000):
         out.append(float(alg.compute_single_action(obs)))
     return np.mean(out)
 
 
+# As we transition things to RLModule API the explore=False will get
+# deprecated. For now, we will just not set it. The reason is that the RLModule
+# API has forward_exploration() method that can be overriden if user needs to
+# really turn of the stochasticity. This test in particular is robust to
+# explore=None if we compare the mean of the distribution of actions for the
+# same observation to be the same.
 algorithms_and_configs = {
     "A3C": (A3CConfig().exploration(explore=False).rollouts(num_rollout_workers=1)),
     "APEX_DDPG": (
@@ -61,8 +67,9 @@ algorithms_and_configs = {
         .rollouts(observation_filter="MeanStdFilter", num_rollout_workers=2)
     ),
     "PPO": (
+        # See the comment before the `algorithms_and_configs` dict.
+        # explore is set to None for PPO in favor of RLModule API support.
         PPOConfig()
-        .exploration(explore=False)
         .training(num_sgd_iter=5, train_batch_size=1000)
         .rollouts(num_rollout_workers=2)
     ),

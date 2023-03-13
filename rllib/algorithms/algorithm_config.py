@@ -801,6 +801,7 @@ class AlgorithmConfig(_Config):
                 "`config.rollouts(enable_connectors=True)`."
             )
 
+        # Learner API requires RLModule API.
         if self._enable_learner_api and not self._enable_rl_module_api:
             raise ValueError(
                 "Learner API requires RLModule API. "
@@ -813,6 +814,28 @@ class AlgorithmConfig(_Config):
             # (to be used in unittesting)
             self._enable_rl_module_api = True
             self.enable_connectors = True
+
+        # Explore parameter cannot be False with RLModule API enabled.
+        # The reason is that the explore is not just a parameter that will get passed
+        # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
+        # forward_exploration() will get called during smapling. If user needs to
+        # really disable the stochasticity during this phase, they need to override the
+        # RLModule.forward_exploration() method or setup model parameters such that it
+        # will disable the stocalisticity of this method (e.g. by setting the std to 0
+        # or setting temprature to 0 for the Categorical distribution).
+
+        if self._enable_rl_module_api and not self.explore:
+            raise ValueError(
+                "When RLModule API is enabled, explore parameter cannot be False. "
+                "Please set explore=None or disable RLModule API via "
+                "`config.rl_module(_enable_rl_module_api=False)`."
+                "If you want to disable the stochasticity during the exploration "
+                "phase, you can customize your RLModule and override the RLModule."
+                "forward_exploration() method "
+                "or setup model parameters such that it will disable the "
+                "stochasticity of this method (e.g. by setting the std to 0 or "
+                "setting temperature to 0 for the Categorical distribution)."
+            )
 
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.
