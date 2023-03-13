@@ -39,9 +39,11 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 MAX_REPLICA_FAILURE_RETRIES = int(
     os.environ.get("RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES", 10)
 )
-assert (
-    MAX_REPLICA_FAILURE_RETRIES >= 0
-), f"Got unexpected value {MAX_REPLICA_FAILURE_RETRIES} for MAX_REPLICA_FAILURE_RETRIES environment variable. MAX_REPLICA_FAILURE_RETRIES cannot be negative."
+assert MAX_REPLICA_FAILURE_RETRIES >= 0, (
+    f"Got unexpected value {MAX_REPLICA_FAILURE_RETRIES} for "
+    "MAX_REPLICA_FAILURE_RETRIES environment variable. "
+    "MAX_REPLICA_FAILURE_RETRIES cannot be negative."
+)
 
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (

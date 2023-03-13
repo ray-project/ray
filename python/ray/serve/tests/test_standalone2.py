@@ -1414,6 +1414,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     # Unblock the first request.
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
+    serve.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -1449,7 +1450,7 @@ def test_http_request_number_of_retries(ray_instance):
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
             if "serve_num_router_requests" in metrics:
-                assert "5.0" in metrics
+                assert "6.0" in metrics
                 verfied = True
         return verfied
 
