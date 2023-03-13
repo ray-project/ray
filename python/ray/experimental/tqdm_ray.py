@@ -211,6 +211,7 @@ class _BarManager:
         self.pid = os.getpid()
         self.bar_groups = {}
         self.in_hidden_state = False
+        self.num_hides = 0
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -255,6 +256,7 @@ class _BarManager:
         """Temporarily hide visible bars to avoid conflict with other log messages."""
         if not self.in_hidden_state:
             self.in_hidden_state = True
+            self.num_hides += 1
             for group in self.bar_groups.values():
                 group.hide_bars()
 
@@ -293,8 +295,7 @@ if __name__ == "__main__":
     @ray.remote
     def processing(delay):
         def sleep(x):
-            if x % 100 == 0:
-                print("Intermediate result", x)
+            print("Intermediate result", x)
             time.sleep(delay)
             return x
 

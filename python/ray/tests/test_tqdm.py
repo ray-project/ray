@@ -12,7 +12,6 @@ def test_distributed_tqdm_remote():
     @ray.remote
     class Actor:
         def __init__(self):
-            print("Actor started")
             try:
                 self.bar = tqdm_ray.tqdm(desc="foo", total=100, position=0)
                 self.bar.update(42)
@@ -35,12 +34,10 @@ def test_distributed_tqdm_remote():
     assert "foo" in bar.bar.desc, bar.bar.desc
     assert not mgr.in_hidden_state
 
-    # Test stdout clearing.
+    # Test stdout save/restore clearing.
+    assert mgr.num_hides == 0
     ray.get(a.print_something.remote())
-    wait_for_condition(lambda: mgr.in_hidden_state)
-
-    # Test bar restore on next update.
-    ray.get(a.update.remote())
+    wait_for_condition(lambda: mgr.num_hides == 1)
     wait_for_condition(lambda: not mgr.in_hidden_state)
 
 

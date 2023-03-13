@@ -1814,6 +1814,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
+                restore_tqdm()
     else:
         for line in lines:
             if RAY_TQDM_MAGIC in line:
@@ -1832,6 +1833,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
+                restore_tqdm()
 
 
 def process_tqdm(line):
@@ -1847,6 +1849,11 @@ def process_tqdm(line):
 def hide_tqdm():
     """Hide distributed tqdm bars temporarily to avoid conflicts with other logs."""
     tqdm_ray.instance().hide_bars()
+
+
+def restore_tqdm():
+    """Undo hide_tqdm()."""
+    tqdm_ray.instance().unhide_bars()
 
 
 def listen_error_messages(worker, threads_stopped):
