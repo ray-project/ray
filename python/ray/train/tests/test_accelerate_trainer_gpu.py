@@ -273,7 +273,7 @@ def test_accelerate_linear(
     trainer.fit()
 
 
-def test_accelerate_e2e(ray_start_4_cpus, tmpdir):
+def test_accelerate_e2e(ray_start_4_cpus):
     def train_func():
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
@@ -282,15 +282,11 @@ def test_accelerate_e2e(ray_start_4_cpus, tmpdir):
         model = accelerator.prepare(model)
         session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
-    accelerate_config_path = tmpdir / "accelerate_config.yaml"
-    with open(accelerate_config_path, "w") as f:
-        f.write(ACCELERATE_CONFIG_CPU)
-
     scaling_config = ScalingConfig(num_workers=2)
     trainer = AccelerateTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        accelerate_config=accelerate_config_path,
+        accelerate_config={},
         preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()

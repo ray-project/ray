@@ -17,7 +17,10 @@
 import logging
 import os
 from argparse import Namespace
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
+import tempfile
+from contextlib import nullcontext
+from pathlib import Path
 
 try:
     from packaging.version import Version
@@ -41,6 +44,7 @@ from accelerate.commands.launch import (
 )
 from accelerate.utils import is_deepspeed_available
 from accelerate.commands.config import default_config_file, load_config_from_file
+from accelerate.commands.config.config_args import ClusterConfig
 
 logger = logging.getLogger(__name__)
 
@@ -126,22 +130,41 @@ def launch_command(args):
 
 
 def load_accelerate_config(
-    accelerate_config: Optional[str],
+    accelerate_config: Optional[Union[str, dict]],
 ) -> Tuple[str, Optional[str]]:
-    # We only load config to dict to obtain the deepspeed_config_file
-    config = load_config_from_file(
-        str(accelerate_config) if accelerate_config else default_config_file
-    )
-    deepspeed_config_file = getattr(config, "deepspeed_config_file", None)
-    deepspeed_config_file_raw = None
+    if isinstance(accelerate_config, dict):
+        ctx = tempfile.TemporaryDirectory
+    else:
+        ctx = nullcontext
 
-    if deepspeed_config_file and not isinstance(deepspeed_config_file, dict):
-        with open(deepspeed_config_file, "r") as f:
-            deepspeed_config_file_raw = f.read()
+    with ctx() as tempdir:
+        if isinstance(accelerate_config, dict):
+            tempdir = Path(tempdir)
+            accelerate_config_path = str(tempdir / "accelerate_config.json")
+            accelerate_config.setdefault("num_processes", 1)
+            accelerate_config.setdefault("distributed_type", "NO")
+            accelerate_config.setdefault("mixed_precision", "no")
+            accelerate_config.setdefault("compute_environment", "LOCAL_MACHINE")
+            accelerate_config.setdefault("use_cpu", True)
+            config = ClusterConfig(**accelerate_config)
+            config.to_json_file(accelerate_config_path)
+        else:
+            accelerate_config_path = (
+                str(accelerate_config) if accelerate_config else default_config_file
+            )
 
-    # Otherwise, we want to pass raw contents to Trainables for maximum
-    # compatibility.
-    with open(accelerate_config, "r") as f:
-        raw_loaded_config = f.read()
+        # We only load config to dict to obtain the deepspeed_config_file
+        config = load_config_from_file(accelerate_config_path)
+        deepspeed_config_file = getattr(config, "deepspeed_config_file", None)
+        deepspeed_config_file_raw = None
 
-    return raw_loaded_config, deepspeed_config_file_raw
+        if deepspeed_config_file and not isinstance(deepspeed_config_file, dict):
+            with open(deepspeed_config_file, "r") as f:
+                deepspeed_config_file_raw = f.read()
+
+        # Otherwise, we want to pass raw contents to Trainables for maximum
+        # compatibility.
+        with open(accelerate_config_path, "r") as f:
+            raw_loaded_config = f.read()
+
+        return raw_loaded_config, deepspeed_config_file_raw

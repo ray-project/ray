@@ -31,7 +31,9 @@ try:
         AccelerateConfigWrapper,
         load_accelerate_config,
     )
-except ImportError:
+except ImportError as e:
+    if "AccelerateTrainer requires accelerate" not in e.msg:
+        raise
     launch_command = None
     AccelerateDefaultNamespace = None
     AccelerateConfigWrapper = None
