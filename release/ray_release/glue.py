@@ -385,7 +385,7 @@ def run_release_test(
 
         if artifact_path:
             try:
-                command_runner.fetch_artifact(artifact_path)
+                command_runner.fetch_artifact()
             except Exception as e:
                 logger.error("Could not fetch artifact for test command")
                 logger.exception(e)
