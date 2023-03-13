@@ -48,8 +48,10 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     @override(RLModule)
     def output_specs_train(self) -> List[str]:
         return [
+            SampleBatch.ACTION_DIST_INPUTS,
             SampleBatch.ACTION_DIST,
             SampleBatch.VF_PREDS,
+            "entropy"
         ]
 
     @override(RLModule)
