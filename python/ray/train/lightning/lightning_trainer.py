@@ -3,7 +3,6 @@ from inspect import isclass
 from typing import Any, Dict, Optional, Type
 
 from ray.air import session
-from ray.air.constants import MODEL_KEY
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
@@ -382,22 +381,9 @@ def _lightning_train_loop_per_worker(config):
 
     trainer = pl.Trainer(**trainer_config)
 
-    # Restore the training from a previously interrupted/failed run.
-    checkpoint = session.get_checkpoint()
-    if checkpoint:
-        with checkpoint.as_directory() as ckpt_dir:
-            ckpt_path = f"{ckpt_dir}/{MODEL_KEY}"
-            trainer.fit(
-                lightning_module,
-                datamodule=datamodule,
-                train_dataloaders=train_dataloaders,
-                val_dataloaders=val_dataloaders,
-                ckpt_path=ckpt_path,
-            )
-    else:
-        trainer.fit(
-            lightning_module,
-            datamodule=datamodule,
-            train_dataloaders=train_dataloaders,
-            val_dataloaders=val_dataloaders,
-        )
+    trainer.fit(
+        lightning_module,
+        datamodule=datamodule,
+        train_dataloaders=train_dataloaders,
+        val_dataloaders=val_dataloaders,
+    )
