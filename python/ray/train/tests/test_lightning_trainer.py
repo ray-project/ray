@@ -11,6 +11,14 @@ from ray.train.tests.lightning_test_utils import (
 )
 
 
+@pytest.fixture
+def ray_start_6_cpus_2_gpus():
+    address_info = ray.init(num_cpus=6, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 def test_config_builder():
     class DummyClass:
         def __init__(self) -> None:
@@ -33,7 +41,7 @@ def test_config_builder():
         LightningConfigBuilder()
         .module(cls=LinearModule, input_dim=10)
         .trainer(log_every_n_steps=100)
-        .fit(datamodule=DummyDataModule())
+        .fit_params(datamodule=DummyDataModule())
         .build()
     )
     assert config["_module_init_config"]["input_dim"] == 10
@@ -45,7 +53,7 @@ def test_config_builder():
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
 def test_trainer_with_native_dataloader(
-    ray_start_4_cpus_2_gpus, accelerator, datasource
+    ray_start_6_cpus_2_gpus, accelerator, datasource
 ):
     num_epochs = 4
     batch_size = 8
@@ -63,9 +71,11 @@ def test_trainer_with_native_dataloader(
     val_loader = datamodule.val_dataloader()
 
     if datasource == "dataloader":
-        config_builder.fit(train_dataloaders=train_loader, val_dataloaders=val_loader)
+        config_builder.fit_params(
+            train_dataloaders=train_loader, val_dataloaders=val_loader
+        )
     if datasource == "datamodule":
-        config_builder.fit(datamodule=datamodule)
+        config_builder.fit_params(datamodule=datamodule)
 
     scaling_config = ray.air.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
@@ -79,7 +89,7 @@ def test_trainer_with_native_dataloader(
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
-def test_trainer_with_ray_data(ray_start_4_cpus_2_gpus, accelerator):
+def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
@@ -111,7 +121,7 @@ def test_trainer_with_ray_data(ray_start_4_cpus_2_gpus, accelerator):
 
 
 @pytest.mark.parametrize("accelerator", ["gpu"])
-def test_trainer_with_categorical_ray_data(ray_start_4_cpus_2_gpus, accelerator):
+def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
     num_workers = 2

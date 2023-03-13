@@ -28,7 +28,24 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 class LightningConfigBuilder:
-    """Configuration Class to pass into LightningTrainer."""
+    """Configuration Class to pass into LightningTrainer.
+
+    Example:
+        .. code-block:: python
+            lightning_config = (
+                LightningConfigBuilder()
+                .module(
+                    cls=LightningModuleClass,
+                    input_dim_1=32,
+                    input_dim_2=32,
+                    output_dim=4,
+                )
+                .trainer(max_epochs=5, accelerator="gpu")
+                .fit_params(datamodule=datamodule)
+                .checkpointing(monitor="loss", save_top_k=2)
+                .build()
+            )
+    """
 
     def __init__(self) -> None:
         """Initialize the configurations with default values."""
@@ -66,19 +83,20 @@ class LightningConfigBuilder:
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
         Args:
-        **kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
-            For valid arguments to pass, please refer to:
-            https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
+            kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
+                For valid arguments to pass, please refer to:
+                https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
         """
         self._trainer_init_config.update(**kwargs)
         return self
 
-    def fit(self, **kwargs) -> "LightningConfigBuilder":
+    def fit_params(self, **kwargs) -> "LightningConfigBuilder":
         """The parameter lists for ``pytorch_lightning.Trainer.fit()``
 
-        **kwargs: The parameter lists for ``pytorch_lightning.Trainer.fit()``
-            For valid arguments to pass, please refer to:
-            https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#fit.
+        Args:
+            kwargs: The parameter lists for ``pytorch_lightning.Trainer.fit()``
+                For valid arguments to pass, please refer to:
+                https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#fit.
         """
         self._trainer_fit_params.update(**kwargs)
         return self
@@ -87,7 +105,7 @@ class LightningConfigBuilder:
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
         Args:
-            **kwargs: For valid arguments to pass, please refer to:
+            kwargs: For valid arguments to pass, please refer to:
                 https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html
         """
         self._ddp_strategy_config.update(**kwargs)
@@ -100,7 +118,7 @@ class LightningConfigBuilder:
         The AIR checkpointing and logging methods are triggered in that callback.
 
         Args:
-            **kwargs: For valid arguments to pass, please refer to:
+            kwargs: For valid arguments to pass, please refer to:
                 https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
         """
         self._model_checkpoint_config.update(**kwargs)
