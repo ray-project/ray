@@ -329,31 +329,37 @@ def test_worker_start_end_time(shutdown_only):
     # Test normal exit.
     worker = Worker.remote()
     pid = ray.get(worker.ready.remote())
+
     def verify():
         workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
         print(workers)
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] == 0
         return True
+
     wait_for_condition(verify)
 
     ray.kill(worker)
+
     def verify():
         workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] > 0
         return True
+
     wait_for_condition(verify)
 
     # Test unexpected exit.
     worker = Worker.remote()
     pid = ray.get(worker.ready.remote())
     os.kill(pid, signal.SIGKILL)
+
     def verify():
         workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] > 0
         return True
+
     wait_for_condition(verify)
 
 
