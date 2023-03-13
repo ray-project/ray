@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
@@ -180,76 +180,97 @@ class DataParallelIngestSpec:
         Returns:
             List of dataset shard dicts, one for each training worker.
         """
+
         dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
 
         for key, dataset in self.preprocessed_datasets.items():
-            config = self._config(key)
+            conf = self._config(key)
 
-            if config.max_object_store_memory_fraction >= 0:
-                object_store_memory = _estimate_avail_object_store_memory()
-                stream_window_size = max(
-                    object_store_memory * config.max_object_store_memory_fraction, 1
+            if (
+                DatasetContext.get_current().use_streaming_executor
+                and not conf.global_shuffle
+            ):
+                print("Using streaming split")
+                splits = self._get_splits_streaming_impl(
+                    dataset, conf, training_worker_handles
                 )
-                dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
-                # In windowed mode, we re-apply the preprocessor on each iteration.
-                if self.preprocessor or config.per_epoch_preprocessor:
-                    if self.preprocessor is not None:
-                        preprocessor = self.preprocessor
-                        if config.per_epoch_preprocessor is not None:
-                            preprocessor = Chain(
-                                preprocessor, config.per_epoch_preprocessor
-                            )
-                    else:
-                        preprocessor = config.per_epoch_preprocessor
-
-                    dataset = preprocessor._transform_pipeline(dataset)
-
-                # Always re-randomize each window; this doesn't help with reducing
-                # cluster hot-spots since we already randomized the based blocks, but
-                # can help with improving randomness in combination with local shuffle.
-                if config.randomize_block_order and not config.global_shuffle:
-                    # TODO(swang): Should randomize block order across the
-                    # original dataset, not the window.
-                    dataset = dataset.randomize_block_order_each_window()
-            elif config.per_epoch_preprocessor is not None:
-                # Reapply the per epoch preprocessor on each epoch.
-                if isinstance(dataset, Dataset):
-                    dataset = dataset.repeat()
-                dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
-
-            if config.global_shuffle:
-                # If global shuffle is requested, then we should try to overlap
-                # this with other computation, so convert to a DatasetPipeline
-                # if not already being used.
-                if isinstance(dataset, Dataset):
-                    dataset = dataset.repeat()
-                dataset = dataset.random_shuffle_each_window()
-
-            if config.split and len(training_worker_handles) > 1:
-                if DatasetContext.get_current().use_streaming_executor:
-                    dataset_splits = dataset.streaming_split(
-                        len(training_worker_handles),
-                        equal=True,
-                        locality_hints=training_worker_handles,
-                    )
-                    print("USING STREAMING SPLIT")
-                else:
-                    dataset_splits = dataset.split(
-                        len(training_worker_handles),
-                        equal=True,
-                        locality_hints=training_worker_handles,
-                    )
             else:
-                dataset_splits = [dataset] * len(training_worker_handles)
+                print("Using legacy split")
+                splits = self._get_splits_legacy_impl(training_worker_handles)
+            assert len(splits) == len(training_worker_handles)
 
-            for i, dataset_split in enumerate(dataset_splits):
-                if not isinstance(dataset_split, DatasetIterator):
-                    dataset_splits[i] = dataset_split.iterator()
-
-            for i in range(len(dataset_splits)):
-                dataset_dict_splits[i][key] = dataset_splits[i]
+            for i, split in enumerate(splits):
+                dataset_dict_splits[i][key] = split
 
         return dataset_dict_splits
+
+    def _get_splits_streaming_impl(
+        self,
+        dataset: Dataset,
+        config: DatasetConfig,
+        training_worker_handles: List[ActorHandle],
+    ) -> List["DatasetIterator"]:
+        raise NotImplementedError
+
+    def _get_splits_legacy_impl(
+        self,
+        dataset: Dataset,
+        config: DatasetConfig,
+        training_worker_handles: List[ActorHandle],
+    ) -> List["DatasetIterator"]:
+        if config.max_object_store_memory_fraction >= 0:
+            object_store_memory = _estimate_avail_object_store_memory()
+            stream_window_size = max(
+                object_store_memory * config.max_object_store_memory_fraction, 1
+            )
+            dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
+            # In windowed mode, we re-apply the preprocessor on each iteration.
+            if self.preprocessor or config.per_epoch_preprocessor:
+                if self.preprocessor is not None:
+                    preprocessor = self.preprocessor
+                    if config.per_epoch_preprocessor is not None:
+                        preprocessor = Chain(
+                            preprocessor, config.per_epoch_preprocessor
+                        )
+                else:
+                    preprocessor = config.per_epoch_preprocessor
+
+                dataset = preprocessor._transform_pipeline(dataset)
+
+            # Always re-randomize each window; this doesn't help with reducing
+            # cluster hot-spots since we already randomized the based blocks, but
+            # can help with improving randomness in combination with local shuffle.
+            if config.randomize_block_order and not config.global_shuffle:
+                # TODO(swang): Should randomize block order across the
+                # original dataset, not the window.
+                dataset = dataset.randomize_block_order_each_window()
+        elif config.per_epoch_preprocessor is not None:
+            # Reapply the per epoch preprocessor on each epoch.
+            if isinstance(dataset, Dataset):
+                dataset = dataset.repeat()
+            dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
+
+        if config.global_shuffle:
+            # If global shuffle is requested, then we should try to overlap
+            # this with other computation, so convert to a DatasetPipeline
+            # if not already being used.
+            if isinstance(dataset, Dataset):
+                dataset = dataset.repeat()
+            dataset = dataset.random_shuffle_each_window()
+
+        if config.split and len(training_worker_handles) > 1:
+            dataset_splits = dataset.split(
+                len(training_worker_handles),
+                equal=True,
+                locality_hints=training_worker_handles,
+            )
+        else:
+            dataset_splits = [dataset] * len(training_worker_handles)
+
+        for i, dataset_split in enumerate(dataset_splits):
+            dataset_splits[i] = dataset_split.iterator()
+
+        return dataset_splits
 
     def _config(self, key: str) -> "DatasetConfig":
         """Get the dataset config for the given dataset name."""

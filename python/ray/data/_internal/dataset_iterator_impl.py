@@ -19,8 +19,10 @@ class DatasetIteratorImpl(DatasetIterator):
     def __init__(
         self,
         base_dataset: "Dataset",
+        base_context: DatasetContext,
     ):
         self._base_dataset = base_dataset
+        self._base_context = base_context
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
@@ -36,6 +38,8 @@ class DatasetIteratorImpl(DatasetIterator):
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
+
+        DatasetContext._set_current(self.base_context)
 
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
