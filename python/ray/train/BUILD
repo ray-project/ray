@@ -216,12 +216,19 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "pytorch_pbt_failure",
+    name = "test_accelerate_trainer_gpu",
+    size = "medium",
+    srcs = ["tests/test_accelerate_trainer_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib",  ":conftest"]
+)
+
+py_test(
+    name = "test_accelerate_trainer",
     size = "small",
-    srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive", "no_main"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
+    srcs = ["tests/test_accelerate_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib",  ":conftest"]
 )
 
 py_test(
