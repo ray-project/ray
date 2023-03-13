@@ -47,6 +47,7 @@ Remaining work:
 """
 
 import ray
+import asyncio
 from ray.job_submission import JobSubmissionClient, JobStatus
 import random
 import os
@@ -76,47 +77,18 @@ class Test:
     expensive_import: str
     num_cpus_in_cluster: int
     num_nodes_in_cluster: int
-    #total_num_tasks_or_actors: int # redundant?
-    #num_tasks_or_actors_per_job: int
 
     def __repr__(self):
         with_gpu_str = "with-gpu" if self.with_gpu else "without-gpu"
         executable_unit = "tasks" if self.with_tasks else "actors"
         tasks_or_actors_str = f"with-{executable_unit}"
-        cold_start_or_warm_start = "cold-start" if self.num_jobs > 1 else "warm-start"
+        cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
         single_node_or_multi_node = 'single-node' if self.num_nodes_in_cluster == 1 else 'multi-node'
         return '_'.join([
-                f"{cold_start_or_warm_start}",
-                f"time-to-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",
+                f"time-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",
                 f"{with_gpu_str}",
                 f"{single_node_or_multi_node}",
-                #f"{self.num_tasks_or_actors_per_run}_{executable_unit}_per_run",
-                #f"{self.num_runs_per_job}_runs_per_job",
-                #f"{self.num_jobs}_jobs",
-                #f"{with_gpu_str}",
             ])
-
-        #return '-'.join([
-        #        f"import_{self.expensive_import}",
-        #        f"{self.num_tasks_or_actors_per_run}_{executable_unit}_per_run",
-        #        f"{self.num_runs_per_job}_runs_per_job",
-        #        f"{self.num_jobs}_jobs",
-        #        f"{with_gpu_str}",
-        #    ])
-
-
-def run_script(
-        test: Test,
-        metrics_actor_name: str,
-        metrics_actor_namespace: str,
-    ):
-
-    import asyncio
-    asyncio.run(run_and_stream_logs(
-        metrics_actor_name,
-        metrics_actor_namespace,
-        test,
-    ))
 
 async def run_and_stream_logs(metrics_actor_name, metrics_actor_namespace, test: Test):
         client = JobSubmissionClient("http://127.0.0.1:8265")
@@ -181,22 +153,22 @@ def generate_test_matrix():
     return tests
 
 def main():
-    name = 'metrics_actor'
-    namespace = 'metrics_actor_namespace'
+    metrics_actor_name = 'metrics_actor'
+    metrics_actor_namespace = 'metrics_actor_namespace'
     metrics_actor = MetricsActor.options(
-        name=name,
-        namespace=namespace,
+        name=metrics_actor_name,
+        namespace=metrics_actor_namespace,
     ).remote()
     
     run_matrix = generate_test_matrix()
 
     for test in random.sample(list(run_matrix), k=len(run_matrix)):
         print(test)
-        run_script(
-            test=test,
-            metrics_actor_name=name,
-            metrics_actor_namespace=namespace,
-        )
+        asyncio.run(run_and_stream_logs(
+            metrics_actor_name,
+            metrics_actor_namespace,
+            test,
+        ))
     
 
 if __name__ == '__main__':
