@@ -47,6 +47,7 @@ Remaining work:
 """
 
 import ray
+import sys
 import asyncio
 from ray.job_submission import JobSubmissionClient, JobStatus
 import random
@@ -54,8 +55,6 @@ import os
 from dataclasses import dataclass
 from ray._private.test_utils import safe_write_to_results_json
 from collections import defaultdict
-
-ray.init()
 
 @ray.remote(num_cpus=0)
 class MetricsActor:
@@ -65,6 +64,8 @@ class MetricsActor:
     def submit(self, test_name: str, latency: float):
         print(f'got latency {latency} s for test {test_name}')
         self.results[test_name].append(latency)
+
+        # TODO conform to correct json structure
         safe_write_to_results_json(self.results)
 
 @dataclass(eq=True, frozen=True)
@@ -81,7 +82,6 @@ class Test:
     def __repr__(self):
         with_gpu_str = "with-gpu" if self.with_gpu else "without-gpu"
         executable_unit = "tasks" if self.with_tasks else "actors"
-        tasks_or_actors_str = f"with-{executable_unit}"
         cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
         single_node_or_multi_node = 'single-node' if self.num_nodes_in_cluster == 1 else 'multi-node'
         return '_'.join([
@@ -99,18 +99,21 @@ async def run_and_stream_logs(metrics_actor_name, metrics_actor_namespace, test:
         for i in range(test.num_jobs):
             print(f"Running job {i} for {test}")
             job_id = client.submit_job(
-                entrypoint=f"python ./script.py "
-                            f"--metrics_actor_name {metrics_actor_name} "
-                            f"--metrics_actor_namespace {metrics_actor_namespace} "
-                            f"--test_name {test} "
-                            f"--num_runs {test.num_runs_per_job} "
-                            f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run} "
-                            f"--num_cpus_in_cluster {test.num_cpus_in_cluster} "
-                            f"{task_or_actor_arg} "
-                            f"{with_gpu_arg} "
+                entrypoint=" ".join([
+                            f"python ./script.py",
+                            f"--metrics_actor_name {metrics_actor_name}",
+                            f"--metrics_actor_namespace {metrics_actor_namespace}",
+                            f"--test_name {test}",
+                            f"--num_runs {test.num_runs_per_job} ",
+                            f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
+                            f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
+                            f"{task_or_actor_arg}",
+                            f"{with_gpu_arg}",
                             f"--library_to_import {test.expensive_import}",
+                        ])
                 runtime_env={"working_dir": "./"}
             )
+
             try:
                 async for lines in client.tail_job_logs(job_id):
                     print(lines, end="")
@@ -163,13 +166,12 @@ def main():
     run_matrix = generate_test_matrix()
 
     for test in random.sample(list(run_matrix), k=len(run_matrix)):
-        print(test)
+        print(f"Running test {test}")
         asyncio.run(run_and_stream_logs(
             metrics_actor_name,
             metrics_actor_namespace,
             test,
         ))
-    
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

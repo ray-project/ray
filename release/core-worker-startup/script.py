@@ -2,8 +2,8 @@
 
 import ray
 import time
-
-ray.init()
+import sys
+import argparse
 
 @ray.remote
 class Actor:
@@ -14,7 +14,15 @@ class Actor:
 def task():
     import torch
 
-def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, num_cpus_in_cluster, use_actors, with_gpu):
+def main(
+        metrics_actor,
+        test_name: str,
+        num_runs: int,
+        num_tasks_or_actors_per_run: int,
+        num_cpus_in_cluster: int,
+        use_actors: bool,
+        with_gpu: bool
+    ):
 
     num_gpus = 0.0001 if with_gpu else 0
     num_cpus = (num_cpus_in_cluster / num_tasks_or_actors_per_run) - 0.01
@@ -40,8 +48,7 @@ def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, num_cp
         dur_s = time.time() - start
         ray.get(metrics_actor.submit.remote(test_name, dur_s))
 
-if __name__ == '__main__':
-    import argparse
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--metrics_actor_name', type=str, required=True)
     parser.add_argument('--metrics_actor_namespace', type=str, required=True)
@@ -59,14 +66,16 @@ if __name__ == '__main__':
     group.add_argument('--with_gpu', action='store_true')
     group.add_argument('--without_gpu', action='store_true')
 
-    args = parser.parse_args()
+    return parser.parse_args()
+    
+
+if __name__ == '__main__':
+    args = parse_args()
 
     metrics_actor = ray.get_actor(
         args.metrics_actor_name,
         args.metrics_actor_namespace,
     )
-
-    import sys
 
     sys.exit(main(
         metrics_actor,
