@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,

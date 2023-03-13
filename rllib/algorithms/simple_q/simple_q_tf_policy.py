@@ -3,7 +3,6 @@
 import logging
 from typing import Dict, List, Tuple, Type, Union
 
-import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution

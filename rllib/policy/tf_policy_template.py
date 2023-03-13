@@ -9,7 +9,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.algorithms.algorithm import AlgorithmConfig
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf

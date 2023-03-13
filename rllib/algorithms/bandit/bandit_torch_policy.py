@@ -2,7 +2,6 @@ import logging
 import time
 from gymnasium import spaces
 
-import ray
 from ray.rllib.algorithms.bandit.bandit_torch_model import (
     DiscreteLinearModelThompsonSampling,
     DiscreteLinearModelUCB,

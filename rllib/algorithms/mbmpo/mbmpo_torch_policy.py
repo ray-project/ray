@@ -2,7 +2,6 @@ from gymnasium.spaces import Box, Discrete
 import logging
 from typing import Tuple, Type
 
-import ray
 from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2

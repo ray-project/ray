@@ -12,7 +12,6 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.algorithms.algorithm import AlgorithmConfig
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.modelv2 import ModelV2

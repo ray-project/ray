@@ -5,7 +5,6 @@ TensorFlow policy class used for PPO.
 import logging
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,

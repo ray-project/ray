@@ -1,7 +1,6 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
 from typing import Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
