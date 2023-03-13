@@ -4,13 +4,11 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Dataset, DatasetPipeline, DatasetIterator
+from ray.data.context import DatasetContext
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
-
-if TYPE_CHECKING:
-    from ray.data import DatasetIterator
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -228,16 +226,25 @@ class DataParallelIngestSpec:
                 dataset = dataset.random_shuffle_each_window()
 
             if config.split and len(training_worker_handles) > 1:
-                dataset_splits = dataset.split(
-                    len(training_worker_handles),
-                    equal=True,
-                    locality_hints=training_worker_handles,
-                )
+                if DatasetContext.get_current().use_streaming_executor:
+                    dataset_splits = dataset.streaming_split(
+                        len(training_worker_handles),
+                        equal=True,
+                        locality_hints=training_worker_handles,
+                    )
+                    print("USING STREAMING SPLIT")
+                else:
+                    dataset_splits = dataset.split(
+                        len(training_worker_handles),
+                        equal=True,
+                        locality_hints=training_worker_handles,
+                    )
             else:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
             for i, dataset_split in enumerate(dataset_splits):
-                dataset_splits[i] = dataset_split.iterator()
+                if not isinstance(dataset_split, DatasetIterator):
+                    dataset_splits[i] = dataset_split.iterator()
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]
