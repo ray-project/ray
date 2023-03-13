@@ -429,7 +429,7 @@ class RLModule(abc.ABC):
         """Saves the weights of this RLmodule to path.
 
         Args:
-            path: The directory to save the checkpoint to.
+            path: The file path to save the checkpoint to.
 
         Returns:
             The path to the saved checkpoint.
@@ -533,7 +533,11 @@ class RLModule(abc.ABC):
         module = module_spec.build()
         return module
 
-    def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
+    def _weights_relative_path(self) -> pathlib.Path:
+        """The relative path to the weights in the checkpoint."""
+        raise NotImplementedError
+
+    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         """Saves the module to a checkpoint directory.
 
         Args:
@@ -544,12 +548,11 @@ class RLModule(abc.ABC):
         """
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
-        module_state_path = self.save_state_to_file(path)
-        additional_metadata = {RLMODULE_METADTATA_STATE_PATH_KEY: module_state_path}
-        self._save_module_metadata(path, SingleAgentRLModuleSpec, additional_metadata)
+        self.save_state_to_file(path / self._weights_relative_path())
+        self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_dir_path: str) -> None:
+    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         """Loads the module from a checkpoint directory.
 
         Args:
@@ -567,10 +570,8 @@ class RLModule(abc.ABC):
                 "provided was not a directory."
             )
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
-        state_path = metadata["module_state_path"]
         module = cls._from_metadata_file(metadata_path)
+        state_path = path / module._weights_relative_path()
         module.load_state_from_file(state_path)
         return module
 

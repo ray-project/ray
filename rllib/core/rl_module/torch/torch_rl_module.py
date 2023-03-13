@@ -29,20 +29,15 @@ class TorchRLModule(nn.Module, RLModule):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
 
+    def _weights_relative_path(self) -> pathlib.Path:
+        return pathlib.Path("module_state.pt")
+
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        path = pathlib.Path(path)
-        module_state_path = path / "module_state.pt"
-        torch.save(self.state_dict(), str(module_state_path))
-        return str(module_state_path)
+    def save_state_to_file(self, path: Union[str, pathlib.Path]):
+        torch.save(self.state_dict(), str(path))
 
     @override(RLModule)
     def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        if not path.exists():
-            raise ValueError(
-                f"While loading state from path, the path does not exist: {path}"
-            )
         self.set_state(torch.load(str(path)))
 
     @override(RLModule)

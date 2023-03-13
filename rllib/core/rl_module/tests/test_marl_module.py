@@ -185,12 +185,14 @@ class TestMARLModule(unittest.TestCase):
                 )
             ),
         )
+
         with tempfile.TemporaryDirectory() as tmpdir:
             module.save_to_checkpoint(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})
+            self.assertNotEqual(id(module), id(module2))
 
         module.remove_module("test")
 
@@ -201,6 +203,7 @@ class TestMARLModule(unittest.TestCase):
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", DEFAULT_POLICY_ID})
+            self.assertNotEqual(id(module), id(module2))
 
         # check that after adding a new module, the checkpoint is correct
         module.add_module(
@@ -213,7 +216,7 @@ class TestMARLModule(unittest.TestCase):
                 )
             ),
         )
-        # check that after removing a module, the checkpoint is correct
+        # check that after adding a module, the checkpoint is correct
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = "/tmp/test_marl_module"
             module.save_to_checkpoint(tmpdir)
@@ -221,6 +224,7 @@ class TestMARLModule(unittest.TestCase):
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_POLICY_ID})
+            self.assertNotEqual(id(module), id(module2))
 
 
 if __name__ == "__main__":

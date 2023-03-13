@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
-import json
 import pathlib
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict, Optional, Sequence, Type, Set
+from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -13,7 +12,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
-    RLMODULE_METADTATA_STATE_PATH_KEY,
     SingleAgentRLModuleSpec,
 )
 
@@ -297,29 +295,42 @@ class MultiAgentRLModule(RLModule):
             module.save_to_checkpoint(str(dir / module_id))
 
     def load_state_from_dir(
-        self, dir: Union[str, pathlib.Path], modules_to_load: Sequence
+        self,
+        dir: Union[str, pathlib.Path],
+        modules_to_load: Optional[Set[ModuleID]] = None,
     ) -> None:
         """Loads the weights of an MultiAgentRLModule from dir.
 
         Args:
-            dir: The directory to load the checkpoint from.
-            modules_to_load: The modules to load from the checkpoint. If None, all
+            dir: The directory to load the state from.
+            modules_to_load: The modules whose state is to be loaded from the dir. If
+                this is None, all modules that are checkpointed will be loaded into this
+                marl module.
+
+        NOTE:
+            If you want to load a module that is not already
+            in this MultiAgentRLModule, you should add it to this MultiAgentRLModule
+            before loading the checkpoint.
+
         """
         dir = pathlib.Path(dir)
-        modules_to_load = set(modules_to_load)
         if not modules_to_load:
             modules_to_load = set(self._rl_modules.keys())
         dir.mkdir(parents=True, exist_ok=True)
-        for module_id, module in self._rl_modules.items():
-            if module_id not in modules_to_load:
-                continue
-            submodule_path = dir / module_id
-            if not submodule_path.exists():
-                raise ValueError(f"Submodule {module_id} not found in checkpoint.")
-            module.save_to_checkpoint(str(dir / module_id))
+        for submodule_id in modules_to_load:
+            if submodule_id not in self._rl_modules:
+                raise ValueError(
+                    f"Module {submodule_id} from `modules_to_load`: "
+                    f"{modules_to_load} not found in this MultiAgentRLModule."
+                )
+            submodule = self._rl_modules[submodule_id]
+            submodule_metadata_path = (
+                dir / submodule_id / submodule._weights_relative_path()
+            )
+            submodule.load_state_from_file(submodule_metadata_path)
 
     @override(RLModule)
-    def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
+    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
         self.save_state_to_dir(path)
@@ -327,19 +338,11 @@ class MultiAgentRLModule(RLModule):
 
     @classmethod
     @override(RLModule)
-    def from_checkpoint(cls, checkpoint_dir_path: str) -> None:
+    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
-        for module_id in marl_module.keys():
-            submodule = marl_module[module_id]
-            submodule_metadata_path = path / module_id / RLMODULE_METADATA_FILE_NAME
-            with open(submodule_metadata_path, "r") as f:
-                submodule_metadata = json.load(f)
-            submodule_weights_path = submodule_metadata[
-                RLMODULE_METADTATA_STATE_PATH_KEY
-            ]
-            submodule.load_state_from_file(submodule_weights_path)
+        marl_module.load_state_from_dir(path)
         return marl_module
 
     def __repr__(self) -> str:
@@ -500,7 +503,7 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpecs for each individual module."
             )
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         """Converts the MultiAgentRLModuleSpec to a dictionary."""
         return {
             "marl_module_class": serialize_type(self.marl_module_class),
