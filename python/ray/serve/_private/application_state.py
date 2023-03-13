@@ -160,9 +160,13 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
-                except RayTaskError:
+                except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
-                    self.app_msg = f"Deployment failed:\n{traceback.format_exc()}"
+                    # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                    # here because the full details of the error is not displayed
+                    # properly with traceback.format_exc(). RayTaskError has its own
+                    # custom __str__ function.
+                    self.app_msg = f"Deployment failed:\n{str(e)}"
                     self.deploy_obj_ref = None
                     return
                 except RuntimeEnvSetupError:
