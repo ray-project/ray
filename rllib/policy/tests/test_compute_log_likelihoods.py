@@ -149,9 +149,6 @@ def do_test_log_likelihood(
                 )
 
                 if not config._enable_rl_module_api:
-                    expected_logp = _get_expected_logp(
-                        fw, vars, obs_batch, a, layer_key, logp_func
-                    )
                     check(np.exp(logp), expected_prob, atol=0.2)
 
 
