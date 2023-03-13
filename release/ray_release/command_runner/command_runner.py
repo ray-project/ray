@@ -16,11 +16,17 @@ class CommandRunner(abc.ABC):
     # shows up under buildkite job's "Artifacts" UI tab.
     _DEFAULT_ARTIFACTS_DIR = DEFAULT_ARTIFACTS_DIR
 
+    # the artifact file name put under s3 bucket root.
+    # AnyscalejobWrapper will upload user generated artifact to this path
+    # and AnyscaleJobRunner will then download from there.
+    _USER_GENERATED_ARTIFACT = "user_generated_artifact"
+
     def __init__(
         self,
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
+        artifact_path: Optional[str] = None,
     ):
         self.cluster_manager = cluster_manager
         self.file_manager = file_manager
@@ -34,6 +40,7 @@ class CommandRunner(abc.ABC):
         return {
             "TEST_OUTPUT_JSON": self.result_output_json,
             "METRICS_OUTPUT_JSON": self.metrics_output_json,
+            "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
         }
 
     def get_full_command_env(self, env: Optional[Dict] = None):

@@ -222,6 +222,7 @@ def main(
     metrics_s3_uri: Optional[str],
     output_s3_uri: Optional[str],
     upload_s3_uri: Optional[str],
+    artifact_path: Optional[str],
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
 ):
@@ -254,7 +255,7 @@ def main(
     uploaded_results = False
     collected_metrics = False
     uploaded_metrics = False
-    uploaded_artifact = False
+    uploaded_artifact = artifact_path is not None
     workload_time_taken = None
 
     # If all prepare commands passed, run actual test workload.
@@ -290,11 +291,13 @@ def main(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
             )
 
-        # hard-coded for now until figuring out how to pipe through.
-        if os.path.exists("/tmp/artifact_test") and upload_s3_uri:
+        if os.path.exists(artifact_path):
             uploaded_artifact = run_aws_cp(
-                "/tmp/artifact_test", os.path.join(upload_s3_uri, "artifact_test")
+                artifact_path,
+                os.path.join(upload_s3_uri, os.environ["USER_GENERATED_ARTIFACT"]),
             )
+        else:
+            uploaded_artifact = False
 
     else:
         return_code = None
@@ -378,7 +381,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--upload-s3-uri",
         type=str,
-        help="root bucket address to upload stuff",
+        help="root s3 bucket address to upload stuff",
+        required=False,
+    )
+    parser.add_argument(
+        "--artifact-path",
+        type=str,
+        help="user provided artifact path (on head node)",
         required=False,
     )
     parser.add_argument(

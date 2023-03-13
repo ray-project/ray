@@ -30,6 +30,7 @@ class JobRunner(CommandRunner):
         file_manager: FileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super(JobRunner, self).__init__(
             cluster_manager=cluster_manager,
@@ -156,25 +157,4 @@ class JobRunner(CommandRunner):
         return self._fetch_json(self.metrics_output_json)
 
     def fetch_artifact(self, path):
-        """Fetch artifact (file) from a given path on Anyscale cluster head node.
-
-        The fetched artifact will be placed under `self._DEFAULT_ARTIFACTS_DIR`,
-        which will ultimately show up in buildkite Artifacts UI tab.
-        The fetched file will have the same filename and extension as the one
-        on Anyscale cluster head node.
-
-        Args:
-            path: path of the artifact file on Anyscale cluster head node.
-        """
-        try:
-            # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
-            if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
-                os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
-            file_name = os.path.basename(path)
-            self.file_manager.download(
-                path, os.path.join(self._DEFAULT_ARTIFACTS_DIR, file_name)
-            )
-        except Exception as e:
-            raise FetchResultError(
-                f"Could not fetch artifact file from session: {e}"
-            ) from e
+        raise NotImplementedError

@@ -45,6 +45,7 @@ class AnyscaleJobRunner(JobRunner):
         file_manager: JobFileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super().__init__(
             cluster_manager=cluster_manager,
@@ -60,6 +61,8 @@ class AnyscaleJobRunner(JobRunner):
             self.cluster_manager.test_name.replace(" ", "_"),
             generate_tmp_s3_path(),
         )
+        # The root s3 bucket path. result, metric, artifact files
+        # will be uploaded to under it on s3.
         self.upload_path = join_s3_paths(
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
@@ -69,7 +72,11 @@ class AnyscaleJobRunner(JobRunner):
 
         self._results_uploaded = True
         self._metrics_uploaded = True
-        self._artifact_uploaded = True
+
+        # artifact related
+        # user provided path to where they write the artifact to.
+        self._artifact_path = artifact_path
+        self._artifact_uploaded = artifact_path is not None
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -226,6 +233,8 @@ class AnyscaleJobRunner(JobRunner):
             f"'{join_s3_paths(self.upload_path, self.output_json)}' "
             "--upload-s3-uri "
             f"'{self.upload_path}' "
+            "--artifact-path "
+            f"'{self._artifact_path}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
         )
@@ -296,6 +305,13 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def fetch_artifact(self):
+        """Fetch artifact (file) from a given path on Anyscale cluster head node.
+
+        The fetched artifact will be placed under `self._DEFAULT_ARTIFACTS_DIR`,
+        which will ultimately show up in buildkite Artifacts UI tab.
+        The fetched file will have the same filename and extension as the one
+        on Anyscale cluster head node (same as `self._artifact_path`).
+        """
         if not self._artifact_uploaded:
             raise FetchResultError(
                 "Could not fetch artifact from session as they "
@@ -304,9 +320,13 @@ class AnyscaleJobRunner(JobRunner):
         # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
         if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
             os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
+
+        # we use the same artifact file name and extension specified by user
+        # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
+        artifact_file_name = os.path.basename(self._artifact_path)
         self.file_manager.download_from_s3(
-            join_s3_paths(self.path_in_bucket, "artifact_test"),
-            os.path.join(self._DEFAULT_ARTIFACTS_DIR, "artifact_test"),
+            join_s3_paths(self.path_in_bucket, self._USER_GENERATED_ARTIFACT),
+            os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
 
     def fetch_output(self) -> Dict[str, Any]:

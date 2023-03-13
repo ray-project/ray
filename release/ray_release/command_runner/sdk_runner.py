@@ -35,6 +35,7 @@ class SDKRunner(CommandRunner):
         file_manager: FileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super(SDKRunner, self).__init__(
             cluster_manager=cluster_manager,

@@ -46,6 +46,7 @@ class ClientRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
+        artifact_path: Optional[str] = None,
     ):
         super(ClientRunner, self).__init__(cluster_manager, file_manager, working_dir)
 

@@ -57,11 +57,6 @@ class JobFileManager(FileManager):
             self.delete(target)
 
     def download(self, source: str, target: str):
-        """Download a file from Anyscale cluster head node to buildkite runner.
-
-        Implementation wise, this is done by first uploading to s3 and then
-        downloading to buildkite runner.
-        """
         # Attention: Only works for single files at the moment
         remote_upload_to = self._generate_tmp_s3_path()
         # remote source -> s3
