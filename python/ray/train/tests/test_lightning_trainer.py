@@ -4,16 +4,49 @@ import ray
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 import pytest
 
-from ray.train.tests._lightning_utils import (
+from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DoubleLinearModule,
     DummyDataModule,
 )
 
 
+def test_config_builder():
+    class DummyClass:
+        def __init__(self) -> None:
+            pass
+
+    with pytest.raises(ValueError):
+        LightningConfigBuilder().module(cls=DummyClass)
+
+    with pytest.raises(ValueError):
+        model = LinearModule(1, 1)
+        LightningConfigBuilder().module(cls=model)
+
+    with pytest.raises(TypeError):
+        LightningConfigBuilder().module(input_dim=10)
+
+    with pytest.raises(TypeError):
+        LightningConfigBuilder().module(cls=LinearModule).trainer(10, 100)
+
+    config = (
+        LightningConfigBuilder()
+        .module(cls=LinearModule, input_dim=10)
+        .trainer(log_every_n_steps=100)
+        .fit(datamodule=DummyDataModule())
+        .build()
+    )
+    assert config["_module_init_config"]["input_dim"] == 10
+    assert config["_trainer_init_config"]["log_every_n_steps"] == 100
+    assert not config["_ddp_strategy_config"]
+    assert not config["_model_checkpoint_config"]
+
+
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
-def test_trainer_with_native_dataloader(accelerator, datasource):
+def test_trainer_with_native_dataloader(
+    ray_start_4_cpus_2_gpus, accelerator, datasource
+):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
@@ -46,7 +79,7 @@ def test_trainer_with_native_dataloader(accelerator, datasource):
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
-def test_trainer_with_ray_data(accelerator):
+def test_trainer_with_ray_data(ray_start_4_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
@@ -78,7 +111,7 @@ def test_trainer_with_ray_data(accelerator):
 
 
 @pytest.mark.parametrize("accelerator", ["gpu"])
-def test_trainer_with_categorical_ray_data(accelerator):
+def test_trainer_with_categorical_ray_data(ray_start_4_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
