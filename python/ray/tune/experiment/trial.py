@@ -191,7 +191,9 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     return relative_logdir
 
 
-def _noop_logger_creator(config, logdir, should_chdir: bool = True):
+def _noop_logger_creator(
+    config: Dict[str, Any], logdir: str, should_chdir: bool = True
+):
     # Upon remote process setup, record the actor's original working dir before
     # changing to the Tune logdir
     os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
