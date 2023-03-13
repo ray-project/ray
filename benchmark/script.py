@@ -14,11 +14,15 @@ class Actor:
 def task():
     import torch
 
-def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, use_actors, with_gpu):
+def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, num_cpus_in_cluster, use_actors, with_gpu):
 
-    num_gpus = 0.001 if with_gpu else 0
-    actor_with_resources = Actor.options(num_gpus=num_gpus)
-    task_with_resources = task.options(num_gpus=num_gpus)
+    num_gpus = 0.0001 if with_gpu else 0
+    num_cpus = (num_cpus_in_cluster / num_tasks_or_actors_per_run) - 0.01
+
+    print(f'Assigning each task/actor {num_cpus} num_cpus and {num_gpus} num_gpus')
+
+    actor_with_resources = Actor.options(num_gpus=num_gpus, num_cpus=num_cpus)
+    task_with_resources = task.options(num_gpus=num_gpus, num_cpus=num_cpus)
 
     def with_actors():
         actors = [actor_with_resources.remote() for _ in range(num_tasks_or_actors_per_run)]
@@ -39,11 +43,13 @@ def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, use_ac
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--metrics_actor_name', type=str)
-    parser.add_argument('--metrics_actor_namespace', type=str)
-    parser.add_argument('--test_name', type=str)
-    parser.add_argument('--num_runs', type=int)
-    parser.add_argument('--num_tasks_or_actors_per_run', type=int)
+    parser.add_argument('--metrics_actor_name', type=str, required=True)
+    parser.add_argument('--metrics_actor_namespace', type=str, required=True)
+    parser.add_argument('--test_name', type=str, required=True)
+    parser.add_argument('--num_runs', type=int, required=True)
+    parser.add_argument('--num_tasks_or_actors_per_run', type=int, required=True)
+    parser.add_argument('--num_cpus_in_cluster', type=int, required=True)
+    parser.add_argument('--library_to_import', type=str, required=True, choices=['torch'])
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--with_actors', action='store_true')
@@ -67,6 +73,7 @@ if __name__ == '__main__':
         args.test_name,
         args.num_runs,
         args.num_tasks_or_actors_per_run,
+        args.num_cpus_in_cluster,
         args.with_actors,
         args.with_gpu,
     ))
