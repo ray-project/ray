@@ -16,6 +16,7 @@
 
 import logging
 import os
+from argparse import Namespace
 from typing import Optional, Tuple
 
 try:
@@ -26,13 +27,14 @@ except ImportError:
 import accelerate
 
 if Version(accelerate.__version__) < Version("0.17.0.dev0"):
-    raise RuntimeError(
+    raise ImportError(
         f"AccelerateTrainer requires accelerate>=0.17.0, got {accelerate.__version__}"
     )
 
 from accelerate.commands.launch import (
     ComputeEnvironment,
     _validate_launch_command,
+    launch_command_parser,
     prepare_deepspeed_cmd_env,
     prepare_multi_gpu_env,
     prepare_simple_launcher_cmd_env,
@@ -41,6 +43,32 @@ from accelerate.utils import is_deepspeed_available
 from accelerate.commands.config import default_config_file, load_config_from_file
 
 logger = logging.getLogger(__name__)
+
+
+class AccelerateDefaultNamespace(Namespace):
+    @property
+    def parser(self):
+        return launch_command_parser()
+
+    def __getattr__(self, name: str):
+        if name == "training_script_args":
+            return []
+        return self.parser.get_default(name)
+
+
+class AccelerateConfigWrapper:
+    """
+    Lets Trainables know to treat this as already loaded file content instead of path.
+    """
+
+    def __init__(
+        self, config_raw: str, deepspeed_config_raw: Optional[str] = None
+    ) -> None:
+        self.config_raw = config_raw
+        self.deepspeed_config_raw = deepspeed_config_raw
+
+    def __bool__(self) -> bool:
+        return bool(self.config_raw)
 
 
 def simple_launcher(args):

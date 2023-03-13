@@ -1,8 +1,14 @@
 import os
 import tempfile
-from argparse import Namespace
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
+
+import accelerate
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
@@ -18,11 +24,18 @@ if TYPE_CHECKING:
 from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
 
-from ray.train.huggingface._accelerate_utils import (
-    launch_command,
-    launch_command_parser,
-    load_accelerate_config,
-)
+try:
+    from ray.train.huggingface._accelerate_utils import (
+        launch_command,
+        AccelerateDefaultNamespace,
+        AccelerateConfigWrapper,
+        load_accelerate_config,
+    )
+except ImportError:
+    launch_command = None
+    AccelerateDefaultNamespace = None
+    AccelerateConfigWrapper = None
+    load_accelerate_config = None
 
 TRAIN_LOOP_PER_WORKER_KEY = "_train_loop_per_worker"
 ACCELERATE_CONFIG_RAW_KEY = "_accelerate_config_raw"
@@ -32,32 +45,6 @@ RESERVED_KEYS = {
     ACCELERATE_CONFIG_RAW_KEY,
     DEEPSPEED_CONFIG_RAW_KEY,
 }
-
-
-class _AccelerateDefaultNamespace(Namespace):
-    @property
-    def parser(self):
-        return launch_command_parser()
-
-    def __getattr__(self, name: str):
-        if name == "training_script_args":
-            return []
-        return self.parser.get_default(name)
-
-
-class _AccelerateConfigWrapper:
-    """
-    Lets Trainables know to treat this as already loaded file content instead of path.
-    """
-
-    def __init__(
-        self, config_raw: str, deepspeed_config_raw: Optional[str] = None
-    ) -> None:
-        self.config_raw = config_raw
-        self.deepspeed_config_raw = deepspeed_config_raw
-
-    def __bool__(self) -> bool:
-        return bool(self.config_raw)
 
 
 class AccelerateTrainer(TorchTrainer):
@@ -75,8 +62,15 @@ class AccelerateTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        if Version(accelerate.__version__) < Version("0.17.0.dev0"):
+            raise RuntimeError(
+                "AccelerateTrainer requires accelerate>=0.17.0, "
+                f"got {accelerate.__version__}"
+            )
+
         self.accelerate_config = accelerate_config
-        if isinstance(self.accelerate_config, _AccelerateConfigWrapper):
+        if isinstance(self.accelerate_config, AccelerateConfigWrapper):
             self._accelerate_config_raw = self.accelerate_config.config_raw
             self._deepspeed_config_file_raw = (
                 self.accelerate_config.deepspeed_config_raw
@@ -109,7 +103,7 @@ class AccelerateTrainer(TorchTrainer):
         # and share the contents with the Trainables (which may be on different)
         # nodes
         old_accelerate_config = self._param_dict.get("accelerate_config", None)
-        self._param_dict["accelerate_config"] = _AccelerateConfigWrapper(
+        self._param_dict["accelerate_config"] = AccelerateConfigWrapper(
             self._accelerate_config_raw, self._deepspeed_config_file_raw
         )
         try:
@@ -166,7 +160,7 @@ def _accelerate_train_loop_per_worker(config):
         master_addr = os.environ["MASTER_ADDR"]
         master_port = os.environ["MASTER_PORT"]
 
-        namespace = _AccelerateDefaultNamespace()
+        namespace = AccelerateDefaultNamespace()
         namespace.config_file = temp_config_file
         namespace.num_processes = 1
         namespace.num_machines = session.get_world_size()
