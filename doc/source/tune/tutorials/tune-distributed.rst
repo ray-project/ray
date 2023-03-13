@@ -166,7 +166,7 @@ In GCP, you can use the following configuration modification:
         scheduling:
           - preemptible: true
 
-Spot instances may be removed suddenly while trials are still running.
+Spot instances may be pre-empted suddenly while trials are still running.
 Tune allows you to mitigate the effects of this by preserving the progress of your model training through
 :ref:`checkpointing <tune-trial-checkpoint>`.
 
@@ -224,10 +224,11 @@ Fault Tolerance of Tune Runs
 Tune automatically restarts trials in the case of trial failures (if ``max_failures != 0``),
 both in the single node and distributed setting.
 
-Tune restores trials from the latest available checkpoint. In the distributed setting, Tune automatically
-syncs the trial folder with the driver. For example, if a node is lost while a trial (specifically,
-the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists,
-Tune waits until available resources are available to begin executing the trial again.
+For example, let's say a node is pre-empted or crashes while a trial is still executing on that node.
+Assuming that a checkpoint for this trial exists (and in the distributed setting,
+:ref:`some form of persistent storage is configured to access the trial's checkpoint <tune-storage>`),
+Tune waits until available resources are available to begin executing the trial again from where it left off.
+If no checkpoint is found, the trial will restart from scratch.
 See :ref:`here for information on checkpointing <tune-trial-checkpoint>`.
 
 

@@ -38,6 +38,54 @@ tuner = tune.Tuner(
 tuner.fit()
 # __class_api_checkpointing_end__
 
+# __class_api_manual_checkpointing_start__
+import random
+
+
+# to be implemented by user.
+def detect_instance_preemption():
+    choice = random.randint(1, 100)
+    # simulating a 1% chance of preemption.
+    return choice <= 1
+
+
+def train_func(self):
+    # training code
+    result = {"mean_accuracy": "my_accuracy"}
+    if detect_instance_preemption():
+        result.update(should_checkpoint=True)
+    return result
+
+
+# __class_api_manual_checkpointing_end__
+
+# __class_api_periodic_checkpointing_start__
+
+tuner = tune.Tuner(
+    MyTrainableClass,
+    run_config=air.RunConfig(
+        checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10)
+    ),
+)
+tuner.fit()
+
+# __class_api_periodic_checkpointing_end__
+
+
+# __class_api_end_checkpointing_start__
+tuner = tune.Tuner(
+    MyTrainableClass,
+    run_config=air.RunConfig(
+        checkpoint_config=air.CheckpointConfig(
+            checkpoint_frequency=10, checkpoint_at_end=True
+        )
+    ),
+)
+tuner.fit()
+
+# __class_api_end_checkpointing_end__
+
+
 # __function_api_checkpointing_start__
 from ray import tune
 from ray.air import session
@@ -65,6 +113,40 @@ def train_func(config):
 tuner = tune.Tuner(train_func)
 results = tuner.fit()
 # __function_api_checkpointing_end__
+
+
+class MyModel:
+    pass
+
+
+# __function_api_checkpointing_from_dir_start__
+from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
+
+
+# like Keras, or pytorch save methods.
+def write_model_to_dir(model, dir_path):
+    pass
+
+
+def train_func(config):
+    for epoch in range(config["epoch"]):
+        # Model training here
+        # ...
+
+        my_model = MyModel()
+        metrics = {"metric": "my_metric"}
+        # some function to write model to directory
+        write_model_to_dir(my_model, "my_model")
+        session.report(
+            metrics=metrics, checkpoint=Checkpoint.from_directory("my_model")
+        )
+
+
+tuner = tune.Tuner(train_func)
+results = tuner.fit()
+# __function_api_checkpointing_from_dir_end__
 
 # fmt: off
 # __example_objective_start__

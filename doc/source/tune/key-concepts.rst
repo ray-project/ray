@@ -306,7 +306,7 @@ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
 Certain schedulers cannot be used with search algorithms,
-and certain schedulers require that you implementing :ref:`checkpointing <tune-trial-checkpoint>`.
+and certain schedulers require that you implement :ref:`checkpointing <tune-trial-checkpoint>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
 This is implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
