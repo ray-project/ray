@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray import air
-from ray.rllib.algorithms.a2c.a2c import A2C, A2C_DEFAULT_CONFIG
+from ray.rllib.algorithms.a2c.a2c import A2C, A2CConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
@@ -18,7 +18,7 @@ class TestGPUs(unittest.TestCase):
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
 
-        config = A2C_DEFAULT_CONFIG.copy()
+        config = A2CConfig()
         config["num_workers"] = 2
         config["env"] = "CartPole-v1"
 
@@ -88,7 +88,7 @@ class TestGPUs(unittest.TestCase):
 
         actual_gpus_available = torch.cuda.device_count()
 
-        config = A2C_DEFAULT_CONFIG.copy()
+        config = A2CConfig()
         config["num_workers"] = 2
         config["env"] = "CartPole-v1"
 
