@@ -1,3 +1,4 @@
+from typing import List
 import itertools
 import pytest
 
@@ -23,12 +24,24 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.util import (
+    _recorded_operators,
+    _recorded_operators_lock,
+    _op_name_white_list,
+)
 from ray.data._internal.planner.planner import Planner
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def _check_usage_record(op_names: List[str]):
+    for op_name in op_names:
+        assert op_name in _op_name_white_list
+        with _recorded_operators_lock:
+            assert _recorded_operators.get(op_name, 0) > 0
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
@@ -63,6 +76,7 @@ def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.map_batches(lambda x: x)
     assert ds.take_all() == list(range(5)), ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
 
 def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
@@ -85,6 +99,7 @@ def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.map(lambda x: x + 1)
     assert ds.take_all() == [1, 2, 3, 4, 5], ds
+    _check_usage_record(["ReadRange", "MapRows"])
 
 
 def test_filter_operator(ray_start_regular_shared, enable_optimizer):
@@ -107,6 +122,7 @@ def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.filter(fn=lambda x: x % 2 == 0)
     assert ds.take_all() == [0, 2, 4], ds
+    _check_usage_record(["ReadRange", "Filter"])
 
 
 def test_flat_map(ray_start_regular_shared, enable_optimizer):
@@ -129,18 +145,22 @@ def test_flat_map_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(2)
     ds = ds.flat_map(fn=lambda x: [x, x])
     assert ds.take_all() == [0, 0, 1, 1], ds
+    _check_usage_record(["ReadRange", "FlatMap"])
 
 
 def test_column_ops_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(2)
     ds = ds.add_column(fn=lambda df: df.iloc[:, 0], col="new_col")
     assert ds.take_all() == [{"value": 0, "new_col": 0}, {"value": 1, "new_col": 1}], ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
     select_ds = ds.select_columns(cols=["new_col"])
     assert select_ds.take_all() == [{"new_col": 0}, {"new_col": 1}]
+    _check_usage_record(["ReadRange", "MapBatches"])
 
     ds = ds.drop_columns(cols=["new_col"])
     assert ds.take_all() == [{"value": 0}, {"value": 1}], ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
 
 def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
@@ -160,6 +180,8 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
 
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
     ensure_sample_size_close(ds)
+
+    _check_usage_record(["ReadRange", "MapBatches"])
 
 
 def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
@@ -187,6 +209,7 @@ def test_random_shuffle_e2e(
     assert r1 != r2, (r1, r2)
     assert sorted(r1) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r1
     assert sorted(r2) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r2
+    _check_usage_record(["ReadRange", "RandomShuffle"])
 
 
 def test_repartition_operator(ray_start_regular_shared, enable_optimizer):
@@ -218,6 +241,8 @@ def test_repartition_e2e(
     # Check error is thrown for non-shuffle repartition.
     with pytest.raises(AssertionError):
         ds.repartition(20, shuffle=False).take_all()
+
+    _check_usage_record(["ReadRange", "Repartition"])
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
@@ -499,12 +524,14 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     assert ds.take_all() == [-2, 2, -6, 6, -10, 10, -14, 14, -18, 18]
     name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
     assert name in ds.stats()
+    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
 
 
 def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
     assert "DoRead->Write" in ds._write_ds.stats()
+    _check_usage_record(["ReadRange", "WriteCSV"])
 
 
 def test_write_operator(ray_start_regular_shared, enable_optimizer):
@@ -548,6 +575,7 @@ def test_sort_e2e(
     ds = ds.random_shuffle()
     ds = ds.sort()
     assert ds.take_all() == list(range(100))
+    _check_usage_record(["ReadRange", "RandomShuffle", "Sort"])
 
     # TODO: write_XXX and from_XXX are not supported yet in new execution plan.
     # Re-enable once supported.
@@ -595,6 +623,7 @@ def test_aggregate_e2e(
     assert ds.count() == 100
     for idx, row in enumerate(ds.sort("value").iter_rows()):
         assert row.as_pydict() == {"value": idx, "count()": 1}
+    _check_usage_record(["ReadRange", "Aggregate"])
 
 
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
@@ -622,6 +651,7 @@ def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_bl
     ds2 = ray.data.range(n, parallelism=num_blocks2).map(lambda x: x + 1)
     ds = ds1.zip(ds2)
     assert ds.take() == list(zip(range(n), range(1, n + 1)))
+    _check_usage_record(["ReadRange", "Zip"])
 
 
 def test_streaming_executor(
@@ -640,6 +670,7 @@ def test_streaming_executor(
         assert len(batch) == 3, batch
         result.extend(batch)
     assert sorted(result) == list(range(1, 100)), result
+    _check_usage_record(["ReadRange", "MapBatches", "Filter", "RandomShuffle"])
 
 
 if __name__ == "__main__":
