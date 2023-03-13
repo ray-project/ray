@@ -41,7 +41,7 @@ MAX_REPLICA_FAILURE_RETRIES = int(
 )
 assert (
     MAX_REPLICA_FAILURE_RETRIES >= 0
-), "MAX_REPLICA_FAILURE_RETRIES can't not be negative value"
+), f"Got unexpected value {MAX_REPLICA_FAILURE_RETRIES} for MAX_REPLICA_FAILURE_RETRIES environment variable. MAX_REPLICA_FAILURE_RETRIES cannot be negative."
 
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
