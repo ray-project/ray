@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import ray
+import time
 
 ray.init()
 
@@ -14,15 +15,17 @@ def task():
     import torch
 
 def main(metrics_actor, test_name, num_runs, num_tasks_or_actors_per_run, use_actors, with_gpu):
-    import time
-    # TODO GPU
+
+    num_gpus = 0.001 if with_gpu else 0
+    actor_with_resources = Actor.options(num_gpus=num_gpus)
+    task_with_resources = task.options(num_gpus=num_gpus)
 
     def with_actors():
-        actors = [Actor.remote() for _ in range(num_tasks_or_actors_per_run)]
+        actors = [actor_with_resources.remote() for _ in range(num_tasks_or_actors_per_run)]
         ray.get([actor.run_code.remote() for actor in actors])
 
     def with_tasks():
-        ray.get([task.remote() for _ in range(num_tasks_or_actors_per_run)])
+        ray.get([task_with_resources.remote() for _ in range(num_tasks_or_actors_per_run)])
 
     func_to_measure = with_actors if use_actors else with_tasks
     

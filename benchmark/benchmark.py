@@ -106,7 +106,9 @@ async def run_and_stream_logs(metrics_actor_name, metrics_actor_namespace, test_
         task_or_actor_arg = "--with_tasks" if with_tasks else "--with_actors"
         with_gpu_arg = "--with_gpu" if with_gpu else "--without_gpu"
 
-        for _ in range(num_jobs):
+
+        for i in range(num_jobs):
+            print(f"Running job {i} for {test_name}")
             job_id = client.submit_job(
                 entrypoint=f"python ./script.py "
                             f"--metrics_actor_name {metrics_actor_name} "
