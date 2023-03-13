@@ -105,7 +105,7 @@ class LightningConfigBuilder:
         return self
 
     def build(self) -> Dict["str", Any]:
-        return self.__dict__
+        return self.__dict__.copy()
 
 
 @PublicAPI(stability="alpha")
@@ -220,7 +220,7 @@ class LightningTrainer(TorchTrainer):
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
             You can setup the configurations with ``LightningConfigBuilder``, and
-            generated this config dictionary through ``LightningBuilder.build()``.
+            generate this config dictionary through ``LightningBuilder.build()``.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.

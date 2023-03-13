@@ -48,11 +48,10 @@ class RayEnvironment(LightningEnvironment):
         return session.get_node_rank()
 
     def set_world_size(self, size: int) -> None:
-        self._world_size = session.get_world_size()
+        super().set_world_size(session.get_world_size())
 
     def set_global_rank(self, rank: int) -> None:
-        self._global_rank = session.get_world_rank()
-        rank_zero_only.rank = rank
+        super().set_global_rank(session.get_world_rank())
 
     def teardown(self):
         pass
