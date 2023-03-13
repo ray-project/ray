@@ -298,3 +298,9 @@ def test_accelerate_e2e(ray_start_4_cpus):
         predict_dataset, batch_size=3, dtype=torch.float
     )
     assert predictions.count() == 3
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
