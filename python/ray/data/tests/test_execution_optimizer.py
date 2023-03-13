@@ -80,7 +80,6 @@ def test_from_items_operator(ray_start_regular_shared, enable_optimizer):
 def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     data = ["Hello", "World"]
     ds = ray.data.from_items(data)
-    ds = ds.map_batches(lambda s: s)
     assert ds.take_all() == data, ds
 
     # Check that metadata fetch is included in stats.
