@@ -16,7 +16,10 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     explained_variance,
 )
-from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import make_time_major, vtrace_torch
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
+    make_time_major,
+    vtrace_torch,
+)
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()

@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 import numpy as np
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Union
 import tree
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import make_time_major, vtrace_torch
+from ray.rllib.algorithms.impala.impala_torch_policy import VTraceLoss
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
@@ -17,6 +17,60 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ResultDict, TensorType
 
 torch, nn = try_import_torch()
+
+
+def make_time_major(
+    tensor: Union["torch.Tensor", List["torch.Tensor"]],
+    *,
+    trajectory_len: int = None,
+    recurrent_seq_len: int = None,
+    drop_last: bool = False,
+):
+    """Swaps batch and trajectory axis.
+
+    Args:
+        tensor: A tensor or list of tensors to swap the axis of.
+            NOTE: Each tensor must have the shape [B * T] where B is the batch size and
+            T is the trajectory length.
+        trajectory_len: The length of each trajectory being transformed.
+            If None then `recurrent_seq_len` must be set.
+        recurrent_seq_len: Sequence lengths if recurrent.
+            If None then `trajectory_len` must be set.
+        drop_last: A bool indicating whether to drop the last
+            trajectory item.
+
+    Returns:
+        res: A tensor with swapped axes or a list of tensors with
+        swapped axes.
+    """
+    if isinstance(tensor, (list, tuple)):
+        return [
+            make_time_major(_tensor, trajectory_len, recurrent_seq_len, drop_last)
+            for _tensor in tensor
+        ]
+
+    assert (trajectory_len != recurrent_seq_len) and (
+        trajectory_len is None or recurrent_seq_len is None
+    ), "Either trajectory_len or recurrent_seq_len must be set."
+
+    if recurrent_seq_len:
+        B = recurrent_seq_len.shape[0]
+        T = tensor.shape[0] // B
+    else:
+        # Important: chop the tensor into batches at known episode cut
+        # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
+        T = trajectory_len
+        B = tensor.shape[0] // T
+    rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
+
+    # Swap B and T axes.
+    res = torch.transpose(rs, 1, 0)
+
+    if drop_last:
+        return res[:-1]
+    return res
 
 
 @dataclass
@@ -122,16 +176,14 @@ class ImpalaTLearner(TorchLearner):
         # the episode is terminated. In that case, the discount factor should be 0.
         discounts_time_major = (
             1.0
-            - tf.cast(
-                make_time_major(
-                    batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=self.rollout_frag_or_episode_len,
-                    recurrent_seq_len=self.recurrent_seq_len,
-                    drop_last=self.vtrace_drop_last_ts,
-                ),
-                dtype=torch.float32,
-            )
+            - make_time_major(
+                batch[SampleBatch.TERMINATEDS],
+                trajectory_len=self.rollout_frag_or_episode_len,
+                recurrent_seq_len=self.recurrent_seq_len,
+                drop_last=self.vtrace_drop_last_ts,
+            ).type(dtype=torch.float32)
         ) * self.discount_factor
+
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
@@ -143,7 +195,7 @@ class ImpalaTLearner(TorchLearner):
             discounts=discounts_time_major,
         )
 
-        batch_size = tf.cast(target_actions_logp_time_major.shape[-1], torch.float32)
+        batch_size = target_actions_logp_time_major.shape[-1].type(torch.float32)
 
         # The policy gradients loss.
         pi_loss = -tf.reduce_sum(target_actions_logp_time_major * pg_advantages)
