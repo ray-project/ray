@@ -10,7 +10,6 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
 
-from ray.rllib.algorithms.algorithm import AlgorithmConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues

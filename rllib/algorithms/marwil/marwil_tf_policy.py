@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution

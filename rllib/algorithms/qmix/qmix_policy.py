@@ -4,7 +4,6 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
-import ray
 from ray.rllib.algorithms.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.algorithms.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE

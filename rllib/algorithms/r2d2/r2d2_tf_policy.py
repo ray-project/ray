@@ -333,7 +333,7 @@ def setup_late_mixins(
 R2D2TFPolicy = build_tf_policy(
     name="R2D2TFPolicy",
     loss_fn=r2d2_loss,
-    get_default_config=lambda: ray.rllib.algorithms.r2d2.r2d2.R2D2_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.r2d2.r2d2.R2D2Config(),
     postprocess_fn=postprocess_nstep_and_prio,
     stats_fn=build_q_stats,
     make_model=build_r2d2_model,

@@ -1,6 +1,5 @@
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.marwil.marwil_tf_policy import PostprocessAdvantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2

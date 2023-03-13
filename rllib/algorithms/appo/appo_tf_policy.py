@@ -10,7 +10,6 @@ import logging
 import gymnasium as gym
 from typing import Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.algorithms.appo.utils import make_appo_models
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.algorithms.impala.impala_tf_policy import (

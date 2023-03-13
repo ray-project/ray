@@ -5,7 +5,6 @@ from typing import (
 )
 
 import logging
-import ray
 import numpy as np
 from typing import Dict, Optional
 
