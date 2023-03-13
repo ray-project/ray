@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
+    RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
 )
 
@@ -324,10 +325,16 @@ class MultiAgentRLModule(RLModule):
                     f"{modules_to_load} not found in this MultiAgentRLModule."
                 )
             submodule = self._rl_modules[submodule_id]
-            submodule_metadata_path = (
-                dir / submodule_id / submodule._weights_relative_path()
+            submodule_weights_dir = dir / submodule_id / RLMODULE_STATE_DIR_NAME
+            if not submodule_weights_dir.exists():
+                raise ValueError(
+                    f"Submodule {submodule_id}'s module state directory: "
+                    f"{submodule_weights_dir} not found in checkpoint dir {dir}."
+                )
+            submodule_weights_path = (
+                submodule_weights_dir / submodule._module_state_file_name()
             )
-            submodule.load_state_from_file(submodule_metadata_path)
+            submodule.load_state_from_file(submodule_weights_path)
 
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:

@@ -41,7 +41,7 @@ ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
-RLMODULE_METADTATA_STATE_PATH_KEY = "module_state_path"
+RLMODULE_STATE_DIR_NAME = "module_state_path"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
@@ -533,8 +533,8 @@ class RLModule(abc.ABC):
         module = module_spec.build()
         return module
 
-    def _weights_relative_path(self) -> pathlib.Path:
-        """The relative path to the weights in the checkpoint."""
+    def _module_state_file_name(self) -> pathlib.Path:
+        """The name of the file to save the module state to while checkpointing."""
         raise NotImplementedError
 
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
@@ -548,7 +548,9 @@ class RLModule(abc.ABC):
         """
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_file(path / self._weights_relative_path())
+        module_state_dir = path / RLMODULE_STATE_DIR_NAME
+        module_state_dir.mkdir(parents=True, exist_ok=True)
+        self.save_state_to_file(module_state_dir / self._module_state_file_name())
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -571,7 +573,8 @@ class RLModule(abc.ABC):
             )
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
-        state_path = path / module._weights_relative_path()
+        module_state_dir = path / RLMODULE_STATE_DIR_NAME
+        state_path = module_state_dir / module._module_state_file_name()
         module.load_state_from_file(state_path)
         return module
 

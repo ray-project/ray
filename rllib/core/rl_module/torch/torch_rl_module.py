@@ -29,7 +29,7 @@ class TorchRLModule(nn.Module, RLModule):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
 
-    def _weights_relative_path(self) -> pathlib.Path:
+    def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")
 
     @override(RLModule)

@@ -43,8 +43,11 @@ class TfRLModule(RLModule, tf.keras.Model):
         self.set_weights(state_dict)
 
     @override(RLModule)
-    def _weights_relative_path(self) -> pathlib.Path:
-        return pathlib.Path("module_state/module_state")
+    def _module_state_file_name(self) -> pathlib.Path:
+        # TF checkpointing in the native tf format saves the weights as multiple
+        # files, and when calling save_weights, the name passed should have no
+        # file ending (e.g. .h5).
+        return pathlib.Path("module_state")
 
     @override(RLModule)
     def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
