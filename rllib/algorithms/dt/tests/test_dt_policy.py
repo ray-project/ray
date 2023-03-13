@@ -1,5 +1,4 @@
 import unittest
-from typing import Dict
 
 import gymnasium as gym
 import numpy as np
@@ -8,6 +7,7 @@ import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
+from ray.rllib.algorithms.dt.tests.test_dt import _assert_input_dict_equals
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -41,20 +41,6 @@ def _default_config():
         "_fake_gpus": None,
         "_enable_rl_module_api": False,
     }
-
-
-def _assert_input_dict_equals(d1: Dict[str, np.ndarray], d2: Dict[str, np.ndarray]):
-    for key in d1.keys():
-        assert key in d2.keys()
-
-    for key in d2.keys():
-        assert key in d1.keys()
-
-    for key in d1.keys():
-        assert isinstance(d1[key], np.ndarray), "input_dict should only be numpy array."
-        assert isinstance(d2[key], np.ndarray), "input_dict should only be numpy array."
-        assert d1[key].shape == d2[key].shape, "input_dict are of different shape."
-        assert np.allclose(d1[key], d2[key]), "input_dict values are not equal."
 
 
 class TestDTPolicy(unittest.TestCase):
@@ -145,6 +131,8 @@ class TestDTPolicy(unittest.TestCase):
                     ),
                     SampleBatch.REWARDS: np.zeros((), dtype=np.float32),
                     SampleBatch.T: np.array([-1, -1, -1], dtype=np.int32),
+                    SampleBatch.DONES: np.array([False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
             _assert_input_dict_equals(input_dict, target_input_dict)
@@ -186,6 +174,8 @@ class TestDTPolicy(unittest.TestCase):
                     ),
                     SampleBatch.REWARDS: np.asarray(1.0, dtype=np.float32),
                     SampleBatch.T: np.array([-1, -1, 0], dtype=np.int32),
+                    SampleBatch.DONES: np.array([False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
             _assert_input_dict_equals(input_dict, target_input_dict)
@@ -231,6 +221,8 @@ class TestDTPolicy(unittest.TestCase):
                     ),
                     SampleBatch.REWARDS: np.array([0.0], dtype=np.float32),
                     SampleBatch.T: np.array([[-1, -1, -1]], dtype=np.int32),
+                    SampleBatch.DONES: np.array([False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
 
@@ -283,6 +275,8 @@ class TestDTPolicy(unittest.TestCase):
                     ),
                     SampleBatch.REWARDS: np.array([10.0], dtype=np.float32),
                     SampleBatch.T: np.array([[-1, -1, 0]], dtype=np.int32),
+                    SampleBatch.DONES: np.array([False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
 
@@ -355,6 +349,8 @@ class TestDTPolicy(unittest.TestCase):
                     SampleBatch.ATTENTION_MASKS: np.array(
                         [[0.0, 0.0, 1.0, 1.0]], dtype=np.float32
                     ),
+                    SampleBatch.DONES: np.array([False, False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
 
@@ -383,6 +379,8 @@ class TestDTPolicy(unittest.TestCase):
                     SampleBatch.ATTENTION_MASKS: np.array(
                         [[0.0, 0.0, 1.0, 1.0]], dtype=np.float32
                     ),
+                    SampleBatch.DONES: np.array([False, False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
 
@@ -420,6 +418,8 @@ class TestDTPolicy(unittest.TestCase):
                     SampleBatch.ATTENTION_MASKS: np.array(
                         [[1.0, 1.0, 1.0, 1.0]], dtype=np.float32
                     ),
+                    SampleBatch.DONES: np.array([False, False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
 
@@ -472,6 +472,8 @@ class TestDTPolicy(unittest.TestCase):
                     SampleBatch.ATTENTION_MASKS: np.array(
                         [[0.0, 0.0, 1.0, 1.0]], dtype=np.float32
                     ),
+                    SampleBatch.DONES: np.array([False, False, False, False]),
+                    SampleBatch.INFOS: {},
                 }
             )
 

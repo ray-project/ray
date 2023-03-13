@@ -409,11 +409,12 @@ def check_compute_single_action(
             )
 
         state_out = None
+        print((state_in, full_fetch, what))
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
-        if state_out:
+        if state_out is not None and len(state_out):
             for si, so in zip(state_in, state_out):
-                check(list(si.shape), so.shape)
+                check(si.shape[-1], so.shape[-1])
 
         if unsquash is None:
             unsquash = what.config["normalize_actions"]

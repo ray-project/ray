@@ -192,6 +192,8 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
                 SampleBatch.RETURNS_TO_GO: rtg,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.T: timesteps,
+                SampleBatch.DONES: np.array([False] * (self.max_seq_len - 1)),
+                SampleBatch.INFOS: {},
             }
         )
         return input_dict

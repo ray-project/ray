@@ -36,7 +36,6 @@ import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -96,11 +95,12 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
-    AgentConnectorDataType,
+    EnvID,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -1404,6 +1404,8 @@ class Algorithm(Trainable):
         episode: Optional[Episode] = None,
         unsquash_action: Optional[bool] = None,
         clip_action: Optional[bool] = None,
+        agent_id: Optional[List[AgentID]] = None,
+        env_id: Optional[List[EnvID]] = None,
         # Deprecated args.
         unsquash_actions=DEPRECATED_VALUE,
         clip_actions=DEPRECATED_VALUE,
@@ -1446,6 +1448,10 @@ class Algorithm(Trainable):
             clip_action: Should actions be clipped according to the
                 env's/Policy's action space? If None, use the value of
                 self.config.clip_actions.
+            agent_id: The agent ID to compute the action for (only applies if using
+                connectors).
+            env_id: The env ID to compute the action for (only applies if using
+                connectors).
 
         Keyword Args:
             kwargs: forward compatibility placeholder
@@ -1514,67 +1520,84 @@ class Algorithm(Trainable):
             if pp and type(pp).__name__ != "NoPreprocessor":
                 observation = pp.transform(observation)
             observation = local_worker.filters[policy_id](observation, update=False)
+
+            # Input-dict.
+            if input_dict is not None:
+                input_dict[SampleBatch.OBS] = observation
+                action, state, extra = policy.compute_single_action(
+                    input_dict=input_dict,
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
+            # Individual args.
+            else:
+                action, state, extra = policy.compute_single_action(
+                    obs=observation,
+                    state=state,
+                    prev_action=prev_action,
+                    prev_reward=prev_reward,
+                    info=info,
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
         else:
-            # Just preprocess observations, similar to how it used to be done before.
-            pp = policy.agent_connectors[ObsPreprocessorConnector]
-
-            # convert the observation to array if possible
-            if not isinstance(observation, (np.ndarray, dict, tuple)):
-                try:
-                    observation = np.asarray(observation)
-                except Exception:
-                    raise ValueError(
-                        f"Observation type {type(observation)} cannot be converted to "
-                        f"np.ndarray."
-                    )
-            if pp:
-                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
-                pp = pp[0]
-
-                if not pp.is_identity():
-                    # Note(Kourosh): This call will leave the policy's connector
-                    # in eval mode. would that be a problem?
-                    pp.in_eval()
-                    if observation is not None:
-                        _input_dict = {SampleBatch.OBS: observation}
-                    elif input_dict is not None:
-                        _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
-                    else:
-                        raise ValueError(
-                            "Either observation or input_dict must be provided."
+            for old_kwarg in [
+                "state",
+                "prev_action",
+                "prev_reward",
+                "episodes",
+            ]:
+                if old_kwarg is not None:
+                    if log_once(f"deprecating_{old_kwarg}"):
+                        logger.warning(
+                            "Within the context of connectors, "
+                            "{} is internally built by "
+                            "connectors and can not be "
+                            "provided as an argument.".format(old_kwarg)
                         )
+            if input_dict is not None:
+                input_dict[SampleBatch.OBS] = convert_to_numpy(observation)
+                # Add batch dimension
+                input_dict = tree.map_structure(lambda s: s[None], input_dict)
+                action, state, extra = policy.compute_actions_from_raw_input_dict(
+                    input_dict=input_dict,
+                    explore=explore,
+                    timestep=timestep,
+                    episode=episode,
+                )
+                # We compute batched data here, se reduce dimension
+                action = action[0]
+                state = state[0] if len(state) else state
+                extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
 
-                    # TODO (Kourosh): Create a new util method for algorithm that
-                    # computes actions based on raw inputs from env and can keep track
-                    # of its own internal state.
-                    acd = AgentConnectorDataType("0", "0", _input_dict)
-                    # make sure the state is reset since we are only applying the
-                    # preprocessor
-                    pp.reset(env_id="0")
-                    ac_o = pp([acd])[0]
-                    observation = ac_o.data[SampleBatch.OBS]
+                # NOTE: (Artur) Action connectors normalize actions already,
+                # squash here again until this API is removed
+                if not unsquash_action:
+                    action = space_utils.normalize_action(
+                        action, policy.action_space_struct
+                    )
+            else:
+                action, state, extra = policy.compute_actions_from_raw_input(
+                    next_obs_batch=[convert_to_numpy(observation)],
+                    explore=explore,
+                    timestep=timestep,
+                    episode=None,
+                    agent_ids=[agent_id],
+                    env_ids=[env_id],
+                )
+                # We compute batched data here, se reduce dimension
+                action = action[0]
+                state = state[0] if len(state) else state
+                extra = tree.map_structure(lambda x: x[0] if len(x) else x, extra)
 
-        # Input-dict.
-        if input_dict is not None:
-            input_dict[SampleBatch.OBS] = observation
-            action, state, extra = policy.compute_single_action(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
-        # Individual args.
-        else:
-            action, state, extra = policy.compute_single_action(
-                obs=observation,
-                state=state,
-                prev_action=prev_action,
-                prev_reward=prev_reward,
-                info=info,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
+                # NOTE: (Artur) Action connectors normalize actions already,
+                # squash here again until this API is removed
+                if not unsquash_action:
+                    action = space_utils.normalize_action(
+                        action, policy.action_space_struct
+                    )
 
         # If we work in normalized action space (normalize_actions=True),
         # we re-translate here into the env's action space.
@@ -1585,7 +1608,7 @@ class Algorithm(Trainable):
             action = space_utils.clip_action(action, policy.action_space_struct)
 
         # Return 3-Tuple: Action, states, and extra-action fetches.
-        if state or full_fetch:
+        if len(state) or full_fetch:
             return action, state, extra
         # Ensure backward compatibility.
         else:
@@ -1607,6 +1630,8 @@ class Algorithm(Trainable):
         episodes: Optional[List[Episode]] = None,
         unsquash_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
+        agent_ids: Optional[List[AgentID]] = None,
+        env_ids: Optional[List[EnvID]] = None,
         # Deprecated.
         normalize_actions=None,
         **kwargs,
@@ -1631,7 +1656,8 @@ class Algorithm(Trainable):
                 This is always set to True if RNN state is specified.
             explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config.explore).
-            timestep: The current (sampling) time step.
+            timestep: A batch of timesteps if connectors are enabled. The current (
+                sampling) time step otherwise.
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
@@ -1641,6 +1667,8 @@ class Algorithm(Trainable):
             clip_actions: Should actions be clipped according to the
                 env's/Policy's action space? If None, use
                 self.config.clip_actions.
+            agent_ids: Optional list of agent ids to compute actions for. Only has an
+                effect if connectors are enabled.
 
         Keyword Args:
             kwargs: forward compatibility placeholder
@@ -1665,52 +1693,88 @@ class Algorithm(Trainable):
         elif clip_actions is None:
             clip_actions = self.config.clip_actions
 
-        # Preprocess obs and states.
-        state_defined = state is not None
         policy = self.get_policy(policy_id)
-        filtered_obs, filtered_state = [], []
-        for agent_id, ob in observations.items():
-            worker = self.workers.local_worker()
-            preprocessed = worker.preprocessors[policy_id].transform(ob)
-            filtered = worker.filters[policy_id](preprocessed, update=False)
-            filtered_obs.append(filtered)
-            if state is None:
-                continue
-            elif agent_id in state:
-                filtered_state.append(state[agent_id])
-            else:
-                filtered_state.append(policy.get_initial_state())
 
-        # Batch obs and states
-        obs_batch = np.stack(filtered_obs)
-        if state is None:
-            state = []
+        if self.config.get("enable_connectors"):
+            for old_kwarg in [
+                "state",
+                "prev_action",
+                "prev_reward",
+                "episodes",
+            ]:
+                if old_kwarg is not None:
+                    if log_once(f"deprecating_{old_kwarg}"):
+                        logger.warning(
+                            "Within the context of connectors, "
+                            "{} is internally built by "
+                            "connectors and can not be "
+                            "provided as an argument.".format(old_kwarg)
+                        )
+
+            actions, states, infos = policy.compute_actions_from_raw_input(
+                next_obs_batch=convert_to_numpy(observations),
+                reward_batch=np.array(prev_reward),
+                terminateds_batch=None,
+                truncateds_batch=None,
+                info_batch=info,
+                explore=explore,
+                timestep=timestep,
+                episode=None,
+                agent_ids=agent_ids,
+                env_ids=env_ids,
+            )
+            # NOTE: (Artur) Action connectors normalize actions already,
+            # squash here again until this API is removed
+            if not unsquash_actions:
+                actions = space_utils.normalize_action(
+                    actions, policy.action_space_struct
+                )
         else:
-            state = list(zip(*filtered_state))
-            state = [np.stack(s) for s in state]
+            # Preprocess obs and states.
+            state_defined = state is not None
+            filtered_obs, filtered_state = [], []
+            for agent_id, ob in observations.items():
+                worker = self.workers.local_worker()
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+                filtered = worker.filters[policy_id](preprocessed, update=False)
+                filtered_obs.append(filtered)
+                if state is None:
+                    continue
+                elif agent_id in state:
+                    filtered_state.append(state[agent_id])
+                else:
+                    filtered_state.append(policy.get_initial_state())
 
-        input_dict = {SampleBatch.OBS: obs_batch}
+            # Batch obs and states
+            obs_batch = np.stack(filtered_obs)
+            if state is None:
+                state = []
+            else:
+                state = list(zip(*filtered_state))
+                state = [np.stack(s) for s in state]
 
-        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
-        # Explicitly check for None here to avoid the error message "The truth value of
-        # an array with more than one element is ambiguous.", when np arrays are passed
-        # as arguments.
-        if prev_action is not None:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward is not None:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
-        if info:
-            input_dict[SampleBatch.INFOS] = info
-        for i, s in enumerate(state):
-            input_dict[f"state_in_{i}"] = s
+            input_dict = {SampleBatch.OBS: obs_batch}
 
-        # Batch compute actions
-        actions, states, infos = policy.compute_actions_from_input_dict(
-            input_dict=input_dict,
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-        )
+            # prev_action and prev_reward can be None, np.ndarray, or tensor-like
+            # structure. Explicitly check for None here to avoid the error message
+            # "The truth value of an array with more than one element is ambiguous.",
+            # when np arrays are passed as arguments.
+            if prev_action is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+            if prev_reward is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+            if info:
+                input_dict[SampleBatch.INFOS] = info
+            for i, s in enumerate(state):
+                input_dict[f"state_in_{i}"] = s
+
+            # Batch compute actions
+            actions, states, infos = policy.compute_actions_from_input_dict(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episodes=episodes,
+            )
 
         # Unbatch actions for the environment into a multi-agent dict.
         single_actions = space_utils.unbatch(actions)
