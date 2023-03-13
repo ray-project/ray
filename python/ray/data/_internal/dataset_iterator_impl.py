@@ -2,9 +2,8 @@ from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
 import time
 import warnings
 
-from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data._internal.util import _get_batch_format
 from ray.data.block import BlockAccessor, T
-from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
@@ -60,24 +59,7 @@ class DatasetIteratorImpl(DatasetIterator):
         # During row-based ops, we also choose a batch format that lines up with the
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            # TODO: calling dataset_format() triggers bulk execution.
-            batch_format = "default"
-        else:
-            try:
-                dataset_format = self._base_dataset.dataset_format()
-            except ValueError:
-                # Dataset is empty or cleared, so fall back to "default".
-                batch_format = "default"
-            else:
-                batch_format = (
-                    "pyarrow"
-                    if dataset_format == BlockFormat.ARROW
-                    else "pandas"
-                    if dataset_format == BlockFormat.PANDAS
-                    else "default"
-                )
+        batch_format = _get_batch_format(self._base_dataset)
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
