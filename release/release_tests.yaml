@@ -3326,9 +3326,6 @@
 - name: many_nodes_multi_master_test
   group: core-daily-test
   working_dir: benchmarks
-  legacy:
-    test_name: many_nodes_multi_master_test
-    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
@@ -3347,9 +3344,6 @@
 - name: multi_master_test
   group: core-daily-test
   working_dir: benchmarks
-  legacy:
-    test_name: multi_master_test
-    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
