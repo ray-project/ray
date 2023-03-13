@@ -32,17 +32,40 @@ class LightningConfigBuilder:
     Example:
         .. code-block:: python
 
+            import torch
+            import torch.nn as nn
+            from ray.train.lightning import LightningConfigBuilder
+
+            class LinearModule(pl.LightningModule):
+                def __init__(self, input_dim, output_dim) -> None:
+                    super().__init__()
+                    self.linear = nn.Linear(input_dim, output_dim)
+
+                def forward(self, input):
+                    return self.linear(input)
+
+                def training_step(self, batch):
+                    output = self.forward(batch)
+                    loss = torch.sum(output)
+                    self.log("loss", loss)
+                    return loss
+
+                def predict_step(self, batch, batch_idx):
+                    return self.forward(batch)
+
+                def configure_optimizers(self):
+                    return torch.optim.SGD(self.parameters(), lr=0.1)
+
             lightning_config = (
                 LightningConfigBuilder()
                 .module(
-                    cls=LightningModuleClass,
-                    input_dim_1=32,
-                    input_dim_2=32,
+                    cls=LinearModule,
+                    input_dim=32,
                     output_dim=4,
                 )
                 .trainer(max_epochs=5, accelerator="gpu")
                 .fit_params(datamodule=datamodule)
-                .checkpointing(monitor="loss", save_top_k=2)
+                .checkpointing(monitor="loss", save_top_k=2, mode="min")
                 .build()
             )
     """
