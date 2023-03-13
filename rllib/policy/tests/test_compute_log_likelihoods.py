@@ -21,6 +21,19 @@ tf1, tf, tfv = try_import_tf()
 
 
 def _get_expected_logp(fw, vars, obs_batch, a, layer_key, logp_func=None):
+    """Get the expected logp for the given obs_batch and action.
+
+    Args:
+        fw: Framework ("tf" or "torch").
+        vars: The ModelV2 weights.
+        obs_batch: The observation batch.
+        a: The action batch.
+        layer_key: The layer key to use for the fc layers.
+        logp_func: Optional custom logp function to use.
+
+    Returns:
+        The expected logp.
+    """
     if fw != "torch":
         if isinstance(vars, list):
             expected_mean_logstd = fc(
