@@ -673,7 +673,9 @@ class ServeController:
         error messages, etc.
 
         Returns:
-            Dict that follows the format of the schema ServeInstanceDetails.
+            Dict that follows the format of the schema ServeInstanceDetails. Currently,
+            there is a value set for every field at all schema levels, except for the
+            route_prefix in the deployment_config for each deployment.
         """
 
         http_config = self.get_http_config()
@@ -696,6 +698,11 @@ class ServeController:
                 ),
             )
 
+        # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
+        # fill in all info that should be shown to users. Currently, every field is set
+        # except for the route_prefix in the deployment_config of each deployment, since
+        # route_prefix is set instead in application_details for each application.
+        # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
             host=http_config.host,
             port=http_config.port,

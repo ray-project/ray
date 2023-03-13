@@ -571,10 +571,10 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
         # prefix is outdated, there should be one route prefix per application
         if "route_prefix" in v.dict(exclude_unset=True):
             raise ValueError(
-                "Unexpectedly found a non-null route_prefix in the deployment_config "
-                f'for deployment "{cls.name}". The route_prefix in deployment_config '
-                "within DeploymentDetails should not be set; please set it at the "
-                "application level."
+                "Unexpectedly found a deployment-level route_prefix in the "
+                f'deployment_config for deployment "{cls.name}". The route_prefix in '
+                "deployment_config within DeploymentDetails should not be set; please "
+                "set it at the application level."
             )
         return v
 

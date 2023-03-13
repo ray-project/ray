@@ -100,7 +100,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 )
 
         return Response(
-            text=ServeInstanceDetails(**details).json(exclude_unset=True),
+            text=json.dumps(details),
             content_type="application/json",
         )
 
