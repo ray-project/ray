@@ -14,6 +14,7 @@ from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -429,7 +430,9 @@ class ImpalaConfig(AlgorithmConfig):
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -831,9 +834,9 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            elif self.workers.local_worker() and (
-                self.config.create_env_on_local_worker
-                or self.config.num_rollout_workers == 0
+            elif (
+                self.workers.local_worker()
+                and self.workers.local_worker().async_env is not None
             ):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
