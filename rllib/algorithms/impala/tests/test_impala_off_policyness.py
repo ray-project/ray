@@ -45,8 +45,20 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
                 # TODO(avnishn): Enable this for torch when we merge the torch learner.
                 if enable_learner_api and fw != "tf2":
                     continue
+<<<<<<< Updated upstream
                 config.training(_enable_learner_api=enable_learner_api)
                 config.rl_module(_enable_rl_module_api=enable_learner_api)
+=======
+                # TODO(kourosh) disable after fixes to tf eager tracing and torch dists.
+                elif enable_learner_api and fw == "tf2":
+                    # config.framework(eager_tracing=False)
+                    config.training(_enable_learner_api=enable_learner_api)
+                    config.rl_module(_enable_rl_module_api=enable_learner_api)
+                else:
+                    # config.framework(eager_tracing=True)
+                    config.training(_enable_learner_api=False)
+                    config.rl_module(_enable_rl_module_api=False)
+>>>>>>> Stashed changes
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))
                 algo = config.build()

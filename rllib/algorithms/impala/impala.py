@@ -403,7 +403,11 @@ class ImpalaConfig(AlgorithmConfig):
     def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
         lg_config = super().get_learner_group_config(module_spec)
         optim_config = lg_config.optimizer_config
+<<<<<<< Updated upstream
         # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
+=======
+        # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base 
+>>>>>>> Stashed changes
         # class
         optim_config.update({"grad_clip": self.grad_clip})
         lg_config = lg_config.learner(optimizer_config=optim_config)
@@ -816,11 +820,19 @@ class Impala(Algorithm):
 
         """
         with self._timers[SAMPLE_TIMER]:
+<<<<<<< Updated upstream
             # Sample from healthy remote workers by default. If there is no healthy
             # worker (either because they have all died, or because there was none to
             # begin) check if the local_worker exists. If the local worker has an
             # env_instance (either because there are no remote workers or
             # self.config.create_env_on_local_worker == True), then sample from the
+=======
+            # Sample from healthy remote workers by default. If there is no healthy 
+            # worker (either because they have all died, or because there was none to 
+            # begin) check if the local_worker exists. If the local worker has an 
+            # env_instance (either because there are no remote workers or
+            # self.config.create_env_on_local_worker == True), then sample from the 
+>>>>>>> Stashed changes
             # local worker. Otherwise just return an empty list.
             if self.workers.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
@@ -834,9 +846,15 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
+<<<<<<< Updated upstream
             elif (
                 self.workers.local_worker()
                 and self.workers.local_worker().async_env is not None
+=======
+            elif self.workers.local_worker() and (
+                self.config.create_env_on_local_worker
+                or self.config.num_rollout_workers == 0
+>>>>>>> Stashed changes
             ):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
@@ -1047,7 +1065,11 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
+<<<<<<< Updated upstream
 
+=======
+ 
+>>>>>>> Stashed changes
             if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)
