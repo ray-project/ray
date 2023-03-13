@@ -26,11 +26,11 @@ def _route_prefix_format(cls, v):
     if v is None:
         return v
 
-    if len(v) < 1 or v[0] != "/":
+    if not v.startswith("/"):
         raise ValueError(
-            f'Got "{v}" for route_prefix. Route prefix ' 'must start with "/".'
+            f'Got "{v}" for route_prefix. Route prefix must start with "/".'
         )
-    if v[-1] == "/" and len(v) > 1:
+    if len(v) > 1 and v.endswith("/"):
         raise ValueError(
             f'Got "{v}" for route_prefix. Route prefix '
             'cannot end with "/" unless the '
@@ -231,7 +231,7 @@ class DeploymentSchema(
 
         return values
 
-    _route_prefix_format = validator("route_prefix", allow_reuse=True)(
+    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )
 
@@ -525,16 +525,15 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
     )
     message: str = Field(
         description=(
-            "If the deployment status is UNHEALTHY, this will describe the issue in "
+            "If there are issues with the deployment, this will describe the issue in "
             "more detail."
         )
     )
     deployment_config: DeploymentSchema = Field(
         description=(
             "The set of deployment config options that are currently applied to this "
-            "deployment. These options may come from users code, or from override "
-            "options specified in the config file applied to the cluster, or could be "
-            "default values loaded in if unspecified."
+            "deployment. These options may come from the user's code, config file "
+            "options, or Serve default values."
         )
     )
 
@@ -559,14 +558,14 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
         ...,
         description=(
             "Requests to paths under this HTTP path prefix will be routed to this "
-            "application. This value can be null if the application is deploying "
-            "and app information has not been fully propagated in the backend; or "
-            "if the application is not exposed over HTTP. Routing is done based on "
-            'longest-prefix match, so if you have deployment A with a prefix of "/a" '
-            'and deployment B with a prefix of "/a/b", requests to "/a", "/a/", and '
-            '"/a/c" go to A and requests to "/a/b", "/a/b/", and "/a/b/c" go to B. '
-            'Routes must not end with a "/" unless they\'re the root (just "/"), which '
-            "acts as a catch-all."
+            "application. This value may be null if the application is deploying "
+            "and app information has not yet fully propagated in the backend; or "
+            "if the user explicitly set the prefix to `None`, so the application isn't "
+            "exposed over HTTP. Routing is done based on longest-prefix match, so if "
+            'you have deployment A with a prefix of "/a" and deployment B with a '
+            'prefix of "/a/b", requests to "/a", "/a/", and "/a/c" go to A and '
+            'requests to "/a/b", "/a/b/", and "/a/b/c" go to B. Routes must not end '
+            'with a "/" unless they\'re the root (just "/"), which acts as a catch-all.'
         ),
     )
     docs_path: Optional[str] = Field(
@@ -602,9 +601,9 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
         description="Details about the deployments in this application."
     )
 
-    _route_prefix_format = validator("route_prefix", allow_reuse=True)(
-        _route_prefix_format
-    )
+    application_details_route_prefix_format = validator(
+        "route_prefix", allow_reuse=True
+    )(_route_prefix_format)
 
 
 @PublicAPI(stability="alpha")

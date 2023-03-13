@@ -64,8 +64,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 return Response(
                     status=503,
                     text=(
-                        "Fail to get the response from the controller. "
-                        f"Potentially the GCS is down: {e}"
+                        "Failed to get a response from the controller.  "
+                        f"The GCS may be down, please retry later: {e}"
                     ),
                 )
 
@@ -94,8 +94,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 return Response(
                     status=503,
                     text=(
-                        "Fail to get the response from the controller. "
-                        f"Potentially the GCS is down: {e}"
+                        "Failed to get a response from the controller. "
+                        f"The GCS may be down, please retry later: {e}"
                     ),
                 )
 
