@@ -1,4 +1,6 @@
 from collections import namedtuple
+from dataclasses import dataclass
+from typing import Dict
 from unittest.mock import Mock
 from wandb.util import json_dumps_safer
 
@@ -27,6 +29,15 @@ class Trial(
 
     def __str__(self):
         return self.trial_name
+
+
+@dataclass
+class LoggingActorState:
+    args: list
+    kwargs: dict
+    exclude: list
+    logs: list
+    config: dict
 
 
 class _FakeConfig:
@@ -67,6 +78,12 @@ class _MockWandbAPI:
     def finish(self):
         pass
 
+    def get_logs(self):
+        return self.logs
+
+    def get_config(self):
+        return self.config.config
+
 
 class _MockWandbLoggingActor(_WandbLoggingActor):
     _mock_wandb_api_cls = _MockWandbAPI
@@ -77,9 +94,14 @@ class _MockWandbLoggingActor(_WandbLoggingActor):
         )
         self._wandb = self._mock_wandb_api_cls()
 
-    def getattr(self, attr):
-        # Helper for the test to get attributes from the actor
-        return getattr(self, attr)
+    def get_state(self):
+        return LoggingActorState(
+            args=self.args,
+            kwargs=self.kwargs,
+            exclude=self._exclude,
+            logs=self._wandb.get_logs(),
+            config=self._wandb.get_config(),
+        )
 
 
 class WandbTestExperimentLogger(WandbLoggerCallback):
@@ -87,40 +109,23 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
 
     _logger_actor_cls = _MockWandbLoggingActor
 
-    def __init__(self, *args, cleanup_actors: bool = False, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._cleanup_actors = cleanup_actors
+        self._saved_actor_states: Dict["Trial", LoggingActorState] = {}
 
-    def _cleanup_logging_actor(self, trial: "Trial"):
-        del self._trial_queues[trial]
-        del self._trial_logging_futures[trial]
-
-        # Unique for the mocked instance is the delayed delete of
-        # `self._trial_logging_actors[trial]`.
-        # This is because we want to access them in unit test after `.fit()`
-        # to assert certain config and log is called with wandb.
-        # Call `__del__` on the instance to kill/delete the actors
-        if self._cleanup_actors:
-            del self._trial_logging_actors[trial]
+    def _cleanup_logging_actor(self, trial: "Trial", **kwargs):
+        logging_actor_state: LoggingActorState = ray.get(
+            self._trial_logging_actors[trial].get_state.remote()
+        )
+        self._saved_actor_states[trial] = logging_actor_state
+        super()._cleanup_logging_actor(trial, **kwargs)
 
     @property
-    def trial_logging_actors(self):
-        class PassThroughActor:
-            """Object that passes through all attributes of a remote actor."""
-
-            def __init__(self, actor):
-                self._actor = actor
-
-            def __getattr__(self, attr):
-                return ray.get(self._actor.getattr.remote(attr))
-
-        return {
-            trial: PassThroughActor(actor)
-            for trial, actor in self._trial_logging_actors.items()
-        }
+    def trial_logging_actor_states(self) -> Dict["Trial", LoggingActorState]:
+        return self._saved_actor_states
 
 
-def get_mock_wandb_logger(mock_api_cls, **kwargs):
+def get_mock_wandb_logger(mock_api_cls=_MockWandbAPI, **kwargs):
     class MockWandbLoggingActor(_MockWandbLoggingActor):
         _mock_wandb_api_cls = mock_api_cls
 

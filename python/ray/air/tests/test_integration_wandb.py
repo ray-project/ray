@@ -29,7 +29,8 @@ Template for testing with these mocks:
 
     # Now, we can access properties of the logging actors
     # (must happen after `on_trial_end` and `on_experiment_end`)
-    logs = logger.trial_logging_actors[trial]._wandb.logs
+    logger_state = logger.trial_logging_actor_states[trial]
+    # logger_state.logs, logger_state.config, logger_state.kwargs, ...
 """
 
 import os
@@ -257,14 +258,12 @@ class TestWandbLogger:
         logger.log_trial_end(trial)
         logger.on_experiment_end(trials=[trial])
 
-        assert logger.trial_logging_actors[trial].kwargs["project"] == "test_project"
-        assert logger.trial_logging_actors[trial].kwargs["id"] == trial.trial_id
-        assert logger.trial_logging_actors[trial].kwargs["name"] == trial.trial_name
-        assert (
-            logger.trial_logging_actors[trial].kwargs["group"]
-            == trial.experiment_dir_name
-        )
-        assert "config" in logger.trial_logging_actors[trial]._exclude
+        logger_state = logger.trial_logging_actor_states[trial]
+        assert logger_state.kwargs["project"] == "test_project"
+        assert logger_state.kwargs["id"] == trial.trial_id
+        assert logger_state.kwargs["name"] == trial.trial_name
+        assert logger_state.kwargs["group"] == trial.experiment_dir_name
+        assert "config" in logger_state.exclude
 
         del logger
 
@@ -274,8 +273,9 @@ class TestWandbLogger:
         logger.log_trial_end(trial)
         logger.on_experiment_end(trials=[trial])
 
-        assert "config" not in logger.trial_logging_actors[trial]._exclude
-        assert "metric" not in logger.trial_logging_actors[trial]._exclude
+        logger_state = logger.trial_logging_actor_states[trial]
+        assert "config" not in logger_state.exclude
+        assert "metric" not in logger_state.exclude
 
         del logger
 
@@ -285,8 +285,9 @@ class TestWandbLogger:
         logger.log_trial_end(trial)
         logger.on_experiment_end(trials=[trial])
 
-        assert "config" in logger.trial_logging_actors[trial]._exclude
-        assert "metric" in logger.trial_logging_actors[trial]._exclude
+        logger_state = logger.trial_logging_actor_states[trial]
+        assert "config" in logger_state.exclude
+        assert "metric" in logger_state.exclude
 
         del logger
 
@@ -306,7 +307,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, r1)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
-        logged = logger.trial_logging_actors[trial]._wandb.logs[0]
+        logged = logger.trial_logging_actor_states[trial].logs[0]
         assert "metric1" in logged
         assert "metric2" not in logged
         assert "metric3" in logged
@@ -321,8 +322,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, result)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
-        mock_config: _FakeConfig = logger.trial_logging_actors[trial]._wandb.config
-        config = mock_config.config
+        config = logger.trial_logging_actor_states[trial].config
         # The results in `AUTO_CONFIG_KEYS` should be saved as training configuration
         # instead of output metrics.
         assert set(WandbLoggerCallback.AUTO_CONFIG_KEYS) < set(config)
@@ -347,9 +347,9 @@ class TestWandbLogger:
         result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
         logger.on_trial_result(0, [], trial, result)
         logger.on_trial_complete(0, [], trial)
+        logger.on_experiment_end(trials=[trial])
 
-        mock_config: _FakeConfig = logger.trial_logging_actors[trial]._wandb.config
-        config = mock_config.config
+        config = logger.trial_logging_actor_states[trial].config
         assert set(config) == {"param1"}
 
     def test_set_serializability_result(self, trial):
@@ -382,7 +382,7 @@ class TestWandbLogger:
         logger.on_trial_result(0, [], trial, rllib_result)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
-        logged = logger.trial_logging_actors[trial]._wandb.logs[0]
+        logged = logger.trial_logging_actor_states[trial].logs[0]
         assert logged != "serialization error"
 
     def test_wandb_logging_actor_api_key(self, trial, monkeypatch):
@@ -416,17 +416,16 @@ class TestWandbLogger:
         logger = get_mock_wandb_logger(
             mock_api_cls=HangingFinishMockWandbAPI,
             upload_timeout=1.0,
-            cleanup_actors=True,
         )
         logger.setup()
         logger.on_trial_start(0, [], trial)
         logger.on_trial_complete(0, [], trial)
         # Signalling stop will not cleanup fully due to the hanging finish
-        assert logger.trial_logging_actors
+        assert logger._trial_logging_actors
         marker.unlink()
         # wandb.finish has ended -> experiment end hook should cleanup actors fully
         logger.on_experiment_end(trials=[trial])
-        assert not logger.trial_logging_actors
+        assert not logger._trial_logging_actors
 
     def test_wandb_kill_hanging_actor(self, trial):
         """Test that logging actors are killed if exceeding the upload timeout
@@ -439,20 +438,15 @@ class TestWandbLogger:
         logger = get_mock_wandb_logger(
             mock_api_cls=HangingFinishMockWandbAPI,
             upload_timeout=0.1,
-            cleanup_actors=True,
         )
         logger.setup()
         logger.on_trial_start(0, [], trial)
         logger.on_trial_complete(0, [], trial)
         # Signalling stop will not cleanup fully due to the hanging finish
-        actors = logger.trial_logging_actors
-        assert actors
+        assert logger._trial_logging_actors
         # Experiment end hook should kill actors since upload_timeout < 5
         logger.on_experiment_end(trials=[trial])
-        assert not logger.trial_logging_actors
-        with pytest.raises(RayActorError):
-            # This will call `ray.get` on the underlying actor attribute
-            print(actors[trial]._wandb)
+        assert not logger._trial_logging_actors
 
     def test_wandb_destructor(self, trial):
         """Test that the WandbLoggerCallback destructor forcefully cleans up
@@ -465,17 +459,15 @@ class TestWandbLogger:
         logger = get_mock_wandb_logger(
             mock_api_cls=SlowFinishMockWandbAPI,
             upload_timeout=1.0,
-            cleanup_actors=True,
         )
 
         logger.setup()
         # Triggers logging actor run loop
         logger.on_trial_start(0, [], trial)
-        actors = logger.trial_logging_actors
+        actors = logger._trial_logging_actors
         del logger
         with pytest.raises(RayActorError):
-            # This will call `ray.get` on the underlying actor attribute
-            print(actors[trial]._wandb)
+            ray.get(actors[trial].get_state.remote())
 
 
 class TestWandbClassMixin:
