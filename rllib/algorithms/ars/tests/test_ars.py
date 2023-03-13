@@ -8,7 +8,7 @@ from ray.rllib.utils.test_utils import framework_iterator, check_compute_single_
 class TestARS(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=3)
+        ray.init(num_cpus=3, local_mode=True)
 
     @classmethod
     def tearDownClass(cls):

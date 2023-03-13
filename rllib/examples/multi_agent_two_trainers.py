@@ -9,6 +9,7 @@ For a simpler example, see also: multiagent_cartpole.py
 """
 
 import argparse
+
 import gymnasium as gym
 import os
 
@@ -77,29 +78,7 @@ if __name__ == "__main__":
         else:
             raise ValueError("Unknown algorithm: ", algorithm)
 
-    # You can also have multiple policies per algorithm, but here we just
-    # show one each for PPO and DQN.
-    policies = {
-        "ppo_policy": (
-            select_policy("PPO", args.framework),
-            obs_space,
-            act_space,
-            {},
-        ),
-        "dqn_policy": (
-            select_policy("DQN", args.framework),
-            obs_space,
-            act_space,
-            {},
-        ),
-    }
-
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-        if agent_id % 2 == 0:
-            return "ppo_policy"
-        else:
-            return "dqn_policy"
-
+    # Construct two independent Algorithm configs
     ppo_config = (
         PPOConfig()
         .environment("multi_agent_cartpole")
@@ -112,15 +91,9 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
             num_sgd_iter=6,
         )
-        .multi_agent(
-            policies=policies,
-            policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=["ppo_policy"],
-        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
-    ppo = ppo_config.build()
 
     dqn_config = (
         DQNConfig()
@@ -134,13 +107,46 @@ if __name__ == "__main__":
             n_step=3,
             gamma=0.95,
         )
-        .multi_agent(
-            policies=policies,
-            policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=["dqn_policy"],
-        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
+    # Specify two policies, each with their own config created above
+    # You can also have multiple policies per algorithm, but here we just
+    # show one each for PPO and DQN.
+    policies = {
+        "ppo_policy": (
+            select_policy("PPO", args.framework),
+            obs_space,
+            act_space,
+            ppo_config,
+        ),
+        "dqn_policy": (
+            select_policy("DQN", args.framework),
+            obs_space,
+            act_space,
+            dqn_config,
+        ),
+    }
+
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+        if agent_id % 2 == 0:
+            return "ppo_policy"
+        else:
+            return "dqn_policy"
+
+    # Add multi-agent configuration options to both configs and build them.
+    ppo_config.multi_agent(
+        policies=policies,
+        policy_mapping_fn=policy_mapping_fn,
+        policies_to_train=["ppo_policy"],
+    )
+    ppo = ppo_config.build()
+
+    dqn_config.multi_agent(
+        policies=policies,
+        policy_mapping_fn=policy_mapping_fn,
+        policies_to_train=["dqn_policy"],
     )
     dqn = dqn_config.build()
 

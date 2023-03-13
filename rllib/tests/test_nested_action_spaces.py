@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.bc import BC
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PG, PGConfig
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
@@ -59,7 +59,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         ray.shutdown()
 
     def test_nested_action_spaces(self):
-        config = DEFAULT_CONFIG.copy()
+        config = PGConfig()
         config["env"] = RandomEnv
         # Write output to check, whether actions are written correctly.
         tmp_dir = os.popen("mktemp -d").read()[:-1]

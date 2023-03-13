@@ -10,7 +10,6 @@ from ray.rllib.execution.rollout_ops import (
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
@@ -241,20 +240,3 @@ class A2C(A3C):
         train_results = {DEFAULT_POLICY_ID: info}
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.a2c.A2CConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(A2CConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.a2c.a2c.A2CConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-A2C_DEFAULT_CONFIG = _deprecated_default_config()

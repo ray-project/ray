@@ -5,7 +5,7 @@ import ray
 from ray import air
 from ray import tune
 from ray.tune import Callback
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PG, PGConfig
 from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -32,7 +32,7 @@ class TestPlacementGroups(unittest.TestCase):
         ray.shutdown()
 
     def test_overriding_default_resource_request(self):
-        config = DEFAULT_CONFIG.copy()
+        config = PGConfig()
         config["model"]["fcnet_hiddens"] = [10]
         config["num_workers"] = 2
         # 3 Trials: Can only run 2 at a time (num_cpus=6; needed: 3).
@@ -66,7 +66,7 @@ class TestPlacementGroups(unittest.TestCase):
         ).fit()
 
     def test_default_resource_request(self):
-        config = DEFAULT_CONFIG.copy()
+        config = PGConfig()
         config["model"]["fcnet_hiddens"] = [10]
         config["num_workers"] = 2
         config["num_cpus_per_worker"] = 2
@@ -88,7 +88,7 @@ class TestPlacementGroups(unittest.TestCase):
         ).fit()
 
     def test_default_resource_request_plus_manual_leads_to_error(self):
-        config = DEFAULT_CONFIG.copy()
+        config = PGConfig()
         config["model"]["fcnet_hiddens"] = [10]
         config["num_workers"] = 0
         config["env"] = "CartPole-v1"

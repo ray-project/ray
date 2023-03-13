@@ -11,7 +11,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -266,20 +266,3 @@ class MARWIL(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MARWILConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
