@@ -3,7 +3,10 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
 import ray
-from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
+from ray.train.huggingface.transformers import (
+    TransformersCheckpoint,
+    TransformersPredictor,
+)
 
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
@@ -21,7 +24,7 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
     preprocessor = DummyPreprocessor()
 
-    checkpoint = HuggingFaceCheckpoint.from_model(
+    checkpoint = TransformersCheckpoint.from_model(
         model, tokenizer, path=tmpdir, preprocessor=preprocessor
     )
     checkpoint_model = checkpoint.get_model(AutoModelForCausalLM)
@@ -31,7 +34,7 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     @ray.remote
     def test(model, tokenizer, preprocessor):
         os.chdir(tmpdir)
-        predictor = HuggingFacePredictor(
+        predictor = TransformersPredictor(
             pipeline=pipeline(
                 task="text-generation",
                 model=model,

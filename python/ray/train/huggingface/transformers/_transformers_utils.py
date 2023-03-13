@@ -8,7 +8,9 @@ from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
 from ray.data import DatasetIterator
-from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
+from ray.train.huggingface.transformers.transformers_checkpoint import (
+    TransformersCheckpoint,
+)
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
@@ -147,8 +149,8 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            # Use HuggingFaceCheckpoint here to avoid a warning in _TrainSession
-            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_directory(
+            # Use TransformersCheckpoint here to avoid a warning in _TrainSession
+            self.delayed_report["checkpoint"] = TransformersCheckpoint.from_directory(
                 str(checkpoint_path)
             )
 

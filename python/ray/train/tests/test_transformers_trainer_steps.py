@@ -12,7 +12,10 @@ from transformers import (
 
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.train.huggingface.transformers import (
+    TransformersPredictor,
+    TransformersTrainer,
+)
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 
@@ -72,7 +75,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
     epochs = 4
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={
             "epochs": epochs,
@@ -97,7 +100,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     assert result.checkpoint
     assert "eval_loss" in result.metrics
 
-    trainer2 = HuggingFaceTrainer(
+    trainer2 = TransformersTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={
             "epochs": epochs + 1,
@@ -120,7 +123,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
 
     predictor = BatchPredictor.from_checkpoint(
         result2.checkpoint,
-        HuggingFacePredictor,
+        TransformersPredictor,
         task="text-generation",
         tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
     )

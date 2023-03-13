@@ -15,7 +15,10 @@ from transformers.pipelines import pipeline
 
 
 import ray
-from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
+from ray.train.huggingface.transformers import (
+    TransformersCheckpoint,
+    TransformersPredictor,
+)
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
@@ -29,12 +32,12 @@ tokenizer_checkpoint = "hf-internal-testing/tiny-random-gpt2"
 
 
 def test_repr(tmpdir):
-    predictor = HuggingFacePredictor()
+    predictor = TransformersPredictor()
 
     representation = repr(predictor)
 
     assert len(representation) < MAX_REPR_LENGTH
-    pattern = re.compile("^HuggingFacePredictor\\((.*)\\)$")
+    pattern = re.compile("^TransformersPredictor\\((.*)\\)$")
     assert pattern.match(representation)
 
 
@@ -51,7 +54,7 @@ def test_predict(tmpdir, ray_start_runtime_env, batch_type):
             preprocessor = None
         model_config = AutoConfig.from_pretrained(model_checkpoint)
         model = AutoModelForCausalLM.from_config(model_config)
-        predictor = HuggingFacePredictor(
+        predictor = TransformersPredictor(
             pipeline=pipeline(
                 task="text-generation",
                 model=model,
@@ -77,8 +80,10 @@ def test_predict_no_preprocessor_no_training(ray_start_runtime_env):
             model_config = AutoConfig.from_pretrained(model_checkpoint)
             model = AutoModelForCausalLM.from_config(model_config)
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-            checkpoint = HuggingFaceCheckpoint.from_model(model, tokenizer, path=tmpdir)
-            predictor = HuggingFacePredictor.from_checkpoint(
+            checkpoint = TransformersCheckpoint.from_model(
+                model, tokenizer, path=tmpdir
+            )
+            predictor = TransformersPredictor.from_checkpoint(
                 checkpoint,
                 task="text-generation",
             )
@@ -95,9 +100,9 @@ def create_checkpoint():
         model_config = AutoConfig.from_pretrained(model_checkpoint)
         model = AutoModelForCausalLM.from_config(model_config)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-        checkpoint = HuggingFaceCheckpoint.from_model(model, tokenizer, path=tmpdir)
+        checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
         # Serialize to dict so we can remove the temporary directory
-        return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
+        return TransformersCheckpoint.from_dict(checkpoint.to_dict())
 
 
 # TODO(ml-team): Add np.ndarray to batch_type
@@ -105,7 +110,7 @@ def create_checkpoint():
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint = create_checkpoint()
     predictor = BatchPredictor.from_checkpoint(
-        checkpoint, HuggingFacePredictor, task="text-generation"
+        checkpoint, TransformersPredictor, task="text-generation"
     )
 
     # Todo: Ray data does not support numpy string arrays well

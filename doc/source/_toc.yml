@@ -203,7 +203,7 @@ parts:
                   - file: tune/examples/horovod_simple
                     title: "Horovod Example"
                   - file: tune/examples/pbt_transformers
-                    title: "Huggingface Example"
+                    title: "Hugging Face Transformers Example"
               - file: tune/examples/experiment-tracking
                 sections:
                   - file: tune/examples/tune-wandb

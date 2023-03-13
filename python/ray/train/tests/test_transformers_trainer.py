@@ -11,10 +11,10 @@ from transformers import (
 import ray.data
 from ray.exceptions import RayTaskError
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import (
-    HuggingFacePredictor,
-    HuggingFaceTrainer,
-    HuggingFaceCheckpoint,
+from ray.train.huggingface.transformers import (
+    TransformersPredictor,
+    TransformersTrainer,
+    TransformersCheckpoint,
 )
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
@@ -90,7 +90,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={"epochs": 4, "save_strategy": save_strategy},
         scaling_config=scaling_config,
@@ -101,10 +101,10 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
-    assert isinstance(result.checkpoint, HuggingFaceCheckpoint)
+    assert isinstance(result.checkpoint, TransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
-    trainer2 = HuggingFaceTrainer(
+    trainer2 = TransformersTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={
             "epochs": 5,
@@ -119,12 +119,12 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
-    assert isinstance(result2.checkpoint, HuggingFaceCheckpoint)
+    assert isinstance(result2.checkpoint, TransformersCheckpoint)
     assert "eval_loss" in result2.metrics
 
     predictor = BatchPredictor.from_checkpoint(
         result2.checkpoint,
-        HuggingFacePredictor,
+        TransformersPredictor,
         task="text-generation",
         tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
     )
@@ -144,7 +144,7 @@ def test_validation(ray_start_4_cpus):
     )
 
     # load_best_model_at_end set to True should raise an exception
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_config={
             "epochs": 1,
             "load_best_model_at_end": True,
@@ -156,7 +156,7 @@ def test_validation(ray_start_4_cpus):
         trainer.fit().error
 
     # logging strategy set to no should raise an exception
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_config={
             "epochs": 1,
             "logging_strategy": "no",
@@ -167,7 +167,7 @@ def test_validation(ray_start_4_cpus):
         trainer.fit().error
 
     # logging steps != eval steps should raise an exception
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_config={
             "epochs": 1,
             "logging_strategy": "steps",
@@ -187,7 +187,7 @@ def test_validation(ray_start_4_cpus):
         ("epoch", "steps", "epoch"),
         ("steps", "epoch", "steps"),
     ):
-        trainer = HuggingFaceTrainer(
+        trainer = TransformersTrainer(
             trainer_init_config={
                 "epochs": 1,
                 "load_best_model_at_end": True,
@@ -211,7 +211,7 @@ def test_tune(ray_start_8_cpus):
     scaling_config = ScalingConfig(
         num_workers=2, use_gpu=False, trainer_resources={"CPU": 0}
     )
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_per_worker=train_function,
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
@@ -259,7 +259,7 @@ def test_datasets_modules_import(ray_start_4_cpus):
         print(metric)
         return train_function(train_dataset, eval_dataset=eval_dataset, **config)
 
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_per_worker=train_function_with_metric,
         trainer_init_config={"epochs": 1},
         scaling_config=scaling_config,

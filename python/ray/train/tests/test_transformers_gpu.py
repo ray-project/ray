@@ -9,7 +9,10 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 
 import ray
-from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
+from ray.train.huggingface.transformers import (
+    TransformersCheckpoint,
+    TransformersPredictor,
+)
 
 test_strings = ["Complete me", "And me", "Please complete"]
 prompts = pd.DataFrame(test_strings, columns=["sentences"])
@@ -25,12 +28,12 @@ def create_checkpoint():
         model_config = AutoConfig.from_pretrained(model_checkpoint)
         model = AutoModelForCausalLM.from_config(model_config)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-        checkpoint = HuggingFaceCheckpoint.from_model(model, tokenizer, path=tmpdir)
+        checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
         # Serialize to dict so we can remove the temporary directory
-        return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
+        return TransformersCheckpoint.from_dict(checkpoint.to_dict())
 
 
-class AssertingHuggingFacePredictor(HuggingFacePredictor):
+class AssertingTransformersPredictor(TransformersPredictor):
     def __init__(self, pipeline=None, preprocessor=None, use_gpu: bool = False):
         super().__init__(pipeline, preprocessor, use_gpu)
         assert use_gpu
@@ -48,7 +51,7 @@ def test_predict_batch(ray_start_4_cpus, caplog, batch_type, device):
         kwargs["device"] = device
 
     predictor = BatchPredictor.from_checkpoint(
-        checkpoint, AssertingHuggingFacePredictor, task="text-generation", **kwargs
+        checkpoint, AssertingTransformersPredictor, task="text-generation", **kwargs
     )
 
     # Todo: Ray data does not support numpy string arrays well

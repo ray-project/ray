@@ -61,7 +61,7 @@ There are three categories of built-in Trainers:
 
     Some trainers don't fit into the other two categories, such as:
 
-    - :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>` for NLP
+    - :class:`TransformersTrainer <ray.train.huggingface.transformers.TransformersTrainer>` for NLP
     - :class:`RLTrainer <ray.train.rl.RLTrainer>` for reinforcement learning
     - :class:`SklearnTrainer <ray.train.sklearn.sklearn_trainer.SklearnTrainer>` for (non-distributed) training of sklearn models.
 
