@@ -194,6 +194,9 @@ exclude_patterns = [
     "_build",
     "source/workflows/api/doc/ray.workflow.*",
     "source/serve/api/doc/ray.serve.*",
+    # exclude ray.remote type checking overloads from docs.
+    # refer to https://github.com/ray-project/ray/pull/33243
+    # for more context.
     "../python/ray/_private/worker.pyi",
 ]
 

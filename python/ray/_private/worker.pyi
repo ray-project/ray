@@ -14,6 +14,11 @@ else:
     from typing_extensions import Literal, Protocol
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+# keep ray.remote type checking overloads in a separate file
+# so we can exclude them from docs.
+# refer to https://github.com/ray-project/ray/pull/33243
+# for more context.
+
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")
 T2 = TypeVar("T2")
