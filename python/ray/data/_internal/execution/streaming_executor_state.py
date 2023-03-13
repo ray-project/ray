@@ -369,13 +369,9 @@ def _try_to_scale_up_cluster(topology: Topology):
     resource_request = {}
     # Round usage to ints, since autoscaler only accepts integral resource requests.
     if usage.cpu:
-        resource_request["CPU"] = round(usage.cpu)
+        resource_request["CPU"] = math.ceil(usage.cpu)
     if usage.gpu:
-        resource_request["GPU"] = round(usage.gpu)
-    if usage.object_store_memory:
-        resource_request["object_store_memory"] = round(
-            usage.object_store_memory / OBJECT_STORE_MEMORY_LIMIT_FRACTION
-        )
+        resource_request["GPU"] = math.ceil(usage.gpu)
     # Make autoscaler resource request.
     ray.autoscaler.sdk.request_resources(bundles=[resource_request])
 
