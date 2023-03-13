@@ -26,6 +26,7 @@ import functools
 from itertools import chain
 import logging
 import os
+from statistics import mean
 import time
 from typing import Optional
 
@@ -304,6 +305,26 @@ def build_dataset(data_args, tokenizer):
     return train_dataset
 
 
+def save_json_metrics(metrics):
+    # Skip the first couple of data points for a more accurate throughput.
+    to_report = {
+        "throughput_tokens": (
+            mean(metrics["tokens"][2:]) if len(metrics["tokens"]) > 2 else 0.0
+        ),
+        "throughput_tflops": (
+            mean(metrics["tflops"][2:]) if len(metrics["tflops"]) > 2 else 0.0
+        ),
+    }
+
+    print("Metrics:", to_report)
+
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/alpa_opt_2_7b_sanity_check.json"
+    )
+    with open(test_output_json, "wt") as f:
+        json.dump(to_report, f)
+
+
 def main():
     # Global initialization.
     alpa.init(cluster="ray")
@@ -338,7 +359,7 @@ def main():
     config = AutoConfig.from_pretrained(model_args.model_name_or_path)
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
-        use_fast=False,
+        use_fast=True,
     )
 
     assert model_args.model_name_or_path, "model_name_or_path is required"
@@ -414,6 +435,12 @@ def main():
 
     epochs.write("Initial compilation. This might take some minutes...")
 
+    # Track and report throughput per iteration. These are the metrics we
+    # care about over time.
+    metrics_to_report = {
+        "tokens": [],
+        "tflops": [],
+    }
     for epoch in epochs:
         train_start = time.time()
 
@@ -450,8 +477,11 @@ def main():
 
                 # Save metrics
                 train_time += time.time() - train_start
-
                 train_metric = jax.tree_map(np.mean, train_metric)
+
+                # Metrics we report from the release test.
+                metrics_to_report["tokens"].append(throughput_tokens)
+                metrics_to_report["tflops"].append(throughput_tflops)
 
                 epochs.write(
                     f"Step... {cur_step} | "
@@ -471,6 +501,9 @@ def main():
     # Save the final model
     epochs.write("\nSave the final model...")
     save_checkpoint(state, model, tokenizer, training_args)
+
+    # Save JSON metrics
+    save_json_metrics(metrics_to_report)
 
 
 if __name__ == "__main__":
