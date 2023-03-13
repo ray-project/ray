@@ -1,5 +1,6 @@
 from typing import Mapping, Any
 
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 
@@ -28,8 +29,10 @@ class PPOBaseLearner(Learner):
 
     @override(Learner)
     def additional_update_per_module(
-        self, module_id: str, sampled_kl_values: dict, timestep: int
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:
+
+        assert sampled_kl_values, "Sampled KL values are empty."
 
         sampled_kl = sampled_kl_values[module_id]
         if sampled_kl > 2.0 * self.kl_target:

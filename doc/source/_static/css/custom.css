@@ -5,6 +5,11 @@
     padding: 0;
 }
 
+/* Make the book theme secondary nav stick below the new main top nav */
+.header-article {
+    top: 58px;
+}
+
 .toctree-l1.has-children {
     font-weight: bold;
 }
@@ -322,7 +327,7 @@ pre {
 }
 
 .top-nav-content > button.try-anyscale > span {
-    margin-right: 12px;
+    margin: 0 12px;
 }
 
 .top-nav-content .menu:hover > ul {

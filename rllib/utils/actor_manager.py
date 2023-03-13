@@ -177,8 +177,8 @@ class FaultAwareApply:
         except Exception as e:
             if self.config.recreate_failed_workers:
                 logger.exception("Worker exception, recreating: {}".format(e))
-                # Allow logs messages to propagate.
-                time.sleep(0.5)
+                # Small delay to allow logs messages to propagate.
+                time.sleep(self.config.delay_between_worker_restarts_s)
                 # Kill this worker so Ray Core can restart it.
                 sys.exit(1)
             else:
@@ -458,6 +458,12 @@ class FaultTolerantActorManager:
         # user, since it is not safe to handle such remote actor calls outside the
         # context of this actor manager. These requests are simply dropped.
         timeout = float(timeout_seconds) if timeout_seconds is not None else None
+
+        # This avoids calling ray.init() in the case of 0 remote calls.
+        # This is useful if the number of remote workers is 0.
+        if not remote_calls:
+            return [], RemoteCallResults()
+
         ready, _ = ray.wait(
             remote_calls,
             num_returns=len(remote_calls),

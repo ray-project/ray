@@ -6,6 +6,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 import math
 import time
 from collections import deque
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Deque, Union
 
 import ray
@@ -27,6 +28,53 @@ Topology = Dict[PhysicalOperator, "OpState"]
 MaybeRefBundle = Union[RefBundle, Exception, None]
 
 
+@dataclass
+class TopologyResourceUsage:
+    """Snapshot of resource usage in a `Topology` object.
+
+    The stats here can be computed on the fly from any `Topology`; this class
+    serves only a convenience wrapper to access the current usage snapshot.
+    """
+
+    # The current usage of the topology (summed across all operators and queues).
+    overall: ExecutionResources
+
+    # The downstream resource usage by operator.
+    downstream_memory_usage: Dict[PhysicalOperator, "DownstreamMemoryInfo"]
+
+    @staticmethod
+    def of(topology: Topology) -> "TopologyResourceUsage":
+        """Calculate the resource usage of the given topology."""
+        downstream_usage = {}
+        cur_usage = ExecutionResources(0, 0, 0)
+        # Iterate from last to first operator.
+        for op, state in list(topology.items())[::-1]:
+            cur_usage = cur_usage.add(op.current_resource_usage())
+            # Don't count input refs towards dynamic memory usage, as they have been
+            # pre-created already outside this execution.
+            if not isinstance(op, InputDataBuffer):
+                cur_usage.object_store_memory += state.outqueue_memory_usage()
+            # Subtract one from denom to account for input buffer.
+            f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
+            downstream_usage[op] = DownstreamMemoryInfo(
+                topology_fraction=min(1.0, f),
+                object_store_memory=cur_usage.object_store_memory,
+            )
+        return TopologyResourceUsage(cur_usage, downstream_usage)
+
+
+@dataclass
+class DownstreamMemoryInfo:
+    """Mem stats of an operator and its downstream operators in a topology."""
+
+    # The fraction of the topology this covers, e.g., the last operator of a 4-op
+    # graph would have fraction `0.25`.
+    topology_fraction: float
+
+    # The resources used by this operator and operators downstream of this operator.
+    object_store_memory: float
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -43,6 +91,10 @@ class OpState:
         self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
+        #
+        # Note: this queue is also accessed concurrently from the consumer thread.
+        # (in addition to the streaming executor thread). Hence, it must be a
+        # thread-safe type such as `deque`.
         self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
@@ -92,7 +144,7 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self) -> MaybeRefBundle:
+    def get_output_blocking(self, output_split_idx: Optional[int]) -> MaybeRefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         Returns:
@@ -100,9 +152,44 @@ class OpState:
         """
         while True:
             try:
-                return self.outqueue.popleft()
+                # Non-split output case.
+                if output_split_idx is None:
+                    return self.outqueue.popleft()
+
+                # Scan the queue and look for outputs tagged for the given index.
+                for i in range(len(self.outqueue)):
+                    bundle = self.outqueue[i]
+                    if bundle is None or isinstance(bundle, Exception):
+                        # End of stream for this index! Note that we
+                        # do not remove the None, so that it can act
+                        # as the termination signal for all indices.
+                        return bundle
+                    elif bundle.output_split_idx == output_split_idx:
+                        self.outqueue.remove(bundle)
+                        return bundle
+
+                # Didn't find any outputs matching this index, repeat the loop until
+                # we find one or hit a None.
             except IndexError:
-                time.sleep(0.01)
+                pass
+            time.sleep(0.01)
+
+    def outqueue_memory_usage(self) -> int:
+        """Return the object store memory of this operator's outqueue.
+
+        Note: Python's deque isn't truly thread-safe since it raises RuntimeError
+        if it detects concurrent iteration. Hence we don't use its iterator but
+        manually index into it.
+        """
+
+        object_store_memory = 0
+        for i in range(len(self.outqueue)):
+            try:
+                bundle = self.outqueue[i]
+                object_store_memory += bundle.size_bytes()
+            except IndexError:
+                break  # Concurrent pop from the outqueue by the consumer thread.
+        return object_store_memory
 
 
 def build_streaming_topology(
@@ -197,7 +284,7 @@ def process_completed_tasks(topology: Topology) -> None:
 
 def select_operator_to_run(
     topology: Topology,
-    cur_usage: ExecutionResources,
+    cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
     ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
@@ -214,6 +301,7 @@ def select_operator_to_run(
     provides backpressure if the consumer is slow. However, once a bundle is returned
     to the user, it is no longer tracked.
     """
+    assert isinstance(cur_usage, TopologyResourceUsage), cur_usage
 
     # Filter to ops that are eligible for execution.
     ops = [
@@ -236,18 +324,31 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and num bundles processing for backpressure.
+    # Run metadata-only operators first. After that, equally penalize outqueue length
+    # and num bundles processing for backpressure.
     return min(
-        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
+        ops,
+        key=lambda op: (
+            not op.throttling_disabled(),
+            len(topology[op].outqueue) + topology[op].num_processing(),
+        ),
     )
 
 
 def _execution_allowed(
     op: PhysicalOperator,
-    global_usage: ExecutionResources,
+    global_usage: TopologyResourceUsage,
     global_limits: ExecutionResources,
 ) -> bool:
     """Return whether an operator is allowed to execute given resource usage.
+
+    Operators are throttled globally based on CPU and GPU limits for the stream.
+
+    For an N operator DAG, we only throttle the kth operator (in the source-to-sink
+    ordering) on object store utilization if the cumulative object store utilization
+    for the kth operator and every operator downstream from it is greater than
+    k/N * global_limit; i.e., the N - k operator sub-DAG is using more object store
+    memory than it's share.
 
     Args:
         op: The operator to check.
@@ -257,13 +358,18 @@ def _execution_allowed(
     Returns:
         Whether the op is allowed to run.
     """
+
+    if op.throttling_disabled():
+        return True
+
+    assert isinstance(global_usage, TopologyResourceUsage), global_usage
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
     # allows operators with non-integral requests to slightly overshoot the limit.
     global_floored = ExecutionResources(
-        cpu=math.floor(global_usage.cpu or 0),
-        gpu=math.floor(global_usage.gpu or 0),
-        object_store_memory=global_usage.object_store_memory,
+        cpu=math.floor(global_usage.overall.cpu or 0),
+        gpu=math.floor(global_usage.overall.gpu or 0),
+        object_store_memory=global_usage.overall.object_store_memory,
     )
     inc = op.incremental_resource_usage()
     inc_indicator = ExecutionResources(
@@ -271,4 +377,24 @@ def _execution_allowed(
         gpu=1 if inc.gpu else 0,
         object_store_memory=1 if inc.object_store_memory else 0,
     )
-    return global_floored.add(inc_indicator).satisfies_limit(global_limits)
+
+    # Under global limits; always allow.
+    new_usage = global_floored.add(inc_indicator)
+    if new_usage.satisfies_limit(global_limits):
+        return True
+
+    # We're over global limits, but execution may still be allowed if memory is the
+    # only bottleneck and this wouldn't impact downstream memory limits. This avoids
+    # stalling the execution for memory bottlenecks that occur upstream.
+    # See for more context: https://github.com/ray-project/ray/pull/32673
+    global_limits_sans_memory = ExecutionResources(
+        cpu=global_limits.cpu, gpu=global_limits.gpu
+    )
+    global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
+    downstream_usage = global_usage.downstream_memory_usage[op]
+    downstream_limit = global_limits.scale(downstream_usage.topology_fraction)
+    downstream_memory_ok = ExecutionResources(
+        object_store_memory=downstream_usage.object_store_memory
+    ).satisfies_limit(downstream_limit)
+
+    return global_ok_sans_memory and downstream_memory_ok

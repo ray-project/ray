@@ -367,10 +367,13 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union[str, bytes],
+        docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
+        if docs_path is not None:
+            assert docs_path.startswith("/")
 
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -568,6 +571,13 @@ class ServeController:
             pickle.dumps((deployment_time, new_config_checkpoint)),
         )
 
+        # Delete live applications not listed in config
+        existing_applications = set(
+            self.application_state_manager._application_states.keys()
+        )
+        new_applications = {app_config.name for app_config in config.applications}
+        self.delete_apps(existing_applications.difference(new_applications))
+
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
@@ -700,12 +710,23 @@ class ServeController:
                 .dict(exclude_unset=True)
             )
 
+    def get_all_deployment_statuses(self) -> List[bytes]:
+        """Gets deployment status bytes for all live deployments."""
+        statuses = self.deployment_state_manager.get_deployment_statuses()
+        return [status.to_proto().SerializeToString() for status in statuses]
+
     def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""
         status = self.deployment_state_manager.get_deployment_statuses([name])
         if not status:
             return None
         return status[0].to_proto().SerializeToString()
+
+    def get_docs_path(self, name: str):
+        """Docs path for application.
+
+        Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
+        return self.application_state_manager.get_docs_path(name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names

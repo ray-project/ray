@@ -392,11 +392,18 @@ class Policy(metaclass=ABCMeta):
                 "bug, please file a github issue."
             )
 
-        module_spec = self.config["__marl_module_spec"]
-        if isinstance(module_spec, SingleAgentRLModuleSpec):
-            module = module_spec.build()
+        spec = self.config["__marl_module_spec"]
+        if isinstance(spec, SingleAgentRLModuleSpec):
+            module = spec.build()
         else:
-            module = module_spec.build(module_id=self.__policy_id)
+            # filter the module_spec to only contain the policy_id of this policy
+            marl_spec = type(spec)(
+                marl_module_class=spec.marl_module_class,
+                module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
+            )
+            marl_module = marl_spec.build()
+            module = marl_module[self.__policy_id]
+
         return module
 
     @DeveloperAPI
@@ -1341,7 +1348,10 @@ class Policy(metaclass=ABCMeta):
         # Save for later so that loss init does not change global timestep
         global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
-        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
+        sample_batch_size = min(
+            max(self.batch_divisibility_req * 4, 32),
+            self.config["train_batch_size"],  # Don't go over the asked batch size.
+        )
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )

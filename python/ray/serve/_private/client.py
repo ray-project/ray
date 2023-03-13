@@ -135,7 +135,7 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            deployment_statuses = self.get_serve_status().deployment_statuses
+            deployment_statuses = self.get_all_deployment_statuses()
             if len(deployment_statuses) == 0:
                 break
             else:
@@ -273,6 +273,7 @@ class ServeControllerClient:
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
+                    docs_path=deployment["docs_path"],
                 )
             )
 
@@ -407,6 +408,16 @@ class ServeControllerClient:
         return StatusOverview.from_proto(proto)
 
     @_ensure_connected
+    def get_all_deployment_statuses(self) -> List[DeploymentStatusInfo]:
+        statuses_bytes = ray.get(self._controller.get_all_deployment_statuses.remote())
+        return [
+            DeploymentStatusInfo.from_proto(
+                DeploymentStatusInfoProto.FromString(status_bytes)
+            )
+            for status_bytes in statuses_bytes
+        ]
+
+    @_ensure_connected
     def get_handle(
         self,
         deployment_name: str,
@@ -483,6 +494,7 @@ class ServeControllerClient:
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         is_driver_deployment: Optional[str] = None,
+        docs_path: Optional[str] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -538,6 +550,7 @@ class ServeControllerClient:
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "is_driver_deployment": is_driver_deployment,
+            "docs_path": docs_path,
         }
 
         return controller_deploy_args
