@@ -2917,6 +2917,15 @@ py_test(
     args = ["--stop-iters=3 --num-cpus=3"]
 )
 
+
+py_test(
+    name = "examples/coin_game_env",
+    tags = ["team:rllib", "examples"],
+    size = "small",
+    srcs = ["examples/coin_game_env.py"],
+    args = ["--stop-iters=2"]
+)
+
 py_test(
     name = "examples/complex_struct_space_tf",
     main = "examples/complex_struct_space.py",
