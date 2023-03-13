@@ -132,11 +132,6 @@ class JobRunner(CommandRunner):
             raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
-        """Fetch json data from the path on Anyscale cluster head node.
-
-        Args:
-            path: path of the json on Anyscale cluster head node.
-        """
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)

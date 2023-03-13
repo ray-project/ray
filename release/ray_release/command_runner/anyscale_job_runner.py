@@ -305,7 +305,12 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def fetch_artifact(self):
-        """Fetch artifact (file) from a given path on Anyscale cluster head node.
+        """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster head node.
+
+        Note, an implementation detail here is that by the time this function is called,
+        the artifact file is already present in s3 bucket by the name of
+        `self._USER_GENERATED_ARTIFACT`. This is because, the uploading to s3 portion is
+        done by `_anyscale_job_wrapper`.
 
         The fetched artifact will be placed under `self._DEFAULT_ARTIFACTS_DIR`,
         which will ultimately show up in buildkite Artifacts UI tab.
