@@ -32,6 +32,7 @@ class LightningConfigBuilder:
 
     Example:
         .. code-block:: python
+
             lightning_config = (
                 LightningConfigBuilder()
                 .module(
@@ -161,7 +162,7 @@ class LightningTrainer(TorchTrainer):
             import torch
             import torch.nn.functional as F
             from torchmetrics import Accuracy
-            from torch.utils.data import DataLoader
+            from torch.utils.data import DataLoader, Subset
             from torchvision.datasets import MNIST
             from torchvision import transforms
             import pytorch_lightning as pl
@@ -217,20 +218,25 @@ class LightningTrainer(TorchTrainer):
             mnist_val = MNIST(
                 './data', train=False, download=True, transform=transform
             )
+
+            # Take small subsets for smoke test
+            # Please remove these two lines if you want to train the full dataset
+            mnist_train = Subset(mnist_train, range(1000))
+            mnist_train = Subset(mnist_train, range(500))
+
             train_loader = DataLoader(mnist_train, batch_size=32, shuffle=True)
             val_loader = DataLoader(mnist_val, batch_size=32, shuffle=False)
 
-            config_builder = LightningConfigBuilder()
-            config_builder.set_module_class(MNISTClassifier)
-            config_builder.set_module_init_config(lr=1e-3, feature_dim=128)
-            config_builder.set_trainer_init_config(max_epochs=5, accelerator="gpu")
-            config_builder.set_trainer_fit_params(
-                train_dataloaders=train_loader, val_dataloaders=val_loader
+            lightning_config = (
+                LightningConfigBuilder()
+                .module(cls=MNISTClassifier, lr=1e-3, feature_dim=128)
+                .trainer(max_epochs=3, accelerator="cpu")
+                .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
+                .build()
             )
-            lightning_config = config_builder.build()
 
             scaling_config = ScalingConfig(
-                num_workers=2, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+                num_workers=4, use_gpu=False, resources_per_worker={"CPU": 1}
             )
             trainer = LightningTrainer(
                 lightning_config=lightning_config,
