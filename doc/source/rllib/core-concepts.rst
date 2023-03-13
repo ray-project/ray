@@ -302,13 +302,13 @@ In the first step, we collect trajectory data from the environment(s):
 Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
 This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page <workerset-reference-docs>`.
-The utilify function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
-fashion across multiple rollout workers (returns once all rollout workers are sone sampling).
-It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches
+The utility function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
+fashion across multiple rollout workers (returns once all rollout workers are done sampling).
+It returns one final MultiAgentBatch resulting from concatenating n smaller MultiAgentBatches
 (exactly one from each remote rollout worker).
 
 RLlib includes other utilities, such as the ``AsyncRequestsManager``,
-for facilitating the dataflow between various components in parallel, asyncronous fashion.
+for facilitating the dataflow between various components in a parallel, asyncronous fashion.
 These utilities are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
 
 The ``train_batch`` is then passed to another utility function: ``train_one_step``.
@@ -324,8 +324,8 @@ The training updates on the policy are only applied to its version inside ``self
 Note that each WorkerSet has n remote workers and exactly one "local worker" and that each worker (remote and local ones)
 holds a copy of the policy.
 
-Now that we updated the local policy (the copy in self.workers.local_worker), we need to make sure
-that the copies in all remote workers (self.workers.remote_workers) have their weights synchronized
+Now that we updated the local policy (the copy in ``self.workers.local_worker``), we need to make sure
+that the copies in all remote workers (``self.workers.remote_workers``) have their weights synchronized
 (from the local one):
 
 .. code-block:: python
