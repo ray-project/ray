@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray import air
-from ray.rllib.algorithms.a2c.a2c import A2C, A2CConfig
+from ray.rllib.algorithms.a2c.a2c import A2CConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
@@ -59,7 +59,7 @@ class TestGPUs(unittest.TestCase):
                             self.assertRaisesRegex(
                                 RuntimeError,
                                 "Found 0 GPUs on your machine",
-                                lambda: A2C(config, env="CartPole-v1"),
+                                lambda: config.build(),
                             )
                         # If actual_gpus >= num_gpus or faked,
                         # expect no error.
