@@ -537,10 +537,10 @@ class Policy(metaclass=ABCMeta):
 
         return self.compute_actions_from_raw_input(
             next_obs_batch=input_dict[SampleBatch.NEXT_OBS],
-            reward_batch=input_dict[SampleBatch.REWARDS],
-            terminateds_batch=input_dict[SampleBatch.TERMINATEDS],
-            truncateds_batch=input_dict[SampleBatch.TRUNCATEDS],
-            info_batch=input_dict[SampleBatch.INFOS],
+            reward_batch=input_dict.get(SampleBatch.REWARDS),
+            terminateds_batch=input_dict.get(SampleBatch.TERMINATEDS),
+            truncateds_batch=input_dict.get(SampleBatch.TRUNCATEDS),
+            info_batch=input_dict.get(SampleBatch.INFOS),
             timestep_batch=input_dict.get(SampleBatch.T),
             explore=explore,
             agent_ids=agent_ids,
@@ -576,14 +576,14 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_raw_input(
         self,
         next_obs_batch: List[TensorStructType],
-        reward_batch: List[TensorStructType],
-        terminateds_batch: List[TensorStructType],
-        truncateds_batch: List[TensorStructType],
-        info_batch: List[Dict[str, list]],
+        reward_batch: List[TensorStructType] = None,
+        terminateds_batch: List[TensorStructType] = None,
+        truncateds_batch: List[TensorStructType] = None,
+        info_batch: List[Dict[str, list]] = None,
         t_batch: Optional[List[int]] = None,
         explore: bool = None,
-        agent_ids: Optional[int] = None,
-        env_ids: Optional[int] = None,
+        agent_ids: Optional[List[int]] = None,
+        env_ids: Optional[List[int]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from observations.
