@@ -691,7 +691,7 @@ class ServeController:
                 docs_path=self.get_docs_path(app_name),
                 app_status=app_status_info.status,
                 app_message=app_status_info.message,
-                last_deployed_s=app_status_info.deployment_timestamp,
+                last_deployed_time_s=app_status_info.deployment_timestamp,
                 deployed_app_config=self.get_app_config(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name

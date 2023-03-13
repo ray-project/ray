@@ -526,8 +526,8 @@ def test_get_serve_instance_details(ray_start_stop):
     print("Confirmed the deployed app configs from the fetched metadata is correct.")
 
     # CHECK: deployment timestamp
-    assert app_details["app1"].last_deployed_s > 0
-    assert app_details["app2"].last_deployed_s > 0
+    assert app_details["app1"].last_deployed_time_s > 0
+    assert app_details["app2"].last_deployed_time_s > 0
     print("Confirmed deployment timestamps are nonzero.")
 
     # CHECK: docs path
