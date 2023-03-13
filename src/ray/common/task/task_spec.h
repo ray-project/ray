@@ -409,6 +409,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
+  bool IsWithinSchedulingCluster() const;
+
+  void UpdateRequiredResourcesToUseParentResources();
+
  private:
   void ComputeResources();
 

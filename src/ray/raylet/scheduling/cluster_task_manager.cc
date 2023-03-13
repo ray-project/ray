@@ -92,7 +92,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       // there are not enough available resources blocks other
       // tasks from being scheduled.
       const std::shared_ptr<internal::Work> &work = *work_it;
-      RayTask task = work->task;
+      RayTask &task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
       auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
@@ -102,6 +102,23 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
           &is_infeasible);
+
+      if ((scheduling_node_id.IsNil() ||
+           !cluster_resource_scheduler_->IsSchedulableOnNode(
+               scheduling_node_id,
+               task.GetTaskSpecification().GetRequiredResources().GetResourceMap(),
+               false)) &&
+          (task.GetTaskSpecification().IsWithinSchedulingCluster())) {
+        // Try to use resources from the parent cluster
+        task.GetTaskSpecification().UpdateRequiredResourcesToUseParentResources();
+        scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+            task.GetTaskSpecification(),
+            /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                              : task.GetPreferredNodeID(),
+            /*exclude_local_node*/ false,
+            /*requires_object_store_memory*/ false,
+            &is_infeasible);
+      }
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.

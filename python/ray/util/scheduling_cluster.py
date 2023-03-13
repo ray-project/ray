@@ -6,6 +6,9 @@ class SchedulingCluster:
     def __init__(self, pg):
         self.pg = pg
 
+    def ready(self):
+        return self.pg.ready()
+
     def __enter__(self):
         self._previous_scheduling_cluster = (
             ray.get_runtime_context()._get_scheduling_cluster()

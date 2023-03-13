@@ -523,6 +523,22 @@ bool TaskSpecification::IsRetriable() const {
   return true;
 }
 
+bool TaskSpecification::IsWithinSchedulingCluster() const {
+  return GetRequiredResources().GetResourceMap().begin()->first.find("group_01") !=
+         std::string::npos;
+}
+
+void TaskSpecification::UpdateRequiredResourcesToUseParentResources() {
+  absl::flat_hash_map<std::string, double> child_resources =
+      required_resources_->GetResourceMap();
+  absl::flat_hash_map<std::string, double> parent_resources;
+  for (const auto &[name, quantity] : child_resources) {
+    parent_resources[name.substr(0, name.find_first_of('_'))] = quantity;
+  }
+  required_resources_.reset(new ResourceSet(parent_resources));
+  required_placement_resources_.reset(new ResourceSet(parent_resources));
+}
+
 std::string TaskSpecification::CallSiteString() const {
   std::ostringstream stream;
   auto desc = FunctionDescriptor();
