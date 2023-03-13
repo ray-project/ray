@@ -14,7 +14,7 @@ from typing import (
 )
 
 import ray
-from ray.data._internal.util import _best_batch_format
+from ray.data._internal.util import _default_batch_format
 
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.block import Block, DataBatch
@@ -124,8 +124,8 @@ class StreamSplitDatasetIterator(DatasetIterator):
         """Implements DatasetIterator."""
         return self._base_dataset.schema()
 
-    def _best_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-        return _best_batch_format(self._base_dataset)
+    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+        return _default_batch_format(self._base_dataset)
 
 
 @ray.remote(num_cpus=0)

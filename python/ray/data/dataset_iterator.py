@@ -126,7 +126,7 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over rows of the dataset.
         """
-        target_format = self._best_batch_format()
+        target_format = self._default_batch_format()
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=target_format
         ):
@@ -705,7 +705,7 @@ class DatasetIterator(abc.ABC):
             return False
         return _is_tensor_schema(schema.names)
 
-    def _best_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
         """Returns the best batch format that lines up with the dataset format.
 
         NOTE: Return "default" here. Subclass can override this method to decide best

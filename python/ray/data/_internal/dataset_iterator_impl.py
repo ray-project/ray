@@ -3,7 +3,7 @@ import time
 import warnings
 import sys
 
-from ray.data._internal.util import _best_batch_format
+from ray.data._internal.util import _default_batch_format
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
@@ -65,8 +65,8 @@ class DatasetIteratorImpl(DatasetIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset.schema()
 
-    def _best_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-        return _best_batch_format(self._base_dataset)
+    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+        return _default_batch_format(self._base_dataset)
 
     def __getattr__(self, name):
         if name == "_base_dataset":

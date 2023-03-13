@@ -406,10 +406,10 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     return splits
 
 
-def _best_batch_format(
+def _default_batch_format(
     ds: "Dataset",
 ) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-    """Get a batch format that lines up with the dataset format."""
+    """Get the best batch format that lines up with the dataset format."""
     ctx = DatasetContext.get_current()
     if ctx.use_streaming_executor:
         # TODO: calling dataset_format() triggers bulk execution.
