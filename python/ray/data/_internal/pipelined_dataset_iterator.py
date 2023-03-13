@@ -1,7 +1,8 @@
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
 import warnings
 
-from ray.data.block import DataBatch
+from ray.data.block import DataBatch, T
+from ray.data.row import TableRow
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
@@ -49,6 +50,12 @@ class PipelinedDatasetIterator(DatasetIterator):
             _collate_fn=_collate_fn,
         )
 
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+        ds = self._get_next_dataset()
+        return ds.iter_rows(
+            prefetch_blocks=prefetch_blocks,
+        )
+
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()
 
@@ -57,16 +64,19 @@ class PipelinedDatasetIterator(DatasetIterator):
 
     def __getattr__(self, name):
         if name == "_base_dataset_pipeline":
-            return None
+            raise AttributeError
 
-        # Warning for backwards compatibility. TODO: remove this method in 2.5.
-        warnings.warn(
-            "session.get_dataset_shard returns a ray.data.DatasetIterator "
-            "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
-            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
-            "iterate over one epoch. See "
-            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
-            "for full DatasetIterator docs."
-        )
+        if hasattr(self._base_dataset_pipeline, name):
+            # Warning for backwards compatibility. TODO: remove this method in 2.5.
+            warnings.warn(
+                "session.get_dataset_shard returns a ray.data.DatasetIterator "
+                "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
+                "Use iter_torch_batches(), to_tf(), or iter_batches() to "
+                "iterate over one epoch. See "
+                "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
+                "for full DatasetIterator docs."
+            )
 
-        return getattr(self._base_dataset_pipeline, name)
+            return getattr(self._base_dataset_pipeline, name)
+        else:
+            return super().__getattr__(name)
