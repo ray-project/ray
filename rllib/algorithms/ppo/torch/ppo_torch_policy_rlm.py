@@ -61,7 +61,6 @@ class PPOTorchPolicyWithRLModule(
     """
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
         validate_config(config)

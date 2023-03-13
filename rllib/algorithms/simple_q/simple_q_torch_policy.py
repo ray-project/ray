@@ -35,9 +35,6 @@ class SimpleQTorchPolicy(
     """PyTorch policy class used with SimpleQTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(), **config
-        )
         TorchPolicyV2.__init__(
             self,
             observation_space,

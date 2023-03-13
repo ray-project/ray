@@ -74,7 +74,6 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
             # TODO: Move into Policy API, if needed at all here. Why not move this into
             #  `PPOConfig`?.
             validate_config(config)

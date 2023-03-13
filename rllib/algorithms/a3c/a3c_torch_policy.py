@@ -30,8 +30,6 @@ class A3CTorchPolicy(
     """PyTorch Policy class used with A3C."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,

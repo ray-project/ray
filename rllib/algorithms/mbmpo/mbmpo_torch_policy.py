@@ -34,7 +34,6 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
                 "or using the multi-agent API."
             )
 
-        config = dict(ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG, **config)
         super().__init__(observation_space, action_space, config)
 
     def make_model_and_action_dist(

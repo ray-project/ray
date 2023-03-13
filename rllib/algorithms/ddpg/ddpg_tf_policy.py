@@ -89,10 +89,6 @@ def get_ddpg_tf_policy(
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(
-                ray.rllib.algorithms.ddpg.ddpg.DDPGConfig().to_dict(), **config
-            )
-
             # Validate action space for DDPG
             validate_spaces(self, observation_space, action_space)
 

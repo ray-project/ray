@@ -21,10 +21,6 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
     """PyTorch policy class used with Marwil."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
-        )
-
         TorchPolicyV2.__init__(
             self,
             observation_space,

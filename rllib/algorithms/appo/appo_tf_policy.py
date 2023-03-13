@@ -83,10 +83,6 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(
-                ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config
-            )
-
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
             VTraceClipGradients.__init__(self)

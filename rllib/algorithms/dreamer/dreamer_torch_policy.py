@@ -32,9 +32,6 @@ logger = logging.getLogger(__name__)
 
 class DreamerTorchPolicy(TorchPolicyV2):
     def __init__(self, observation_space, action_space, config):
-
-        config = dict(ray.rllib.algorithms.dreamer.DreamerConfig().to_dict(), **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,

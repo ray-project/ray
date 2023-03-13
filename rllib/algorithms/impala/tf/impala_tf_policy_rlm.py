@@ -30,9 +30,6 @@ class ImpalaTfPolicyWithRLModule(
     EagerTFPolicyV2,
 ):
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
-        )
         validate_config(config)
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)

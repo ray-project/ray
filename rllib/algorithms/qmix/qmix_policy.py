@@ -174,7 +174,6 @@ class QMixTorchPolicy(TorchPolicy):
             raise ImportError("Could not import PyTorch, which QMix requires.")
 
         _validate(obs_space, action_space)
-        config = dict(ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
 
         self.n_agents = len(obs_space.original_space.spaces)

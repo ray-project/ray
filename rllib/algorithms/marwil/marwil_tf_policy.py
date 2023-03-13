@@ -174,10 +174,6 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(
-                ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
-            )
-
             # Initialize base class.
             base.__init__(
                 self,

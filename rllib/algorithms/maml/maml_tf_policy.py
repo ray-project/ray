@@ -380,7 +380,6 @@ def get_maml_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
             validate_config(config)
 
             # Initialize base class.
