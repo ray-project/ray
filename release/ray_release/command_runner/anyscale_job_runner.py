@@ -69,6 +69,7 @@ class AnyscaleJobRunner(JobRunner):
 
         self._results_uploaded = True
         self._metrics_uploaded = True
+        self._artifact_uploaded = True
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -139,6 +140,7 @@ class AnyscaleJobRunner(JobRunner):
             # fetching later.
             self._results_uploaded = output_json["uploaded_results"]
             self._metrics_uploaded = output_json["uploaded_metrics"]
+            self._artifact_uploaded = output_json["uploaded_artifact"]
 
             if prepare_return_codes and prepare_return_codes[-1] != 0:
                 if prepare_return_codes[-1] == TIMEOUT_RETURN_CODE:
@@ -222,6 +224,8 @@ class AnyscaleJobRunner(JobRunner):
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
             "--output-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.output_json)}' "
+            "--upload-s3-uri "
+            f"'{self.upload_path}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
         )
@@ -289,6 +293,20 @@ class AnyscaleJobRunner(JobRunner):
             )
         return self._fetch_json(
             join_s3_paths(self.path_in_bucket, self.metrics_output_json)
+        )
+
+    def fetch_artifact(self):
+        if not self._artifact_uploaded:
+            raise FetchResultError(
+                "Could not fetch artifact from session as they "
+                "were either not generated or not uploaded."
+            )
+        # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
+        if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
+            os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
+        self.file_manager.download_from_s3(
+            join_s3_paths(self.path_in_bucket, "artifact_test"),
+            os.path.join(self._DEFAULT_ARTIFACTS_DIR, "artifact_test"),
         )
 
     def fetch_output(self) -> Dict[str, Any]:
