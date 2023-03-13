@@ -45,6 +45,8 @@ _op_name_white_list = [
     "Repartition",
     "Sort",
     "Aggregate",
+    # N-ary
+    "Zip",
 ]
 
 
