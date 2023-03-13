@@ -1814,7 +1814,8 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
-                restore_tqdm()
+        # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
+        restore_tqdm()
     else:
         for line in lines:
             if RAY_TQDM_MAGIC in line:
@@ -1833,7 +1834,8 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
-                restore_tqdm()
+        # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
+        restore_tqdm()
 
 
 def process_tqdm(line):
