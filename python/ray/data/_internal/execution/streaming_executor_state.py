@@ -316,7 +316,7 @@ def select_operator_to_run(
 
     # If no ops are allowed to execute due to resource constraints, try to trigger
     # cluster scale-up.
-    if not ops:
+    if not ops and any(state.num_queued() > 0 for state in topology.values()):
         _try_to_scale_up_cluster(topology)
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is

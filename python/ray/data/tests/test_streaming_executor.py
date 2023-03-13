@@ -298,9 +298,7 @@ def test_resource_constrained_triggers_autoscaling():
         assert selected_op is None
     # We should request incremental resources for only o2, since it's the only op that's
     # ready to dispatch.
-    mock_request_resources.assert_called_once_with(
-        bundles=[{"CPU": 3, "GPU": 2, "object_store_memory": 4000}]
-    )
+    mock_request_resources.assert_called_once_with(bundles=[{"CPU": 3, "GPU": 2}])
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
