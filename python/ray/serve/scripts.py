@@ -571,6 +571,11 @@ def build(
             sort_keys=False,
         )
     else:
+        if kubernetes_format:
+            raise click.ClickException(
+                "Multi-application config is not supported in Kubernetes format yet."
+            )
+
         app_configs = []
         for app_index, import_path in enumerate(import_paths):
             app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
