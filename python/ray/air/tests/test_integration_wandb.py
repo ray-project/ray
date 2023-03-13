@@ -67,7 +67,6 @@ from ray.tune.experiment.trial import _TrialInfo
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 from ray.air.tests.mocked_wandb_integration import (
-    _FakeConfig,
     _MockWandbAPI,
     _MockWandbLoggingActor,
     Trial,
