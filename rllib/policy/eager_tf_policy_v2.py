@@ -525,6 +525,7 @@ class EagerTFPolicyV2(Policy):
         prev_action_batch=None,
         prev_reward_batch=None,
         actions_normalized=True,
+        in_eval_mode=False,
     ):
         if is_overridden(self.action_sampler_fn) and not is_overridden(
             self.action_distribution_fn
@@ -537,7 +538,10 @@ class EagerTFPolicyV2(Policy):
 
         seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
         input_batch = SampleBatch(
-            {SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)},
+            {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                SampleBatch.ACTIONS: actions,
+            },
             _is_training=False,
         )
         if prev_action_batch is not None:
@@ -557,11 +561,29 @@ class EagerTFPolicyV2(Policy):
             dist_inputs, self.dist_class, _ = self.action_distribution_fn(
                 self, self.model, input_batch, explore=False, is_training=False
             )
+            action_dist = self.dist_class(dist_inputs, self.model)
         # Default log-likelihood calculation.
         else:
-            dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
+            if self.config.get("_enable_rl_module_api", False):
+                if in_eval_mode:
+                    self.model.eval()
+                    output = self.model.forward_exploration(input_batch)
+                else:
+                    output = self.model.forward_train(input_batch)
 
-        action_dist = self.dist_class(dist_inputs, self.model)
+                action_dist = output.get(SampleBatch.ACTION_DIST)
+
+                if action_dist is None:
+                    raise ValueError(
+                        "The model output must contain the key "
+                        "`SampleBatch.ACTION_DIST` when using the RL module API."
+                        "Make sure if is_eval_mode is True the forward_exploration "
+                        "returns this key, and if it is False the forward_train "
+                        "returns this key."
+                    )
+            else:
+                dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
+                action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
         if not actions_normalized and self.config["normalize_actions"]:
