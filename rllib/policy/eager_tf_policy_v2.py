@@ -519,14 +519,14 @@ class EagerTFPolicyV2(Policy):
     @override(Policy)
     def compute_log_likelihoods(
         self,
-        actions,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        actions_normalized=True,
-        in_eval_mode=False,
-    ):
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        actions_normalized: bool = True,
+        in_training: bool = True,
+    ) -> TensorType:
         if is_overridden(self.action_sampler_fn) and not is_overridden(
             self.action_distribution_fn
         ):
@@ -565,11 +565,11 @@ class EagerTFPolicyV2(Policy):
         # Default log-likelihood calculation.
         else:
             if self.config.get("_enable_rl_module_api", False):
-                if in_eval_mode:
+                if in_training:
+                    output = self.model.forward_train(input_batch)
+                else:
                     self.model.eval()
                     output = self.model.forward_exploration(input_batch)
-                else:
-                    output = self.model.forward_train(input_batch)
 
                 action_dist = output.get(SampleBatch.ACTION_DIST)
 

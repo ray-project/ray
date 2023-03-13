@@ -556,7 +556,7 @@ class TorchPolicyV2(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
-        in_eval_mode: bool = False,
+        in_training: bool = True,
     ) -> TensorType:
 
         if is_overridden(self.action_sampler_fn) and not is_overridden(
@@ -598,11 +598,11 @@ class TorchPolicyV2(Policy):
             # Default action-dist inputs calculation.
             else:
                 if self.config.get("_enable_rl_module_api", False):
-                    if in_eval_mode:
+                    if in_training:
+                        output = self.model.forward_train(input_dict)
+                    else:
                         self.model.eval()
                         output = self.model.forward_exploration(input_dict)
-                    else:
-                        output = self.model.forward_train(input_dict)
 
                     action_dist = output.get(SampleBatch.ACTION_DIST)
 
