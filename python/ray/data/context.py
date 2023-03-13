@@ -104,6 +104,9 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
     int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
 )
 
+# Set this env var to enable distributed tqdm (experimental).
+DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -148,6 +151,7 @@ class DatasetContext:
         trace_allocations: bool,
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
+        use_ray_tqdm: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -177,6 +181,7 @@ class DatasetContext:
         self.optimizer_enabled = optimizer_enabled
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
+        self.use_ray_tqdm = use_ray_tqdm
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -222,6 +227,7 @@ class DatasetContext:
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ExecutionOptions(),
+                    use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                 )
 
             return _default_context
