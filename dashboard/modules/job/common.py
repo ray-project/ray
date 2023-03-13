@@ -200,8 +200,9 @@ class JobInfoStorageClient:
             overwrite: Whether to overwrite the existing job info.
 
         Returns:
-            The number of keys added. 1 if the key was added, 0 if the key
-            already exists and overwrite is False.
+            The number of keys added. If overwrite is True, this will be 1 if the
+                key was added and 0 if the key was updated. If overwrite is False,
+                this will be 1 if the key was added and 0 if the key already exists.
         """
         added_num = await self._gcs_aio_client.internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
