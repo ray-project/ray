@@ -1,8 +1,6 @@
-import os
 import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
-import shutil
 
 from ray.air import session
 from ray.air.constants import MODEL_KEY
@@ -42,69 +40,74 @@ class LightningConfigBuilder:
         self._model_checkpoint_config = {}
         self._ray_dataset_iter_config = {}
 
-    def set_module_class(
-        self, module_class: Type[pl.LightningModule]
+    def module(
+        self, cls: Type[pl.LightningModule], **kwargs
     ) -> "LightningConfigBuilder":
         """Set up the Pytorch Lightning module class.
 
         Args:
-            module_class: A subclass of ``pytorch_lightning.LightningModule``
-            that defines your model and training logic. Note that this is a
-            class definition instead of a class instance.
+            cls: A subclass of ``pytorch_lightning.LightningModule``
+                that defines your model and training logic. Note that this is a
+                class definition instead of a class instance.
+            **kwargs: The initialization argument list of your lightning module.
         """
-        if not isclass(module_class):
+        if not isclass(cls):
             raise ValueError("'module_class' must be a class, not a class instance.")
-        if not issubclass(module_class, pl.LightningModule):
+        if not issubclass(cls, pl.LightningModule):
             raise ValueError(
                 "'module_class' must be a subclass of 'pl.LightningModule'!"
             )
-        self._module_class = module_class
-        return self
+        self._module_class = cls
 
-    def set_module_init_config(self, **kwargs) -> "LightningConfigBuilder":
-        """Set up the initialization argument list of your lightning module."""
         self._module_init_config.update(**kwargs)
         return self
 
-    def set_trainer_init_config(self, **kwargs) -> "LightningConfigBuilder":
+    def trainer(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
-        For valid arguments to pass, please refer to:
-        https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
+        Args:
+        **kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
+            For valid arguments to pass, please refer to:
+            https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
         """
         self._trainer_init_config.update(**kwargs)
         return self
 
-    def set_trainer_fit_params(self, **kwargs) -> "LightningConfigBuilder":
-        """Setup the parameter lists for ``pytorch_lightning.Trainer.fit()``.
+    def fit(self, **kwargs) -> "LightningConfigBuilder":
+        """The parameter lists for ``pytorch_lightning.Trainer.fit()``
 
-        For valid arguments to pass, please refer to:
-        https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#fit.
+        **kwargs: The parameter lists for ``pytorch_lightning.Trainer.fit()``
+            For valid arguments to pass, please refer to:
+            https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#fit.
         """
         self._trainer_fit_params.update(**kwargs)
         return self
 
-    def set_ddp_strategy_config(self, **kwargs) -> "LightningConfigBuilder":
+    def ddp_strategy(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
-        For valid arguments to pass, please refer to:
-        https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html
+        Args:
+            **kwargs: For valid arguments to pass, please refer to:
+                https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html
         """
         self._ddp_strategy_config.update(**kwargs)
         return self
 
-    def set_model_checkpoint_config(self, **kwargs) -> "LightningConfigBuilder":
+    def checkpointing(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.callbacks.ModelCheckpoint``.
 
         LightningTrainer creates a `ModelCheckpoint` callback based on this config.
         The AIR checkpointing and logging methods are triggered in that callback.
-        For valid arguments to pass, please refer to:
-        https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
+
+        Args:
+            **kwargs: For valid arguments to pass, please refer to:
+                https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
         """
         self._model_checkpoint_config.update(**kwargs)
         return self
 
     def build(self) -> Dict["str", Any]:
+        """Build and return a config dictionary to pass into LightningTrainer"""
         return self.__dict__.copy()
 
 
@@ -300,7 +303,7 @@ def _lightning_train_loop_per_worker(config):
         if datamodule:
             logger.warning(
                 "Using Ray datasets as primary input. The 'datamodule' defined in "
-                "'LightningConfig.trainer_fit_params' will be ignored!"
+                "'LightningConfig.trainer_fit_params' is ignored!"
             )
 
         datamodule = RayDataModule(
@@ -356,19 +359,21 @@ def _lightning_train_loop_per_worker(config):
     trainer = pl.Trainer(**trainer_config)
 
     # Restore the training from a previously interrupted/failed run.
-    ckpt_path = None
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        ckpt_dir = checkpoint.to_directory()
-        ckpt_path = f"{ckpt_dir}/{MODEL_KEY}"
-
-    trainer.fit(
-        lightning_module,
-        datamodule=datamodule,
-        train_dataloaders=train_dataloaders,
-        val_dataloaders=val_dataloaders,
-        ckpt_path=ckpt_path,
-    )
-
-    if ckpt_path:
-        shutil.rmtree(os.path.dirname(ckpt_path))
+        with checkpoint.as_directory() as ckpt_dir:
+            ckpt_path = f"{ckpt_dir}/{MODEL_KEY}"
+            trainer.fit(
+                lightning_module,
+                datamodule=datamodule,
+                train_dataloaders=train_dataloaders,
+                val_dataloaders=val_dataloaders,
+                ckpt_path=ckpt_path,
+            )
+    else:
+        trainer.fit(
+            lightning_module,
+            datamodule=datamodule,
+            train_dataloaders=train_dataloaders,
+            val_dataloaders=val_dataloaders,
+        )

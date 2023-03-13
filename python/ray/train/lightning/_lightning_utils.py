@@ -1,10 +1,8 @@
 import logging
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 import torch
 from typing import Any, Dict, Optional
 
 import pytorch_lightning as pl
-from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
 
@@ -12,7 +10,7 @@ import ray
 from ray.air import session
 
 from torch.utils.data import IterableDataset, DataLoader
-from ray.data.dataset import Dataset
+from ray.data.dataset import DatasetIterator
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +56,7 @@ class RayEnvironment(LightningEnvironment):
 
 
 class RayIterableDataset(IterableDataset):
-    def __init__(self, dataset: "Dataset", config: Dict[str, Any]) -> None:
+    def __init__(self, dataset: "DatasetIterator", config: Dict[str, Any]) -> None:
         super().__init__()
         self.dataset = dataset
         self.config = config
@@ -71,23 +69,17 @@ class RayDataModule(pl.LightningDataModule):
     def __init__(
         self,
         dataset_iter_config: Dict[str, Any],
-        train_dataset: "Dataset",
-        val_dataset: Optional["Dataset"] = None,
+        train_dataset: "DatasetIterator",
+        val_dataset: Optional["DatasetIterator"] = None,
     ) -> None:
         super().__init__()
 
-        if not dataset_iter_config:
-            raise RuntimeError(
-                "To use Ray Datasets with LightningTrainer, you must specify "
-                " `datasets_iter_config` in LightningConfig!"
-            )
-
-        def _train_dataloader() -> TRAIN_DATALOADERS:
+        def _train_dataloader() -> DataLoader:
             assert train_dataset
             ds = RayIterableDataset(train_dataset, dataset_iter_config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
 
-        def _val_dataloader() -> EVAL_DATALOADERS:
+        def _val_dataloader() -> DataLoader:
             assert val_dataset
             ds = RayIterableDataset(val_dataset, dataset_iter_config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
@@ -95,5 +87,8 @@ class RayDataModule(pl.LightningDataModule):
         if train_dataset:
             self.train_dataloader = _train_dataloader
 
+        # ``pl.Trainer`` checks if the val_dataloader method has been overridden
+        # to determine whether to enable the validation loop. To align with this
+        # setting, we only override this method when `val_dataset` is not `None`.
         if val_dataset:
             self.val_dataloader = _val_dataloader
