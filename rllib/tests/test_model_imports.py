@@ -202,7 +202,11 @@ class TestModelImport(unittest.TestCase):
                 PPOConfig()
                 .environment("CartPole-v1")
                 .rollouts(num_rollout_workers=0)
-                .training(model={"vf_share_layers": True})
+                .training(
+                    model={"vf_share_layers": True},
+                    _enable_learner_api=False,
+                )
+                .rl_module(_enable_rl_module_api=False)
             )
         )
 
