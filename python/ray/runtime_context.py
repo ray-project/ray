@@ -364,7 +364,7 @@ def get_runtime_context():
 
         >>> import ray
         >>> # Get the job id.
-        >>> ray.get_runtime_context().get_job_id()
+        >>> ray.get_runtime_context().get_job_id() # doctest: +SKIP
 
     """
     global _runtime_context
