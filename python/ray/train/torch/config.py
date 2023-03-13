@@ -52,7 +52,7 @@ class TorchConfig(BackendConfig):
         return _TorchBackend
 
 
-def _set_nccl_network_interface() -> str:
+def _set_nccl_network_interface():
     """Set the appropriate NCCL network interface to use."""
 
     if "NCCL_SOCKET_IFNAME" not in os.environ:
@@ -197,9 +197,9 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-
         worker_group.execute(
-            _shutdown_torch, destroy_process_group=len(worker_group) > 1
+            _shutdown_torch,
+            destroy_process_group=len(worker_group) > 1,
         )
 
     def on_training_start(
