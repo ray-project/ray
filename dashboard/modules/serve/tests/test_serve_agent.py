@@ -498,9 +498,8 @@ def test_get_serve_instance_details(ray_start_stop):
 
         serve_details = ServeInstanceDetails(**response.json())
         return (
-            serve_details.application_details["app1"].app_status
-            == ApplicationStatus.RUNNING
-            and serve_details.application_details["app2"].app_status
+            serve_details.applications["app1"].app_status == ApplicationStatus.RUNNING
+            and serve_details.applications["app2"].app_status
             == ApplicationStatus.RUNNING
         )
 
@@ -513,7 +512,7 @@ def test_get_serve_instance_details(ray_start_stop):
     assert serve_details.port == 8000
     print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
 
-    app_details = serve_details.application_details
+    app_details = serve_details.applications
 
     # CHECK: app configs are equal
     assert (
@@ -537,11 +536,11 @@ def test_get_serve_instance_details(ray_start_stop):
     print("Confirmed docs paths are correct.")
 
     # CHECK: all deployments are present
-    assert app_details["app1"].deployments_details.keys() == {
+    assert app_details["app1"].deployments.keys() == {
         "app1_f",
         "app1_BasicDriver",
     }
-    assert app_details["app2"].deployments_details.keys() == {
+    assert app_details["app2"].deployments.keys() == {
         "app2_FastAPIDeployment",
     }
     print("Metadata for all deployed deployments are present.")
@@ -549,7 +548,7 @@ def test_get_serve_instance_details(ray_start_stop):
     # CHECK: application details
     for app in ["app1", "app2"]:
         assert app_details[app].route_prefix == f"/{app}"
-        for dep_details in app_details[app].deployments_details.values():
+        for dep_details in app_details[app].deployments.values():
             assert dep_details.deployment_status == DeploymentStatus.HEALTHY
 
             # Route prefix should be app level options eventually

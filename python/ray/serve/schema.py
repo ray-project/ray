@@ -626,7 +626,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
             "for readability."
         )
     )
-    deployments_details: Dict[str, DeploymentDetails] = Field(
+    deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
     )
 
@@ -643,7 +643,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     port: Optional[int] = Field(
         description="The port on which the HTTP server is listening for requests."
     )
-    application_details: Dict[str, ApplicationDetails] = Field(
+    applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
 
@@ -654,7 +654,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"application_details": {}}
+        return {"applications": {}}
 
 
 @PublicAPI(stability="beta")

@@ -679,13 +679,13 @@ class ServeController:
         """
 
         http_config = self.get_http_config()
-        application_details = {}
+        applications = {}
 
         for (
             app_name,
             app_status_info,
         ) in self.application_state_manager.list_app_statuses().items():
-            application_details[app_name] = ApplicationDetails(
+            applications[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
                 docs_path=self.get_docs_path(app_name),
@@ -693,20 +693,20 @@ class ServeController:
                 app_message=app_status_info.message,
                 last_deployed_s=app_status_info.deployment_timestamp,
                 deployed_app_config=self.get_app_config(app_name),
-                deployments_details=(
-                    self.application_state_manager.list_deployment_details(app_name)
+                deployments=self.application_state_manager.list_deployment_details(
+                    app_name
                 ),
             )
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
         # fill in all info that should be shown to users. Currently, every field is set
         # except for the route_prefix in the deployment_config of each deployment, since
-        # route_prefix is set instead in application_details for each application.
+        # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
             host=http_config.host,
             port=http_config.port,
-            application_details=application_details,
+            applications=applications,
         ).dict(exclude_unset=True)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
