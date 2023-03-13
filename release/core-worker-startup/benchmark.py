@@ -99,7 +99,7 @@ class Test:
         cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
         single_node_or_multi_node = 'single-node' if self.num_nodes_in_cluster == 1 else 'multi-node'
         return '_'.join([
-                f"time-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",
+                f"seconds-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",
                 f"{with_gpu_str}",
                 f"{single_node_or_multi_node}",
             ])
