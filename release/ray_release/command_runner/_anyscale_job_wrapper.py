@@ -376,6 +376,12 @@ if __name__ == "__main__":
         required=False,
     )
     parser.add_argument(
+        "--upload-s3-uri",
+        type=str,
+        help="root bucket address to upload stuff",
+        required=False,
+    )
+    parser.add_argument(
         "--prepare-commands", type=str, nargs="*", help="prepare commands to run"
     )
     parser.add_argument(
