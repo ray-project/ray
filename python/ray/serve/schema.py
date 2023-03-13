@@ -585,6 +585,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
     route_prefix: Optional[str] = Field(
         ...,
         description=(
+            "This is the `route_prefix` of the ingress deployment in the application. "
             "Requests to paths under this HTTP path prefix will be routed to this "
             "application. This value may be null if the application is deploying "
             "and app information has not yet fully propagated in the backend; or "
