@@ -33,11 +33,22 @@ is already supported.
 Data Loading and Preprocessing for ML Training
 ----------------------------------------------
 
-Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Use Ray Datasets to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
 Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
-Ray Datasets are not intended as a replacement for more general data processing systems.
-:ref:`Learn more about how Ray Datasets work with other ETL systems <datasets-ml-preprocessing>`.
+Use Datasets as a last-mile bridge from storage or ETL pipeline outputs to distributed 
+applications and libraries in Ray. Don't use it as a replacement for more general data 
+processing systems.
+
+.. image:: images/dataset-loading-1.png
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
+
+To learn more about the features Datasets supports, read the 
+:ref:`Datasets User Guide <data_user_guide>`.
 
 -----------------------------
 Datasets for Parallel Compute
@@ -102,8 +113,8 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     Learn how to :ref:`create datasets <creating_datasets>`, :ref:`save
     datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
     :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
-    transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
-    or :ref:`work with tensor data <datasets_tensor_support>`.
+    transformations <pipelining_datasets>`, or 
+    :ref:`work with tensor data <datasets_tensor_support>`.
 
     +++
     .. link-button:: data_user_guide
