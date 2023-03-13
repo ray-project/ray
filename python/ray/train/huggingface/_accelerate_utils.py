@@ -16,6 +16,7 @@
 
 import logging
 import os
+from typing import Optional, Tuple
 
 try:
     from packaging.version import Version
@@ -32,12 +33,12 @@ if Version(accelerate.__version__) < Version("0.17.0.dev0"):
 from accelerate.commands.launch import (
     ComputeEnvironment,
     _validate_launch_command,
-    launch_command_parser,
     prepare_deepspeed_cmd_env,
     prepare_multi_gpu_env,
     prepare_simple_launcher_cmd_env,
 )
 from accelerate.utils import is_deepspeed_available
+from accelerate.commands.config import default_config_file, load_config_from_file
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +97,23 @@ def launch_command(args):
         simple_launcher(args)
 
 
-def main():
-    parser = launch_command_parser()
-    args = parser.parse_args()
-    launch_command(args)
+def load_accelerate_config(
+    accelerate_config: Optional[str],
+) -> Tuple[str, Optional[str]]:
+    # We only load config to dict to obtain the deepspeed_config_file
+    config = load_config_from_file(
+        str(accelerate_config) if accelerate_config else default_config_file
+    )
+    deepspeed_config_file = getattr(config, "deepspeed_config_file", None)
+    deepspeed_config_file_raw = None
 
+    if deepspeed_config_file and not isinstance(deepspeed_config_file, dict):
+        with open(deepspeed_config_file, "r") as f:
+            deepspeed_config_file_raw = f.read()
 
-if __name__ == "__main__":
-    main()
+    # Otherwise, we want to pass raw contents to Trainables for maximum
+    # compatibility.
+    with open(accelerate_config, "r") as f:
+        raw_loaded_config = f.read()
+
+    return raw_loaded_config, deepspeed_config_file_raw

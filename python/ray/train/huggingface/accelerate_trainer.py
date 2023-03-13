@@ -2,7 +2,7 @@ import os
 import tempfile
 from argparse import Namespace
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
@@ -15,13 +15,13 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
     from ray.tune.trainable import Trainable
 
-from accelerate.commands.config import default_config_file, load_config_from_file
 from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
 
 from ray.train.huggingface._accelerate_utils import (
     launch_command,
     launch_command_parser,
+    load_accelerate_config,
 )
 
 TRAIN_LOOP_PER_WORKER_KEY = "_train_loop_per_worker"
@@ -75,7 +75,7 @@ class AccelerateTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        self.accelerate_config = accelerate_config or default_config_file
+        self.accelerate_config = accelerate_config
         if isinstance(self.accelerate_config, _AccelerateConfigWrapper):
             self._accelerate_config_raw = self.accelerate_config.config_raw
             self._deepspeed_config_file_raw = (
@@ -91,7 +91,7 @@ class AccelerateTrainer(TorchTrainer):
             (
                 self._accelerate_config_raw,
                 self._deepspeed_config_file_raw,
-            ) = self._load_accelerate_config()
+            ) = load_accelerate_config(self.accelerate_config)
         super().__init__(
             train_loop_per_worker=_accelerate_train_loop_per_worker,
             train_loop_config=train_loop_config,
@@ -103,21 +103,6 @@ class AccelerateTrainer(TorchTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
-
-    def _load_accelerate_config(self) -> Tuple[str, Optional[str]]:
-        # We only load config to dict to obtain the deepspeed_config_file
-        config = load_config_from_file(self.accelerate_config)
-        deepspeed_config_file = getattr(config, "deepspeed_config_file", None)
-        deepspeed_config_file_raw = None
-
-        if deepspeed_config_file and not isinstance(deepspeed_config_file, dict):
-            with open(deepspeed_config_file, "r") as f:
-                deepspeed_config_file_raw = f.read()
-
-        # Otherwise, we want to pass raw contents to Trainables for maximum
-        # compatibility.
-        with open(self.accelerate_config, "r") as f:
-            return f.read(), deepspeed_config_file_raw
 
     def as_trainable(self) -> Type["Trainable"]:
         # We want to load the config when the Trainer is first instantiated,
@@ -192,6 +177,18 @@ def _accelerate_train_loop_per_worker(config):
         namespace.gpu_ids = None
         namespace.main_process_ip = master_addr
         namespace.main_process_port = master_port
+        namespace.same_network = False
+
+        device = get_device()
+        if isinstance(device, list):
+            device = device[0]
+        if device.type == "cpu":
+            os.environ["LOCAL_RANK"] = "-1"
+            namespace.use_cpu = True
+            namespace.multi_gpu = False
+        else:
+            namespace.use_cpu = False
+            namespace.multi_gpu = True
 
         # Handle DeepSpeed config
         if isinstance(deepspeed_config_file_raw, dict):
@@ -210,9 +207,6 @@ def _accelerate_train_loop_per_worker(config):
         os.environ["MASTER_PORT"] = master_port
         _set_torch_distributed_env_vars()
 
-        device = get_device()
-        if isinstance(device, list):
-            device = device[0]
         if device.type == "cpu":
             os.environ["LOCAL_RANK"] = "-1"
 
