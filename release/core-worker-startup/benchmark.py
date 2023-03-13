@@ -55,18 +55,32 @@ import os
 from dataclasses import dataclass
 from ray._private.test_utils import safe_write_to_results_json
 from collections import defaultdict
+import statistics
 
 @ray.remote(num_cpus=0)
 class MetricsActor:
-    def __init__(self):
-        self.results = defaultdict(list)
+    def __init__(self, expected_measurements_per_test: int):
+        self.measurements = defaultdict(list)
+        self.expected_measurements_per_test = expected_measurements_per_test
 
     def submit(self, test_name: str, latency: float):
         print(f'got latency {latency} s for test {test_name}')
-        self.results[test_name].append(latency)
+        self.measurements[test_name].append(latency)
+        results = self.create_results_dict_from_measurements()
+        safe_write_to_results_json(results)
 
-        # TODO conform to correct json structure
-        safe_write_to_results_json(self.results)
+    def create_results_dict_from_measurements(self):
+        results = {}
+
+        for test_name, measurements in self.measurements.items():
+            p50 = statistics.median(measurements) if len(measurements) == self.expected_measurements_per_test else -1
+            test_summary = {
+                "p50": p50,
+                "measurements": measurements,
+            }
+            results[test_name] = test_summary
+
+        return results
 
 @dataclass(eq=True, frozen=True)
 class Test:
@@ -110,7 +124,7 @@ async def run_and_stream_logs(metrics_actor_name, metrics_actor_namespace, test:
                             f"{task_or_actor_arg}",
                             f"{with_gpu_arg}",
                             f"--library_to_import {test.expensive_import}",
-                        ])
+                        ]),
                 runtime_env={"working_dir": "./"}
             )
 
@@ -127,11 +141,11 @@ async def run_and_stream_logs(metrics_actor_name, metrics_actor_namespace, test:
                 raise ValueError(f'Job {job_id} was not successful; status is {job_status}')
 
 
-def generate_test_matrix():
+def generate_test_matrix(num_measurements_per_test: int):
     tests = set()
 
     num_cpus_in_cluster = os.cpu_count()
-    num_repeated_jobs_or_runs = 5
+    num_repeated_jobs_or_runs = num_measurements_per_test
     num_tasks_or_actors_per_run = num_cpus_in_cluster * 1
     total_num_tasks_or_actors = num_tasks_or_actors_per_run * num_repeated_jobs_or_runs
 
@@ -156,14 +170,19 @@ def generate_test_matrix():
     return tests
 
 def main():
+
+    num_measurements_per_test = 5
+
     metrics_actor_name = 'metrics_actor'
     metrics_actor_namespace = 'metrics_actor_namespace'
     metrics_actor = MetricsActor.options(
         name=metrics_actor_name,
         namespace=metrics_actor_namespace,
-    ).remote()
+    ).remote(
+        expected_measurements_per_test=num_measurements_per_test,
+    )
     
-    run_matrix = generate_test_matrix()
+    run_matrix = generate_test_matrix(num_measurements_per_test)
 
     for test in random.sample(list(run_matrix), k=len(run_matrix)):
         print(f"Running test {test}")
