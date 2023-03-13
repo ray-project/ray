@@ -559,8 +559,9 @@ def build(
     if not multi_app:
         if len(import_paths) > 1:
             raise click.ClickException(
-                "Extra arguments detected. If you want to generate a multi-application "
-                "config, please turn on the feature flag `--multi-app`."
+                "Got more than one argument. If you want to generate a multi-"
+                "application config, please rerun the command with the feature flag "
+                "`--multi-app`."
             )
 
         config_str += yaml.dump(
@@ -570,26 +571,28 @@ def build(
             sort_keys=False,
         )
     else:
-        configs = []
+        app_configs = []
         for app_index, import_path in enumerate(import_paths):
-            configs.append(build_app_config(import_path, f"app{app_index + 1}"))
+            app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
+
+        deploy_config = {
+            "host": "0.0.0.0",
+            "port": 8000,
+            "applications": app_configs,
+        }
+
+        # Parse + validate the set of application configs
+        ServeDeploySchema.parse_obj(deploy_config)
 
         config_str += yaml.dump(
-            {
-                "host": "0.0.0.0",
-                "port": 8000,
-                "applications": configs,
-            },
+            deploy_config,
             Dumper=ServeDeploySchemaDumper,
             default_flow_style=False,
             sort_keys=False,
         )
-        # NOTE(zcin): For some reason cli_logger.warning uses _level_str="WARN" instead
-        # of "WARNING", which doesn't stream this to stderr.
-        cli_logger._warning(
+        cli_logger.info(
             "The auto-generated application names default to `app1`, `app2`, ... etc. "
             "Rename as necessary.\n",
-            _level_str="WARNING",
         )
 
     # Ensure file ends with only one newline

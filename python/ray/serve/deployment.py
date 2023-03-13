@@ -526,7 +526,15 @@ class Deployment:
 def deployment_to_schema(
     d: Deployment, include_route_prefix: bool = True
 ) -> DeploymentSchema:
-    """Converts a live deployment object to a corresponding structured schema."""
+    """Converts a live deployment object to a corresponding structured schema.
+
+    Args:
+        d: Deployment object to convert
+        include_route_prefix: Whether to include the route_prefix in the returned
+            schema. This should be set to False if the schema will be included in a
+            higher-level object describing an application, and you want to place
+            route_prefix at the application level.
+    """
 
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
