@@ -82,6 +82,8 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_reset,
 )
+from ray.experimental import tqdm_ray
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -1797,31 +1799,47 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data.get("ip") == data.get("localhost"):
         for line in lines:
-            print(
-                "{}{}({}{}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
-            )
+            if RAY_TQDM_MAGIC in line:
+                process_tqdm(line)
+            else:
+                print(
+                    "{}{}({}{}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
     else:
         for line in lines:
-            print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    data.get("ip"),
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
-            )
+            if RAY_TQDM_MAGIC in line:
+                process_tqdm(line)
+            else:
+                print(
+                    "{}{}({}{}, ip={}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        data.get("ip"),
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
+
+
+def process_tqdm(line):
+    """Experimental distributed tqdm: see ray.experimental.tqdm_ray."""
+    try:
+        data = json.loads(line)
+        tqdm_ray.instance().process_state_update(data)
+    except Exception:
+        print("[tqdm_ray] Failed to decode", line)
+        raise
 
 
 def listen_error_messages(worker, threads_stopped):
