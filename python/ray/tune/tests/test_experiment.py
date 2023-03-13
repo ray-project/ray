@@ -16,17 +16,17 @@ def test_remote_checkpoint_dir_with_query_string(tmp_path):
         run=lambda config: config,
         sync_config=sync_config,
     )
-    assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
+    assert experiment.remote_path == "s3://bucket/spam?scheme=http"
 
     trial = Trial(
         "mock",
         stub=True,
         sync_config=sync_config,
         experiment_dir_name="spam",
-        local_dir=str(tmp_path),
+        experiment_path=str(tmp_path),
     )
     trial.relative_logdir = "trial_dirname"
-    assert trial.remote_checkpoint_dir == "s3://bucket/spam/trial_dirname?scheme=http"
+    assert trial.remote_path == "s3://bucket/spam/trial_dirname?scheme=http"
 
 
 class ExperimentTest(unittest.TestCase):

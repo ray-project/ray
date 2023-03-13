@@ -92,7 +92,7 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
     def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
         self._trial_queues[trial] = Queue()
         local_actor = _MockWandbLoggingActor(
-            logdir=trial.logdir,
+            logdir=trial.local_path,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self.AUTO_CONFIG_KEYS,

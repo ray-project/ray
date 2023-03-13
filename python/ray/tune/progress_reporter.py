@@ -1400,7 +1400,7 @@ class TrialProgressCallback(Callback):
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.0)
-            error_file = os.path.join(trial.logdir, "error.txt")
+            error_file = os.path.join(trial.local_path, "error.txt")
 
             info = ""
             if done:

@@ -699,11 +699,17 @@ class RunConfig:
     Ray Train/Tune will automatically apply the RunConfig from
     the previously checkpointed run.
 
+    .. note::
+
+        The ``local_dir`` attribute has been deprecated as of Ray 2.4.0 and will
+        be removed in the future. It is replaced by setting the
+        ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable.
+
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to store results at. Can be a local directory or
+            a destination on cloud storage.
         stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
             for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
@@ -734,7 +740,7 @@ class RunConfig:
     """
 
     name: Optional[str] = None
-    local_dir: Optional[str] = None
+    storage_path: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
@@ -743,6 +749,9 @@ class RunConfig:
     progress_reporter: Optional["ProgressReporter"] = None
     verbose: Union[int, "Verbosity"] = 3
     log_to_file: Union[bool, str, Tuple[str, str]] = False
+
+    # Deprecated
+    local_dir: Optional[str] = None
 
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig
@@ -755,6 +764,10 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        # local_cache_dir =
+        if self.sync_config.upload_dir:
+            pass
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig

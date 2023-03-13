@@ -42,7 +42,7 @@ class Trial:
     def config(self):
         return self.evaluated_params
 
-    def init_logdir(self):
+    def init_local_path(self):
         return
 
     def __hash__(self):

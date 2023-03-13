@@ -325,7 +325,7 @@ You can create a custom logger by inheriting the LoggerCallback interface (:ref:
             self._filename = filename
 
         def log_trial_start(self, trial: "Trial"):
-            trial_logfile = os.path.join(trial.logdir, self._filename)
+            trial_logfile = os.path.join(trial.local_path, self._filename)
             self._trial_files[trial] = open(trial_logfile, "at")
 
         def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):

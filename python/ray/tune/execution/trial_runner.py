@@ -414,7 +414,7 @@ class TrialRunner:
             # since the dir might not be creatable locally.
             # TODO(ekl) this is kind of a hack.
             if not ray.util.client.ray.is_connected():
-                trial.init_logdir()  # Create logdir if it does not exist
+                trial.init_local_path()  # Create logdir if it does not exist
 
             trials.append(trial)
 

@@ -747,7 +747,7 @@ class RayTrialExecutor:
                         trainable.reset.remote(
                             extra_config,
                             logger_creator=logger_creator,
-                            remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                            remote_checkpoint_dir=trial.remote_path,
                         ),
                         timeout=DEFAULT_GET_TIMEOUT,
                     )
@@ -938,8 +938,8 @@ class RayTrialExecutor:
                     metrics=result,
                     local_to_remote_path_fn=partial(
                         TrainableUtil.get_remote_storage_path,
-                        logdir=trial.logdir,
-                        remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                        logdir=trial.local_path,
+                        remote_checkpoint_dir=trial.remote_path,
                     )
                     if trial.uses_cloud_checkpointing
                     else None,
@@ -1070,7 +1070,7 @@ class RayTrialExecutor:
         if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
             old_dir = os.getcwd()
             try:
-                os.chdir(trial.logdir)
+                os.chdir(trial.local_path)
                 yield
             finally:
                 os.chdir(old_dir)

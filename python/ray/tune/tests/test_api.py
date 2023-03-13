@@ -669,7 +669,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             trial_dirname_creator=custom_trial_dir,
             local_dir=self.tmpdir,
         ).trials
-        logdirs = {t.logdir for t in trials}
+        logdirs = {t.local_path for t in trials}
         assert len(logdirs) == 3
         assert all(custom_name in dirpath for dirpath in logdirs)
 
@@ -681,7 +681,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         trials = tune.run(
             train, config={"t1": tune.grid_search([1, 2, 3])}, local_dir=self.tmpdir
         ).trials
-        logdirs = {t.logdir for t in trials}
+        logdirs = {t.local_path for t in trials}
         for i in [1, 2, 3]:
             assert any(f"t1={i}" in dirpath for dirpath in logdirs)
         for t in trials:
@@ -862,7 +862,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         analysis = tune.run(TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
         for trial in analysis.trials:
-            path = os.path.join(trial.logdir, "marker")
+            path = os.path.join(trial.local_path, "marker")
             assert os.path.exists(path)
 
     def testReportTimeStep(self):
@@ -1173,27 +1173,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Do not log to file
         [trial] = tune.run("f1", log_to_file=False).trials
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
 
         # Log to default files
         [trial] = tune.run("f1", log_to_file=True).trials
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stderr")))
-        with open(os.path.join(trial.logdir, "stdout"), "rt") as fp:
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        with open(os.path.join(trial.local_path, "stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
-        with open(os.path.join(trial.logdir, "stderr"), "rt") as fp:
+        with open(os.path.join(trial.local_path, "stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
 
         # Log to one file
         [trial] = tune.run("f1", log_to_file="combined").trials
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "combined")))
-        with open(os.path.join(trial.logdir, "combined"), "rt") as fp:
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "combined")))
+        with open(os.path.join(trial.local_path, "combined"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
             self.assertIn("PRINT_STDERR", content)
@@ -1201,15 +1201,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Log to two files
         [trial] = tune.run("f1", log_to_file=("alt.stdout", "alt.stderr")).trials
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "alt.stdout")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "alt.stderr")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "alt.stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "alt.stderr")))
 
-        with open(os.path.join(trial.logdir, "alt.stdout"), "rt") as fp:
+        with open(os.path.join(trial.local_path, "alt.stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
-        with open(os.path.join(trial.logdir, "alt.stderr"), "rt") as fp:
+        with open(os.path.join(trial.local_path, "alt.stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)

@@ -78,7 +78,7 @@ class AgentIOTest(unittest.TestCase):
         """Test special value 'logdir' as Agent's output."""
         for fw in framework_iterator():
             agent = self.write_outputs("logdir", fw)
-            self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 1)
+            self.assertEqual(len(glob.glob(agent.local_path + "/output-*.json")), 1)
 
     def test_agent_output_infos(self):
         """Verify that the infos dictionary is written to the output files.

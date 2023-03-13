@@ -686,7 +686,7 @@ class ExperimentAnalysis:
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
-        return best_trial.logdir if best_trial else None
+        return best_trial.local_path if best_trial else None
 
     def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
         """Gets the last persistent checkpoint path of the provided trial,
@@ -783,8 +783,8 @@ class ExperimentAnalysis:
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
             # We do not need to set the relative path here
-            # Maybe assert that t.logdir is in local_base_path?
-            _trial_paths = [str(t.logdir) for t in self.trials]
+            # Maybe assert that t.local_path is in local_base_path?
+            _trial_paths = [str(t.local_path) for t in self.trials]
         else:
             logger.info(
                 "No `self.trials`. Drawing logdirs from checkpoint "
@@ -808,7 +808,7 @@ class ExperimentAnalysis:
                 self.trials.append(trial)
 
             self.trials.sort(key=lambda trial: trial.trial_id)
-            _trial_paths = [str(trial.logdir) for trial in self.trials]
+            _trial_paths = [str(trial.local_path) for trial in self.trials]
 
         if not _trial_paths:
             raise TuneError("No trials found.")

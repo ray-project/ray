@@ -365,19 +365,19 @@ class TrialRunnerTest2(unittest.TestCase):
         # Example:
         # local_checkpoint_dir/
         #     experiment_state.json
-        #     trial.logdir/
+        #     trial.local_path/
         #         checkpoint_00000/
         trial = Trial(
             "__fake",
             local_dir=tempdir,
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         )
-        trial.init_logdir()
+        trial.init_local_path()
         trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 
         def write_checkpoint(trial: Trial, index: int):
             checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-                trial.logdir, index=index
+                trial.local_path, index=index
             )
             result = {"training_iteration": index}
             with open(os.path.join(checkpoint_dir, "cp.json"), "w") as f:
@@ -393,7 +393,9 @@ class TrialRunnerTest2(unittest.TestCase):
             return checkpoint_dir
 
         def get_checkpoint_dirs(trial: Trial):
-            return [d for d in os.listdir(trial.logdir) if d.startswith("checkpoint_")]
+            return [
+                d for d in os.listdir(trial.local_path) if d.startswith("checkpoint_")
+            ]
 
         runner = TrialRunner(
             local_checkpoint_dir=tempdir,

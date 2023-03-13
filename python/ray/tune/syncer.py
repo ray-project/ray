@@ -88,10 +88,13 @@ class SyncConfig:
 
     See :ref:`tune-storage-options` for more details and examples.
 
+    .. note::
+
+        The ``upload_dir`` attribute has been deprecated as of Ray 2.4.0 and will
+        be removed in the future. It is replaced by setting the ``storage_path``
+        attribute of the :class:`ray.air.RunConfig`.
+
     Args:
-        upload_dir: Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
-            Specifying this will enable cloud-based checkpointing.
         syncer: If ``upload_dir`` is specified, then this config accepts a custom
             syncer subclassing :class:`~ray.tune.syncer.Syncer` which will be
             used to synchronize checkpoints to/from cloud storage.
@@ -123,13 +126,15 @@ class SyncConfig:
             only applies to worker-to-head-node syncing (3).
     """
 
-    upload_dir: Optional[str] = None
     syncer: Optional[Union[str, "Syncer"]] = "auto"
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
     sync_artifacts: bool = True
 
     sync_on_checkpoint: bool = True
+
+    # Deprecated
+    upload_dir: Optional[str] = None
 
     def __post_init__(self):
         if self.upload_dir and self.syncer is None:
@@ -726,10 +731,10 @@ class SyncerCallback(Callback):
         self._sync_times[trial.trial_id] = time.time()
 
     def _local_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _remote_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
