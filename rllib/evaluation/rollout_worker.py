@@ -30,6 +30,7 @@ from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
 )
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -701,37 +702,41 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if self.worker_index == 0
             else self.config.num_gpus_per_worker
         )
-        # Error if we don't find enough GPUs.
-        if (
-            ray.is_initialized()
-            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
-            and not config._fake_gpus
-        ):
 
-            devices = []
-            if self.config.framework_str in ["tf2", "tf"]:
-                devices = get_tf_gpu_devices()
-            elif self.config.framework_str == "torch":
-                devices = list(range(torch.cuda.device_count()))
+        # This is only for the old API where local_worker was responsible for learning
+        if not self.config._enable_learner_api:
+            # Error if we don't find enough GPUs.
+            if (
+                ray.is_initialized()
+                and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
+                and not config._fake_gpus
+            ):
 
-            if len(devices) < num_gpus:
-                raise RuntimeError(
-                    ERR_MSG_NO_GPUS.format(len(devices), devices) + HOWTO_CHANGE_CONFIG
+                devices = []
+                if self.config.framework_str in ["tf2", "tf"]:
+                    devices = get_tf_gpu_devices()
+                elif self.config.framework_str == "torch":
+                    devices = list(range(torch.cuda.device_count()))
+
+                if len(devices) < num_gpus:
+                    raise RuntimeError(
+                        ERR_MSG_NO_GPUS.format(len(devices), devices)
+                        + HOWTO_CHANGE_CONFIG
+                    )
+            # Warn, if running in local-mode and actual GPUs (not faked) are
+            # requested.
+            elif (
+                ray.is_initialized()
+                and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+                and num_gpus > 0
+                and not self.config._fake_gpus
+            ):
+                logger.warning(
+                    "You are running ray with `local_mode=True`, but have "
+                    f"configured {num_gpus} GPUs to be used! In local mode, "
+                    f"Policies are placed on the CPU and the `num_gpus` setting "
+                    f"is ignored."
                 )
-        # Warn, if running in local-mode and actual GPUs (not faked) are
-        # requested.
-        elif (
-            ray.is_initialized()
-            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-            and num_gpus > 0
-            and not self.config._fake_gpus
-        ):
-            logger.warning(
-                "You are running ray with `local_mode=True`, but have "
-                f"configured {num_gpus} GPUs to be used! In local mode, "
-                f"Policies are placed on the CPU and the `num_gpus` setting "
-                f"is ignored."
-            )
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
@@ -1312,6 +1317,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         policies_to_train: Optional[
             Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> Policy:
         """Adds a new policy to this RolloutWorker.
 
@@ -1336,6 +1342,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 If None, will keep the existing setup in place.
                 Policies, whose IDs are not in the list (or for which the
                 callable returns False) will not be updated.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
 
         Returns:
             The newly added policy.
@@ -1346,6 +1355,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 PolicyMap.
         """
         validate_policy_id(policy_id, error=False)
+
+        if module_spec is not None and not self.config._enable_rl_module_api:
+            raise ValueError(
+                "If you pass in module_spec to the policy, the RLModule API needs "
+                "to be enabled."
+            )
 
         if policy_id in self.policy_map:
             raise KeyError(
@@ -1386,6 +1401,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             policy_dict=policy_dict_to_add,
             policy=policy,
             policy_states={policy_id: policy_state},
+            module_spec=module_spec,
         )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
@@ -1926,6 +1942,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         policy_dict: MultiAgentPolicyConfigDict,
         policy: Optional[Policy] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> None:
         """Updates the policy map (and other stuff) on this worker.
 
@@ -1944,6 +1961,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             policy_dict: The policy dict to update the policy map with.
             policy: The policy to update the policy map with.
             policy_states: The policy states to update the policy map with.
+            module_spec: The RLModuleSpec to add to the marl_module_spec. If None, the
+                default_rl_module_spec will be used to create the policy with.
         """
 
         # Update the input policy dict with the postprocessed observation spaces and
@@ -1953,7 +1972,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # Use the updated policy dict to create the marl_module_spec if necessary
         if self.config._enable_rl_module_api:
             spec = self.config.get_marl_module_spec(
-                updated_policy_dict, self.is_policy_to_train
+                policy_dict=updated_policy_dict, module_spec=module_spec
             )
             if self.marl_module_spec is None:
                 # this is the first time, so we should create the marl_module_spec
