@@ -174,4 +174,4 @@ You can set an end-to-end timeout for HTTP requests by setting the `RAY_SERVE_RE
 
 By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (e.g. network disconnect, request timeout, etc.).
 
-You can set the number of retries based on your requirements by setting the `RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES` environment variable. The HTTP proxy will retry that many times at most before sending a task error response to the client. The number of retries will affect end-to-end latency of your HTTP requests. (Ray Serve will do expotential backoff retry).
+You can set the number of retries based on your requirements by setting the `RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES` environment variable. The HTTP proxy will retry that many times at most before sending a task error response to the client. The number of retries will affect the end-to-end latency of your HTTP requests since Ray Serve does exponential backoff for retries.
