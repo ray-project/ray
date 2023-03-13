@@ -10,7 +10,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
@@ -359,20 +358,3 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
-
-
-# Deprecated: Use ray.rllib.algorithms.sac.SACConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SACConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.sac.sac::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.sac.sac::SACConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

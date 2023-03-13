@@ -605,20 +605,3 @@ class ES(Algorithm):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.es.ESConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ESConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.es.es.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.es.es.ESConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

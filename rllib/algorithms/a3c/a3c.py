@@ -6,7 +6,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
@@ -251,20 +250,3 @@ class A3C(Algorithm):
             )
 
         return learner_info_builder.finalize()
-
-
-# Deprecated: Use ray.rllib.algorithms.a3c.A3CConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(A3CConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.a3c.a3c.A3CConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

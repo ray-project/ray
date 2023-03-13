@@ -16,7 +16,7 @@ from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.utils.annotations import Deprecated, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -400,20 +400,3 @@ class AlphaZero(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(AlphaZeroConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.alpha_zero.alpha_zero.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
