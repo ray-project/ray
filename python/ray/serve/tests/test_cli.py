@@ -375,7 +375,7 @@ def test_config_multi_app(ray_start_stop):
     """Deploys multi-app config and checks output of `serve config`."""
 
     # Check that `serve config` works even if no Serve app is running
-    subprocess.check_output(["serve", "config", "--all-apps"])
+    subprocess.check_output(["serve", "config", "--multi-app"])
 
     # Deploy config
     config_file_name = os.path.join(
@@ -386,7 +386,7 @@ def test_config_multi_app(ray_start_stop):
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     # Config should be immediately ready
-    info_response = subprocess.check_output(["serve", "config", "--all-apps"])
+    info_response = subprocess.check_output(["serve", "config", "--multi-app"])
     fetched_configs = list(yaml.safe_load_all(info_response))
 
     assert config["applications"][0] == fetched_configs[0]
