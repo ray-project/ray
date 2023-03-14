@@ -3031,6 +3031,7 @@ def test_info_string():
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
+            "accelerator_type:T4": (1, 1),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -3089,7 +3090,7 @@ def test_info_string_verbose():
         usage={
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
-            "AcceleratorType:V100": (1, 2),
+            "accelerator_type:V100": (1, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
         },
@@ -3101,14 +3102,14 @@ def test_info_string_verbose():
             "192.168.1.1": {
                 "CPU": (5.0, 20.0),
                 "GPU": (0.7, 1),
-                "AcceleratorType:V100": (0.1, 1),
+                "accelerator_type:V100": (0.1, 1),
                 "memory": (2**30, 2**32),
                 "object_store_memory": (3.14 * 2**30, 2**32),
             },
             "192.168.1.2": {
                 "CPU": (15.0, 20.0),
                 "GPU": (0.3, 1),
-                "AcceleratorType:V100": (0.9, 1),
+                "accelerator_type:V100": (0.9, 1),
                 "memory": (2**30, 1.5 * 2**33),
                 "object_store_memory": (0, 2**32),
             },
@@ -3144,9 +3145,9 @@ Recent failures:
 Resources
 --------------------------------------------------------
 Total Usage:
- 1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
+ 1/2 accelerator_type:V100
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
@@ -3157,17 +3158,17 @@ Total Demands:
 
 Node: 192.168.1.1
  Usage:
-  0.1/1 AcceleratorType:V100
   5.0/20.0 CPU
   0.7/1 GPU
+  0.1/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
 
 Node: 192.168.1.2
  Usage:
-  0.9/1 AcceleratorType:V100
   15.0/20.0 CPU
   0.3/1 GPU
+  0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
 """.strip()
