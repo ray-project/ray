@@ -420,7 +420,6 @@ def test_restore_from_invalid_dir(tmpdir):
         BaseTrainer.restore("memory:///not/found")
 
 
-# TODO: FIX TEST
 @pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
 def test_trainer_can_restore_utility(tmp_path, upload_dir):
     """Make sure that `can_restore` detects an existing experiment at a
@@ -436,12 +435,12 @@ def test_trainer_can_restore_utility(tmp_path, upload_dir):
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda config: session.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name=name, local_dir=tmp_path),
+        run_config=RunConfig(name=name, storage_path=str(tmp_path)),
     )
     (tmp_path / name).mkdir(exist_ok=True)
     trainer._save(tmp_path / name)
     if upload_dir:
-        upload_to_uri(tmp_path / name, str(path))
+        upload_to_uri(str(tmp_path / name), str(path))
 
     assert DataParallelTrainer.can_restore(path)
 

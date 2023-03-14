@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+import urllib.parse
 from collections import defaultdict
 from datetime import datetime
 from numbers import Number
@@ -15,7 +16,7 @@ import numpy as np
 import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.remote_storage import delete_at_uri, is_non_local_path_uri
+from ray.air._internal.remote_storage import delete_at_uri
 from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
@@ -166,12 +167,15 @@ def retry_fn(
 def _split_remote_local_path(
     path: str, default_local_path: Optional[str]
 ) -> Tuple[Optional[str], Optional[str]]:
-    if is_non_local_path_uri(path):
+    parsed = urllib.parse.urlparse(path)
+    if parsed.scheme:
+        # If a scheme is set, this means it's not a local path.
+        # Note that we also treat `file://` as a URI.
         remote_path = path
         local_path = default_local_path
     else:
         remote_path = None
-        local_path = (path or "").lstrip("file://")
+        local_path = path
 
     return remote_path, local_path
 

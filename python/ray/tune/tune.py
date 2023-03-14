@@ -527,6 +527,7 @@ def run(
                 "`upload_dir=None` instead."
             )
         remote_storage_path = sync_config.upload_dir
+        sync_config.upload_dir = None
         storage_path = remote_storage_path
 
         if remote_storage_path and local_storage_path:

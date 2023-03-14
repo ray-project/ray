@@ -10,6 +10,7 @@ from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.tests.tune_test_util import inject_os_environ
 from ray.tune.tune import _check_mixin
 
 
@@ -411,7 +412,6 @@ def test_detect_reuse_mixins():
     assert _check_mixin(mlflow_mixin(MyTrainable))
 
 
-# TODO: FIX TEST
 def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
     """Check that the trainable has its remote directory set to the right
     location, when new trials get swapped in on actor reuse.
@@ -448,16 +448,16 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
                 )
             return super().step()
 
-    analysis = _run_trials_with_frequent_pauses(
-        _MyResettableClass,
-        reuse=True,
-        max_concurrent_trials=2,
-        local_dir=str(tmp_path),
-        name=exp_name,
-        sync_config=tune.SyncConfig(upload_dir=f"file://{tmp_target}"),
-        trial_dirname_creator=lambda t: str(t.config.get("id")),
-        checkpoint_freq=1,
-    )
+    with inject_os_environ({"TEST_TMPDIR": str(tmp_path)}):
+        analysis = _run_trials_with_frequent_pauses(
+            _MyResettableClass,
+            reuse=True,
+            max_concurrent_trials=2,
+            storage_path=f"file://{tmp_target}",
+            name=exp_name,
+            trial_dirname_creator=lambda t: str(t.config.get("id")),
+            checkpoint_freq=1,
+        )
     result_grid = ResultGrid(analysis)
     assert not result_grid.errors
 
@@ -529,16 +529,16 @@ def test_artifact_syncing_with_actor_reuse(
                 )
 
     caplog.clear()
-    with caplog.at_level(logging.WARNING):
+    with inject_os_environ({"TEST_TMPDIR": str(local_dir)}), caplog.at_level(
+        logging.WARNING
+    ):
         analysis = _run_trials_with_frequent_pauses(
             MyResettableClassWithArtifacts,
             reuse=True,
             max_concurrent_trials=2,
-            local_dir=str(local_dir),
+            storage_path=f"file://{tmp_target}",
             name=exp_name,
-            sync_config=tune.SyncConfig(
-                upload_dir=f"file://{tmp_target}", sync_artifacts=True
-            ),
+            sync_config=tune.SyncConfig(sync_artifacts=True),
             trial_dirname_creator=lambda t: str(t.config.get("id")),
             checkpoint_freq=1,
         )

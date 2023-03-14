@@ -12,7 +12,6 @@ import warnings
 import ray
 from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
-from ray.air._internal.uri_utils import URI
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.experiment_state import (

@@ -15,7 +15,6 @@ from typing import (
 )
 
 from ray.air.constants import WILDCARD_KEY
-from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
@@ -758,6 +757,7 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig, Syncer
+        from ray.tune.utils.util import _split_remote_local_path
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
