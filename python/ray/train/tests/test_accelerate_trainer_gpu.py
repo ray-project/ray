@@ -1,14 +1,9 @@
-import contextlib
 import pytest
 import torch
 
 import ray
 import torch.nn as nn
-from ray.train.examples.pytorch.torch_linear_example import (
-    LinearDataset,
-    train_epoch,
-    validate_epoch,
-)
+from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 from ray.air.config import ScalingConfig
@@ -70,7 +65,7 @@ deepspeed_config:
   deepspeed_hostfile: ''
   deepspeed_multinode_launcher: pdsh
   gradient_accumulation_steps: 1
-  offload_optimizer_device: none
+  offload_optimizer_device: cpu
   offload_param_device: none
   zero3_init_flag: false
   zero_stage: 2
@@ -139,14 +134,6 @@ DEEPSPEED_JSON = """{
             "adam_w_mode": true
         }
     },
-    "scheduler": {
-        "type": "WarmupLR",
-        "params": {
-            "warmup_min_lr": "auto",
-            "warmup_max_lr": "auto",
-            "warmup_num_steps": "auto"
-        }
-    },
     "zero_optimization": {
         "stage": 2,
         "offload_optimizer": {
@@ -157,7 +144,6 @@ DEEPSPEED_JSON = """{
         "allgather_bucket_size": 2e8,
         "overlap_comm": true,
         "reduce_scatter": true,
-        "reduce_bucket_size": "auto",
         "contiguous_gradients": true
     },
     "gradient_accumulation_steps": 1,
@@ -177,13 +163,13 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-@contextlib.contextmanager
-def ray_start_2_node_cluster(num_cpus_per_node: int, num_gpus_per_node: int):
+@pytest.fixture
+def ray_2_node_2_gpu_deepspeed():
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=num_cpus_per_node, num_gpus=num_gpus_per_node)
+        cluster.add_node(num_cpus=4, num_gpus=2)
 
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, runtime_env={"pip": ["deepspeed>=0.8.0"]})
 
     yield
 
@@ -191,7 +177,10 @@ def ray_start_2_node_cluster(num_cpus_per_node: int, num_gpus_per_node: int):
     cluster.shutdown()
 
 
-def linear_train_func(accelerator, config):
+def linear_train_func(accelerator: Accelerator, config):
+    # Has to be imported here because it required deepspeed to be installed
+    from accelerate.utils import DummyOptim
+
     data_size = config.get("data_size", 1000)
     val_size = config.get("val_size", 400)
     batch_size = config.get("batch_size", 32)
@@ -207,15 +196,62 @@ def linear_train_func(accelerator, config):
     model = nn.Linear(1, hidden_size)
 
     loss_fn = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+    optimizer_cls = (
+        torch.optim.SGD
+        if accelerator.state.deepspeed_plugin is None
+        or "optimizer" not in accelerator.state.deepspeed_plugin.deepspeed_config
+        else DummyOptim
+    )
+    # Accelerate boilerplate
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if not any(nd in n for nd in no_decay)
+            ],
+            "weight_decay": 0.0,
+        },
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if any(nd in n for nd in no_decay)
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
+    optimizer = optimizer_cls(optimizer_grouped_parameters, lr=lr)
     train_loader, validation_loader, model, optimizer = accelerator.prepare(
         train_loader, validation_loader, model, optimizer
     )
 
     results = []
     for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer)
-        state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
+        for X, y in train_loader:
+            # Compute prediction error
+            pred = model(X)
+            loss = loss_fn(pred, y)
+
+            # Backpropagation
+            accelerator.backward(loss)
+            optimizer.step()
+            optimizer.zero_grad()
+
+        num_batches = len(validation_loader)
+        model.eval()
+        loss = 0
+        with torch.no_grad():
+            for X, y in validation_loader:
+                pred = model(X)
+                loss += loss_fn(pred, y).item()
+        loss /= num_batches
+        import copy
+
+        model_copy = copy.deepcopy(accelerator.unwrap_model(model))
+        state_dict, loss = model_copy.cpu().state_dict(), loss
+
         result = dict(loss=loss)
         results.append(result)
         session.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
@@ -223,19 +259,21 @@ def linear_train_func(accelerator, config):
     return results
 
 
-@pytest.mark.parametrize("num_workers", [1, 2])
 @pytest.mark.parametrize(
     "accelerate_config_file_contents",
     [
-        ACCELERATE_CONFIG_CPU,
-        ACCELERATE_CONFIG_GPU,
-        ACCELERATE_CONFIG_DEEPSPEED,
-        ACCELERATE_CONFIG_DEEPSPEED_JSON,
+        "ACCELERATE_CONFIG_DEEPSPEED_JSON",
+        "ACCELERATE_CONFIG_DEEPSPEED",
+        "ACCELERATE_CONFIG_CPU",
+        "ACCELERATE_CONFIG_GPU",
     ],
 )
 def test_accelerate_linear(
-    ray_2_node_2_gpu, num_workers, accelerate_config_file_contents, tmpdir
+    ray_2_node_2_gpu_deepspeed, accelerate_config_file_contents, tmpdir
 ):
+    # Using strings to make test names nicer
+    accelerate_config_file_contents = globals()[accelerate_config_file_contents]
+
     def train_func(config):
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
@@ -257,10 +295,9 @@ def test_accelerate_linear(
     with open(deepspeed_config_path, "w") as f:
         f.write(DEEPSPEED_JSON)
 
-    num_workers = num_workers
     epochs = 3
     scaling_config = ScalingConfig(
-        num_workers=num_workers,
+        num_workers=2,
         use_gpu=accelerate_config_file_contents != ACCELERATE_CONFIG_CPU,
     )
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
@@ -274,7 +311,8 @@ def test_accelerate_linear(
     trainer.fit()
 
 
-def test_accelerate_e2e(ray_start_4_cpus):
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_accelerate_e2e(ray_start_4_cpus, num_workers):
     def train_func():
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
@@ -283,7 +321,7 @@ def test_accelerate_e2e(ray_start_4_cpus):
         model = accelerator.prepare(model)
         session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
-    scaling_config = ScalingConfig(num_workers=2)
+    scaling_config = ScalingConfig(num_workers=num_workers)
     trainer = AccelerateTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,

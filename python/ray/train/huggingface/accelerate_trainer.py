@@ -167,9 +167,9 @@ def _accelerate_train_loop_per_worker(config):
         namespace.num_processes = 1
         namespace.num_machines = session.get_world_size()
         namespace.machine_rank = session.get_world_rank()
-        namespace.num_cpu_threads_per_process = session.get_trial_resources().bundles[
-            -1
-        ].get("CPU", 1)
+        namespace.num_cpu_threads_per_process = (
+            session.get_trial_resources().bundles[-1].get("CPU", 1)
+        )
         namespace.gpu_ids = None
         namespace.main_process_ip = master_addr
         namespace.main_process_port = master_port
@@ -181,10 +181,8 @@ def _accelerate_train_loop_per_worker(config):
         if device.type == "cpu":
             os.environ["LOCAL_RANK"] = "-1"
             namespace.use_cpu = True
-            namespace.multi_gpu = False
         else:
             namespace.use_cpu = False
-            namespace.multi_gpu = True
 
         # Handle DeepSpeed config
         if isinstance(deepspeed_config_file_raw, dict):
