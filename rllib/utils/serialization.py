@@ -1,6 +1,7 @@
 import base64
 import importlib
 import io
+import importlib
 import zlib
 from typing import Any, Dict, Optional, Sequence, Type, Union
 
@@ -75,17 +76,17 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     def _discrete(sp: gym.spaces.Discrete) -> Dict:
         d = {
             "space": "discrete",
-            "n": sp.n,
+            "n": int(sp.n),
         }
         # Offset is a relatively new Discrete space feature.
         if hasattr(sp, "start"):
-            d["start"] = sp.start
+            d["start"] = int(sp.start)
         return d
 
     def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
         return {
             "space": "multi-binary",
-            "n": sp.n,
+            "n": int(sp.n),
             "dtype": sp.dtype.str,
         }
 
@@ -339,11 +340,12 @@ def serialize_type(type_: Union[Type, str]) -> str:
     Returns:
         The full classpath of the given type, e.g. "ray.rllib.algorithms.ppo.PPOConfig".
     """
+    # TODO (avnishn): find a way to incorporate the tune registry here.
     # Already serialized.
     if isinstance(type_, str):
         return type_
 
-    return type_.__module__ + "." + type_.__name__
+    return type_.__module__ + "." + type_.__qualname__
 
 
 @DeveloperAPI
@@ -351,7 +353,6 @@ def deserialize_type(
     module: Union[str, Type], error: bool = False
 ) -> Optional[Union[str, Type]]:
     """Resolves a class path to a class.
-
     If the given module is already a class, it is returned as is.
     If the given module is a string, it is imported and the class is returned.
 

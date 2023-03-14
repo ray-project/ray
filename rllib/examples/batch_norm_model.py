@@ -51,7 +51,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=True)#TODO
 
     ModelCatalog.register_custom_model(
         "bn_model",

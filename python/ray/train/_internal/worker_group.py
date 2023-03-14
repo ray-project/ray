@@ -140,7 +140,6 @@ class WorkerGroup:
         actor_cls_kwargs: Optional[Dict] = None,
         placement_group: Union[PlacementGroup, str] = "default",
     ):
-
         if num_workers <= 0:
             raise ValueError(
                 "The provided `num_workers` must be greater "
@@ -244,7 +243,9 @@ class WorkerGroup:
             )
 
         return [
-            w.actor._RayTrainWorker__execute.remote(func, *args, **kwargs)
+            w.actor._RayTrainWorker__execute.options(
+                name=f"_RayTrainWorker__execute.{func.__name__}"
+            ).remote(func, *args, **kwargs)
             for w in self.workers
         ]
 
@@ -281,8 +282,12 @@ class WorkerGroup:
                 f"The provided worker_index {worker_index} is "
                 f"not valid for {self.num_workers} workers."
             )
-        return self.workers[worker_index].actor._RayTrainWorker__execute.remote(
-            func, *args, **kwargs
+        return (
+            self.workers[worker_index]
+            .actor._RayTrainWorker__execute.options(
+                name=f"_RayTrainWorker__execute.{func.__name__}"
+            )
+            .remote(func, *args, **kwargs)
         )
 
     def execute_single(
@@ -336,7 +341,9 @@ class WorkerGroup:
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
-                actor._RayTrainWorker__execute.remote(construct_metadata)
+                actor._RayTrainWorker__execute.options(
+                    name="_RayTrainWorker__execute.construct_metadata"
+                ).remote(construct_metadata)
             )
 
         # Get metadata from all actors.
