@@ -4,7 +4,7 @@ from typing import Any, List, Mapping, Union
 import tree
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.algorithms.impala.impala_torch_policy import VTraceLoss
+import ray.rllib.algorithms.impala.vtrace_torch as vtrace
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
@@ -142,8 +142,11 @@ class ImpalaTLearner(TorchLearner):
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        target_logits = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
 
+        actions = batch[SampleBatch.ACTIONS]
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
+        behaviour_logits = batch[SampleBatch.ACTION_DIST_INPUTS]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
         behaviour_actions_logp_time_major = make_time_major(
@@ -184,30 +187,71 @@ class ImpalaTLearner(TorchLearner):
             ).type(dtype=torch.float32)
         ) * self.discount_factor
 
-        vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
-            target_action_log_probs=target_actions_logp_time_major,
-            behaviour_action_log_probs=behaviour_actions_logp_time_major,
-            rewards=rewards_time_major,
-            values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major,
+        def _make_time_major(*args, **kw):
+            return make_time_major(self, batch.get(SampleBatch.SEQ_LENS), *args, **kw)
+
+        drop_last = self.config["vtrace_drop_last_ts"]
+
+        # In the old impala code, actions needed to be unsqueezed if they were
+        # multi_discrete
+        # actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
+
+        actions = _make_time_major(actions, drop_last=drop_last)
+        actions_logp = _make_time_major(target_actions_logp, drop_last=drop_last)
+        dones = _make_time_major(batch[SampleBatch.DONES], drop_last=drop_last)
+        behaviour_logits_time_major = _make_time_major(
+            behaviour_logits, drop_last=drop_last
         )
+        target_logits_time_major = _make_time_major(target_logits, drop_last=drop_last)
+        discount = discounts_time_major
+        values = _make_time_major(values, drop_last=drop_last)
+        dist_class = (
+            target_policy_dist  # TorchCategorical if is_multidiscrete else dist_class,
+        )
+        model = self.module
+        clip_rho_threshold = self.vtrace_clip_rho_threshold
+        clip_pg_rho_threshold = self.vtrace_clip_pg_rho_threshold
+
+        # Compute vtrace on the CPU for better perf
+        # (devices handled inside `vtrace.multi_from_logits`).
+        device = behaviour_actions_logp_time_major[0].device
+        vtrace_returns = vtrace.multi_from_logits(
+            behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            behaviour_policy_logits=behaviour_logits_time_major,
+            target_policy_logits=target_logits_time_major,
+            actions=torch.unbind(actions, dim=2),
+            discounts=(1.0 - dones.float()) * discount,
+            rewards=rewards_time_major,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            dist_class=dist_class,
+            model=model,
+            clip_rho_threshold=clip_rho_threshold,
+            clip_pg_rho_threshold=clip_pg_rho_threshold,
+        )
+        # Move v-trace results back to GPU for actual loss computing.
+        value_targets = vtrace_returns.vs.to(device)
+
+        pg_advantages = vtrace_returns.pg_advantages.to(device)
+
+        # The policy gradients loss.
+        pi_loss = -torch.sum(actions_logp * pg_advantages)
+
+        # The baseline loss.
+        delta = values - value_targets
+        vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
         batch_size = target_actions_logp_time_major.shape[-1].type(torch.float32)
 
         # The policy gradients loss.
-        pi_loss = -tf.reduce_sum(target_actions_logp_time_major * pg_advantages)
         mean_pi_loss = pi_loss / batch_size
 
         # The baseline loss.
-        delta = values_time_major - vtrace_adjusted_target_values
-        vf_loss = 0.5 * tf.reduce_sum(delta**2)
         mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
-        entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)
+        # or use actions_entropy
+        entropy_loss = -torch.sum(target_actions_logp_time_major)
 
         # The summed weighted loss.
         total_loss = (

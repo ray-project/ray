@@ -404,7 +404,7 @@ class ImpalaConfig(AlgorithmConfig):
         lg_config = super().get_learner_group_config(module_spec)
         optim_config = lg_config.optimizer_config
         # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
-        # class
+        #  class
         optim_config.update({"grad_clip": self.grad_clip})
         lg_config = lg_config.learner(optimizer_config=optim_config)
         return lg_config
@@ -432,6 +432,14 @@ class ImpalaConfig(AlgorithmConfig):
 
             return SingleAgentRLModuleSpec(
                 module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
+        elif self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
