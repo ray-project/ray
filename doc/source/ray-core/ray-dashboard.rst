@@ -14,12 +14,12 @@ SANG-TODO Replace the image with GIF.
 Here are common workflows when using the Ray dashboard.
 
 - :ref:`See the metrics graphs <dash-workflow-critial-system-metrics>` (requires Prometheus and Grafana to be deployed).
-- :ref:`View the hardware utilization (CPU, GPU, memory) <dash-workflow-resource-utilization>` so that you can compare it to Ray's logical resource usages.
 - :ref:`See the progress of your job <dash-workflow-job-progress>`.
 - :ref:`Find the logs or error messages of failed tasks or actors <dash-workflow-failed-tasks>`.
 - :ref:`Profile, trace dump, and visualize the timeline of the Ray jobs, tasks, or actors <dashboard-profiling>`.
 - :ref:`Analyze the CPU and memory usage of the cluster, tasks and actors <dash-workflow-cpu-memory-analysis>`.
 - :ref:`See individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
+- :ref:`View the hardware utilization (CPU, GPU, memory) <dash-workflow-resource-utilization>` so that you can compare it to Ray's logical resource usages.
 
 Getting Started
 ---------------
@@ -32,41 +32,39 @@ To use the dashboard, you should use the `ray[default]` installation:
 
 You can access the dashboard through a URL printed when Ray is initialized (the default URL is **http://localhost:8265**) or via the context object returned from `ray.init`.
 
-.. tabbed:: Python SDK
+.. code-block:: python
 
-    .. code-block:: python
-
-        context = ray.init()
-        print(context.dashboard_url)
+    context = ray.init()
+    print(context.dashboard_url)
 
 .. code-block:: text
 
   INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
 
-The dashboard is also available :ref:`when using the cluster launcher <monitor-cluster>`.
+Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-cluster>` for more details.
 
 .. note:: 
 
   When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana. 
-  Ray dashboard has a tight integration with them, and core features (e.g., :ref:`Metrics View <dash-metrics-view>`) wouldn't work without them.
+  Ray dashboard has a tight integration with these tools, and core features such as :ref:`Metrics View <dash-metrics-view>` won't work without them.
 
 See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
-If you prefer to explicitly set the port on which the dashboard will run, you can pass
+If you need to customize the port on which the dashboard will run, you can pass
 the ``--dashboard-port`` argument with ``ray start`` in the command line, or you can pass the
 keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 
-How to Guide
-------------
+How to Guides
+-------------
 
 .. _dash-workflow-critial-system-metrics:
 
-See the system metrics
-~~~~~~~~~~~~~~~~~~~~~~
+View system metrics
+~~~~~~~~~~~~~~~~~~~
 
-Ray exports metrics by default. Metrics are available from the :ref:`Metrics View <dash-metrics-view>`. Here are some example metrics that are available.
+Ray exports default metrics which are available from the :ref:`Metrics View <dash-metrics-view>`. Here are some available example metrics.
 
-- The tasks, actors, and placement group broken down by states.
+- The tasks, actors, and placement groups broken down by states.
 - The :ref:`logical resource usage <logical-resources>` across nodes.
 - The hardware resource usage across nodes.
 - The autoscaler status.
@@ -78,8 +76,12 @@ See :ref:`System Metrics Page <system-metrics>` for available metrics.
 Comparing the hardware and logical resource utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the amount of resources their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
 These values are used for scheduling, but may not always match the actual resource utilization. 
+
+If the logical resources don't match the physical resource usage, it can lead to the under-utilization of the cluster because the number of tasks and actors are throttled by
+the logical resource requirements.
+
 You can check the :ref:`Metrics View <dash-metrics-view>` to compare logical and hardware resource utilization. 
 
 Let's see an example.
@@ -94,14 +96,13 @@ Let's see an example.
     # Launch 30 tasks
     ray.get([task.remote() for _ in range(30)])
 
-When you run the below code that executes many tasks that sleeps, 
+When you run the below code that executes many tasks that sleep, 
 you will see from the metrics page that there are many logical CPU allocations but little to no hardware CPU usage.
 It is because the logical resource requirement is 1 CPU for each task, but each task uses nearly no CPU because it just sleeps.
 
 TODO-SANG Add images
 
-In this case, resource specification for those tasks is incorrect. 
-To address this issue, let's adjust the num_cpus value to 0.1.
+resource specification for those tasks will lead to wasted physical resources. To address this issue, let's adjust the ``num_cpus`` value to 0.1 so that other tasks or actors can be scheduled to leverage the hardware resources.
 
 .. code-block:: python
 
@@ -112,7 +113,7 @@ To address this issue, let's adjust the num_cpus value to 0.1.
 
 .. _dash-workflow-failed-tasks:
 
-Find the erorr messages or logs of the failed tasks/actors
+Find the error messages or logs of the failed tasks/actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table. 
