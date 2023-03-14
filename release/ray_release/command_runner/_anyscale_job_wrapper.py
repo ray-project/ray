@@ -291,13 +291,12 @@ def main(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
             )
 
-        if os.path.exists(artifact_path):
-            uploaded_artifact = run_aws_cp(
-                artifact_path,
-                os.path.join(upload_s3_uri, os.environ["USER_GENERATED_ARTIFACT"]),
-            )
-        else:
-            uploaded_artifact = False
+        uploaded_artifact = run_aws_cp(
+            artifact_path,
+            os.path.join(upload_s3_uri, os.environ["USER_GENERATED_ARTIFACT"])
+            if "USER_GENERATED_ARTIFACT" in os.environ
+            else None,
+        )
 
     else:
         return_code = None
