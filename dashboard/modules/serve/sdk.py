@@ -78,32 +78,23 @@ class ServeSubmissionClient(SubmissionClient):
         if response.status_code != 200:
             self._raise_error(response)
 
-    def get_info(self) -> Union[Dict, None]:
+    def get_info(self) -> Dict:
         response = self._do_request("GET", INFO_PATH)
         if response.status_code == 200:
-            # NOTE(zcin): According to https://stackoverflow.com/q/47910547,
-            # response.json() theoretically could be None. However we don't expect this
-            # to ever happen here.
             return response.json()
         else:
             self._raise_error(response)
 
-    def get_serve_details(self):
+    def get_serve_details(self) -> ServeInstanceDetails:
         response = self._do_request("GET", "/api/serve/applications/")
         if response.status_code == 200:
-            # NOTE(zcin): According to https://stackoverflow.com/q/47910547,
-            # response.json() theoretically could be None. However we don't expect this
-            # to ever happen here.
             return ServeInstanceDetails(**response.json())
         else:
             self._raise_error(response)
 
-    def get_status(self) -> Union[Dict, None]:
+    def get_status(self) -> Dict:
         response = self._do_request("GET", STATUS_PATH)
         if response.status_code == 200:
-            # NOTE(zcin): According to https://stackoverflow.com/q/47910547,
-            # response.json() theoretically could be None. However e don't expect this
-            # to ever happen here.
             return response.json()
         else:
             self._raise_error(response)
