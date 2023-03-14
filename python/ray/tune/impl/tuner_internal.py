@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tu
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.utils.util import _split_remote_local_path
 from ray.util import inspect_serializability
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
@@ -347,21 +348,21 @@ class TunerInternal:
         self._resume_config = resume_config
 
         if not synced:
-            # If we didn't sync, use the restore_path local dir
+            # If we didn't sync, use the restore_path as storage_path
             self._experiment_checkpoint_dir = os.path.abspath(
                 os.path.expanduser(path_or_uri)
             )
 
-            # Update local_dir to use the parent of the experiment path
+            # Update storage_path to use the parent of the experiment path
             # provided to `Tuner.restore`
             experiment_path = Path(self._experiment_checkpoint_dir)
-            self._run_config.local_dir = str(experiment_path.parent)
+            self._run_config.storage_path = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
             # Set the experiment `name` and `upload_dir` according to the URI
             uri = URI(path_or_uri)
             self._run_config.name = uri.name
-            self._run_config.sync_config.upload_dir = str(uri.parent)
+            self._run_config.storage_path = str(uri.parent)
 
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -389,7 +390,7 @@ class TunerInternal:
         """Sync down trainable state from remote storage.
 
         Returns:
-            Tuple of (downloaded from remote, local_dir)
+            Tuple of (downloaded from remote, storage_path)
         """
         if not is_non_local_path_uri(restore_path):
             return False, os.path.expanduser(restore_path)
@@ -421,9 +422,13 @@ class TunerInternal:
         cls, trainable: TrainableType, run_config: Optional[RunConfig]
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
+        remote_storage_path, local_storage_path = _split_remote_local_path(
+            run_config.storage_path, None
+        )
+
         path = Experiment.get_experiment_checkpoint_dir(
             trainable,
-            run_config.local_dir,
+            local_storage_path,
             run_config.name,
         )
         if not os.path.exists(path):
@@ -546,7 +551,7 @@ class TunerInternal:
                 checkpoint_at_end = True
 
         return dict(
-            local_dir=self._run_config.local_dir,
+            storage_path=self._run_config.storage_path,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,

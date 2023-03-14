@@ -26,7 +26,7 @@ from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import _get_default_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str
@@ -71,7 +71,7 @@ def _validate_log_to_file(log_to_file):
 
 
 def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
+    return os.path.abspath(os.path.expanduser(local_dir or _get_default_results_dir()))
 
 
 def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
@@ -158,14 +158,14 @@ class Experiment:
             if local_storage_path:
                 raise ValueError(
                     "Only one of `local_dir` and `storage_path` can be passed to "
-                    "``Experiment().` Since `local_dir` is deprecated, consider "
-                    "only passing `storage_path`."
+                    "``Experiment().` Since `local_dir` is deprecated, pass "
+                    "only `storage_path` instead."
                 )
 
             if log_once("tune_experiment_local_dir"):
                 warnings.warn(
                     "The `local_dir` argument of `Experiment is deprecated. "
-                    "Use `storage_path` or set the `RAY_AIR_LOCAL_EXPERIMENT_DIR` "
+                    "Use `storage_path` or set the `TUNE_RESULT_DIR` "
                     "environment variable instead."
                 )
 
@@ -188,13 +188,16 @@ class Experiment:
         if _experiment_checkpoint_dir:
             experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
             local_dir_path = Path(full_local_storage_path)
-            assert local_dir_path in experiment_checkpoint_dir_path.parents
+            assert local_dir_path in experiment_checkpoint_dir_path.parents, (
+                local_dir_path,
+                str(list(experiment_checkpoint_dir_path.parents)),
+            )
             # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
             self.dir_name = os.path.relpath(
                 _experiment_checkpoint_dir, full_local_storage_path
             )
 
-        self._local_storage_path = local_storage_path
+        self._local_storage_path = full_local_storage_path
         self._remote_storage_path = remote_storage_path
 
         config = config or {}

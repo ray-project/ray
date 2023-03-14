@@ -1,3 +1,5 @@
+import os
+import warnings
 from collections import defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from typing import (
@@ -13,6 +15,7 @@ from typing import (
 )
 
 from ray.air.constants import WILDCARD_KEY
+from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
@@ -754,7 +757,7 @@ class RunConfig:
     local_dir: Optional[str] = None
 
     def __post_init__(self):
-        from ray.tune.syncer import SyncConfig
+        from ray.tune.syncer import SyncConfig, Syncer
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -765,9 +768,43 @@ class RunConfig:
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
 
-        # local_cache_dir =
+        if self.local_dir:
+            if self.storage_path:
+                raise ValueError(
+                    "Only one of `local_dir` and `storage_path` can be passed to "
+                    "`air.RunConfig`. Since `local_dir` is deprecated, "
+                    "only pass `storage_path` instead."
+                )
+            self.storage_path = self.local_dir
+
+        remote_storage_path, local_storage_path = _split_remote_local_path(
+            self.storage_path, None
+        )
+
         if self.sync_config.upload_dir:
-            pass
+            if remote_storage_path:
+                raise ValueError(
+                    "If `storage_path` points to a remote storage, you cannot "
+                    "set `SyncConfig.upload_dir` (which is deprecated). Pass "
+                    "`upload_dir=None` instead."
+                )
+            remote_storage_path = self.sync_config.upload_dir
+            self.storage_path = remote_storage_path
+
+        if remote_storage_path and local_storage_path:
+            warnings.warn(
+                "Passing both a `RunConfig.local_dir` and a `Syncer.upload_dir` "
+                "is deprecated and will be removed in the future. Instead, pass "
+                "`RunConfig.storage_dir=remote_storage_dir` and set the "
+                "`TUNE_RESULT_DIR` environment variable."
+            )
+            os.environ["TUNE_RESULT_DIR"] = local_storage_path
+            self.storage_path = remote_storage_path
+
+        if isinstance(self.sync_config.syncer, Syncer) and not remote_storage_path:
+            raise ValueError(
+                "Must specify a remote `storage_path` to use a custom `syncer`."
+            )
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig

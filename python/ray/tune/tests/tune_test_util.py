@@ -1,8 +1,19 @@
 import os
 import tempfile
+from contextlib import contextmanager
 
 from ray.tune import Callback
 from ray.tune.execution.trial_runner import TrialRunner
+
+
+@contextmanager
+def inject_os_environ(env):
+    old_env = os.environ.copy()
+    os.environ.update(env)
+    yield
+    for k in env:
+        os.environ.pop(k)
+    os.environ.update(old_env)
 
 
 class TrialResultObserver(Callback):

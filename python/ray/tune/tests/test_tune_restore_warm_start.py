@@ -62,7 +62,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
@@ -81,7 +81,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         return results

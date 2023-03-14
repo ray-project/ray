@@ -120,7 +120,9 @@ class _ExperimentCheckpointManager:
         # Synch to/from cloud
         self._sync_config = sync_config or SyncConfig
         # Resolves syncer="auto" to an actual syncer if needed
-        self._syncer = get_node_to_storage_syncer(self._sync_config)
+        self._syncer = get_node_to_storage_syncer(
+            self._sync_config, self._remote_checkpoint_dir
+        )
 
         # Last save + sync time
         self._last_save_time = 0.0
@@ -227,7 +229,7 @@ class _ExperimentCheckpointManager:
         if not self._syncer:  # or not self._remote_checkpoint_dir:
             return False
 
-        if bool(self._sync_config.upload_dir):
+        if bool(self._remote_checkpoint_dir):
             # If an upload dir is given, trainable actors upload checkpoints
             # themselves. Then the driver does not need to sync checkpoints.
             exclude = ["*/checkpoint_*"]
@@ -290,7 +292,7 @@ class _ExperimentCheckpointManager:
         if not self._syncer or not self._remote_checkpoint_dir:
             return False
 
-        if bool(self._sync_config.upload_dir):
+        if bool(self._remote_checkpoint_dir):
             # If an upload dir is given, trainable actors upload checkpoints
             # themselves. Then the driver does not need to sync checkpoints.
             exclude = ["*/checkpoint_*"]

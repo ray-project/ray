@@ -76,6 +76,8 @@ class ExperimentAnalysis:
         trials: Optional[List[Trial]] = None,
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
+        remote_experiment_path: Optional[str] = None,
+        # Deprecate: Raise in 2.5, remove in 2.6
         sync_config: Optional[SyncConfig] = None,
     ):
         # Load the experiment checkpoints and their parent paths.
@@ -100,8 +102,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = self._checkpoints_and_paths[0][1].parent
-
+        self._local_experiment_path = self._checkpoints_and_paths[0][1]
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -110,15 +111,24 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        self._sync_config = sync_config
+        if sync_config and sync_config.upload_dir:
+            if remote_experiment_path:
+                raise ValueError(
+                    "If passing a `remote_experiment_path` "
+                    "to `ExperimentAnalysis()`, don't set "
+                    "a `upload_dir` argument in the `tune.SyncConfig`."
+                )
+            remote_experiment_path = sync_config.upload_dir
+
+        self._remote_experiment_path = remote_experiment_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
-        if not self._sync_config or not self._sync_config.upload_dir:
+        if not self._remote_experiment_path:
             return None
 
         return local_path.replace(
-            str(self._local_base_dir), self._sync_config.upload_dir
+            str(self._local_experiment_path), self._remote_experiment_path
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:

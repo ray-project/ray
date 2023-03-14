@@ -53,7 +53,7 @@ class TrainableUtilTest(unittest.TestCase):
 
         name = "AnalysisTest"
         ray.init(local_mode=True)
-        ray.tune.run(tune_one, local_dir=self.checkpoint_dir, name=name)
+        ray.tune.run(tune_one, storage_path=self.checkpoint_dir, name=name)
 
         a = ray.tune.ExperimentAnalysis(
             os.path.join(self.checkpoint_dir, name),

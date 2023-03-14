@@ -116,13 +116,18 @@ TRIAL_INFO = "__trial_info__"
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
 
-# Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = (
+
+def _get_default_results_dir():
     # This is the file system that bazel test uses.
-    os.environ.get("TEST_TMPDIR")
-    or os.environ.get("TUNE_RESULT_DIR")
-    or os.path.expanduser("~/ray_results")
-)
+    return (
+        os.environ.get("TEST_TMPDIR")
+        or os.environ.get("TUNE_RESULT_DIR")
+        or os.path.expanduser("~/ray_results")
+    )
+
+
+# Where Tune writes result files by default
+DEFAULT_RESULTS_DIR = _get_default_results_dir()
 
 # Meta file about status under each experiment directory, can be
 # parsed by automlboard if exists.

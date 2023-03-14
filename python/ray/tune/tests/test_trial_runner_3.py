@@ -750,7 +750,7 @@ class TrialRunnerTest3(unittest.TestCase):
         # for more details.
         trial = Trial(
             "__fake",
-            local_dir=tmpdir,
+            experiment_path=tmpdir,
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
         runner = TrialRunner(
@@ -888,7 +888,11 @@ class TrialRunnerTest3(unittest.TestCase):
         # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
         # for more details.
         runner.add_trial(
-            Trial("__fake", local_dir=self.tmpdir, config={"user_checkpoint_freq": 2})
+            Trial(
+                "__fake",
+                experiment_path=self.tmpdir,
+                config={"user_checkpoint_freq": 2},
+            )
         )
         trials = runner.get_trials()
 

@@ -17,7 +17,10 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
 from ray.tune.syncer import Syncer
-from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
+from ray.tune.tests.tune_test_util import (
+    create_tune_experiment_checkpoint,
+    inject_os_environ,
+)
 
 
 @pytest.fixture
@@ -334,7 +337,7 @@ def test_result_grid_df(ray_start_2_cpus):
 def test_num_errors_terminated(tmpdir):
     error_filename = "error.txt"
 
-    trials = [Trial("foo", local_dir=str(tmpdir), stub=True) for i in range(10)]
+    trials = [Trial("foo", experiment_path=str(tmpdir), stub=True) for i in range(10)]
 
     # Only create 1 shared trial logdir for this test
     trials[0].init_local_path()
@@ -380,7 +383,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
         ),
         run_config=air.RunConfig(
             name="exp_dir",
-            local_dir=str(tmpdir / "ray_results"),
+            storage_path=str(tmpdir / "ray_results"),
             stop={"it": total_iters},
             checkpoint_config=air.CheckpointConfig(
                 # Keep the latest checkpoints
@@ -420,22 +423,25 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
     # Test that checkpoints returned by ResultGrid point to URI
     # if upload_dir is specified in SyncConfig.
     local_dir = Path(tmpdir) / "local_dir"
-    sync_config = tune.SyncConfig(upload_dir="s3://bucket", syncer=MockSyncer())
+    sync_config = tune.SyncConfig(syncer=MockSyncer())
 
     def trainable(config):
         for i in range(5):
             checkpoint = Checkpoint.from_dict({"model": i})
             session.report(metrics={"metric": i}, checkpoint=checkpoint)
 
-    tuner = tune.Tuner(
-        trainable,
-        run_config=air.RunConfig(sync_config=sync_config, local_dir=local_dir),
-        tune_config=tune.TuneConfig(
-            metric="metric",
-            mode="max",
-        ),
-    )
-    results = tuner.fit()
+    with inject_os_environ({"TEST_TMPDIR": str(local_dir)}):
+        tuner = tune.Tuner(
+            trainable,
+            run_config=air.RunConfig(
+                sync_config=sync_config, storage_path="s3://bucket"
+            ),
+            tune_config=tune.TuneConfig(
+                metric="metric",
+                mode="max",
+            ),
+        )
+        results = tuner.fit()
     shutil.rmtree(local_dir)
     best_checkpoint = results.get_best_result().checkpoint
     assert not best_checkpoint.uri.startswith("file://")

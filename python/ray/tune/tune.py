@@ -59,6 +59,7 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -195,7 +196,7 @@ def run(
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
     ] = None,
     num_samples: int = 1,
-    local_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     keep_checkpoints_num: Optional[int] = None,
@@ -221,6 +222,7 @@ def run(
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
     trial_executor: Optional[RayTrialExecutor] = None,
+    local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -258,11 +260,11 @@ def run(
 
         # Resumes training if a previous machine crashed
         tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume=True)
+                 storage_path=<path/to/dir>, resume=True)
 
         # Rerun ONLY failed trials after an experiment is finished.
         tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume="ERRORED_ONLY")
+                 storage_path=<path/to/dir>, resume="ERRORED_ONLY")
 
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
@@ -308,8 +310,8 @@ def run(
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to save training results to. Can be a local directory
+            or a path on remote storage (e.g. S3). Defaults to ``~/ray_results``.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
         scheduler: Scheduler for executing
@@ -381,9 +383,9 @@ def run(
             "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
             "LOCAL"/True restores the checkpoint from the
             local experiment directory, determined
-            by ``name`` and ``local_dir``.
+            by ``name`` and ``storage_path``.
             "REMOTE" restores the checkpoint
-            from ``upload_dir`` (as passed to ``sync_config``).
+            from a remote ``storage_path``.
             "PROMPT" provides the CLI feedback.
             False forces a new experiment.
             "AUTO" will attempt to resume from a checkpoint and otherwise
@@ -493,8 +495,51 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
+    if local_dir:
+        if storage_path:
+            raise ValueError(
+                "Only one of `local_dir` and `storage_path` can be passed to "
+                "`tune.run()` and `air.RunConfig`. "
+                "Since `local_dir` is deprecated, consider only passing "
+                "`storage_path`."
+            )
+        warnings.warn(
+            "Passing `local_dir` to `air.RunConfig` and `tune.run()` is deprecated. "
+            "Pass `storage_path` instead."
+        )
+        storage_path = local_dir
+
+    remote_storage_path, local_storage_path = _split_remote_local_path(
+        storage_path, None
+    )
+
     sync_config = sync_config or SyncConfig()
-    sync_config.validate_upload_dir()
+    if sync_config.upload_dir:
+        warnings.warn(
+            "Passing an `upload_dir` to `SyncConfig` is deprecated and will be "
+            "removed in the future. Pass a `storage_path` pointing to remote storage "
+            "to `Tuner()` or `tune.run()` instead."
+        )
+        if remote_storage_path:
+            raise ValueError(
+                "If `storage_path` points to a remote storage, you cannot "
+                "set `SyncConfig.upload_dir` (which is deprecated). Pass "
+                "`upload_dir=None` instead."
+            )
+        remote_storage_path = sync_config.upload_dir
+        storage_path = remote_storage_path
+
+        if remote_storage_path and local_storage_path:
+            warnings.warn(
+                "Passing both a `RunConfig.local_dir` and a `Syncer.upload_dir` "
+                "is deprecated and will be removed in the future. Instead, pass "
+                "`RunConfig.storage_dir=remote_storage_dir` and set the "
+                "`TUNE_RESULT_DIR` environment variable."
+            )
+            os.environ["TUNE_RESULT_DIR"] = local_storage_path
+            storage_path = remote_storage_path
+
+    sync_config.validate_upload_dir(remote_storage_path)
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
@@ -611,7 +656,7 @@ def run(
                 config=config,
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
-                local_dir=local_dir,
+                storage_path=storage_path,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
@@ -745,7 +790,7 @@ def run(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        experiment_path=experiments[0].path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
@@ -797,7 +842,7 @@ def run(
         _report_progress(runner, progress_reporter, done=True)
 
     all_trials = runner.get_trials()
-    experiment_checkpoint = runner.checkpoint_file
+    experiment_checkpoint = runner.experiment_state_path
 
     # Wait for syncing to finish
     for callback in callbacks:
@@ -839,7 +884,7 @@ def run(
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
-        sync_config=sync_config,
+        remote_experiment_path=experiments[0].remote_path,
     )
 
 

@@ -30,7 +30,6 @@ from ray.tune.logger import NoopLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR,
     DONE,
     NODE_IP,
     PID,
@@ -40,6 +39,7 @@ from ray.tune.result import (
     TRIAL_INFO,
     STDOUT_FILE,
     STDERR_FILE,
+    _get_default_results_dir,
 )
 from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
@@ -378,7 +378,9 @@ class Trial:
 
         if not local_experiment_path:
             assert experiment_dir_name
-            local_experiment_path = str(Path(DEFAULT_RESULTS_DIR) / experiment_dir_name)
+            local_experiment_path = str(
+                Path(_get_default_results_dir()) / experiment_dir_name
+            )
 
         if self.sync_config.upload_dir:
             if remote_experiment_path:
@@ -744,7 +746,7 @@ class Trial:
 
     @property
     def uses_cloud_checkpointing(self):
-        return bool(self.remote_checkpoint_dir)
+        return bool(self.remote_path)
 
     def reset(self):
         # If there is `default_resource_request` associated with the trainable,

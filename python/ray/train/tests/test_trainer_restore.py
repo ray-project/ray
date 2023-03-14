@@ -420,6 +420,7 @@ def test_restore_from_invalid_dir(tmpdir):
         BaseTrainer.restore("memory:///not/found")
 
 
+# TODO: FIX TEST
 @pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
 def test_trainer_can_restore_utility(tmp_path, upload_dir):
     """Make sure that `can_restore` detects an existing experiment at a

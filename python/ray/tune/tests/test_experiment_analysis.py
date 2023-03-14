@@ -39,7 +39,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.ea = tune.run(
             MyTrainableClass,
             name=self.test_name,
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             checkpoint_freq=1,
             num_samples=self.num_samples,
@@ -53,7 +53,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         nan_ea = tune.run(
             lambda x: nan,
             name="testing_nan",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
@@ -177,7 +177,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                     pass
                 tune.report(**result)
 
-        ea = tune.run(train, local_dir=self.test_dir, config={"steps": 3})
+        ea = tune.run(train, storage_path=self.test_dir, config={"steps": 3})
         best_trial = ea.get_best_trial(metric, mode="min")
         best_checkpoint = ea.get_best_checkpoint(best_trial, metric, mode="min")
         checkpoints_metrics = ea.get_trial_checkpoints_paths(best_trial, metric=metric)
@@ -196,7 +196,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         new_ea = tune.run(
             MyTrainableClass,
             name=self.test_name,
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 2},
             checkpoint_freq=1,
             config={
@@ -214,7 +214,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         tune.run(
             MyTrainableClass,
             name=self.test_name,
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             restore=last_checkpoint,
             stop={"training_iteration": 3},
             checkpoint_freq=1,
@@ -236,7 +236,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         analysis = tune.run(
             MyTrainableClass,
             name="test_example",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             num_samples=1,
             config={
@@ -251,7 +251,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         analysis = tune.run(
             MyTrainableClass,
             name="test_example",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             num_samples=1,
             config={"test": tune.grid_search([[1, 2], [3, 4]])},
@@ -267,7 +267,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         analysis = tune.run(
             MyTrainableClass,
             name="test_example",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 2},
             num_samples=1,
             config={"test": tune.grid_search([[1, 2], [3, 4]])},
@@ -373,7 +373,7 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
         return tune.run(
             training_function,
             name=self.test_name,
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={

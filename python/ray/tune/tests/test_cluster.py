@@ -191,6 +191,7 @@ def custom_driver_logdir_callback(tempdir: str):
     return SeparateDriverSyncerCallback()
 
 
+# TODO: FIX TEST(S)
 @pytest.mark.parametrize("durable", [False, True])
 def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     """Removing a node while cluster has space should migrate trial.
@@ -400,14 +401,14 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
     base_dict = dict(
         run="__fake",
         stop=dict(training_iteration=3),
-        local_dir=local_dir,
+        storage_path=local_dir,
         sync_config=dict(upload_dir=upload_dir),
     )
 
     exp1_args = base_dict
     exp2_args = dict(
         base_dict.items(),
-        local_dir=dirpath,
+        storage_path=dirpath,
         checkpoint_config=dict(checkpoint_frequency=1),
     )
     exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
@@ -461,7 +462,7 @@ tune.run(
     name="experiment",
     config=dict(env="CartPole-v1", framework="tf"),
     stop=dict(training_iteration=10),
-    local_dir="{checkpoint_dir}",
+    storage_path="{checkpoint_dir}",
     checkpoint_freq=1,
     max_failures=1,
     dict(experiment=kwargs),
@@ -559,7 +560,7 @@ tune.run(
     {fail_class},
     name="experiment",
     stop=dict(training_iteration=5),
-    local_dir="{checkpoint_dir}",
+    storage_path="{checkpoint_dir}",
     checkpoint_freq=1,
     max_failures=1,
     raise_on_failed_trial=False)

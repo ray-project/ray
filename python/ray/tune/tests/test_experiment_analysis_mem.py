@@ -57,7 +57,10 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
     def testInit(self):
         trial = Trial(
-            "MockTrainable", stub=True, trial_id="abcd1234", local_dir=self.test_dir
+            "MockTrainable",
+            stub=True,
+            trial_id="abcd1234",
+            experiment_path=self.test_dir,
         )
         trial.status = Trial.TERMINATED
         trial.relative_logdir = "MockTrainable_0_id=3_2020-07-12"
@@ -80,7 +83,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         ea = run(
             self.MockTrainable,
             name="analysis_exp",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": len(scores[0])},
             num_samples=1,
             config={"id": grid_search(list(range(5)))},
@@ -131,7 +134,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         [trial] = run(
             self.MockTrainable,
             name="analysis_remove_exp",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 9},
             num_samples=1,
             config={"id": 1},
@@ -170,7 +173,7 @@ class AnalysisSuite(unittest.TestCase):
         run(
             MyTrainableClass,
             name=test_name,
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
