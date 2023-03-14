@@ -56,6 +56,7 @@ from dataclasses import dataclass
 from ray._private.test_utils import safe_write_to_results_json
 from collections import defaultdict
 import statistics
+import argparse
 
 @ray.remote(num_cpus=0)
 class MetricsActor:
@@ -68,6 +69,8 @@ class MetricsActor:
         self.measurements[test_name].append(latency)
         results = self.create_results_dict_from_measurements()
         safe_write_to_results_json(results)
+
+        assert len(self.measurements[test_name]) <= self.expected_measurements_per_test, "Expected {self.measurements[test_name]} to not have more elements than {self.expected_measurements_per_test}"
 
     def create_results_dict_from_measurements(self):
         results = {}
@@ -141,13 +144,12 @@ async def run_and_stream_logs(metrics_actor_name, metrics_actor_namespace, test:
                 raise ValueError(f'Job {job_id} was not successful; status is {job_status}')
 
 
-def generate_test_matrix(num_measurements_per_test: int):
-    tests = set()
+def generate_test_matrix(num_cpus_in_cluster: int, num_tasks_or_actors_per_run: int, num_measurements_per_test: int):
 
-    num_cpus_in_cluster = os.cpu_count()
     num_repeated_jobs_or_runs = num_measurements_per_test
-    num_tasks_or_actors_per_run = num_cpus_in_cluster * 1
     total_num_tasks_or_actors = num_tasks_or_actors_per_run * num_repeated_jobs_or_runs
+
+    tests = set()
 
     for num_jobs in [1, num_repeated_jobs_or_runs]:
         for with_gpu in [True, False]:
@@ -169,20 +171,26 @@ def generate_test_matrix(num_measurements_per_test: int):
     
     return tests
 
-def main():
-
-    num_measurements_per_test = 5
-
+def main(
+        num_cpus_in_cluster: int,
+        num_tasks_or_actors_per_run: int,
+        num_measurements_per_configuration: int
+    ):
     metrics_actor_name = 'metrics_actor'
     metrics_actor_namespace = 'metrics_actor_namespace'
     metrics_actor = MetricsActor.options(
         name=metrics_actor_name,
         namespace=metrics_actor_namespace,
     ).remote(
-        expected_measurements_per_test=num_measurements_per_test,
+        expected_measurements_per_test=num_measurements_per_configuration,
     )
     
-    run_matrix = generate_test_matrix(num_measurements_per_test)
+    run_matrix = generate_test_matrix(
+        num_cpus_in_cluster=num_cpus_in_cluster,
+        num_tasks_or_actors_per_run=num_tasks_or_actors_per_run,
+        num_measurements_per_test=num_measurements_per_configuration,
+    )
+    print(f'List of tests: {run_matrix}')
 
     for test in random.sample(list(run_matrix), k=len(run_matrix)):
         print(f"Running test {test}")
@@ -192,5 +200,18 @@ def main():
             test,
         ))
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--num_cpus_in_cluster', type=int, required=True)
+    parser.add_argument('--num_tasks_or_actors_per_run', type=int, required=True)
+    parser.add_argument('--num_measurements_per_configuration', type=int, required=True)
+
+    return parser.parse_args()
+
 if __name__ == '__main__':
-    sys.exit(main())
+    args = parse_args()
+    sys.exit(main(
+        args.num_cpus_in_cluster,
+        args.num_tasks_or_actors_per_run,
+        args.num_measurements_per_configuration,
+    ))
