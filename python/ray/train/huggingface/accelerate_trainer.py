@@ -169,7 +169,7 @@ def _accelerate_train_loop_per_worker(config):
         namespace.machine_rank = session.get_world_rank()
         namespace.num_cpu_threads_per_process = session.get_trial_resources().bundles[
             -1
-        ]["CPU"]
+        ].get("CPU", 1)
         namespace.gpu_ids = None
         namespace.main_process_ip = master_addr
         namespace.main_process_port = master_port
