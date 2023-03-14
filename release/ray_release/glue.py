@@ -176,6 +176,8 @@ def run_release_test(
     extra_tags["test_smoke_test"] = str(result.smoke_test)
     result.extra_tags = extra_tags
 
+    artifact_path = test["run"].get("artifact_path", None)
+
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
@@ -184,7 +186,9 @@ def run_release_test(
             smoke_test=smoke_test,
         )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
-        command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
+        command_runner = command_runner_cls(
+            cluster_manager, file_manager, working_dir, artifact_path=artifact_path
+        )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
 
@@ -381,6 +385,13 @@ def run_release_test(
             logger.exception(f"Could not fetch results for test command: {e}")
             command_results = {}
             fetch_result_exception = e
+
+        if artifact_path:
+            try:
+                command_runner.fetch_artifact()
+            except Exception as e:
+                logger.error("Could not fetch artifact for test command")
+                logger.exception(e)
 
         # Postprocess result:
         if "last_update" in command_results:
