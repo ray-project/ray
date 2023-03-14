@@ -1010,6 +1010,10 @@ class TorchPolicyV2(Policy):
 
         os.makedirs(export_dir, exist_ok=True)
 
+        enable_rl_module = self.config.get("_enable_rl_module_api", False)
+        if enable_rl_module:
+            raise ValueError("ONNX export not supported for RLModule API.")
+
         if onnx:
             self._lazy_tensor_dict(self._dummy_batch)
             # Provide dummy state inputs if not an RNN (torch cannot jit with
