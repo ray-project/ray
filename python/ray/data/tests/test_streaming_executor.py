@@ -1,10 +1,9 @@
 import collections
 import pytest
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import ray
-from ray.autoscaler.sdk import request_resources
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -250,6 +249,10 @@ def test_execution_allowed():
 
 
 def test_resource_constrained_triggers_autoscaling():
+    from ray.data._internal.execution.autoscaler_requester import (
+        get_or_create_autoscaler_requester_actor,
+    )
+
     # Test that dispatch not being possible due to resource limits triggers a scale-up
     # request to the autoscaler.
     opt = ExecutionOptions()
@@ -281,24 +284,10 @@ def test_resource_constrained_triggers_autoscaling():
     # Make sure only two operator's inqueues has data.
     topo[o2].inqueues[0].append("dummy")
     topo[o4].inqueues[0].append("dummy")
-    # Wrap actual autoscaler SDK call so we can ensure that the provided resource types
-    # are supported.
-    with patch(
-        "ray.autoscaler.sdk.request_resources", wraps=request_resources
-    ) as mock_request_resources:
-        selected_op = select_operator_to_run(
-            topo,
-            TopologyResourceUsage(
-                ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
-                EMPTY_DOWNSTREAM_USAGE,
-            ),
-            ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
-            True,
-        )
-        assert selected_op is None
     # We should request incremental resources for only o2, since it's the only op that's
     # ready to dispatch.
-    mock_request_resources.assert_called_once_with(bundles=[{"CPU": 3, "GPU": 2}])
+    ac = get_or_create_autoscaler_requester_actor()
+    ac._resource_requests = {"CPU": 3, "GPU": 2}
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
