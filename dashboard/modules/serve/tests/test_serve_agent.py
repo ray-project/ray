@@ -13,7 +13,7 @@ from ray.experimental.state.api import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -463,7 +463,7 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_get_serve_instance_details(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
@@ -547,13 +547,23 @@ def test_get_serve_instance_details(ray_start_stop):
     # CHECK: application details
     for app in ["app1", "app2"]:
         assert app_details[app].route_prefix == f"/{app}"
-        for dep_details in app_details[app].deployments.values():
-            assert dep_details.status == DeploymentStatus.HEALTHY
-
+        for deployment in app_details[app].deployments.values():
+            assert deployment.status == DeploymentStatus.HEALTHY
             # Route prefix should be app level options eventually
-            assert "route_prefix" not in dep_details.deployment_config.dict(
+            assert "route_prefix" not in deployment.deployment_config.dict(
                 exclude_unset=True
             )
+            assert len(deployment.replicas) == deployment.deployment_config.num_replicas
+
+            for replica in deployment.replicas:
+                assert replica.state == ReplicaState.RUNNING
+                assert (
+                    deployment.name in replica.replica_id
+                    and deployment.name in replica.actor_name
+                )
+                assert replica.actor_id and replica.node_id and replica.node_ip
+                assert replica.start_time_s > app_details[app].last_deployed_time_s
+
     print("Finished checking application details.")
 
 

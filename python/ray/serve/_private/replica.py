@@ -3,6 +3,7 @@ import asyncio
 from importlib import import_module
 import inspect
 import logging
+import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
@@ -210,9 +211,15 @@ def create_replica_wrapper(name: str):
             At this time, the replica can transition from PENDING_ALLOCATION
             to PENDING_INITIALIZATION startup state.
 
-            Return the NodeID of this replica
+            Return:
+                The node ID, node IP, actor ID, and PID of the replica.
             """
-            return ray.get_runtime_context().get_node_id()
+            return (
+                os.getpid(),
+                ray.get_runtime_context().get_actor_id(),
+                ray.get_runtime_context().get_node_id(),
+                ray.util.get_node_ip_address(),
+            )
 
         async def is_initialized(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None

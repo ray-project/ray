@@ -14,6 +14,7 @@ from ray.serve._private.common import (
     ReplicaConfig,
     ReplicaTag,
     ReplicaName,
+    ReplicaState,
 )
 from ray.serve._private.deployment_state import (
     DeploymentState,
@@ -22,7 +23,6 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     DeploymentReplica,
     ReplicaStartupStatus,
-    ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
     rank_replicas_for_stopping,
@@ -1086,7 +1086,10 @@ def test_new_version_deploy_throttling(mock_get_all_node_ids, mock_deployment_st
             deployment_state,
             version=b_version_2,
             total=new_replicas + 2,
-            by_state=[(ReplicaState.RUNNING, new_replicas), (ReplicaState.STARTING, 2)],
+            by_state=[
+                (ReplicaState.RUNNING, new_replicas),
+                (ReplicaState.STARTING, 2),
+            ],
         )
 
         # Set both ready.
@@ -2173,7 +2176,10 @@ def test_resume_deployment_state_from_replica_tags(
     deployment_state = deployment_state_manager._deployment_states[tag]
     # Ensure recovering replica begin with no version assigned
     check_counts(
-        deployment_state, total=1, version=None, by_state=[(ReplicaState.RECOVERING, 1)]
+        deployment_state,
+        total=1,
+        version=None,
+        by_state=[(ReplicaState.RECOVERING, 1)],
     )
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state._replicas.get()[0]._actor.set_starting_version(b_version_1)

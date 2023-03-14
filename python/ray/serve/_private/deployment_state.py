@@ -29,9 +29,11 @@ from ray.serve._private.common import (
     ReplicaName,
     ReplicaTag,
     RunningReplicaInfo,
+    ReplicaState,
 )
 from ray.serve.schema import (
     DeploymentDetails,
+    ReplicaDetails,
     _deployment_info_to_schema,
 )
 from ray.serve.config import DeploymentConfig
@@ -60,14 +62,6 @@ from ray._private.gcs_utils import GcsClient
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-class ReplicaState(Enum):
-    STARTING = 1
-    UPDATING = 2
-    RECOVERING = 3
-    RUNNING = 4
-    STOPPING = 5
 
 
 class ReplicaStartupStatus(Enum):
@@ -217,11 +211,14 @@ class ActorReplicaWrapper:
         # the non-detached case.
         self._actor_handle: ActorHandle = None
 
+        self._pid: int = None
+        self._actor_id: str = None
         if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
             self._node_id = scheduling_strategy.node_id
         else:
             # Populated after replica is allocated.
             self._node_id: str = None
+        self._node_ip: str = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -265,9 +262,24 @@ class ActorReplicaWrapper:
         return self._max_concurrent_queries
 
     @property
+    def pid(self) -> Optional[int]:
+        """Returns the pid of the actor, None if not started."""
+        return self._pid
+
+    @property
+    def actor_id(self) -> Optional[str]:
+        """Returns the actor id, None if not started."""
+        return self._actor_id
+
+    @property
     def node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._node_id
+
+    @property
+    def node_ip(self) -> Optional[str]:
+        """Returns the node ip of the actor, None if not placed."""
+        return self._node_ip
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -480,7 +492,9 @@ class ActorReplicaWrapper:
                 )
                 self._health_check_period_s = deployment_config.health_check_period_s
                 self._health_check_timeout_s = deployment_config.health_check_timeout_s
-                self._node_id = ray.get(self._allocated_obj_ref)
+                self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
+                    self._allocated_obj_ref
+                )
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
@@ -711,9 +725,24 @@ class DeploymentReplica(VersionedReplica):
         return self._actor.actor_handle
 
     @property
+    def actor_pid(self) -> Optional[str]:
+        """Returns the pid of the actor, None if not placed."""
+        return self._actor.pid
+
+    @property
+    def actor_id(self) -> Optional[str]:
+        """Returns the actor id, None if not placed."""
+        return self._actor.actor_id
+
+    @property
     def actor_node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
+
+    @property
+    def actor_node_ip(self) -> Optional[str]:
+        """Returns the actor id, None if not placed."""
+        return self._actor.node_ip
 
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
@@ -1078,6 +1107,25 @@ class DeploymentState:
             replica.get_running_replica_info()
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
+
+    def get_replica_details(self) -> List[ReplicaDetails]:
+        details = []
+        for state in ReplicaState:
+            for replica in self._replicas.get([state]):
+                replica_details = ReplicaDetails(
+                    replica_id=replica.replica_tag,
+                    state=state,
+                    pid=replica.actor_pid,
+                    actor_name=replica._actor._actor_name,
+                    actor_id=replica.actor_id,
+                    node_id=replica.actor_node_id,
+                    node_ip=replica.actor_node_ip,
+                    start_time_s=replica._start_time,
+                )
+
+                details.append(replica_details)
+
+        return details
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
@@ -2032,6 +2080,7 @@ class DeploymentStateManager:
             deployment_config=_deployment_info_to_schema(
                 deployment_name, self.get_deployment(deployment_name)
             ),
+            replicas=self._deployment_states[deployment_name].get_replica_details(),
         )
 
     def get_deployment_statuses(
