@@ -1,4 +1,4 @@
-cloud: {{ env["ANYSCALE_CLOUD_ID"] }}
+cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}
 region: us-west-2
 
 # 1 g4dn.4xlarge node --> 16 CPUs, 1 GPU

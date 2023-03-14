@@ -1,4 +1,4 @@
-cloud: {{ env["ANYSCALE_CLOUD_ID"] }}
+cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}
 region: us-west1
 
 # 8 n2-standard-8 nodes --> 64 CPUs

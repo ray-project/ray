@@ -1,4 +1,4 @@
-loud: {{ env["ANYSCALE_CLOUD_ID"] }}
+cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}
 region: us-west1
 
 # 4 n1-standard-16-nvidia-tesla-t4-1 nodes --> 64 CPUs, 4 GPUs
