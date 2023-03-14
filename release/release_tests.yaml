@@ -623,7 +623,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
@@ -638,7 +638,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
@@ -653,7 +653,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_small.yaml
 
   run:
@@ -668,7 +668,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
   run:
@@ -683,7 +683,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
@@ -698,7 +698,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
