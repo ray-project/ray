@@ -16,6 +16,9 @@ INFO_PATH = "/api/serve/deployments/"
 STATUS_PATH = "/api/serve/deployments/status"
 DELETE_PATH = "/api/serve/deployments/"
 
+DEPLOY_PATH_V2 = "/api/serve/applications/"
+DELETE_PATH_V2 = "/api/serve/applications/"
+
 
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
@@ -68,6 +71,7 @@ class ServeSubmissionClient(SubmissionClient):
         )
 
     def deploy_application(self, config: Dict) -> None:
+        """Deploy single application."""
         response = self._do_request("PUT", DEPLOY_PATH, json_data=config)
 
         if response.status_code != 200:
@@ -89,5 +93,18 @@ class ServeSubmissionClient(SubmissionClient):
 
     def delete_application(self) -> None:
         response = self._do_request("DELETE", DELETE_PATH)
+        if response.status_code != 200:
+            self._raise_error(response)
+
+    def deploy_applications(self, config: Dict) -> None:
+        """Deploy multiple applications."""
+        response = self._do_request("PUT", DEPLOY_PATH_V2, json_data=config)
+
+        if response.status_code != 200:
+            self._raise_error(response)
+
+    def delete_applications(self) -> None:
+        response = self._do_request("DELETE", DELETE_PATH_V2)
+
         if response.status_code != 200:
             self._raise_error(response)

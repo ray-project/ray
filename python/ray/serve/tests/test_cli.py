@@ -170,6 +170,179 @@ def test_deploy_with_http_options(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_multi_app(ray_start_stop):
+    """Deploys some valid config files and checks that the deployments work."""
+    # Initialize serve in test to enable calling serve.list_deployments()
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+
+    # Create absolute file names to YAML config files
+    two_pizzas = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_pizzas.yaml"
+    )
+    pizza_world = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+
+    success_message_fragment = b"Sent deploy request successfully!"
+
+    # Ensure the CLI is idempotent
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
+
+        print("Deploying two pizzas config.")
+        deploy_response = subprocess.check_output(["serve", "deploy", two_pizzas])
+        assert success_message_fragment in deploy_response
+        print("Deploy request sent successfully.")
+
+        # Test add and mul for each of the two apps
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "3 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
+            == "2 pizzas please!",
+            timeout=15,
+        )
+        print('Application "app1" is reachable over HTTP.')
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "5 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        print('Application "app2" is reachable over HTTP.')
+
+        deployment_names = [
+            "app1_DAGDriver",
+            "app1_create_order",
+            "app1_Router",
+            "app1_Multiplier",
+            "app1_Adder",
+            "app2_DAGDriver",
+            "app2_create_order",
+            "app2_Router",
+            "app2_Multiplier",
+            "app2_Adder",
+        ]
+        assert_deployments_live(deployment_names)
+        print("All deployments are live.\n")
+
+        print("Deploying pizza world config.")
+        deploy_response = subprocess.check_output(["serve", "deploy", pizza_world])
+        assert success_message_fragment in deploy_response
+        print("Deploy request sent successfully.")
+
+        # Test app1 (simple wonderful world) and app2 (add + mul)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world",
+            timeout=15,
+        )
+        print('Application "app1" is reachable over HTTP.')
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "12 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "20 pizzas please!",
+            timeout=15,
+        )
+        print('Application "app2" is reachable over HTTP.')
+
+        deployment_names = [
+            "app1_BasicDriver",
+            "app1_f",
+            "app2_DAGDriver",
+            "app2_create_order",
+            "app2_Router",
+            "app2_Multiplier",
+            "app2_Adder",
+        ]
+        assert_deployments_live(deployment_names)
+        print("All deployments are live.\n")
+
+    ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_http_override(ray_start_stop):
+    """
+    When deploying multiple applications in one config file, the top-level host and port
+    options should override those set at per-application level.
+    """
+    config = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "apps_with_http.yaml"
+    )
+
+    deploy_response = subprocess.check_output(["serve", "deploy", config])
+    assert b"Sent deploy request successfully!" in deploy_response
+
+    # Only port 8005 should work, since it was set as a top-level option
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/app1", json=["ADD", 2]).json()
+        == "4 pizzas please!",
+        timeout=15,
+    )
+    print('Application "app1" is reachable over HTTP at port 8005.')
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/app2").text == "wonderful world",
+        timeout=15,
+    )
+    print('Application "app2" is reachable over HTTP at port 8005.')
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8000/app1", json=["ADD", 2])
+    print('Confirmed "app1" is not reachable over HTTP at port 8000.')
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8010/app2")
+    print('Confirmed "app2" is not reachable over HTTP at port 8010.')
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_put_duplicate_apps(ray_start_stop):
+    """If a config with duplicate app names is deployed, `serve deploy` should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "duplicate_app_names.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+        assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_put_duplicate_routes(ray_start_stop):
+    """If a config with duplicate routes is deployed, the PUT request should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "duplicate_app_routes.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+        assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
 
@@ -291,6 +464,26 @@ def test_status_invalid_runtime_env(ray_start_stop):
             app_status["app_status"]["status"] == "DEPLOY_FAILED"
             and "Failed to set up runtime environment"
             in app_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_syntax_error(ray_start_stop):
+    """Deploys Serve app with syntax error, checks the error message is descriptive."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "syntax_error.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            app_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "x = (1 + 2" in app_status["app_status"]["message"]
         )
 
     wait_for_condition(check_for_failed_deployment)
