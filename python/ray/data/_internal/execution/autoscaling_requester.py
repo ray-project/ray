@@ -1,3 +1,4 @@
+import time
 from typing import Dict
 
 import ray
@@ -7,11 +8,27 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 @ray.remote(num_cpus=0)
 class AutoscalingRequester:
+    """Actor to make resource requests to autoscaler for the datasets.
+
+    The resource requests are set to timeout for 60s.
+    For those live requests (i.e. those made in last 60s), we keep track of the
+    highest amount requested for each resource dimension for each execution; then
+    sum the requested amounts across all executions as the final request to the
+    autoscaler.
+    """
+
     def __init__(self):
         # Mapping execution_uuid to high-watermark of resource request.
         self._resource_requests = {}
+        # Mapping execution_uuid to expiration timestamp of resource request from
+        # this execution.
+        self._expiration_timestmap = {}
+        # TTL for requests.
+        self._timeout = 60
 
-    def request_resources(self, req, execution_uuid):
+    def request_resources(self, req: Dict, execution_uuid: str):
+        # Purge expired requests before making requests to autoscaler.
+        self._purge()
         # For the same execution_uuid, we track the high watermark of the resource
         # requested.
         self._resource_requests[execution_uuid] = self._get_high_watermark(
@@ -19,9 +36,17 @@ class AutoscalingRequester:
         )
         # We aggregate the resource requests across all execution_uuid's to Ray
         # autoscaler.
-        ray.autoscaler.sdk.request_resources(bundles=[self._aggregate_request()])
+        ray.autoscaler.sdk.request_resources(bundles=[self._aggregate_requests()])
 
-    def _get_high_watermark(self, req, execution_uuid) -> Dict:
+    def _purge(self):
+        # Purge requests that are stale.
+        for k, v in list(self._expiration_timestmap.items()):
+            if v < time.time():
+                self._expiration_timestmap.pop(k)
+                self._resource_requests.pop(k)
+
+    def _get_high_watermark(self, req: Dict, execution_uuid: str) -> Dict:
+        self._expiration_timestmap[execution_uuid] = time.time() + self._timeout
         if execution_uuid in self._resource_requests:
             reqs = [req, self._resource_requests[execution_uuid]]
         else:
@@ -31,7 +56,7 @@ class AutoscalingRequester:
         req["GPU"] = max(r["GPU"] if "GPU" in r else 0 for r in reqs)
         return req
 
-    def _aggregate_request(self) -> Dict:
+    def _aggregate_requests(self) -> Dict:
         req = {}
         req["CPU"] = (
             sum(self._resource_requests["CPU"])
