@@ -28,6 +28,7 @@ from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.types import ObjectRef
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -40,6 +41,9 @@ else:
     from typing_extensions import Literal
 
 logger = logging.getLogger(__name__)
+
+
+BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
 class StreamSplitDatasetIterator(DatasetIterator):
@@ -192,7 +196,8 @@ class SplitCoordinator:
         This is intended to be called concurrently from multiple clients.
         """
 
-        self._barrier(epoch_idx)
+        # Wait for all clients to arrive at the barrier before starting a new epoch.
+        self._barrier(epoch_idx, output_split_idx)
 
         try:
             # Ensure there is at least one bundle.
@@ -219,7 +224,7 @@ class SplitCoordinator:
         except StopIteration:
             return None
 
-    def _barrier(self, epoch_idx: int) -> None:
+    def _barrier(self, epoch_idx: int, split_idx: int) -> None:
         """Arrive and block until the start of the given epoch."""
 
         if epoch_idx > self._cur_epoch:
@@ -228,9 +233,19 @@ class SplitCoordinator:
             # Decrement and await all clients to arrive here.
             with self._lock:
                 self._unfinished_clients_in_epoch -= 1
+            start_time = time.time()
             while (
                 self._cur_epoch < epoch_idx and self._unfinished_clients_in_epoch != 0
             ):
+                if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
+                    if log_once(f"stream_split_blocked_{split_idx}"):
+                        logger.warning(
+                            f"StreamSplitDatasetIterator(epoch={epoch_idx}, "
+                            f"split={split_idx}) blocked waiting on other clients "
+                            f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
+                            "clients must read from the DatasetIterator splits at "
+                            "the same time."
+                        )
                 time.sleep(0.1)
             # Advance to the next epoch.
             with self._lock:
