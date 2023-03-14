@@ -302,7 +302,7 @@ are supported for each of these storage systems.
       :start-after: __validate_parquet_gcs_begin__
       :end-before: __validate_parquet_gcs_end__
 
-    For more examples, see `GCSFS Documentation <https://gcsfs.readthedocs.io/en/latest/#examples>`__.
+    For more examples, see the `GCSFS Documentation <https://gcsfs.readthedocs.io/en/latest/#examples>`__.
 
 .. tabbed:: ADL/ABS (Azure)
 
