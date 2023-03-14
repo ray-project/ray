@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
 )
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
+from ray.data._internal.logical.operators.from_spark_operator import FromSpark
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
 from ray.data._internal.logical.operators.from_items_operator import FromItems
@@ -21,6 +22,7 @@ from ray.data._internal.planner.plan_from_arrow_op import _plan_from_arrow_refs_
 from ray.data._internal.planner.plan_from_items_op import _plan_from_items_op
 from ray.data._internal.planner.plan_from_numpy_op import _plan_from_numpy_refs_op
 from ray.data._internal.planner.plan_from_pandas_op import _plan_from_pandas_refs_op
+from ray.data._internal.planner.plan_from_spark_op import _plan_from_spark_op
 from ray.data._internal.planner.plan_udf_map_op import _plan_udf_map_op
 from ray.data._internal.planner.plan_read_op import _plan_read_op
 from ray.data._internal.planner.plan_write_op import _plan_write_op
@@ -65,6 +67,9 @@ class Planner:
         elif isinstance(logical_op, FromArrowRefs):
             assert not physical_children
             physical_op = _plan_from_arrow_refs_op(logical_op)
+        elif isinstance(logical_op, FromSpark):
+            assert not physical_children
+            physical_op = _plan_from_spark_op(logical_op)
         elif isinstance(logical_op, AbstractUDFMap):
             assert len(physical_children) == 1
             physical_op = _plan_udf_map_op(logical_op, physical_children[0])

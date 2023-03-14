@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Union
 
 import ray
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -6,7 +6,6 @@ from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow
-    import pyspark
     import datasets
 
 
@@ -29,26 +28,6 @@ class FromArrow(FromArrowRefs):
         self, tables: List[Union["pyarrow.Table", bytes]], op_name: str = "FromArrow"
     ):
         super().__init__([ray.put(t) for t in tables], op_name)
-
-
-class FromSpark(FromArrowRefs):
-    """Logical operator for `from_spark`."""
-
-    def __init__(
-        self,
-        df: "pyspark.sql.DataFrame",
-        parallelism: Optional[int] = None,
-    ):
-        from raydp.spark.dataset import _save_spark_df_to_object_store
-
-        self._parallelism = parallelism
-
-        num_part = df.rdd.getNumPartitions()
-        if parallelism is not None:
-            if parallelism != num_part:
-                df = df.repartition(parallelism)
-        blocks, _ = _save_spark_df_to_object_store(df, False)
-        super().__init__(blocks, "FromSpark")
 
 
 class FromHuggingFace(FromArrow):
