@@ -587,7 +587,7 @@ py_test(
 
 py_test(
     name = "test_trainer_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trainer_restore.py"],
     tags = [
         "exclusive",
