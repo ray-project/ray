@@ -67,15 +67,13 @@ class MetricsActor:
         results = {}
 
         for test_name, measurements in self.measurements.items():
-            p50 = (
-                statistics.median(measurements)
-                if len(measurements) == self.expected_measurements_per_test
-                else -1
-            )
             test_summary = {
-                "p50": p50,
                 "measurements": measurements,
             }
+
+            if len(measurements) == self.expected_measurements_per_test:
+                test_summary["p50"] = statistics.median(measurements)
+
             results[test_name] = test_summary
 
         return results
