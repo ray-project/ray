@@ -15,7 +15,7 @@ Here are common workflows when using the Ray dashboard.
 
 - :ref:`See the metrics graphs <dash-workflow-critial-system-metrics>` (requires Prometheus and Grafana to be deployed).
 - :ref:`See the progress of your job <dash-workflow-job-progress>`.
-- :ref:`Find the logs or error messages of failed tasks or actors <dash-workflow-failed-tasks>`.
+- :ref:`Find the application logs or error messages of failed tasks or actors <dash-workflow-logs>`.
 - :ref:`Profile, trace dump, and visualize the timeline of the Ray jobs, tasks, or actors <dashboard-profiling>`.
 - :ref:`Analyze the CPU and memory usage of the cluster, tasks and actors <dash-workflow-cpu-memory-analysis>`.
 - :ref:`See individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
@@ -111,11 +111,27 @@ resource specification for those tasks will lead to wasted physical resources. T
         import time
         time.sleep(30)
 
-.. _dash-workflow-failed-tasks:
+.. _dash-workflow-logs:
 
-Find the error messages or logs of the failed tasks/actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+View the application logs and errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Driver Logs**
+If the Ray job is submitted by :ref:`Ray job API <jobs-quickstart>`, the job logs are available from the dashboard. The log file follows the following format; ``job-driver-<job_submission_id>.log``.
+
+.. note:: 
+
+  If the driver is executed directly at the Ray cluster (without the job API), the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
+
+TODO-SANG Show the log button at the job row.
+
+**Task and Actor Logs**
+Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
+You can see the worker logs that execute the task and actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from the tasks and actors. The core worker logs contains the system-level logs for the corresponding worker.
+
+SANG-TODO Add an image.
+
+**Task and Actor Errors**
 You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table. 
 The table displays the name of the failed tasks or actors and provides access to their corresponding log or error messages.
 
@@ -141,7 +157,7 @@ SANG-TODO Add an image.
 Overview
 --------
 
-The overview page provides a high level status of the Ray cluster.
+The overview page provides a high-level status of the Ray cluster.
 
 TODO-SANG Images
 
@@ -228,7 +244,7 @@ Task Timeline
 ~~~~~~~~~~~~~
 
 The :ref:`timeline API <ray-core-timeline>` is available from the dashboard. 
-You can download the chrome tracing file by clicking the download button. You can either go to ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file to see the timeline visualization of Ray tasks and actors.
+You can download the chrome tracing file by clicking the download button. You can use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file to see the timeline visualization of Ray tasks and actors.
 
 TODO-SANG Add images
 
@@ -254,6 +270,8 @@ Task Table, Actor Table, Placement Group Table
 The dashboard shows a table with the status of the job's tasks, actors, and placement groups. 
 This information is the same as what you would get from the :ref:`Ray state APIs <state-api-overview-ref>`.
 
+TODO-SANG Add images
+
 .. _dash-node-view:
 
 Cluster View
@@ -262,8 +280,6 @@ Cluster View
 The cluster view visualizes hierarchical relationship of
 machines (nodes) and workers (processes). Each host consists of many workers, and
 you can see them by clicking the + button. This also shows the assignment of GPU resources to specific actors or tasks.
-
-You can hide it again by clicking the - button.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/nodes-view-expand.png
     :align: center
