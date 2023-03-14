@@ -2,6 +2,14 @@ base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightl
 env_vars: {}
 debian_packages: []
 
+aws:
+    # Fix the volume size so that IOPS is constant even if default changes.
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
 python:
   pip_packages: []
   conda_packages: []
