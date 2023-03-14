@@ -504,7 +504,12 @@ def test_serve_namespace(ray_start_stop):
     ],
 )
 def test_put_with_http_options(ray_start_stop, option, override):
-    """Deploys config with HTTP option specified"""
+    """Submits a config with HTTP options specified.
+
+    Trying to submit a config to the serve agent with the HTTP options modified should
+    fail, since users are required to shutdown Serve and restart it if they want to
+    change HTTP options.
+    """
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
