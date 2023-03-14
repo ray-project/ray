@@ -48,7 +48,7 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
 
   std::string DebugString() const;
 
-  void OnSenderDied(const std::string &sender_id);
+  void RemoveSubscriberFrom(const std::string &sender_id);
 
  private:
   /// Not owning the io service, to allow sharing it with pubsub::Publisher.
