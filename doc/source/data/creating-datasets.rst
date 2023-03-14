@@ -328,6 +328,19 @@ from a local filesystem:
   to ``ray/data/examples/data`` directory in the Ray package. This scheme is used
   only for testing or demoing examples.
 
+Reading Compressed Files
+==========================
+
+Ray Datasets supports reading compressed files using the ``arrow_open_stream_args`` arg.
+`Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.compress.html/>`__
+(brotli, gzip, lz4, lz4_raw, snappy, zstd) are compatible with Ray Datasets.
+For example:
+
+.. literalinclude:: ./doc_code/creating_datasets.py
+  :language: python
+  :start-after: __read_compressed_begin__
+  :end-before: __read_compressed_end__
+
 .. _dataset_from_in_memory_data:
 
 -------------------
