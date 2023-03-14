@@ -76,6 +76,11 @@ entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # Run the script with `serve run app:entrypoint` to start the serve application
 if __name__ == "__main__":
+    serve.shutdown()
     serve.run(entrypoint, port=8000, name="serving_stable_diffusion_template")
+    print("Done setting up replicas! Now accepting requests...")
     while True:
-        time.sleep(0.5)
+        try:
+            time.sleep(0.5)
+        except KeyboardInterrupt:
+            serve.shutdown()
