@@ -181,6 +181,7 @@ class SubscriberState {
 
   ~SubscriberState() {
     // Force a push to close the long-polling.
+    // Otherwise, there will be a connection leak.
     PublishIfPossible(true);
   }
 
