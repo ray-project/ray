@@ -212,7 +212,7 @@ def create_replica_wrapper(name: str):
             to PENDING_INITIALIZATION startup state.
 
             Returns:
-                The node ID, node IP, actor ID, and PID of the replica.
+                The PID, actor ID, node ID, node IP of the replica.
             """
             return (
                 os.getpid(),
