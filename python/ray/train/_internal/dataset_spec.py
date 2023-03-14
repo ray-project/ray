@@ -215,29 +215,41 @@ class DataParallelIngestSpec:
         assert not config.global_shuffle, "Not implemented yet"
         ctx = DatasetContext.get_current()
 
-        if config.max_object_store_memory_fraction > 0:
-            memory_fraction = config.max_object_store_memory_fraction
+        if config.max_object_store_memory_fraction <= 0:
+            # Cache case. Fully execute the dataset now.
+            if config.split and len(training_worker_handles) > 1:
+                dataset_splits = dataset.split(
+                    len(training_worker_handles),
+                    equal=True,
+                    locality_hints=training_worker_handles,
+                )
+            else:
+                dataset_splits = [dataset.fully_executed().iterator()] * len(
+                    training_worker_handles
+                )
         else:
-            memory_fraction = 0.25  # TODO streaming default constant
-        object_store_memory_limit = (
-            _estimate_avail_object_store_memory() * memory_fraction
-        )
-
-        if config.split and len(training_worker_handles) > 1:
-            ctx.execution_options.resource_limits.object_store_memory = (
-                object_store_memory_limit
+            # Fully streaming case.
+            object_store_memory_limit = (
+                _estimate_avail_object_store_memory()
+                * config.max_object_store_memory_fraction
             )
-            dataset_splits = dataset.streaming_split(
-                len(training_worker_handles),
-                equal=True,
-                locality_hints=_get_node_ids(training_worker_handles),
-            )
-        else:
-            ctx.execution_options.resource_limits.object_store_memory = (
-                object_store_memory_limit // len(training_worker_handles)
-            )
-            ctx.execution_options.locality_with_output = True
-            dataset_splits = [dataset.iterator()] * len(training_worker_handles)
+            if config.split and len(training_worker_handles) > 1:
+                ctx.execution_options.resource_limits.object_store_memory = (
+                    object_store_memory_limit
+                )
+                # TODO: need to implement repeat for streaming split (?)
+                raise NotImplementedError
+                dataset_splits = dataset.streaming_split(
+                    len(training_worker_handles),
+                    equal=True,
+                    locality_hints=_get_node_ids(training_worker_handles),
+                )
+            else:
+                ctx.execution_options.resource_limits.object_store_memory = (
+                    object_store_memory_limit // len(training_worker_handles)
+                )
+                ctx.execution_options.locality_with_output = True
+                dataset_splits = [dataset.iterator()] * len(training_worker_handles)
 
         return dataset_splits
 
