@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import time
 import threading
 from typing import (
     List,
@@ -78,6 +79,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
+        self._epoch_idx = 0
 
     def iter_batches(
         self,
@@ -92,16 +94,21 @@ class StreamSplitDatasetIterator(DatasetIterator):
     ) -> Iterator[DataBatch]:
         """Implements DatasetIterator."""
 
+        cur_epoch = self._epoch_idx
+        self._epoch_idx += 1
+
         def gen_blocks() -> Iterator[ObjectRef[Block]]:
             future: ObjectRef[
                 Optional[ObjectRef[Block]]
-            ] = self._coord_actor.get.remote(self._output_split_idx)
+            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
                 block_ref: Optional[ObjectRef[Block]] = ray.get(future)
                 if not block_ref:
                     break
                 else:
-                    future = self._coord_actor.get.remote(self._output_split_idx)
+                    future = self._coord_actor.get.remote(
+                        cur_epoch, self._output_split_idx
+                    )
                     yield block_ref
 
         yield from batch_block_refs(
@@ -154,29 +161,39 @@ class SplitCoordinator:
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
-        self._finished = False
         self._lock = threading.RLock()
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
+        self._unfinished_clients_in_epoch = n
+        self._cur_epoch = -1
 
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+        def gen_epochs():
+            while True:
+                executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
-        def add_split_op(dag):
-            return OutputSplitter(dag, n, equal, locality_hints)
+                def add_split_op(dag):
+                    return OutputSplitter(dag, n, equal, locality_hints)
 
-        self._output_iterator = execute_to_legacy_bundle_iterator(
-            executor,
-            dataset._plan,
-            True,
-            dataset._plan._dataset_uuid,
-            dag_rewrite=add_split_op,
-        )
+                output_iterator = execute_to_legacy_bundle_iterator(
+                    executor,
+                    dataset._plan,
+                    True,
+                    dataset._plan._dataset_uuid,
+                    dag_rewrite=add_split_op,
+                )
+                yield output_iterator
 
-    def get(self, output_split_idx: int) -> Optional[ObjectRef[Block]]:
+        self._next_epoch = gen_epochs()
+        self._output_iterator = None
+
+    def get(self, epoch_idx: int, output_split_idx: int) -> Optional[ObjectRef[Block]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
         """
+
+        self._barrier(epoch_idx)
+
         try:
             # Ensure there is at least one bundle.
             with self._lock:
@@ -201,3 +218,24 @@ class SplitCoordinator:
             return block
         except StopIteration:
             return None
+
+    def _barrier(self, epoch_idx: int) -> None:
+        """Arrive and block until the start of the given epoch."""
+
+        if epoch_idx > self._cur_epoch:
+            if epoch_idx != self._cur_epoch + 1:
+                raise ValueError("Epoch out of range")
+            # Decrement and await all clients to arrive here.
+            with self._lock:
+                self._unfinished_clients_in_epoch -= 1
+            while (
+                self._cur_epoch < epoch_idx and self._unfinished_clients_in_epoch != 0
+            ):
+                time.sleep(0.1)
+            # Advance to the next epoch.
+            with self._lock:
+                if self._cur_epoch != epoch_idx:
+                    self._cur_epoch = epoch_idx
+                    self._unfinished_clients_in_epoch = self._n
+                    self._output_iterator = next(self._next_epoch)
+        assert self._output_iterator is not None
