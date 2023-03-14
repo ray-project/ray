@@ -111,7 +111,7 @@ class ImpalaHPs(LearnerHPs):
     entropy_coeff: float = 0.01
 
 
-class ImpalaTLearner(TorchLearner):
+class ImpalaTorchLearner(TorchLearner):
     """Implements IMPALA loss / update logic on top of TorchLearner.
 
     This class implements the IMPALA loss under `_compute_loss_per_module()`.
@@ -187,24 +187,42 @@ class ImpalaTLearner(TorchLearner):
             ).type(dtype=torch.float32)
         ) * self.discount_factor
 
-        def _make_time_major(*args, **kw):
-            return make_time_major(self, batch.get(SampleBatch.SEQ_LENS), *args, **kw)
-
-        drop_last = self.config["vtrace_drop_last_ts"]
+        drop_last = self.vtrace_drop_last_ts
 
         # In the old impala code, actions needed to be unsqueezed if they were
         # multi_discrete
         # actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
 
-        actions = _make_time_major(actions, drop_last=drop_last)
-        actions_logp = _make_time_major(target_actions_logp, drop_last=drop_last)
-        dones = _make_time_major(batch[SampleBatch.DONES], drop_last=drop_last)
-        behaviour_logits_time_major = _make_time_major(
-            behaviour_logits, drop_last=drop_last
+        actions = make_time_major(
+            actions,
+            trajectory_len=self.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.recurrent_seq_len,
+            drop_last=drop_last,
         )
-        target_logits_time_major = _make_time_major(target_logits, drop_last=drop_last)
-        discount = discounts_time_major
-        values = _make_time_major(values, drop_last=drop_last)
+        actions_logp = make_time_major(
+            target_actions_logp,
+            trajectory_len=self.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.recurrent_seq_len,
+            drop_last=drop_last,
+        )
+        behaviour_logits_time_major = make_time_major(
+            behaviour_logits,
+            trajectory_len=self.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.recurrent_seq_len,
+            drop_last=drop_last,
+        )
+        target_logits_time_major = make_time_major(
+            target_logits,
+            trajectory_len=self.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.recurrent_seq_len,
+            drop_last=drop_last,
+        )
+        values = make_time_major(
+            values,
+            trajectory_len=self.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.recurrent_seq_len,
+            drop_last=drop_last,
+        )
         dist_class = (
             target_policy_dist  # TorchCategorical if is_multidiscrete else dist_class,
         )
@@ -220,7 +238,7 @@ class ImpalaTLearner(TorchLearner):
             behaviour_policy_logits=behaviour_logits_time_major,
             target_policy_logits=target_logits_time_major,
             actions=torch.unbind(actions, dim=2),
-            discounts=(1.0 - dones.float()) * discount,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values,
             bootstrap_value=bootstrap_value,

@@ -30,13 +30,14 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
+    SampleBatch.ACTION_DIST_INPUTS: np.random.randn(frag_length).astype(np.float32),
 }
 
 
 class TestImpalaTorchLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -59,6 +60,7 @@ class TestImpalaTorchLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
+                _enable_learner_api=True,
             )
             .rl_module(
                 _enable_rl_module_api=True,
@@ -71,9 +73,7 @@ class TestImpalaTorchLearner(unittest.TestCase):
 
             train_batch = SampleBatch(FAKE_BATCH)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
-
             algo_config = config.copy(copy_frozen=False)
-            algo_config.training(_enable_learner_api=True)
             algo_config.validate()
             algo_config.freeze()
 

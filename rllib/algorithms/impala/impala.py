@@ -422,6 +422,12 @@ class ImpalaConfig(AlgorithmConfig):
             from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 
             return ImpalaTfLearner
+        elif self.framework_str == "torch":
+            from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
+                ImpalaTorchLearner,
+            )
+
+            return ImpalaTorchLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -510,21 +516,26 @@ class Impala(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
+        if not config["vtrace"]:
+            raise ValueError("IMPALA with the learner API does not support non-VTrace ")
+
         if config._enable_rl_module_api:
             if config["framework"] == "tf2":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
-                        ImpalaTfPolicyWithRLModule,
-                    )
+                from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
+                    ImpalaTfPolicyWithRLModule,
+                )
 
-                    return ImpalaTfPolicyWithRLModule
-                else:
-                    raise ValueError(
-                        "IMPALA with the learner API does not support non-VTrace "
-                    )
+                return ImpalaTfPolicyWithRLModule
+            if config["framework"] == "torch":
+                from ray.rllib.algorithms.impala.torch.impala_torch_policy_rlm import (
+                    ImpalaTorchPolicyWithRLModule,
+                )
+
+                return ImpalaTorchPolicyWithRLModule
             else:
                 raise ValueError(
-                    "IMPALA with the learner API does not support non-TF2 "
+                    f"IMPALA with the learner API does not support framework "
+                    f"{config['framework']} "
                 )
         else:
             if config["framework"] == "torch":

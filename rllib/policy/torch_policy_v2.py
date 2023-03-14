@@ -244,7 +244,7 @@ class TorchPolicyV2(Policy):
         # sampler will include those keys in the sample batches it returns. This means
         # that the correct sample batch keys will be available when using the learner
         # group API.
-        if self.config._enable_learner_api:
+        if self.config["_enable_learner_api"]:
             for k in model.input_specs_train():
                 train_batch[k]
             return torch.Tensor([0.0])
