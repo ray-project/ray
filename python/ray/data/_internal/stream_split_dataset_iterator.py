@@ -238,13 +238,14 @@ class SplitCoordinator:
                 self._cur_epoch < epoch_idx and self._unfinished_clients_in_epoch != 0
             ):
                 if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
-                    if log_once(f"stream_split_blocked_{split_idx}"):
+                    if log_once(f"stream_split_blocked_{split_idx}_{epoch_idx}"):
                         logger.warning(
                             f"StreamSplitDatasetIterator(epoch={epoch_idx}, "
                             f"split={split_idx}) blocked waiting on other clients "
                             f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
                             "clients must read from the DatasetIterator splits at "
-                            "the same time."
+                            "the same time. This warning will not be printed again "
+                            "for this epoch."
                         )
                 time.sleep(0.1)
             # Advance to the next epoch.
