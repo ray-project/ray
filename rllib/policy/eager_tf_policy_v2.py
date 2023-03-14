@@ -753,6 +753,9 @@ class EagerTFPolicyV2(Policy):
 
     @override(Policy)
     def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        enable_rl_module_api = self.config.get("enable_rl_module_api", False)
+        if enable_rl_module_api:
+            raise ValueError("ONNX export not supported for RLModule API.")
         if onnx:
             try:
                 import tf2onnx
