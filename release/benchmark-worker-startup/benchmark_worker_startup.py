@@ -56,8 +56,7 @@ class MetricsActor:
         print(f"got latency {latency} s for test {test_name}")
         self.measurements[test_name].append(latency)
         results = self.create_results_dict_from_measurements(
-            self.measurements,
-            self.expected_measurements_per_test
+            self.measurements, self.expected_measurements_per_test
         )
         safe_write_to_results_json(results)
 
@@ -69,7 +68,9 @@ class MetricsActor:
         )
 
     @staticmethod
-    def create_results_dict_from_measurements(measurements, expected_measurements_per_test):
+    def create_results_dict_from_measurements(
+        measurements, expected_measurements_per_test
+    ):
         results = {}
         perf_metrics = []
 
@@ -81,11 +82,13 @@ class MetricsActor:
             if len(measurements) == expected_measurements_per_test:
                 median = statistics.median(measurements)
                 test_summary["p50"] = median
-                perf_metrics.append({
-                    "perf_metric_name": f"p50.{test_name}",
-                    "perf_metric_value": median,
-                    "perf_metric_type": "LATENCY",
-                })
+                perf_metrics.append(
+                    {
+                        "perf_metric_name": f"p50.{test_name}",
+                        "perf_metric_value": median,
+                        "perf_metric_type": "LATENCY",
+                    }
+                )
 
             results[test_name] = test_summary
 
@@ -97,7 +100,7 @@ def generate_test_matrix(
     num_cpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_test: int,
-    with_runtime_env: bool,
+    with_runtime_env_unused: bool,
 ):
 
     num_repeated_jobs_or_runs = num_measurements_per_test
@@ -110,26 +113,27 @@ def generate_test_matrix(
 
     tests = set()
 
-    for num_jobs in num_jobs_per_type.values():
-        for with_gpu in [True, False]:
-            for with_tasks in [True, False]:
-                num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
-                num_runs_per_job = (
-                    num_tasks_or_actors_per_job // num_tasks_or_actors_per_run
-                )
+    for with_tasks in [True, False]:
+        for with_runtime_env in [True, False]:
+            for with_gpu in [True, False]:
+                for num_jobs in num_jobs_per_type.values():
+                    num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
+                    num_runs_per_job = (
+                        num_tasks_or_actors_per_job // num_tasks_or_actors_per_run
+                    )
 
-                test = TestConfiguration(
-                    num_jobs=num_jobs,
-                    num_runs_per_job=num_runs_per_job,
-                    num_tasks_or_actors_per_run=num_tasks_or_actors_per_run,
-                    with_tasks=with_tasks,
-                    with_gpu=with_gpu,
-                    expensive_import="torch",
-                    num_cpus_in_cluster=num_cpus_in_cluster,
-                    num_nodes_in_cluster=1,
-                    with_runtime_env=with_runtime_env,
-                )
-                tests.add(test)
+                    test = TestConfiguration(
+                        num_jobs=num_jobs,
+                        num_runs_per_job=num_runs_per_job,
+                        num_tasks_or_actors_per_run=num_tasks_or_actors_per_run,
+                        with_tasks=with_tasks,
+                        with_gpu=with_gpu,
+                        with_runtime_env=with_runtime_env,
+                        expensive_import="torch",
+                        num_cpus_in_cluster=num_cpus_in_cluster,
+                        num_nodes_in_cluster=1,
+                    )
+                    tests.add(test)
 
     return tests
 
@@ -151,7 +155,9 @@ class TestConfiguration:
         executable_unit = "tasks" if self.with_tasks else "actors"
         cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
         # This needs more thought.. currently things are all ran as jobs.
-        with_runtime_env_str = "with-runtime-env" if self.with_runtime_env else "without-runtime-env"
+        with_runtime_env_str = (
+            "with-runtime-env" if self.with_runtime_env else "without-runtime-env"
+        )
         single_node_or_multi_node = (
             "single-node" if self.num_nodes_in_cluster == 1 else "multi-node"
         )
@@ -174,36 +180,58 @@ async def run_and_stream_logs(
     with_gpu_arg = "--with_gpu" if test.with_gpu else "--without_gpu"
 
     for i in range(test.num_jobs):
-        print(f"Running job {i} for {test}")
-        job_id = client.submit_job(
-            entrypoint=" ".join(
-                [
-                    f"python ./benchmark_single_configuration.py",
-                    f"--metrics_actor_name {metrics_actor_name}",
-                    f"--metrics_actor_namespace {metrics_actor_namespace}",
-                    f"--test_name {test}",
-                    f"--num_runs {test.num_runs_per_job} ",
-                    f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
-                    f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
-                    f"{task_or_actor_arg}",
-                    f"{with_gpu_arg}",
-                    f"--library_to_import {test.expensive_import}",
-                ]
-            ),
-            runtime_env={"working_dir": "./"},
-        )
+        if not test.with_runtime_env:
+            import subprocess
 
-        try:
-            async for lines in client.tail_job_logs(job_id):
-                print(lines, end="")
-        except KeyboardInterrupt:
-            print(f"Stopping job {job_id}")
-            client.stop_job(job_id)
-            raise
+            subprocess.run(
+                " ".join(
+                    [
+                        f"python ./benchmark_single_configuration.py",
+                        f"--metrics_actor_name {metrics_actor_name}",
+                        f"--metrics_actor_namespace {metrics_actor_namespace}",
+                        f"--test_name {test}",
+                        f"--num_runs {test.num_runs_per_job} ",
+                        f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
+                        f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
+                        f"{task_or_actor_arg}",
+                        f"{with_gpu_arg}",
+                        f"--library_to_import {test.expensive_import}",
+                    ]),
+                shell=True,
+            )
+        else:
+            print(f"Running job {i} for {test}")
+            job_id = client.submit_job(
+                entrypoint=" ".join(
+                    [
+                        f"python ./benchmark_single_configuration.py",
+                        f"--metrics_actor_name {metrics_actor_name}",
+                        f"--metrics_actor_namespace {metrics_actor_namespace}",
+                        f"--test_name {test}",
+                        f"--num_runs {test.num_runs_per_job} ",
+                        f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
+                        f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
+                        f"{task_or_actor_arg}",
+                        f"{with_gpu_arg}",
+                        f"--library_to_import {test.expensive_import}",
+                    ]
+                ),
+                runtime_env={"working_dir": "./"},
+            )
 
-        job_status = client.get_job_status(job_id)
-        if job_status != JobStatus.SUCCEEDED:
-            raise ValueError(f"Job {job_id} was not successful; status is {job_status}")
+            try:
+                async for lines in client.tail_job_logs(job_id):
+                    print(lines, end="")
+            except KeyboardInterrupt:
+                print(f"Stopping job {job_id}")
+                client.stop_job(job_id)
+                raise
+
+            job_status = client.get_job_status(job_id)
+            if job_status != JobStatus.SUCCEEDED:
+                raise ValueError(
+                    f"Job {job_id} was not successful; status is {job_status}"
+                )
 
 
 def parse_args():
@@ -212,9 +240,9 @@ def parse_args():
     parser.add_argument("--num_tasks_or_actors_per_run", type=int, required=True)
     parser.add_argument("--num_measurements_per_configuration", type=int, required=True)
 
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--with_runtime_env", action="store_true")
-    group.add_argument("--without_runtime_env", action="store_true")
+    #group = parser.add_mutually_exclusive_group(required=True)
+    #group.add_argument("--with_runtime_env", action="store_true")
+    #group.add_argument("--without_runtime_env", action="store_true")
 
     return parser.parse_args()
 
