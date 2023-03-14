@@ -3053,6 +3053,7 @@
   team: core
   frequency: nightly
   working_dir: benchmark-worker-startup
+  stable: false
 
   python: "3.9"
 
