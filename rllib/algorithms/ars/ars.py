@@ -386,7 +386,7 @@ class ARS(Algorithm):
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
-            env.observation_space, env.action_space, self.config.to_dict()
+            env.observation_space, env.action_space, self.config
         )
         self.optimizer = optimizers.SGD(self.policy, self.config.sgd_stepsize)
 

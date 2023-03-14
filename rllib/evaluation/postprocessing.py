@@ -188,7 +188,7 @@ def compute_gae_for_sample_batch(
             policy.model.view_requirements, index="last"
         )
 
-        if policy.config["_enable_rl_module_api"]:
+        if policy.config.get("_enable_rl_module_api"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be
