@@ -53,7 +53,10 @@ class MetricsActor:
     def submit(self, test_name: str, latency: float):
         print(f"got latency {latency} s for test {test_name}")
         self.measurements[test_name].append(latency)
-        results = self.create_results_dict_from_measurements()
+        results = self.create_results_dict_from_measurements(
+            self.measurements,
+            self.expected_measurements_per_test
+        )
         safe_write_to_results_json(results)
 
         assert (
@@ -63,19 +66,28 @@ class MetricsActor:
             f"{self.expected_measurements_per_test}"
         )
 
-    def create_results_dict_from_measurements(self):
+    @staticmethod
+    def create_results_dict_from_measurements(measurements, expected_measurements_per_test):
         results = {}
+        perf_metrics = []
 
-        for test_name, measurements in self.measurements.items():
+        for test_name, measurements in measurements.items():
             test_summary = {
                 "measurements": measurements,
             }
 
-            if len(measurements) == self.expected_measurements_per_test:
-                test_summary["p50"] = statistics.median(measurements)
+            if len(measurements) == expected_measurements_per_test:
+                median = statistics.median(measurements)
+                test_summary["p50"] = median
+                perf_metrics.append({
+                    "perf_metric_name": f"p50.{test_name}",
+                    "perf_metric_value": median,
+                    "perf_metric_type": "LATENCY",
+                })
 
             results[test_name] = test_summary
 
+        results["perf_metrics"] = perf_metrics
         return results
 
 
