@@ -77,6 +77,24 @@ This produces the following output:
     (MyActor(index=2) pid=482120) hello there
     (MyActor(index=1) pid=482119) hello there
 
+Distributed progress bars (tqdm)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using `tqdm <>`__ in Ray remote tasks or actors, you may notice that the progress bar output is corrupted. To avoid this problem, you can use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+
+.. literalinclude:: /ray-core/doc_code/tqdm.py
+
+This tqdm implementation work as follows:
+
+1. The ``tqdm_ray`` module translates TQDM calls into special json log messages written to worker stdout.
+2. The Ray log monitor, instead of copying these log messages directly to the driver stdout, routes these messages to a tqdm singleton.
+3. The tqdm singleton determines the positions of progress bars from various Ray tasks / actors, ensuring they don't collide or conflict with each other.
+
+Limitations:
+
+- Only a subset of tqdm functionality is supported.
+- Performance may be poor if there are a lot of progress bar updates (updates are not batched).
+
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~
 When using ray, all of the tasks and actors are executed remotely in Ray's worker processes. 
