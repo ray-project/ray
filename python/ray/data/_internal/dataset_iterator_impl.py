@@ -19,10 +19,9 @@ class DatasetIteratorImpl(DatasetIterator):
     def __init__(
         self,
         base_dataset: "Dataset",
-        base_context: DatasetContext,
     ):
         self._base_dataset = base_dataset
-        self._base_context = base_context
+        self._base_context = DatasetContext.get_current()
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
