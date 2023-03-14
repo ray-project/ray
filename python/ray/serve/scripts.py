@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 import click
 import yaml
@@ -475,12 +475,13 @@ def shutdown(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Serve Deployment Graph's config file.",
     help=(
-        "Imports the ClassNode or FunctionNode at IMPORT_PATH "
-        "and generates a structured config for it that can be used by "
-        "`serve deploy` or the REST API. "
+        "Imports the ClassNode or FunctionNode at IMPORT_PATH and generates a "
+        "structured config for it. If the flag --multi-app is set, accepts multiple "
+        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
-@click.argument("import_path")
+@click.argument("import_paths", nargs=-1, required=True)
 @click.option(
     "--app-dir",
     "-d",
@@ -504,39 +505,100 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
+@click.option(
+    "--multi-app",
+    "-m",
+    is_flag=True,
+    help="Generate a multi-application config from multiple targets.",
+)
 def build(
-    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+    import_paths: Tuple[str],
+    app_dir: str,
+    kubernetes_format: bool,
+    output_path: Optional[str],
+    multi_app: bool,
 ):
     sys.path.insert(0, app_dir)
 
-    node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-    if not isinstance(node, (ClassNode, FunctionNode)):
-        raise TypeError(
-            f"Expected '{import_path}' to be ClassNode or "
-            f"FunctionNode, but got {type(node)}."
+    def build_app_config(import_path: str, name: str = None):
+        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
+        if not isinstance(node, (ClassNode, FunctionNode)):
+            raise TypeError(
+                f"Expected '{import_path}' to be ClassNode or "
+                f"FunctionNode, but got {type(node)}."
+            )
+
+        app = build_app(node)
+        schema = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env={},
+            deployments=[
+                deployment_to_schema(d, not multi_app) for d in app.deployments.values()
+            ],
         )
+        # If building a multi-app config, auto-generate names for each application.
+        # Also, each ServeApplicationSchema should not have host and port set, it should
+        # be set at the top level of ServeDeploySchema.
+        if multi_app:
+            schema.name = name
+            schema.route_prefix = app.ingress.route_prefix
+        else:
+            schema.host = "0.0.0.0"
+            schema.port = 8000
 
-    app = build_app(node)
-    schema = ServeApplicationSchema(
-        import_path=import_path,
-        runtime_env={},
-        host="0.0.0.0",
-        port=8000,
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
-    )
-
-    if kubernetes_format:
-        config = schema.kubernetes_dict(exclude_unset=True)
-    else:
-        config = schema.dict(exclude_unset=True)
+        if kubernetes_format:
+            return schema.kubernetes_dict(exclude_unset=True)
+        else:
+            return schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
         f"on Ray v{ray.__version__}.\n\n"
     )
-    config_str += yaml.dump(
-        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
-    )
+
+    if not multi_app:
+        if len(import_paths) > 1:
+            raise click.ClickException(
+                "Got more than one argument. If you want to generate a multi-"
+                "application config, please rerun the command with the feature flag "
+                "`--multi-app`."
+            )
+
+        config_str += yaml.dump(
+            build_app_config(import_paths[0]),
+            Dumper=ServeApplicationSchemaDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+    else:
+        if kubernetes_format:
+            raise click.ClickException(
+                "Multi-application config is not supported in Kubernetes format yet."
+            )
+
+        app_configs = []
+        for app_index, import_path in enumerate(import_paths):
+            app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
+
+        deploy_config = {
+            "host": "0.0.0.0",
+            "port": 8000,
+            "applications": app_configs,
+        }
+
+        # Parse + validate the set of application configs
+        ServeDeploySchema.parse_obj(deploy_config)
+
+        config_str += yaml.dump(
+            deploy_config,
+            Dumper=ServeDeploySchemaDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+        cli_logger.info(
+            "The auto-generated application names default to `app1`, `app2`, ... etc. "
+            "Rename as necessary.\n",
+        )
 
     # Ensure file ends with only one newline
     config_str = config_str.rstrip("\n") + "\n"
@@ -545,8 +607,8 @@ def build(
         f.write(config_str)
 
 
-class ServeBuildDumper(yaml.SafeDumper):
-    """YAML dumper object with custom formatting for `serve build` command.
+class ServeApplicationSchemaDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for ServeApplicationSchema.
 
     Reformat config to follow this spacing:
     ---------------------------------------
@@ -568,8 +630,45 @@ class ServeBuildDumper(yaml.SafeDumper):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # Indents must be at most 2 to ensure that only the top 2 levels of
         # the config file have line breaks between them. The top 2 levels include
         # import_path, runtime_env, deployments, and all entries of deployments.
-        if len(self.indents) < 3:
+        if len(self.indents) <= 2:
+            super().write_line_break()
+
+
+class ServeDeploySchemaDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for ServeDeploySchema.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    host: 0.0.0.0
+
+    port: 8000
+
+    applications:
+
+    - name: app1
+
+      import_path: app1.path
+
+      runtime_env: {}
+
+      deployments:
+
+      - name: deployment1
+        ...
+
+      - name: deployment2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        # Indents must be at most 4 to ensure that only the top 4 levels of
+        # the config file have line breaks between them.
+        if len(self.indents) <= 4:
             super().write_line_break()
