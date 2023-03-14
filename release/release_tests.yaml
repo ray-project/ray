@@ -3048,6 +3048,25 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
+- name: benchmark_core_worker_startup.py
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: benchmark-worker-startup
+
+  python: "3.10"
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: only_head_node_1gpu_64cpu.yaml
+
+  run:
+    timeout: 1800
+    script: python benchmark_worker_startup.py
+        --num_cpus_in_cluster 64
+        --num_tasks_or_actors_per_run 64
+        --num_measurements_per_configuration 5
+
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
   working_dir: nightly_tests
