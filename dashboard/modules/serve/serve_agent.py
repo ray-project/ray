@@ -64,13 +64,43 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 return Response(
                     status=503,
                     text=(
-                        "Fail to get the response from the controller. "
-                        f"Potentially the GCS is down: {e}"
+                        "Failed to get a response from the controller.  "
+                        f"The GCS may be down, please retry later: {e}"
                     ),
                 )
 
         return Response(
             text=json.dumps(config),
+            content_type="application/json",
+        )
+
+    @routes.get("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_serve_instance_details(self, req: Request) -> Response:
+        from ray.serve.schema import ServeInstanceDetails
+
+        controller = await self.get_serve_controller()
+
+        if controller is None:
+            # If no serve instance is running, return a dict that represents that.
+            details = ServeInstanceDetails.get_empty_schema_dict()
+        else:
+            try:
+                details = await controller.get_serve_instance_details.remote()
+            except ray.exceptions.RayTaskError as e:
+                # Task failure sometimes are due to GCS
+                # failure. When GCS failed, we expect a longer time
+                # to recover.
+                return Response(
+                    status=503,
+                    text=(
+                        "Failed to get a response from the controller. "
+                        f"The GCS may be down, please retry later: {e}"
+                    ),
+                )
+
+        return Response(
+            text=json.dumps(details),
             content_type="application/json",
         )
 
@@ -110,11 +140,20 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
+    @routes.delete("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def delete_serve_applications(self, req: Request) -> Response:
+        from ray import serve
+
+        if await self.get_serve_controller() is not None:
+            serve.shutdown()
+
+        return Response()
+
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
-        from ray.serve._private.api import serve_start
         from pydantic import ValidationError
 
         try:
@@ -124,6 +163,27 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 status=400,
                 text=repr(e),
             )
+
+        return self.submit_config(config)
+
+    @routes.put("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve.schema import ServeDeploySchema
+        from pydantic import ValidationError
+
+        try:
+            config = ServeDeploySchema.parse_obj(await req.json())
+        except ValidationError as e:
+            return Response(
+                status=400,
+                text=repr(e),
+            )
+
+        return self.submit_config(config)
+
+    def submit_config(self, config):
+        from ray.serve._private.api import serve_start
 
         client = serve_start(
             detached=True,

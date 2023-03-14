@@ -5,6 +5,7 @@ import ray
 import ray.rllib.algorithms.impala as impala
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -88,7 +89,8 @@ class TestImpalaTfLearner(unittest.TestCase):
                     module_class=algo_config.rl_module_spec.module_class,
                     observation_space=policy.observation_space,
                     action_space=policy.action_space,
-                    model_config=policy.config["model"],
+                    model_config_dict=policy.config["model"],
+                    catalog_class=algo_config.rl_module_spec.catalog_class,
                 )
             )
             learner_group_config.num_learner_workers = 0
@@ -96,7 +98,7 @@ class TestImpalaTfLearner(unittest.TestCase):
             learner_group.set_weights(trainer.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
 
-            learner_group_loss = results["loss"]["total_loss"]
+            learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
 
