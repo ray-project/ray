@@ -589,14 +589,14 @@ def test_serve_namespace(ray_start_stop):
     serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "option,override",
     [
         ("host", "127.0.0.2"),
         ("port", 8005),
-        ("root_path", "/serve_updated"),
-        ("http_location", "HeadOnly"),
+        ("http_options", {"root_path": "/serve_updated"}),
+        ("http_options", {"location": "HeadOnly"}),
     ],
 )
 def test_put_with_http_options(ray_start_stop, option, override):
@@ -612,8 +612,10 @@ def test_put_with_http_options(ray_start_stop, option, override):
     original_config = {
         "host": "127.0.0.1",
         "port": 8000,
-        "root_path": "/serve",
-        "http_location": "EveryNode",
+        "http_options": {
+            "root_path": "/serve",
+            "location": "EveryNode",
+        },
         "applications": [
             {
                 "name": "app1",

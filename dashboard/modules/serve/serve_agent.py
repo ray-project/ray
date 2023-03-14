@@ -232,8 +232,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             http_options={
                 "host": config.host,
                 "port": config.port,
-                "root_path": config.root_path,
-                "location": config.http_location,
+                "root_path": config.http_options.root_path,
+                "location": config.http_options.location,
             },
         )
 
@@ -253,14 +253,14 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         # Check HTTP root path
         root_path_conflict = self.check_http_options(
-            "root path", client.http_config.root_path, config.root_path
+            "root path", client.http_config.root_path, config.http_options.root_path
         )
         if root_path_conflict is not None:
             return root_path_conflict
 
         # Check HTTP location
         location_conflict = self.check_http_options(
-            "location", client.http_config.location, config.http_location
+            "location", client.http_config.location, config.http_options.location
         )
         if location_conflict is not None:
             return location_conflict
