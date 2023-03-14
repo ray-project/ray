@@ -92,5 +92,3 @@ if __name__ == "__main__":
         )
 
     print("PASSED.")
-    with open("/tmp/test_checkpoint.txt", "w") as f:
-        f.write("test")

@@ -21,9 +21,12 @@ class CommandRunner(abc.ABC):
     # and AnyscaleJobRunner will then download from there.
     _USER_GENERATED_ARTIFACT = "user_generated_artifact"
 
-    # the directory path where output json will
+    # the path where result json will be written to on both head node
+    # as well as the relative path where result json will be uploaded to on s3.
     _RESULT_OUTPUT_JSON = "/tmp/release_test_out.json"
 
+    # the path where output json will be written to on both head node
+    # as well as the relative path where metrics json will be uploaded to on s3.
     _METRICS_OUTPUT_JSON = "/tmp/metrics_test_out.json"
 
     def __init__(

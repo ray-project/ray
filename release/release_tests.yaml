@@ -715,7 +715,6 @@
   run:
     timeout: 900
     script: python workloads/ft_small_elastic.py
-    artifact_path: /tmp/test_checkpoint.txt
 
     wait_for_nodes:
       num_nodes: 4
