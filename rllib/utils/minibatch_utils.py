@@ -58,12 +58,19 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         while min(self._num_covered_epochs.values()) < self._num_iters:
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
+
+                if len(module_batch) == 0:
+                    raise ValueError(
+                        f"The batch for module_id {module_id} is empty. "
+                        "This will create an infinite loop because we need to cover "
+                        "the same number of samples for each module_id. "
+                    )
                 s = self._start[module_id]  # start
                 n_steps = self._minibatch_size
 
                 samples_to_concat = []
                 # cycle through the batch until we have enough samples
-                while n_steps >= len(module_batch[s:]):
+                while n_steps >= len(module_batch) - s:
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)
                     n_steps -= len(sample)

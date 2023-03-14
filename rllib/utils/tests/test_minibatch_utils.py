@@ -12,6 +12,7 @@ CONFIGS = [
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 4)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 55)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (400, 400)},
+    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (64, 64)},
 ]
 
 
