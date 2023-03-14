@@ -90,7 +90,7 @@ class AimLoggerCallback(LoggerCallback):
         Returns:
             Run: The created aim run for a specific trial.
         """
-        experiment_dir = trial.local_dir
+        experiment_dir = trial.experiment_path
         run = Run(
             repo=self._repo_path or experiment_dir,
             experiment=self._experiment_name or trial.experiment_dir_name,
