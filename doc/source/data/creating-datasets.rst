@@ -293,6 +293,15 @@ are supported for each of these storage systems.
     :start-after: __read_parquet_gcs_begin__
     :end-before: __read_parquet_gcs_end__
 
+  .. tip::
+    To verify that your GCP project and credentials are set up, you can validate
+    that your GCS `filesystem` has the right permissions to read the input `path`.
+
+    .. literalinclude:: ./doc_code/creating_datasets.py
+      :language: python
+      :start-after: __validate_parquet_gcs_begin__
+      :end-before: __validate_parquet_gcs_end__
+
 .. tabbed:: ADL/ABS (Azure)
 
   Data can be read from Azure Blob Storage by providing a configured

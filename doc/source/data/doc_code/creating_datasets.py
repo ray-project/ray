@@ -568,11 +568,20 @@ import gcsfs
 # GCSFileSystem.
 # NOTE: This example is not runnable as-is; you'll need to point it at your GCS bucket
 # and configure your GCP project and credentials.
+path = "gs://path/to/file.parquet"
+filesystem = gcsfs.GCSFileSystem(project="my-google-project")
 ds = ray.data.read_parquet(
-    "gs://path/to/file.parquet",
-    filesystem=gcsfs.GCSFileSystem(project="my-google-project"),
+    path,
+    filesystem=filesystem,
 )
 # __read_parquet_gcs_end__
+# fmt: on
+
+
+# fmt: off
+# __validate_parquet_gcs_begin__
+filesystem.open(path)
+# __validate_parquet_gcs_end__
 # fmt: on
 
 # fmt: off
