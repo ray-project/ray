@@ -499,8 +499,7 @@ def test_get_serve_instance_details(ray_start_stop):
         serve_details = ServeInstanceDetails(**response.json())
         return (
             serve_details.applications["app1"].status == ApplicationStatus.RUNNING
-            and serve_details.applications["app2"].status
-            == ApplicationStatus.RUNNING
+            and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
         )
 
     wait_for_condition(applications_running, timeout=15)
