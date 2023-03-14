@@ -69,7 +69,9 @@ class tqdm:
     def close(self):
         """Implements tqdm.tqdm.close."""
         self._closed = True
-        self._dump_state()
+        # Don't bother if ray is shutdown (in __del__ hook).
+        if ray is not None:
+            self._dump_state()
 
     def _dump_state(self) -> None:
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:

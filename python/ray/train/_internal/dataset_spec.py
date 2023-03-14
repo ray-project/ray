@@ -215,6 +215,7 @@ class DataParallelIngestSpec:
         assert not config.global_shuffle, "Not implemented yet"
         ctx = DatasetContext.get_current()
 
+        # TODO(ekl) should we change this to an absolute bytes value?
         if config.max_object_store_memory_fraction <= 0:
             # Cache case. Fully execute the dataset now.
             if config.split and len(training_worker_handles) > 1:
@@ -241,7 +242,6 @@ class DataParallelIngestSpec:
                     len(training_worker_handles),
                     equal=True,
                     locality_hints=_get_node_ids(training_worker_handles),
-                    num_repeats=-1,
                 )
             else:
                 ctx.execution_options.resource_limits.object_store_memory = (

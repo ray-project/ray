@@ -5,6 +5,7 @@ import sys
 
 from ray.data._internal.util import _default_batch_format
 from ray.data.block import DataBatch
+from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
 
