@@ -146,10 +146,10 @@ class JobRunner(CommandRunner):
             raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
-        return self._fetch_json(self.result_output_json)
+        return self._fetch_json(self._RESULT_OUTPUT_JSON)
 
     def fetch_metrics(self) -> Dict[str, Any]:
-        return self._fetch_json(self.metrics_output_json)
+        return self._fetch_json(self._METRICS_OUTPUT_JSON)
 
     def fetch_artifact(self):
         raise NotImplementedError

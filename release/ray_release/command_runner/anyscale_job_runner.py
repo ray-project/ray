@@ -226,9 +226,9 @@ class AnyscaleJobRunner(JobRunner):
             f"{env_str}python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            f"'{join_s3_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
             "--metrics-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
+            f"'{join_s3_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
             "--output-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.output_json)}' "
             f"--upload-s3-uri '{self.upload_path}' "
@@ -291,7 +291,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch results from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self.result_output_json)
+            join_s3_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
@@ -300,7 +300,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch metrics from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self.metrics_output_json)
+            join_s3_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
         )
 
     def fetch_artifact(self):

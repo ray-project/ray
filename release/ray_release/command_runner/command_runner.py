@@ -21,6 +21,11 @@ class CommandRunner(abc.ABC):
     # and AnyscaleJobRunner will then download from there.
     _USER_GENERATED_ARTIFACT = "user_generated_artifact"
 
+    # the directory path where output json will
+    _RESULT_OUTPUT_JSON = "/tmp/release_test_out.json"
+
+    _METRICS_OUTPUT_JSON = "/tmp/metrics_test_out.json"
+
     def __init__(
         self,
         cluster_manager: ClusterManager,
@@ -32,14 +37,11 @@ class CommandRunner(abc.ABC):
         self.file_manager = file_manager
         self.working_dir = working_dir
 
-        self.result_output_json = "/tmp/release_test_out.json"
-        self.metrics_output_json = "/tmp/metrics_test_out.json"
-
     @property
     def command_env(self):
         return {
-            "TEST_OUTPUT_JSON": self.result_output_json,
-            "METRICS_OUTPUT_JSON": self.metrics_output_json,
+            "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
+            "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
             "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
         }
 
