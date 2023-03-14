@@ -69,7 +69,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  explicit GcsClient(const GcsClientOptions &options);
+  explicit GcsClient(const GcsClientOptions &options,
+                     UniqueID gcs_client_id = UniqueID::FromRandom());
 
   virtual ~GcsClient() { Disconnect(); };
 

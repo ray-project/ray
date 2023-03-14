@@ -100,7 +100,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
         // message, so we delete the get operation. Related issues:
         // https://github.com/ray-project/ray/pull/11599
         Status status = gcs_table_storage_->WorkerTable().Put(
-            worker_id, *worker_failure_data, on_done);
+            worker_id, *worker_failure_data, NullaryCB<Status>(on_done, LOCATION));
         if (!status.ok()) {
           on_done(status);
         }
@@ -166,7 +166,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
 
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
-    RAY_LOG(DEBUG) << "Finished getting all worker info.";
+    RAY_LOG(INFO) << "Finished getting all worker info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
@@ -193,7 +193,7 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       };
 
-  Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, on_done);
+  Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, NullaryCB<Status>(on_done, LOCATION));
   if (!status.ok()) {
     on_done(status);
   }
@@ -220,7 +220,7 @@ void GcsWorkerManager::GetWorkerInfo(
     }
   };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_done);
+  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, NullaryCB<Status, boost::optional<WorkerTableData>>(on_done, LOCATION));
   if (!status.ok()) {
     on_done(status, boost::none);
   }

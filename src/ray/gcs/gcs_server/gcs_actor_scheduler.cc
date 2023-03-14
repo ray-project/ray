@@ -410,7 +410,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
                                       actor->GetActorTableData(),
-                                      [this, actor, leased_worker](Status status) {
+                                      NullaryCB<Status>([this, actor, leased_worker](Status status) {
                                         RAY_CHECK_OK(status);
                                         if (actor->GetState() ==
                                             rpc::ActorTableData::DEAD) {
@@ -418,7 +418,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                                           return;
                                         }
                                         CreateActorOnWorker(actor, leased_worker);
-                                      }));
+                                      }, std::string(LOCATION))));
   }
 }
 

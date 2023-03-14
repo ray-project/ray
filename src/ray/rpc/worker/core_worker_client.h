@@ -219,8 +219,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       : addr_(address) {
     grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
         addr_.ip_address(), addr_.port(), client_call_manager);
-  };
+    RAY_LOG(INFO) << "ConsCoreWorkerClient";
 
+  };
+  ~CoreWorkerClient() {
+    RAY_LOG(INFO) << "DestCoreWorkerClient: " << grpc_client_.get();
+  }
   const rpc::Address &Addr() const override { return addr_; }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
