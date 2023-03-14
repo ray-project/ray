@@ -24,17 +24,25 @@ def test_config_builder():
         def __init__(self) -> None:
             pass
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match="'module_class' must be a subclass of 'pl.LightningModule'!"
+    ):
         LightningConfigBuilder().module(cls=DummyClass)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match="'module_class' must be a class, not a class instance."
+    ):
         model = LinearModule(1, 1)
         LightningConfigBuilder().module(cls=model)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        TypeError, match="module\(\) missing 1 required positional argument: 'cls'"
+    ):
         LightningConfigBuilder().module(input_dim=10)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        TypeError, match="trainer\(\) takes 1 positional argument but 3 were given"
+    ):
         LightningConfigBuilder().module(cls=LinearModule).trainer(10, 100)
 
     config = (

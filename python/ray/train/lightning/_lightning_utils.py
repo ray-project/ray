@@ -46,10 +46,12 @@ class RayEnvironment(LightningEnvironment):
         return session.get_node_rank()
 
     def set_world_size(self, size: int) -> None:
-        super().set_world_size(session.get_world_size())
+        logger.warning("world_size setter is disabled in AIR LightningTrainer.")
+        pass
 
     def set_global_rank(self, rank: int) -> None:
-        super().set_global_rank(session.get_world_rank())
+        logger.warning("global_rank setter is disabled in AIR LightningTrainer.")
+        pass
 
     def teardown(self):
         pass

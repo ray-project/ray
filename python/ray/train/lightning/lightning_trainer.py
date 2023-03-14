@@ -178,6 +178,8 @@ class LightningTrainer(TorchTrainer):
     using the arguments provided in ``trainer_init_config`` and then run
     ``pytorch_lightning.Trainer.fit``.
 
+    TODO(yunxuanx): make this example testable
+
     Example:
         .. code-block:: python
 
@@ -345,6 +347,13 @@ def _lightning_train_loop_per_worker(config):
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
+
+    if not (train_dataloaders or datamodule or train_ray_dataset):
+        raise RuntimeError(
+            "Please provide at least one of the following data inputs: "
+            "train_dataloaders, datamodule, or Ray Datasets with key 'train'."
+        )
+
     if train_ray_dataset:
         if datamodule:
             logger.warning(
@@ -362,6 +371,7 @@ def _lightning_train_loop_per_worker(config):
     lightning_module = module_class(**module_init_config)
 
     # Prepare Lightning Trainer
+    # Disable Lightning progress bar to avoid corrupted AIR outputs.
     trainer_config["enable_progress_bar"] = False
 
     # Setup trainer's parallel devices
