@@ -111,6 +111,7 @@ class TestRLModule(unittest.TestCase):
             )
         )
         with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = "/tmp/rl_module_test"
             module.save_to_checkpoint(tmpdir)
             new_module = DiscreteBCTorchModule.from_checkpoint(tmpdir)
 
