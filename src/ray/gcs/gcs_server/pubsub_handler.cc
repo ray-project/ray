@@ -94,6 +94,8 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     return;
   }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+
+  // If the sender_id field is not set, subscriber_id will be used instead.
   auto sender_id = request.sender_id();
   if (sender_id.empty()) {
     sender_id = request.subscriber_id();
