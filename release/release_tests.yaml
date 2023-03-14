@@ -615,15 +615,16 @@
 # Workspace templates release tests #
 #####################################
 
+# 01_batch_inference
 
-- name: workspace_template_01_batch_inference_small
+- name: workspace_template_latest_small_01_batch_inference
   group: Workspace templates
   working_dir: templates/01_batch_inference
   python: "3.9"
-  frequency: weekly
+  frequency: disabled
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_env: ../configs/release_latest_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
@@ -631,14 +632,14 @@
     script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
 
 
-- name: workspace_template_01_batch_inference_large
+- name: workspace_template_latest_large_01_batch_inference
   group: Workspace templates
   working_dir: templates/01_batch_inference
   python: "3.9"
-  frequency: weekly
+  frequency: disabled
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_env: ../configs/release_latest_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
@@ -646,14 +647,30 @@
     script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
 
 
-- name: workspace_template_02_many_model_training_small
+- name: workspace_template_master_large_01_batch_inference
   group: Workspace templates
-  working_dir: templates/02_many_model_training
+  working_dir: templates/01_batch_inference
   python: "3.9"
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_env: ../configs/release_master_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_large.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
+
+# 02_many_model_training
+
+- name: workspace_template_latest_small_02_many_model_training
+  group: Workspace templates
+  working_dir: templates/02_many_model_training
+  python: "3.9"
+  frequency: disabled
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_latest_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_small.yaml
 
   run:
@@ -661,14 +678,14 @@
     script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
 
 
-- name: workspace_template_02_many_model_training_large
+- name: workspace_template_latest_large_02_many_model_training
   group: Workspace templates
   working_dir: templates/02_many_model_training
   python: "3.9"
-  frequency: weekly
+  frequency: disabled
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_env: ../configs/release_latest_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
   run:
@@ -676,14 +693,30 @@
     script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
 
 
-- name: workspace_template_03_serving_stable_diffusion
+- name: workspace_template_master_large_02_many_model_training
   group: Workspace templates
-  working_dir: templates/03_serving_stable_diffusion
+  working_dir: templates/02_many_model_training
   python: "3.9"
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_env: ../configs/release_master_cluster_env.yaml
+    cluster_compute: ../configs/compute/cpu/aws_large.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
+
+# 03_serving_stable_diffusion
+
+- name: workspace_template_latest_small_03_serving_stable_diffusion
+  group: Workspace templates
+  working_dir: templates/03_serving_stable_diffusion
+  python: "3.9"
+  frequency: disabled
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_latest_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
@@ -691,19 +724,35 @@
     script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
 
 
-- name: workspace_template_03_serving_stable_diffusion
+- name: workspace_template_latest_large_03_serving_stable_diffusion
+  group: Workspace templates
+  working_dir: templates/03_serving_stable_diffusion
+  python: "3.9"
+  frequency: disabled
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_large.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+
+
+- name: workspace_template_master_large_03_serving_stable_diffusion
   group: Workspace templates
   working_dir: templates/03_serving_stable_diffusion
   python: "3.9"
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_env: ../configs/release_master_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
     timeout: 3600
     script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+
 
 
 #######################

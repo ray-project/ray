@@ -1,0 +1,8 @@
+base_image: "anyscale/ray-ml:latest-py39"
+env_vars: {}
+debian_packages:
+  - curl
+
+post_build_cmds:
+  # Install cluster-wide dependencies from `requirements.txt`, if it exists in the working directory.
+  - if [ -f requirements.txt ]; then pip install --user -U -r requirements.txt; fi
