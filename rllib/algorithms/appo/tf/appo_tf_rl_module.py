@@ -28,7 +28,7 @@ class APPOTfRLModule(PPOTfRLModule):
         return [
             SampleBatch.ACTION_DIST,
             SampleBatch.VF_PREDS,
-            TARGET_ACTION_DIST_KEY,
+            OLD_ACTION_DIST_KEY,
         ]
     
     def _forward_train(self, batch: NestedDict):
@@ -36,7 +36,7 @@ class APPOTfRLModule(PPOTfRLModule):
         target_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
         target_action_dist_logits, _ = self.old_pi(target_pi_inputs_encoded)
         target_action_dist = self.action_dist_cls(target_action_dist_logits)
-        outs[TARGET_ACTION_DIST_KEY] = target_action_dist
-        outs[TARGET_ACTION_DIST_LOGITS_KEY] = target_action_dist_logits
+        outs[OLD_ACTION_DIST_KEY] = target_action_dist
+        outs[OLD_ACTION_DIST_LOGITS_KEY] = target_action_dist_logits
         return outs
 

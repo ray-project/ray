@@ -6,16 +6,18 @@ cartpole-appo:
         timesteps_total: 200000
     config:
         # Works for both torch and tf.
-        framework: tf
-        num_envs_per_worker: 5
+        framework: tf2
+        num_envs_per_worker: 1
         num_workers: 1
         num_gpus: 0
         observation_filter: MeanStdFilter
-        num_sgd_iter: 6
+        num_sgd_iter: 1
         vf_loss_coeff: 0.01
-        vtrace: false
+        vtrace: True
         model:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
         enable_connectors: True
+        _enable_learner_api: True
+        _enable_rl_module_api: True
