@@ -62,10 +62,7 @@ def test_torch_get_device(
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
-            # Sort the cuda visible devices to have exact match with
-            # expected result.
-            sorted_devices = ",".join(sorted(visible_devices.split(",")))
-            assert sorted_devices == "1,2"
+            assert visible_devices == "1,2"
         if num_gpus_per_worker > 1:
             session.report(
                 dict(
