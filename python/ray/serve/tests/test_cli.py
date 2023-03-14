@@ -800,6 +800,50 @@ def test_build(ray_start_stop, node):
         print("Delete succeeded! Node is not reachable over HTTP.")
 
 
+TestBuildApp1Node = global_f.options(route_prefix="/app1").bind()
+TestBuildApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build_multi_app(ray_start_stop):
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+
+        print('Building nodes "TestBuildApp1Node" and "TestBuildApp2Node".')
+        # Build an app
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "--multi-app",
+                "ray.serve.tests.test_cli.TestBuildApp1Node",
+                "ray.serve.tests.test_cli.TestBuildApp2Node",
+                "-o",
+                tmp.name,
+            ]
+        )
+        print("Build succeeded! Deploying node.")
+
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        print("Deploy succeeded!")
+        wait_for_condition(
+            lambda: ping_endpoint("app1") == "wonderful world", timeout=15
+        )
+        print("App 1 is live and reachable over HTTP.")
+        wait_for_condition(
+            lambda: ping_endpoint("app2") == "wonderful world", timeout=15
+        )
+        print("App 2 is live and reachable over HTTP.")
+
+        print("Deleting applications.")
+        subprocess.check_output(["serve", "shutdown", "-y"])
+        wait_for_condition(
+            lambda: ping_endpoint("app1") == CONNECTION_ERROR_MSG
+            and ping_endpoint("app2") == CONNECTION_ERROR_MSG,
+            timeout=15,
+        )
+        print("Delete succeeded! Node is no longer reachable over HTTP.")
+
+
 k8sFNode = global_f.options(
     num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
 ).bind()
