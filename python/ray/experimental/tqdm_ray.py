@@ -1,13 +1,21 @@
 import copy
 import json
+import logging
 import os
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
 import colorama
-import tqdm as real_tqdm
 
 import ray
+from ray.util.debug import log_once
+
+try:
+    import tqdm as real_tqdm
+except ImportError:
+    real_tqdm = None
+
+logger = logging.getLogger(__name__)
 
 # Describes the state of a single progress bar.
 ProgressBarState = Dict[str, Any]
@@ -225,6 +233,10 @@ class _BarManager:
         created or destroyed, we also recalculate and update the `pos_offset` of each
         BarGroup on the screen.
         """
+        if not real_tqdm:
+            if log_once("no_tqdm"):
+                logger.warning("tqdm is not installed. Progress bars will be disabled.")
+            return
         if self.in_hidden_state:
             self.unhide_bars()
         if state["ip"] == self.ip:
