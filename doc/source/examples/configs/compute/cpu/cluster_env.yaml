@@ -1,2 +1,0 @@
-docker_image: ray-project/ray-ml:latest-py39
-ray_version: 2.3.0

@@ -1,6 +1,9 @@
-cloud: anyscale_gce_cloud
-allowed_azs:
-- us-west1-a
+loud: {{ env["ANYSCALE_CLOUD_ID"] }}
+region: us-west1
+
+# 1 n1-standard-8 node --> 8 CPUs
 head_node_type:
   name: head_node_type
-  instance_type: n2-standard-8
+  instance_type: n1-standard-8
+
+max_workers: 0
