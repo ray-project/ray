@@ -185,7 +185,7 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     tuner = Tuner(
         trainer,
         param_space={"train_loop_config": {"max_iter": 10}},
-    ).restore(trial.local_dir)
+    ).restore(trial.local_experiment_path)
     analysis = tuner.fit()._experiment_analysis
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5

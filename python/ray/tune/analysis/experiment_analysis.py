@@ -805,7 +805,7 @@ class ExperimentAnalysis:
             for trial_json_state, path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_dir = str(path)
+                    trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
