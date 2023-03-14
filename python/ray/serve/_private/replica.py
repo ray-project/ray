@@ -211,7 +211,7 @@ def create_replica_wrapper(name: str):
             At this time, the replica can transition from PENDING_ALLOCATION
             to PENDING_INITIALIZATION startup state.
 
-            Return:
+            Returns:
                 The node ID, node IP, actor ID, and PID of the replica.
             """
             return (

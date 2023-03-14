@@ -560,9 +560,11 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid):
     actor_name: str = Field(description="Name of the replica actor.")
     actor_id: Optional[str] = Field(description="ID of the replica actor.")
     node_id: Optional[str] = Field(
-        description="ID of the node the replica actor is running on."
+        description="ID of the node that the replica actor is running on."
     )
-    node_ip: Optional[str]
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the replica actor is running on."
+    )
     start_time_s: float = Field(
         description=(
             "The time at which the replica actor was started. If the controller dies, "
