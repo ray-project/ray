@@ -556,6 +556,7 @@ class TorchPolicyV2(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
 
         if is_overridden(self.action_sampler_fn) and not is_overridden(
@@ -593,13 +594,31 @@ class TorchPolicyV2(Policy):
                     explore=False,
                     is_training=False,
                 )
-
+                action_dist = dist_class(dist_inputs, self.model)
             # Default action-dist inputs calculation.
             else:
-                dist_class = self.dist_class
-                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+                if self.config.get("_enable_rl_module_api", False):
+                    if in_training:
+                        output = self.model.forward_train(input_dict)
+                    else:
+                        self.model.eval()
+                        output = self.model.forward_exploration(input_dict)
 
-            action_dist = dist_class(dist_inputs, self.model)
+                    action_dist = output.get(SampleBatch.ACTION_DIST)
+
+                    if action_dist is None:
+                        raise ValueError(
+                            "The model output must contain the key "
+                            "`SampleBatch.ACTION_DIST` when using the RL module API."
+                            "Make sure if is_eval_mode is True the forward_exploration "
+                            "returns this key, and if it is False the forward_train "
+                            "returns this key."
+                        )
+                else:
+                    dist_class = self.dist_class
+                    dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+
+                    action_dist = dist_class(dist_inputs, self.model)
 
             # Normalize actions if necessary.
             actions = input_dict[SampleBatch.ACTIONS]
