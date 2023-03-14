@@ -23,19 +23,23 @@ import { ServeApplicationRow } from "./ServeApplicationRow";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    table: {
+      tableLayout: "fixed",
+    },
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
   }),
 );
 
-const columns: { label: string; helpInfo?: ReactElement }[] = [
+const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Application name" },
   { label: "Route prefix" },
   { label: "Status" },
-  { label: "Message" },
+  { label: "Message", width: "30%" },
   { label: "Num deployments" },
-  { label: "Deployment time" },
+  { label: "Last deployed at" },
+  { label: "Duration (since last deploy)" },
   { label: "Application config" },
 ];
 
@@ -93,11 +97,9 @@ export const ServeApplicationsListPage = () => {
             />
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(
-                new Set(unfilteredList.map((e) => e.app_status)),
-              )}
+              options={Array.from(new Set(unfilteredList.map((e) => e.status)))}
               onInputChange={(_: any, value: string) => {
-                changeFilter("app_status", value.trim());
+                changeFilter("status", value.trim());
               }}
               renderInput={(params: TextFieldProps) => (
                 <TextField {...params} label="Status" />
@@ -125,11 +127,15 @@ export const ServeApplicationsListPage = () => {
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
-          <Table>
+          <Table className={classes.table}>
             <TableHead>
               <TableRow>
-                {columns.map(({ label, helpInfo }) => (
-                  <TableCell align="center" key={label}>
+                {columns.map(({ label, helpInfo, width }) => (
+                  <TableCell
+                    align="center"
+                    key={label}
+                    style={width ? { width } : undefined}
+                  >
                     <Box
                       display="flex"
                       justifyContent="center"

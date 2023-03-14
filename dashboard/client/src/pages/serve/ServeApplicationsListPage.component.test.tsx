@@ -18,17 +18,17 @@ describe("ServeApplicationsListPage", () => {
       data: {
         host: "1.2.3.4",
         port: 8000,
-        application_details: {
+        applications: {
           home: {
             name: "home",
             route_prefix: "/",
-            app_message: null,
-            app_status: ServeApplicationStatus.RUNNING,
+            message: null,
+            status: ServeApplicationStatus.RUNNING,
             deployed_app_config: {
               import_path: "home:graph",
             },
-            deployment_timestamp: new Date().getTime() / 1000,
-            deployments_details: {
+            last_deployed_time_s: new Date().getTime() / 1000,
+            deployments: {
               FirstDeployment: {},
               SecondDeployment: {},
             },
@@ -36,13 +36,13 @@ describe("ServeApplicationsListPage", () => {
           "second-app": {
             name: "second-app",
             route_prefix: "/second-app",
-            app_message: null,
-            app_status: ServeApplicationStatus.DEPLOYING,
+            message: null,
+            status: ServeApplicationStatus.DEPLOYING,
             deployed_app_config: {
               import_path: "second_app:graph",
             },
-            deployment_timestamp: new Date().getTime() / 1000,
-            deployments_details: {
+            last_deployed_time_s: new Date().getTime() / 1000,
+            deployments: {
               ThirdDeployment: {},
             },
           },
@@ -70,7 +70,7 @@ describe("ServeApplicationsListPage", () => {
     expect(screen.getByText("DEPLOYING")).toBeVisible();
 
     // Config dialog
-    user.click(screen.getAllByText("View")[0]);
+    await user.click(screen.getAllByText("View")[0]);
     await screen.findByText(/"import_path": "home:graph"/);
     expect(screen.getByText(/"import_path": "home:graph"/)).toBeVisible();
   });

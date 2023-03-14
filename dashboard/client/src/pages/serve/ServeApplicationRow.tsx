@@ -2,7 +2,11 @@ import { TableCell, TableRow } from "@material-ui/core";
 import dayjs from "dayjs";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { CodeDialogButton } from "../../common/CodeDialogButton";
+import {
+  CodeDialogButton,
+  CodeDialogButtonWithPreview,
+} from "../../common/CodeDialogButton";
+import { DurationText } from "../../common/DurationText";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeApplication } from "../../type/serve";
 
@@ -15,11 +19,11 @@ export const ServeApplicationRow = ({
 }: ServeApplicationRowProps) => {
   const {
     name,
-    app_message,
-    app_status,
+    message,
+    status,
     route_prefix,
-    deployment_timestamp,
-    deployments_details,
+    last_deployed_time_s,
+    deployments,
     deployed_app_config,
   } = application;
 
@@ -33,21 +37,28 @@ export const ServeApplicationRow = ({
       </TableCell>
       <TableCell align="center">{route_prefix}</TableCell>
       <TableCell align="center">
-        <StatusChip type="serveApplication" status={app_status} />
-      </TableCell>
-      <TableCell align="center">{app_message ? app_message : "-"}</TableCell>
-      <TableCell align="center">
-        {Object.values(deployments_details).length}
+        <StatusChip type="serveApplication" status={status} />
       </TableCell>
       <TableCell align="center">
-        {dayjs(Number(deployment_timestamp * 1000)).format(
+        {message ? (
+          <CodeDialogButtonWithPreview title="Message details" code={message} />
+        ) : (
+          "-"
+        )}
+      </TableCell>
+      <TableCell align="center">{Object.values(deployments).length}</TableCell>
+      <TableCell align="center">
+        {dayjs(Number(last_deployed_time_s * 1000)).format(
           "YYYY/MM/DD HH:mm:ss",
         )}
       </TableCell>
       <TableCell align="center">
+        <DurationText startTime={last_deployed_time_s * 1000} />
+      </TableCell>
+      <TableCell align="center">
         <CodeDialogButton
           title={name ? `Application config for ${name}` : `Application config`}
-          json={deployed_app_config}
+          code={deployed_app_config}
         />
       </TableCell>
     </TableRow>

@@ -29,16 +29,19 @@ import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    table: {
+      tableLayout: "fixed",
+    },
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
   }),
 );
 
-const columns: { label: string; helpInfo?: ReactElement }[] = [
+const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Name" },
   { label: "Status" },
-  { label: "Message" },
+  { label: "Message", width: "30%" },
   { label: "Replicas" },
   { label: "Deployment config" },
 ];
@@ -98,16 +101,13 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Status",
             content: (
-              <StatusChip
-                type="serveApplication"
-                status={application.app_status}
-              />
+              <StatusChip type="serveApplication" status={application.status} />
             ),
           },
           {
             label: "Deployments",
             content: {
-              value: `${Object.keys(application.deployments_details).length}`,
+              value: `${Object.keys(application.deployments).length}`,
             },
           },
           {
@@ -126,23 +126,23 @@ export const ServeApplicationDetailPage = () => {
                     ? `Application config for ${application.name}`
                     : `Application config`
                 }
-                json={application.deployed_app_config}
+                code={application.deployed_app_config}
               />
             ),
           },
           {
-            label: "Deployed at",
+            label: "Last deployed at",
             content: {
               value: dayjs(
-                Number(application.deployment_timestamp * 1000),
+                Number(application.last_deployed_time_s * 1000),
               ).format("YYYY/MM/DD HH:mm:ss"),
             },
           },
           {
-            label: "Duration",
+            label: "Duration (since last deploy)",
             content: (
               <DurationText
-                startTime={application.deployment_timestamp * 1000}
+                startTime={application.last_deployed_time_s * 1000}
               />
             ),
           },
@@ -163,11 +163,9 @@ export const ServeApplicationDetailPage = () => {
             />
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(
-                new Set(unfilteredList.map((e) => e.deployment_status)),
-              )}
+              options={Array.from(new Set(unfilteredList.map((e) => e.status)))}
               onInputChange={(_: any, value: string) => {
-                changeFilter("deployment_status", value.trim());
+                changeFilter("status", value.trim());
               }}
               renderInput={(params: TextFieldProps) => (
                 <TextField {...params} label="Status" />
@@ -198,8 +196,12 @@ export const ServeApplicationDetailPage = () => {
           <Table>
             <TableHead>
               <TableRow>
-                {columns.map(({ label, helpInfo }) => (
-                  <TableCell align="center" key={label}>
+                {columns.map(({ label, helpInfo, width }) => (
+                  <TableCell
+                    align="center"
+                    key={label}
+                    style={width ? { width } : undefined}
+                  >
                     <Box
                       display="flex"
                       justifyContent="center"

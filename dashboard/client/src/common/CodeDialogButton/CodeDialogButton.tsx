@@ -20,15 +20,18 @@ export type CodeDialogButtonProps = {
    */
   buttonText?: string;
   /**
-   * JSON to stringify and show in the dialog.
+   * Code to show in the dialog. If an object is passed in, that object will be stringified.
    */
-  json: object;
+  code: string | object;
 };
 
+/**
+ * A button that when clicked, will pop up a dialog with the full code text with proper formatting.
+ */
 export const CodeDialogButton = ({
   title,
   buttonText = "View",
-  json,
+  code,
 }: CodeDialogButtonProps) => {
   const classes = useStyles();
 
@@ -51,10 +54,58 @@ export const CodeDialogButton = ({
           }}
         >
           <Typography className={classes.configText}>
-            {JSON.stringify(json, undefined, 2)}
+            {typeof code === "string"
+              ? code
+              : JSON.stringify(code, undefined, 2)}
           </Typography>
         </DialogWithTitle>
       )}
     </React.Fragment>
+  );
+};
+
+const useCodeDialogButtonWithPreviewStyles = makeStyles((theme) =>
+  createStyles({
+    root: {
+      display: "flex",
+      flexWrap: "nowrap",
+      flexDirection: "row",
+      gap: theme.spacing(1),
+    },
+    previewText: {
+      display: "block",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      flex: 1,
+    },
+  }),
+);
+
+type CodeDialogButtonWithPreviewProps = CodeDialogButtonProps;
+/**
+ * Similar to CodeDialogButton but also shows a snippet of the expanded text next to the button.
+ */
+export const CodeDialogButtonWithPreview = ({
+  code,
+  buttonText,
+  ...props
+}: CodeDialogButtonWithPreviewProps) => {
+  const classes = useCodeDialogButtonWithPreviewStyles();
+
+  const codeText =
+    typeof code === "string" ? code : JSON.stringify(code, undefined, 2);
+
+  const buttonTextToPass = buttonText ?? "Expand";
+
+  return (
+    <div className={classes.root}>
+      <span className={classes.previewText}>{codeText}</span>
+      <CodeDialogButton
+        code={codeText}
+        buttonText={buttonTextToPass}
+        {...props}
+      />
+    </div>
   );
 };

@@ -28,17 +28,17 @@ describe("ServeApplicationDetailPage", () => {
     });
     mockGetServeApplications.mockResolvedValue({
       data: {
-        application_details: {
+        applications: {
           home: {
             name: "home",
             route_prefix: "/home",
-            app_message: null,
-            app_status: ServeApplicationStatus.RUNNING,
+            message: null,
+            status: ServeApplicationStatus.RUNNING,
             deployed_app_config: {
               import_path: "home:graph",
             },
-            deployment_timestamp: new Date().getTime() / 1000,
-            deployments_details: {
+            last_deployed_time_s: new Date().getTime() / 1000,
+            deployments: {
               FirstDeployment: {
                 name: "FirstDeployment",
                 deployment_config: {
@@ -47,13 +47,13 @@ describe("ServeApplicationDetailPage", () => {
                     "autoscaling-value": 2,
                   },
                 },
-                deployment_status: ServeDeploymentStatus.HEALTHY,
+                status: ServeDeploymentStatus.HEALTHY,
                 message: "deployment is healthy",
               },
               SecondDeployment: {
                 name: "SecondDeployment",
                 deployment_config: {},
-                deployment_status: ServeDeploymentStatus.UPDATING,
+                status: ServeDeploymentStatus.UPDATING,
                 message: "deployment is updating",
               },
             },
@@ -88,12 +88,12 @@ describe("ServeApplicationDetailPage", () => {
     expect(screen.getByText("UPDATING")).toBeVisible();
 
     // Config dialog for application
-    user.click(screen.getAllByText("View")[0]);
+    await user.click(screen.getAllByText("View")[0]);
     await screen.findByText(/"import_path": "home:graph"/);
     expect(screen.getByText(/"import_path": "home:graph"/)).toBeVisible();
 
     // Config dialog for first deployment
-    user.click(screen.getAllByText("View")[1]);
+    await user.click(screen.getAllByText("View")[1]);
     await screen.findByText(/"test-config": 1/);
     expect(screen.getByText(/"test-config": 1/)).toBeVisible();
     expect(screen.getByText(/"autoscaling-value": 2/)).toBeVisible();

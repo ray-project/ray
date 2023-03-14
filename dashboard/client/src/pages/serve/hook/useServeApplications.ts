@@ -9,11 +9,11 @@ export const useServeApplications = () => {
   const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
-      key: "name" | "app_status";
+      key: "name" | "status";
       val: string;
     }[]
   >([]);
-  const changeFilter = (key: "name" | "app_status", val: string) => {
+  const changeFilter = (key: "name" | "status", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -37,8 +37,8 @@ export const useServeApplications = () => {
 
   const serveDetails = data ? { host: data.host, port: data.port } : undefined;
   const serveApplicationsList = data
-    ? Object.values(data.application_details).sort(
-        (a, b) => (b.deployment_timestamp ?? 0) - (a.deployment_timestamp ?? 0),
+    ? Object.values(data.applications).sort(
+        (a, b) => (b.last_deployed_time_s ?? 0) - (a.last_deployed_time_s ?? 0),
       )
     : [];
 
@@ -64,11 +64,11 @@ export const useServeApplicationDetails = (
   const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
-      key: "name" | "deployment_status";
+      key: "name" | "status";
       val: string;
     }[]
   >([]);
-  const changeFilter = (key: "name" | "deployment_status", val: string) => {
+  const changeFilter = (key: "name" | "status", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -92,12 +92,10 @@ export const useServeApplicationDetails = (
   );
 
   const application = applicationName
-    ? data?.application_details?.[
-        applicationName !== "-" ? applicationName : ""
-      ]
+    ? data?.applications?.[applicationName !== "-" ? applicationName : ""]
     : undefined;
   const deployments = application
-    ? Object.values(application.deployments_details).sort((a, b) =>
+    ? Object.values(application.deployments).sort((a, b) =>
         a.name.localeCompare(b.name),
       )
     : [];

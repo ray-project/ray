@@ -16,15 +16,15 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class ServeHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self,
-                 dashboard_head,
-                 http_session: Optional[aiohttp.ClientSession] = None):
+    def __init__(
+        self, dashboard_head, http_session: Optional[aiohttp.ClientSession] = None
+    ):
         super().__init__(dashboard_head)
         self._controller = None
         self._controller_lock = asyncio.Lock()
         self._http_session = http_session
 
-    @routes.get("/api/serve/applications_head/")
+    @routes.get("/api/serve_head/applications/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def get_serve_instance_details(self, req: Request) -> Response:
         from ray.serve.schema import ServeInstanceDetails
@@ -43,8 +43,10 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 # to recover.
                 return Response(
                     status=503,
-                    text=("Fail to get the response from the controller. "
-                          f"Potentially the GCS is down: {e}"),
+                    text=(
+                        "Fail to get the response from the controller. "
+                        f"Potentially the GCS is down: {e}"
+                    ),
                 )
 
         return Response(
@@ -79,12 +81,15 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 # get_actor is a sync call but it'll timeout after
                 # ray.dashboard.consts.GCS_RPC_TIMEOUT_SECONDS
                 self._controller = ray.get_actor(
-                    SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+                    SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+                )
             except Exception as e:
-                logger.debug("There is no "
-                             "instance running on this Ray cluster. Please "
-                             "call `serve.start(detached=True) to start "
-                             f"one: {e}")
+                logger.debug(
+                    "There is no "
+                    "instance running on this Ray cluster. Please "
+                    "call `serve.start(detached=True) to start "
+                    f"one: {e}"
+                )
 
             return self._controller
 

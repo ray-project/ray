@@ -11,11 +11,11 @@ export type ServeApplication = {
   name: string;
   route_prefix: string;
   docs_path: string | null;
-  app_status: ServeApplicationStatus;
-  app_message: string;
-  deployment_timestamp: number;
+  status: ServeApplicationStatus;
+  message: string;
+  last_deployed_time_s: number;
   deployed_app_config: Record<string, any>;
-  deployments_details: {
+  deployments: {
     [name: string]: ServeDeployment;
   };
 };
@@ -29,7 +29,7 @@ export enum ServeDeploymentStatus {
 
 export type ServeDeployment = {
   name: string;
-  deployment_status: ServeDeploymentStatus;
+  status: ServeDeploymentStatus;
   message: string;
   deployment_config: ServeDeploymentConfig;
 };
@@ -58,7 +58,7 @@ export type ServeAutoscalingConfig = {
 export type ServeApplicationsRsp = {
   host: string;
   port: number;
-  application_details: {
+  applications: {
     [name: string]: ServeApplication;
   };
 };
