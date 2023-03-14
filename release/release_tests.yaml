@@ -3643,7 +3643,7 @@
       num_nodes: 15
 
 
-- name: pipelined_data_ingest_benchmark
+- name: pipelined_data_ingest_benchmark_200gb
   group: data-tests
   working_dir: nightly_tests/dataset
 
@@ -3656,6 +3656,23 @@
   run:
     timeout: 300
     script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
+
+
+- name: streaming_data_ingest_benchmark_1tb
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
     wait_for_nodes:
       num_nodes: 20
 
