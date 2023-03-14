@@ -217,33 +217,42 @@ class DataParallelIngestSpec:
 
         # TODO(ekl) should we change this to an absolute bytes value?
         if config.max_object_store_memory_fraction <= 0:
-            # Cache case. Fully execute the dataset now.
+            # Cached data cases. Fully execute the dataset now.
             if config.split and len(training_worker_handles) > 1:
+                # Case 1: Cache + Split. In this case, we bulk split all the data up
+                # front and give each worker a sub-dataset.
                 dataset_splits = dataset.split(
                     len(training_worker_handles),
                     equal=True,
                     locality_hints=training_worker_handles,
                 )
             else:
+                # Case 2: Cache + Independent. In this case, we pass each worker a
+                # copy of the fully executed dataset to iterate over.
                 dataset_splits = [dataset.fully_executed().iterator()] * len(
                     training_worker_handles
                 )
         else:
-            # Fully streaming case.
+            # Fully streaming cases.
             object_store_memory_limit = (
                 _estimate_avail_object_store_memory()
                 * config.max_object_store_memory_fraction
             )
             if config.split and len(training_worker_handles) > 1:
+                # Case 3: Streaming + Split. In this case, there is a central streaming
+                # execution that is shared by workers.
                 ctx.execution_options.resource_limits.object_store_memory = (
                     object_store_memory_limit
                 )
                 dataset_splits = dataset.streaming_split(
                     len(training_worker_handles),
                     equal=True,
-                    locality_hints=_get_node_ids(training_worker_handles),
+                    locality_hints=None,  # TODO _get_node_ids(training_worker_handles),
                 )
             else:
+                # Case 4: Streaming + Independent. In this case, each worker
+                # independently runs a streaming execution.
+                # TODO: also divide up CPU limit among workers? CPU fraction?
                 ctx.execution_options.resource_limits.object_store_memory = (
                     object_store_memory_limit // len(training_worker_handles)
                 )

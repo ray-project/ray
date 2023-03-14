@@ -19,6 +19,15 @@ RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 _manager: Optional["_BarManager"] = None
 
 
+def safe_print(*args, **kwargs):
+    """Use this as an alternative to `print` that will not corrupt tqdm output."""
+    try:
+        instance().hide_bars()
+        print(*args, **kwargs)
+    finally:
+        instance().unhide_bars()
+
+
 class tqdm:
     """Experimental: Ray distributed tqdm implementation.
 

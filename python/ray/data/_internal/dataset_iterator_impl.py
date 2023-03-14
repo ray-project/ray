@@ -42,7 +42,7 @@ class DatasetIteratorImpl(DatasetIterator):
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
 
-        DatasetContext._set_current(self.base_context)
+        DatasetContext._set_current(self._base_context)
 
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
@@ -90,4 +90,4 @@ class DatasetIteratorImpl(DatasetIterator):
 
             return getattr(self._base_dataset, name)
 
-        return None
+        raise AttributeError()
