@@ -1074,17 +1074,10 @@ py_test(
 )
 
 py_test(
-    name = "test_impala_learner_tf",
+    name = "test_impala_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/impala/tests/tf/test_impala_learner.py"]
-)
-
-py_test(
-    name = "test_impala_learner_torch",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/impala/tests/torch/test_impala_learner.py"]
+    srcs = ["algorithms/impala/tests/test_impala_learner.py"]
 )
 
 # MARWIL

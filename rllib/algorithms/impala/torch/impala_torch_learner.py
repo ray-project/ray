@@ -4,6 +4,7 @@ from typing import Any, List, Mapping
 import tree
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
@@ -158,11 +159,9 @@ class ImpalaTorchLearner(TorchLearner):
         delta = values - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
-        batch_size = (
-            (torch.Tensor(target_actions_logp_time_major.shape[-1]))
-            .type(torch.float32)
-            .to(device)
-        )
+        batch_size = convert_to_torch_tensor(
+            target_actions_logp_time_major.shape[-1]
+        ).to(device)
 
         # The policy gradients loss.
         mean_pi_loss = pi_loss / batch_size
