@@ -191,28 +191,59 @@ class DataParallelIngestSpec:
                 and not conf.global_shuffle
             ):
                 print("Using streaming split")
-                splits = self._get_splits_streaming_impl(
+                dataset_splits = self._get_dataset_splits_streaming_impl(
                     dataset, conf, training_worker_handles
                 )
             else:
                 print("Using legacy split")
-                splits = self._get_splits_legacy_impl(training_worker_handles)
-            assert len(splits) == len(training_worker_handles)
+                dataset_splits = self._get_dataset_splits_legacy_impl(
+                    training_worker_handles
+                )
+            assert len(dataset_splits) == len(training_worker_handles)
 
-            for i, split in enumerate(splits):
-                dataset_dict_splits[i][key] = split
+            for i, dataset_split in enumerate(dataset_splits):
+                dataset_dict_splits[i][key] = dataset_split
 
         return dataset_dict_splits
 
-    def _get_splits_streaming_impl(
+    def _get_dataset_splits_streaming_impl(
         self,
         dataset: Dataset,
         config: DatasetConfig,
         training_worker_handles: List[ActorHandle],
     ) -> List["DatasetIterator"]:
-        raise NotImplementedError
+        assert not config.global_shuffle, "Not implemented yet"
+        ctx = DatasetContext.get_current()
 
-    def _get_splits_legacy_impl(
+        if config.max_object_store_memory_fraction > 0:
+            object_store_memory_limit = (
+                _estimate_avail_object_store_memory()
+                * config.max_object_store_memory_fraction
+            )
+        else:
+            object_store_memory_limit = (
+                _estimate_avail_object_store_memory() * 0.25
+            )  # TODO use constant from datasets
+
+        if config.split and len(training_worker_handles) > 1:
+            ctx.execution_options.resource_limits.object_store_memory = (
+                object_store_memory_limit
+            )
+            dataset_splits = dataset.streaming_split(
+                len(training_worker_handles),
+                equal=True,
+                locality_hints=_get_node_ids(training_worker_handles),
+            )
+        else:
+            ctx.execution_options.resource_limits.object_store_memory = (
+                object_store_memory_limit // len(training_worker_handles)
+            )
+            ctx.execution_options.locality_with_output = True
+            dataset_splits = [dataset.iterator()] * len(training_worker_handles)
+
+        return dataset_splits
+
+    def _get_dataset_splits_legacy_impl(
         self,
         dataset: Dataset,
         config: DatasetConfig,
