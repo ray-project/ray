@@ -80,7 +80,7 @@ This produces the following output:
 Distributed progress bars (tqdm)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When using `tqdm <>`__ in Ray remote tasks or actors, you may notice that the progress bar output is corrupted. To avoid this problem, you can use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+When using `tqdm <https://tqdm.github.io>`__ in Ray remote tasks or actors, you may notice that the progress bar output is corrupted. To avoid this problem, you can use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
 .. literalinclude:: /ray-core/doc_code/tqdm.py
 
