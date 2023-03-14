@@ -6,6 +6,7 @@ import time
 import argparse
 
 import ray
+from ray.data import Dataset
 from ray.data import DatasetPipeline
 
 import pandas as pd
@@ -21,6 +22,9 @@ class ConsumingActor:
     def consume(self, split):
         DoConsume(split, self._rank)
 
+    def get_location(self):
+        return ray.get_runtime_context().get_node_id()
+
 
 def DoConsume(split, rank):
     prefetch_blocks = 1
@@ -35,10 +39,12 @@ def DoConsume(split, rank):
         if isinstance(data, DatasetPipeline):
             for epoch in data.iter_epochs(epochs):
                 yield epoch
-        else:
+        elif isinstance(data, Dataset):
             # Dataset
             for _ in range(epochs):
                 yield data
+        else:
+            yield data
 
     for epoch_data in generate_epochs(split, num_epochs):
         epochs_read += 1
@@ -87,6 +93,18 @@ def make_ds(size_gb: int):
     return dataset
 
 
+def run_ingest_streaming(dataset, num_workers):
+    consumers = [
+        ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
+        for i in range(num_workers)
+    ]
+    locality_hints = ray.get([actor.get_location.remote() for actor in consumers])
+    ds = dataset.map_batches(lambda df: df * 2)
+    splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
+    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    ray.get(future)
+
+
 def run_ingest_bulk(dataset, num_workers):
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
@@ -112,7 +130,7 @@ def run_ingest_bulk(dataset, num_workers):
     # success! total time 13.813468217849731
 
 
-def run_ingest_streaming(dataset, num_workers):
+def run_ingest_dataset_pipeline(dataset, num_workers):
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
@@ -153,12 +171,15 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=int, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
+    parser.add_argument("--new_streaming", action="store_true", default=False)
     args = parser.parse_args()
 
     start = time.time()
     ds = make_ds(args.dataset_size_gb)
-    if args.streaming:
+    if args.new_streaming:
         run_ingest_streaming(ds, args.num_workers)
+    elif args.streaming:
+        run_ingest_dataset_pipeline(ds, args.num_workers)
     else:
         run_ingest_bulk(ds, args.num_workers)
 
