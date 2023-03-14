@@ -18,7 +18,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -87,7 +87,7 @@ class TestIMPALA(unittest.TestCase):
                 "cur_lr"
             ]
 
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, frameworks=("torch")):
             algo = config.build()
             policy = algo.get_policy()
 

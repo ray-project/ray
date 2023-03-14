@@ -132,6 +132,7 @@ class ImpalaTfLearner(TfLearner):
                 dtype=tf.float32,
             )
         ) * self.discount_factor
+        # TODO(Artur): See if we should compute v-trace corrected targets on CPU
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,

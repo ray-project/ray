@@ -11,6 +11,8 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 
 torch, nn = try_import_torch()
 
+torch.autograd.set_detect_anomaly(True)
+
 frag_length = 32
 
 FAKE_BATCH = {
@@ -30,7 +32,9 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: np.random.randn(frag_length).astype(np.float32),
+    SampleBatch.ACTION_DIST_INPUTS: np.random.normal(
+        0, 1, size=(frag_length, 2)
+    ).astype(np.float32),
 }
 
 

@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 import numpy as np
-from typing import Any, List, Mapping, Union
+from typing import Any, List, Mapping
 import tree
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-import ray.rllib.algorithms.impala.vtrace_torch as vtrace
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
+    vtrace_torch,
+    make_time_major,
+)
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
@@ -17,60 +20,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ResultDict, TensorType
 
 torch, nn = try_import_torch()
-
-
-def make_time_major(
-    tensor: Union["torch.Tensor", List["torch.Tensor"]],
-    *,
-    trajectory_len: int = None,
-    recurrent_seq_len: int = None,
-    drop_last: bool = False,
-):
-    """Swaps batch and trajectory axis.
-
-    Args:
-        tensor: A tensor or list of tensors to swap the axis of.
-            NOTE: Each tensor must have the shape [B * T] where B is the batch size and
-            T is the trajectory length.
-        trajectory_len: The length of each trajectory being transformed.
-            If None then `recurrent_seq_len` must be set.
-        recurrent_seq_len: Sequence lengths if recurrent.
-            If None then `trajectory_len` must be set.
-        drop_last: A bool indicating whether to drop the last
-            trajectory item.
-
-    Returns:
-        res: A tensor with swapped axes or a list of tensors with
-        swapped axes.
-    """
-    if isinstance(tensor, (list, tuple)):
-        return [
-            make_time_major(_tensor, trajectory_len, recurrent_seq_len, drop_last)
-            for _tensor in tensor
-        ]
-
-    assert (trajectory_len != recurrent_seq_len) and (
-        trajectory_len is None or recurrent_seq_len is None
-    ), "Either trajectory_len or recurrent_seq_len must be set."
-
-    if recurrent_seq_len:
-        B = recurrent_seq_len.shape[0]
-        T = tensor.shape[0] // B
-    else:
-        # Important: chop the tensor into batches at known episode cut
-        # boundaries.
-        # TODO: (sven) this is kind of a hack and won't work for
-        #  batch_mode=complete_episodes.
-        T = trajectory_len
-        B = tensor.shape[0] // T
-    rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
-
-    # Swap B and T axes.
-    res = torch.transpose(rs, 1, 0)
-
-    if drop_last:
-        return res[:-1]
-    return res
 
 
 @dataclass
@@ -140,23 +89,23 @@ class ImpalaTorchLearner(TorchLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        values = fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
-        target_logits = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-
-        actions = batch[SampleBatch.ACTIONS]
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
-        behaviour_logits = batch[SampleBatch.ACTION_DIST_INPUTS]
-        target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
-        behaviour_actions_logp_time_major = make_time_major(
-            behaviour_actions_logp,
+        values = fwd_out[SampleBatch.VF_PREDS]
+        target_actions_logp = fwd_out[SampleBatch.ACTION_LOGP]
+
+        # In the old impala code, actions needed to be unsqueezed if they were
+        # multi_discrete
+        # actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
+
+        target_actions_logp_time_major = make_time_major(
+            target_actions_logp,
             trajectory_len=self.rollout_frag_or_episode_len,
             recurrent_seq_len=self.recurrent_seq_len,
             drop_last=self.vtrace_drop_last_ts,
         )
-        target_actions_logp_time_major = make_time_major(
-            target_actions_logp,
+        behaviour_actions_logp_time_major = make_time_major(
+            behaviour_actions_logp,
             trajectory_len=self.rollout_frag_or_episode_len,
             recurrent_seq_len=self.recurrent_seq_len,
             drop_last=self.vtrace_drop_last_ts,
@@ -174,7 +123,6 @@ class ImpalaTorchLearner(TorchLearner):
             recurrent_seq_len=self.recurrent_seq_len,
             drop_last=self.vtrace_drop_last_ts,
         )
-
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
         discounts_time_major = (
@@ -187,79 +135,34 @@ class ImpalaTorchLearner(TorchLearner):
             ).type(dtype=torch.float32)
         ) * self.discount_factor
 
-        drop_last = self.vtrace_drop_last_ts
-
-        # In the old impala code, actions needed to be unsqueezed if they were
-        # multi_discrete
-        # actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
-
-        actions = make_time_major(
-            actions,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=drop_last,
-        )
-        actions_logp = make_time_major(
-            target_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=drop_last,
-        )
-        behaviour_logits_time_major = make_time_major(
-            behaviour_logits,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=drop_last,
-        )
-        target_logits_time_major = make_time_major(
-            target_logits,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=drop_last,
-        )
-        values = make_time_major(
-            values,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=drop_last,
-        )
-        dist_class = (
-            target_policy_dist  # TorchCategorical if is_multidiscrete else dist_class,
-        )
-        model = self.module
-        clip_rho_threshold = self.vtrace_clip_rho_threshold
-        clip_pg_rho_threshold = self.vtrace_clip_pg_rho_threshold
-
-        # Compute vtrace on the CPU for better perf
-        # (devices handled inside `vtrace.multi_from_logits`).
+        # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
+        #  dist_class` in the old code torch impala policy?
         device = behaviour_actions_logp_time_major[0].device
-        vtrace_returns = vtrace.multi_from_logits(
-            behaviour_action_log_probs=behaviour_actions_logp_time_major,
-            behaviour_policy_logits=behaviour_logits_time_major,
-            target_policy_logits=target_logits_time_major,
-            actions=torch.unbind(actions, dim=2),
-            discounts=discounts_time_major,
-            rewards=rewards_time_major,
-            values=values,
-            bootstrap_value=bootstrap_value,
-            dist_class=dist_class,
-            model=model,
-            clip_rho_threshold=clip_rho_threshold,
-            clip_pg_rho_threshold=clip_pg_rho_threshold,
-        )
-        # Move v-trace results back to GPU for actual loss computing.
-        value_targets = vtrace_returns.vs.to(device)
 
-        pg_advantages = vtrace_returns.pg_advantages.to(device)
+        # TODO(Artur): See if we should compute v-trace corrected targets on CPU
+        vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
+            target_action_log_probs=target_actions_logp_time_major,
+            behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            rewards=rewards_time_major,
+            values=values_time_major,
+            bootstrap_value=bootstrap_value,
+            clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=self.vtrace_clip_rho_threshold,
+            discounts=discounts_time_major,
+        )
 
         # The policy gradients loss.
-        pi_loss = -torch.sum(actions_logp * pg_advantages)
+        pi_loss = -torch.sum(behaviour_actions_logp * pg_advantages)
 
         # The baseline loss.
-        delta = values - value_targets
+        delta = values - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
-        batch_size = target_actions_logp_time_major.shape[-1].type(torch.float32)
+        batch_size = (
+            (torch.Tensor(target_actions_logp_time_major.shape[-1]))
+            .type(torch.float32)
+            .to(device)
+        )
 
         # The policy gradients loss.
         mean_pi_loss = pi_loss / batch_size
@@ -269,12 +172,15 @@ class ImpalaTorchLearner(TorchLearner):
 
         # The entropy loss.
         # or use actions_entropy
-        entropy_loss = -torch.sum(target_actions_logp_time_major)
+        entropy_loss = -torch.sum(target_actions_logp)
 
         # The summed weighted loss.
         total_loss = (
             pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
         )
+        # total_loss = (
+        #     pi_loss + vf_loss * self.vf_loss_coeff
+        # )
         return {
             self.TOTAL_LOSS_KEY: total_loss,
             "pi_loss": mean_pi_loss,
