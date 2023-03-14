@@ -294,7 +294,7 @@ are supported for each of these storage systems.
     :end-before: __read_parquet_gcs_end__
 
   .. tip::
-    To verify that your GCP project and credentials are set up, you can validate
+    To verify that your GCP project and credentials are set up, validate
     that your GCS `filesystem` has the right permissions to read the input `path`.
 
     .. literalinclude:: ./doc_code/creating_datasets.py
