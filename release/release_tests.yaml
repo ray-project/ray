@@ -3048,13 +3048,13 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
-- name: benchmark_core_worker_startup.py
+- name: benchmark_worker_startup
   group: core-daily-test
   team: core
   frequency: nightly
   working_dir: benchmark-worker-startup
 
-  python: "3.10"
+  python: "3.9"
 
   cluster:
     cluster_env: app_config.yaml
