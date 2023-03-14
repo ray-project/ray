@@ -38,7 +38,7 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FILE_TYPE = "csv"
+DEFAULT_FILE_TYPE = "json"
 
 
 @PublicAPI(stability="beta")
