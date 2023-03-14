@@ -15,5 +15,4 @@ def tag_air_trainer(trainer: "BaseTrainer"):
         result = f"{trainer.__class__.__name__}"
     else:
         result = "custom_trainer"
-    import ipdb; ipdb.set_trace()
     record_extra_usage_tag(TagKey.AIR_TRAINER, result)
