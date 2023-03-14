@@ -185,6 +185,16 @@ class _BarGroup:
             for bar in self.bars_by_uuid.values():
                 bar.update_offset(offset)
 
+    def hide_bars(self) -> None:
+        """Temporarily hide visible bars to avoid conflict with other log messages."""
+        for bar in self.bars_by_uuid.values():
+            bar.bar.clear()
+
+    def unhide_bars(self) -> None:
+        """Opposite of hide_bars()."""
+        for bar in self.bars_by_uuid.values():
+            bar.bar.refresh()
+
 
 class _BarManager:
     """Central tqdm manager run on the driver.
@@ -200,6 +210,8 @@ class _BarManager:
         self.ip = services.get_node_ip_address()
         self.pid = os.getpid()
         self.bar_groups = {}
+        self.in_hidden_state = False
+        self.num_hides = 0
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -208,6 +220,8 @@ class _BarManager:
         created or destroyed, we also recalculate and update the `pos_offset` of each
         BarGroup on the screen.
         """
+        if self.in_hidden_state:
+            self.unhide_bars()
         if state["ip"] == self.ip:
             if state["pid"] == self.pid:
                 prefix = ""
@@ -238,6 +252,21 @@ class _BarManager:
             process.allocate_bar(state)
             self._update_offsets()
 
+    def hide_bars(self) -> None:
+        """Temporarily hide visible bars to avoid conflict with other log messages."""
+        if not self.in_hidden_state:
+            self.in_hidden_state = True
+            self.num_hides += 1
+            for group in self.bar_groups.values():
+                group.hide_bars()
+
+    def unhide_bars(self) -> None:
+        """Opposite of hide_bars()."""
+        if self.in_hidden_state:
+            self.in_hidden_state = False
+            for group in self.bar_groups.values():
+                group.unhide_bars()
+
     def _get_or_allocate_bar_group(self, state: ProgressBarState):
         ptuple = (state["ip"], state["pid"])
         if ptuple not in self.bar_groups:
@@ -266,6 +295,7 @@ if __name__ == "__main__":
     @ray.remote
     def processing(delay):
         def sleep(x):
+            print("Intermediate result", x)
             time.sleep(delay)
             return x
 
