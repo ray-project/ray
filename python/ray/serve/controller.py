@@ -42,6 +42,8 @@ from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
+    ApplicationDetails,
+    ServeInstanceDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -663,6 +665,49 @@ class ServeController:
                 )
             )
         return deployment_route_list.SerializeToString()
+
+    def get_serve_instance_details(self) -> Dict:
+        """Gets details on all applications on the cluster and system-level info.
+
+        The information includes application and deployment statuses, config options,
+        error messages, etc.
+
+        Returns:
+            Dict that follows the format of the schema ServeInstanceDetails. Currently,
+            there is a value set for every field at all schema levels, except for the
+            route_prefix in the deployment_config for each deployment.
+        """
+
+        http_config = self.get_http_config()
+        applications = {}
+
+        for (
+            app_name,
+            app_status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            applications[app_name] = ApplicationDetails(
+                name=app_name,
+                route_prefix=self.application_state_manager.get_route_prefix(app_name),
+                docs_path=self.get_docs_path(app_name),
+                status=app_status_info.status,
+                message=app_status_info.message,
+                last_deployed_time_s=app_status_info.deployment_timestamp,
+                deployed_app_config=self.get_app_config(app_name),
+                deployments=self.application_state_manager.list_deployment_details(
+                    app_name
+                ),
+            )
+
+        # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
+        # fill in all info that should be shown to users. Currently, every field is set
+        # except for the route_prefix in the deployment_config of each deployment, since
+        # route_prefix is set instead in each application.
+        # Eventually we want to remove route_prefix from DeploymentSchema.
+        return ServeInstanceDetails(
+            host=http_config.host,
+            port=http_config.port,
+            applications=applications,
+        ).dict(exclude_unset=True)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
