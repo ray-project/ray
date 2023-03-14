@@ -2288,6 +2288,30 @@
   alert: default
 
 ########################
+# Alpa tests
+########################
+
+- name: alpa_opt_2_7b_sanity_check
+  group: Alpa tests
+  working_dir: alpa_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2_g4dn_12xlarge.yaml
+
+  run:
+    timeout: 3600
+    script: bash run.sh
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  alert: default
+
+########################
 # RLlib tests
 ########################
 
