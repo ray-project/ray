@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 import numpy as np
 from typing import Any, List, Mapping
@@ -18,6 +19,9 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ResultDict, TensorType
 
 _, tf, _ = try_import_tf()
+
+
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 
 
 @dataclass
@@ -45,18 +49,18 @@ class AppoHPs(ImpalaHPs):
             coefficient, the more that the policy network will be encouraged to output
             distributions with higher entropy/std deviation, which will encourage
             greater exploration.
-        target_kl: The target kl divergence loss coefficient to use for the KL loss.
+        kl_target: The target kl divergence loss coefficient to use for the KL loss.
         kl_coeff: The coefficient to weight the KL divergence between the old policy
             and the target policy towards the total loss for module updates.
 
     """
 
-    target_kl: float = 0.01
+    kl_target: float = 0.01
     kl_coeff: float = 0.1
     clip_param = 0.2
 
 
-class AppoTfLearner(ImpalaTfLearner):
+class APPOTfLearner(ImpalaTfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner.
 
     This class implements the APPO loss under `_compute_loss_per_module()` and 
@@ -66,9 +70,9 @@ class AppoTfLearner(ImpalaTfLearner):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.target_kl = self._hps.target_kl
+        self.kl_target = self._hps.kl_target
         self.clip_param = self._hps.clip_param
-        self.kl_coeff = self._hps.kl_coeff
+        self.kl_coeffs = defaultdict(lambda: self._hps.kl_coeff)
 
     @override(TfLearner)
     def compute_loss_per_module(
@@ -168,7 +172,7 @@ class AppoTfLearner(ImpalaTfLearner):
         # The summed weighted loss.
         total_loss = (
             mean_pi_loss + (mean_vf_loss * self.vf_loss_coeff) + (mean_entropy_loss * 
-            self.entropy_coeff) + (mean_kl_loss * self.kl_coeff)
+            self.entropy_coeff) + (mean_kl_loss * self.kl_coeffs[module_id])
         )
 
         return {
@@ -176,5 +180,5 @@ class AppoTfLearner(ImpalaTfLearner):
             "mean_pi_loss": mean_pi_loss,
             "mean_vf_loss": mean_vf_loss,
             "mean_entropy_loss": mean_entropy_loss,
-            "mean_kl_loss": mean_kl_loss,
+            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
