@@ -249,7 +249,7 @@ def test_accelerate_linear(
     deepspeed_config_path = tmpdir / "deepspeed.json"
 
     accelerate_config_file_contents = accelerate_config_file_contents.replace(
-        "deepspeed.json", f"'{deepspeed_config_path.absolute()}'"
+        "deepspeed.json", f"'{deepspeed_config_path}'"
     )
     with open(accelerate_config_path, "w") as f:
         f.write(accelerate_config_file_contents)
