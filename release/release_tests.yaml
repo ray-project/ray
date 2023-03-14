@@ -3054,6 +3054,8 @@
   frequency: nightly
   working_dir: benchmark-worker-startup
   stable: false
+  # WIP cade experiment
+  type: sdk_command
 
   python: "3.9"
 
