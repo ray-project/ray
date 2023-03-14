@@ -236,7 +236,7 @@ class AnyscaleJobRunner(JobRunner):
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
         if self._artifact_path:
-            full_command += f"--artifact-path '{self._artifact_path}' "
+            full_command += f"--artifact-path '{self._artifact_path}' result_output_json"
 
         timeout = min(
             (self.cluster_manager.maximum_uptime_minutes - 1) * 60,
