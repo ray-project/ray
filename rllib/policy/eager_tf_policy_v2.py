@@ -188,7 +188,7 @@ class EagerTFPolicyV2(Policy):
         if self.config._enable_learner_api:
             for k in model.input_specs_train():
                 train_batch[k]
-            return tf.convert_to_tensor([0.0])
+            return None
         else:
             raise NotImplementedError
 
