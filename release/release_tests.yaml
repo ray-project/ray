@@ -3058,7 +3058,7 @@
   python: "3.9"
 
   cluster:
-    cluster_env: app_config.yaml
+    cluster_env: app_config_gpu.yaml
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:

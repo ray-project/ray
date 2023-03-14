@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
-import ray
-import sys
-import asyncio
-from ray.job_submission import JobSubmissionClient, JobStatus
-import random
+from collections import defaultdict
 from dataclasses import dataclass
 from ray._private.test_utils import safe_write_to_results_json
-from collections import defaultdict
-import statistics
+from ray.job_submission import JobSubmissionClient, JobStatus
 import argparse
+import asyncio
+import random
+import ray
+import statistics
+import sys
 
 
 def main(
@@ -27,9 +27,9 @@ def main(
     )
 
     run_matrix = generate_test_matrix(
-        num_cpus_in_cluster=num_cpus_in_cluster,
-        num_tasks_or_actors_per_run=num_tasks_or_actors_per_run,
-        num_measurements_per_test=num_measurements_per_configuration,
+        num_cpus_in_cluster,
+        num_tasks_or_actors_per_run,
+        num_measurements_per_configuration,
     )
     print(f"List of tests: {run_matrix}")
 
@@ -100,9 +100,14 @@ def generate_test_matrix(
     num_repeated_jobs_or_runs = num_measurements_per_test
     total_num_tasks_or_actors = num_tasks_or_actors_per_run * num_repeated_jobs_or_runs
 
+    num_jobs_per_type = {
+        "cold_start": num_repeated_jobs_or_runs,
+        "warm_start": 1,
+    }
+
     tests = set()
 
-    for num_jobs in [1, num_repeated_jobs_or_runs]:
+    for num_jobs in num_jobs_per_type.values():
         for with_gpu in [True, False]:
             for with_tasks in [True, False]:
                 num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
@@ -198,6 +203,10 @@ def parse_args():
     parser.add_argument("--num_cpus_in_cluster", type=int, required=True)
     parser.add_argument("--num_tasks_or_actors_per_run", type=int, required=True)
     parser.add_argument("--num_measurements_per_configuration", type=int, required=True)
+
+    #group = parser.add_mutually_exclusive_group(required=True)
+    #group.add_argument("--with_gpu", action="store_true")
+    #group.add_argument("--without_gpu", action="store_true")
 
     return parser.parse_args()
 
