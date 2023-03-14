@@ -30,6 +30,10 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
 )
+from ray.serve.schema import (
+    DeploymentDetails,
+    _deployment_info_to_schema,
+)
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
@@ -2017,6 +2021,18 @@ class DeploymentStateManager:
             return self._deleted_deployment_metadata[deployment_name]
         else:
             return None
+
+    def get_deployment_details(self, deployment_name: str) -> DeploymentDetails:
+        status_info = self.get_deployment_statuses([deployment_name])[0]
+
+        return DeploymentDetails(
+            name=deployment_name,
+            status=status_info.status,
+            message=status_info.message,
+            deployment_config=_deployment_info_to_schema(
+                deployment_name, self.get_deployment(deployment_name)
+            ),
+        )
 
     def get_deployment_statuses(
         self, names: List[str] = None
