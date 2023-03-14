@@ -112,9 +112,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
-      RAY_LOG(INFO) << "ReceiveSubscriberCmd: sender_id.size()=" << sender_id.size();
-      RAY_LOG(INFO) << "Registering: " << subscriber_id
-                    << " type: " << command.channel_type();
       gcs_publisher_->GetPublisher()->RegisterSubscription(
           command.channel_type(),
           subscriber_id,
@@ -131,8 +128,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
 
 void InternalPubSubHandler::OnSenderDied(const std::string &sender_id) {
   auto iter = sender_to_subscribers_.find(sender_id);
-  RAY_LOG(INFO) << "WorkerDied: " << WorkerID::FromBinary(sender_id) << "\t"
-                << (iter == sender_to_subscribers_.end() ? 0UL : iter->second.size());
   if (iter == sender_to_subscribers_.end()) {
     return;
   }

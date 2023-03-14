@@ -99,13 +99,10 @@ class GrpcClient {
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
-    RAY_LOG(INFO) << this << "\tConstruct Client: channel: " << channel_.use_count()
-                  << "\t" << channel_.get();
+    std::shared_ptr<grpc::Channel> channel =
+        BuildChannel(address, port, CreateDefaultChannelArguments());
+    channel_ = BuildChannel(address, port);
     stub_ = GrpcService::NewStub(channel_);
-    RAY_LOG(INFO) << this
-                  << "\tConstruct Client after stub: channel: " << channel_.use_count()
-                  << "\t" << channel_.get();
   }
 
   GrpcClient(const std::string &address,
@@ -124,12 +121,9 @@ class GrpcClient {
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
     channel_ = BuildChannel(address, port, argument);
+    stub_ = GrpcService::NewStub(channel_);
   }
-  ~GrpcClient() {
-    stub_.release();
-    RAY_LOG(INFO) << "Destruct gRPC Channel: " << this << "\t" << channel_.use_count()
-                  << "\t" << channel_.get();
-  }
+
   /// Create a new `ClientCall` and send request.
   ///
   /// \tparam Request Type of the request message.
@@ -161,10 +155,7 @@ class GrpcClient {
     RAY_CHECK(call != nullptr);
   }
 
-  std::shared_ptr<grpc::Channel> Channel() const {
-    RAY_LOG(INFO) << "CHANNEL: " << this;
-    return channel_;
-  }
+  std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
 
  private:
   ClientCallManager &client_call_manager_;

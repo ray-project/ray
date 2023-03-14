@@ -14,9 +14,6 @@
 
 #include "ray/gcs/gcs_server/gcs_server.h"
 
-#include <unistd.h>
-
-#include <filesystem>
 #include <fstream>
 
 #include "ray/common/asio/asio_util.h"
@@ -191,7 +188,10 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
-      [this] { RAY_LOG(INFO) << GetDebugState(); },
+      [this] {
+        RAY_LOG(INFO) << GetDebugState();
+        PrintAsioStats();
+      },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 

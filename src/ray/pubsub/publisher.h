@@ -179,7 +179,10 @@ class SubscriberState {
         publish_batch_size_(publish_batch_size),
         last_connection_update_time_ms_(get_time_ms_()) {}
 
-  ~SubscriberState() { RAY_LOG(INFO) << "Force " << PublishIfPossible(true); }
+  ~SubscriberState() {
+    // Force a push to close the long-polling.
+    PublishIfPossible(true);
+  }
 
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.

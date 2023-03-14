@@ -105,7 +105,6 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
     absl::MutexLock lock(&mutex_);
     index_[GetJobIdFromKey(key)].insert(key);
   }
-  callback.table_name = this->table_name_ + ".JPut";
   return this->store_client_->AsyncPut(this->table_name_,
                                        key.Binary(),
                                        value.SerializeAsString(),
