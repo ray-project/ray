@@ -611,11 +611,9 @@ class AlgorithmConfig(_Config):
                     value["type"] = deserialize_type(value["type"])
                 self.exploration(exploration_config=value)
             elif key == "model":
-                # Resolve custom_model possible classpath.
+                # Resolve possible classpath.
                 if isinstance(value, dict) and value.get("custom_model"):
-                    value["custom_model"] = deserialize_type(
-                        value["custom_model"], error=True
-                    )
+                    value["custom_model"] = deserialize_type(value["custom_model"])
                 self.training(**{key: value})
             elif key == "optimizer":
                 self.training(**{key: value})
