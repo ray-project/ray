@@ -570,10 +570,7 @@ import gcsfs
 # and configure your GCP project and credentials.
 path = "gs://path/to/file.parquet"
 filesystem = gcsfs.GCSFileSystem(project="my-google-project")
-ds = ray.data.read_parquet(
-    path,
-    filesystem=filesystem,
-)
+ds = ray.data.read_parquet(path, filesystem=filesystem)
 # __read_parquet_gcs_end__
 # fmt: on
 
