@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_GPU"] | default("anyscale/ray:nightly-py39") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py39") }}
 env_vars: {}
 debian_packages: []
 
