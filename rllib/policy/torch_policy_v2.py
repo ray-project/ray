@@ -237,7 +237,19 @@ class TorchPolicyV2(Policy):
         Returns:
             Loss tensor given the input batch.
         """
-        raise NotImplementedError
+        # Under the new _enable_learner_api the loss function still gets called in order
+        # to initialize the view requirements of the sample batches that are returned by
+        # the sampler. In this case, we don't actually want to compute any loss, however
+        # if we access the keys that are needed for a forward_train pass, then the
+        # sampler will include those keys in the sample batches it returns. This means
+        # that the correct sample batch keys will be available when using the learner
+        # group API.
+        if self.config._enable_learner_api:
+            for k in model.input_specs_train():
+                train_batch[k]
+            return None
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -556,6 +568,7 @@ class TorchPolicyV2(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
 
         if is_overridden(self.action_sampler_fn) and not is_overridden(
@@ -593,13 +606,31 @@ class TorchPolicyV2(Policy):
                     explore=False,
                     is_training=False,
                 )
-
+                action_dist = dist_class(dist_inputs, self.model)
             # Default action-dist inputs calculation.
             else:
-                dist_class = self.dist_class
-                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+                if self.config.get("_enable_rl_module_api", False):
+                    if in_training:
+                        output = self.model.forward_train(input_dict)
+                    else:
+                        self.model.eval()
+                        output = self.model.forward_exploration(input_dict)
 
-            action_dist = dist_class(dist_inputs, self.model)
+                    action_dist = output.get(SampleBatch.ACTION_DIST)
+
+                    if action_dist is None:
+                        raise ValueError(
+                            "The model output must contain the key "
+                            "`SampleBatch.ACTION_DIST` when using the RL module API."
+                            "Make sure if is_eval_mode is True the forward_exploration "
+                            "returns this key, and if it is False the forward_train "
+                            "returns this key."
+                        )
+                else:
+                    dist_class = self.dist_class
+                    dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+
+                    action_dist = dist_class(dist_inputs, self.model)
 
             # Normalize actions if necessary.
             actions = input_dict[SampleBatch.ACTIONS]
@@ -978,6 +1009,10 @@ class TorchPolicyV2(Policy):
         """
 
         os.makedirs(export_dir, exist_ok=True)
+
+        enable_rl_module = self.config.get("_enable_rl_module_api", False)
+        if enable_rl_module:
+            raise ValueError("ONNX export not supported for RLModule API.")
 
         if onnx:
             self._lazy_tensor_dict(self._dummy_batch)

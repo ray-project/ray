@@ -1802,6 +1802,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             if RAY_TQDM_MAGIC in line:
                 process_tqdm(line)
             else:
+                hide_tqdm()
                 print(
                     "{}{}({}{}){} {}".format(
                         colorama.Style.DIM,
@@ -1818,6 +1819,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             if RAY_TQDM_MAGIC in line:
                 process_tqdm(line)
             else:
+                hide_tqdm()
                 print(
                     "{}{}({}{}, ip={}){} {}".format(
                         colorama.Style.DIM,
@@ -1830,6 +1832,8 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
+    # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
+    restore_tqdm()
 
 
 def process_tqdm(line):
@@ -1838,8 +1842,21 @@ def process_tqdm(line):
         data = json.loads(line)
         tqdm_ray.instance().process_state_update(data)
     except Exception:
-        print("[tqdm_ray] Failed to decode", line)
-        raise
+        if log_once("tqdm_corruption"):
+            logger.warning(
+                f"[tqdm_ray] Failed to decode {line}, this may be due to "
+                "logging too fast. This warning will not be printed again."
+            )
+
+
+def hide_tqdm():
+    """Hide distributed tqdm bars temporarily to avoid conflicts with other logs."""
+    tqdm_ray.instance().hide_bars()
+
+
+def restore_tqdm():
+    """Undo hide_tqdm()."""
+    tqdm_ray.instance().unhide_bars()
 
 
 def listen_error_messages(worker, threads_stopped):
