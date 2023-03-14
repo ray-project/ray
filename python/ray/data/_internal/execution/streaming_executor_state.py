@@ -294,6 +294,7 @@ def select_operator_to_run(
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
     ensure_at_least_one_running: bool,
+    execution_id: str,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -320,7 +321,7 @@ def select_operator_to_run(
     # If no ops are allowed to execute due to resource constraints, try to trigger
     # cluster scale-up.
     if not ops and any(state.num_queued() > 0 for state in topology.values()):
-        _try_to_scale_up_cluster(topology)
+        _try_to_scale_up_cluster(topology, execution_id)
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
@@ -342,7 +343,7 @@ def select_operator_to_run(
     )
 
 
-def _try_to_scale_up_cluster(topology: Topology):
+def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     """Try to scale up the cluster to accomodate the provided in-progress workload.
 
     This makes a resource request to Ray's autoscaler consisting of the current,
@@ -377,7 +378,7 @@ def _try_to_scale_up_cluster(topology: Topology):
         resource_request["GPU"] = math.ceil(usage.gpu)
     # Make autoscaler resource request.
     actor = get_or_create_autoscaling_requester_actor()
-    actor.request_resources.remote(resource_request, 1)
+    actor.request_resources.remote(resource_request, execution_id)
 
 
 def _execution_allowed(

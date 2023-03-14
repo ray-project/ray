@@ -1,6 +1,7 @@
 import threading
 import time
 import os
+import uuid
 from typing import Iterator, Optional
 
 import ray
@@ -47,6 +48,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
         self._output_info: Optional[ProgressBar] = None
+
+        self._execution_id = uuid.uuid4().hex
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -203,6 +206,7 @@ class StreamingExecutor(Executor, threading.Thread):
             cur_usage,
             limits,
             ensure_at_least_one_running=self._consumer_idling(),
+            execution_id=self._execution_id,
         )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
@@ -214,6 +218,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 cur_usage,
                 limits,
                 ensure_at_least_one_running=self._consumer_idling(),
+                execution_id=self._execution_id,
             )
 
         # Update the progress bar to reflect scheduling decisions.

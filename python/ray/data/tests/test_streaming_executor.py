@@ -111,30 +111,54 @@ def test_select_operator_to_run():
     topo = build_streaming_topology(o3, opt)
 
     # Test empty.
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) is None
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        is None
+    )
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o2
+    )
     topo[o1].outqueue.append("dummy2")
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o2
+    )
     topo[o2].outqueue.append("dummy3")
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o3
+    )
 
     # Test backpressure includes num active tasks as well.
     o3.num_active_work_refs = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o2
+    )
     # Internal queue size is added to num active tasks.
     o3.num_active_work_refs = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o2
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o2
+    )
     o2.num_active_work_refs = MagicMock(return_value=2)
     o2.internal_queue_size = MagicMock(return_value=0)
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o3
+    )
     o2.num_active_work_refs = MagicMock(return_value=0)
     o2.internal_queue_size = MagicMock(return_value=2)
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True) == o3
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o3
+    )
 
 
 def test_dispatch_next_task():
@@ -311,6 +335,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
             True,
+            "dummy",
         )
         is None
     )
@@ -321,6 +346,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
             True,
+            "dummy",
         )
         is o3
     )
@@ -330,6 +356,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
             False,
+            "dummy",
         )
         is None
     )
