@@ -3,7 +3,7 @@ env_vars: {}
 debian_packages: []
 
 aws:
-    # Fix the volume size so that IOPS is constant even if default changes.
+    # Fix the volume size so that IOPS is constant even if the default changes.
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
