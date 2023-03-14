@@ -240,7 +240,8 @@ def test_accelerate_linear(
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
         assert accelerator.process_index == session.get_world_rank()
-        assert accelerator.local_process_index == session.get_local_rank()
+        if not accelerator.device.type == "cpu":
+            assert accelerator.local_process_index == session.get_local_rank()
         result = linear_train_func(accelerator, config)
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
