@@ -1,1 +1,1 @@
-/Users/justin/Developer/justinvyu-dev/doc/test_myst_doc.py
+../../doc/test_myst_doc.py
