@@ -527,6 +527,7 @@ def run(
                 "`upload_dir=None` instead."
             )
         remote_storage_path = sync_config.upload_dir
+        sync_config = copy.copy(sync_config)
         sync_config.upload_dir = None
         storage_path = remote_storage_path
 
@@ -537,7 +538,7 @@ def run(
                 "`RunConfig.storage_dir=remote_storage_dir` and set the "
                 "`TUNE_RESULT_DIR` environment variable."
             )
-            os.environ["TUNE_RESULT_DIR"] = local_storage_path
+            os.environ["TUNE_OVERRIDE_RESULT_DIR"] = local_storage_path
             storage_path = remote_storage_path
 
     sync_config.validate_upload_dir(remote_storage_path)

@@ -441,7 +441,8 @@ class TrialRunner:
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
-            trial.local_dir = self._local_experiment_path
+            trial._local_experiment_path = self._local_experiment_path
+            trial._remote_experiment_path = self._remote_experiment_path
             trial.sync_config = self._sync_config
             trial.experiment_dir_name = self._experiment_dir_name
 

@@ -1093,6 +1093,7 @@ class Trial:
         new_trial = Trial(
             trial_state["trainable_name"],
             stub=stub,
+            experiment_path=trial_state["_local_experiment_path"],
             _setup_default_resource=False,
         )
 

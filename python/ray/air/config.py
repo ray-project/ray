@@ -1,3 +1,4 @@
+import copy
 import os
 import warnings
 from collections import defaultdict
@@ -789,6 +790,8 @@ class RunConfig:
                     "`upload_dir=None` instead."
                 )
             remote_storage_path = self.sync_config.upload_dir
+            self.sync_config = copy.copy(self.sync_config)
+            self.sync_config.upload_dir = None
             self.storage_path = remote_storage_path
 
         if remote_storage_path and local_storage_path:
@@ -798,7 +801,7 @@ class RunConfig:
                 "`RunConfig.storage_dir=remote_storage_dir` and set the "
                 "`TUNE_RESULT_DIR` environment variable."
             )
-            os.environ["TUNE_RESULT_DIR"] = local_storage_path
+            os.environ["TUNE_OVERRIDE_RESULT_DIR"] = local_storage_path
             self.storage_path = remote_storage_path
 
         if isinstance(self.sync_config.syncer, Syncer) and not remote_storage_path:

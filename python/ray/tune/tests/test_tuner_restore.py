@@ -31,6 +31,7 @@ from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.search.optuna import OptunaSearch
+from ray.tune.tests.tune_test_util import inject_os_environ
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -376,18 +377,18 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-# TODO: FIX TEST
 def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys):
     """Check that restoring Tuner() objects from cloud storage works"""
-    tuner = Tuner(
-        lambda config: 1,
-        run_config=RunConfig(
-            name="exp_dir",
-            local_dir=str(tmpdir / "ray_results"),
-            sync_config=tune.SyncConfig(upload_dir="memory:///test/restore"),
-        ),
-    )
-    tuner.fit()
+
+    with inject_os_environ({"TEST_TMPDIR": str(tmpdir / "ray_results")}):
+        tuner = Tuner(
+            lambda config: 1,
+            run_config=RunConfig(
+                name="exp_dir",
+                storage_path="memory:///test/restore",
+            ),
+        )
+        tuner.fit()
 
     check_path = tmpdir / "check_save"
     download_from_uri("memory:///test/restore", str(check_path))
@@ -401,8 +402,9 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
 
     (tmpdir / "ray_results").remove(ignore_errors=True)
 
-    tuner2 = Tuner.restore("memory:///test/restore/exp_dir")
-    results = tuner2.fit()
+    with inject_os_environ({"TEST_TMPDIR": str(tmpdir / "ray_results")}):
+        tuner2 = Tuner.restore("memory:///test/restore/exp_dir")
+        results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
     local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
@@ -422,8 +424,9 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
     assert prev_lstat.st_size != after_lstat.st_size
 
     # Overwriting should work
-    tuner3 = Tuner.restore("memory:///test/restore/exp_dir")
-    tuner3.fit()
+    with inject_os_environ({"TEST_TMPDIR": str(tmpdir / "ray_results")}):
+        tuner3 = Tuner.restore("memory:///test/restore/exp_dir")
+        tuner3.fit()
 
 
 @pytest.mark.parametrize(

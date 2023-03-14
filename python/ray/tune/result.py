@@ -121,6 +121,9 @@ def _get_default_results_dir():
     # This is the file system that bazel test uses.
     return (
         os.environ.get("TEST_TMPDIR")
+        # Deprecate: Remove this with Ray 2.6 (this belongs to the
+        # storage_path/local_dir refactor).
+        or os.environ.get("TUNE_OVERRIDE_RESULT_DIR")
         or os.environ.get("TUNE_RESULT_DIR")
         or os.path.expanduser("~/ray_results")
     )
