@@ -608,7 +608,103 @@
 
   run:
     timeout: 3600
-    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+    script: python ../../util/test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+
+
+#####################################
+# Workspace templates release tests #
+#####################################
+
+
+- name: workspace_template_01_batch_inference_small
+  group: Workspace templates
+  working_dir: templates/01_batch_inference
+  python: "3.9"
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
+
+
+- name: workspace_template_01_batch_inference_large
+  group: Workspace templates
+  working_dir: templates/01_batch_inference
+  python: "3.9"
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_large.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
+
+
+- name: workspace_template_02_many_model_training_small
+  group: Workspace templates
+  working_dir: templates/02_many_model_training
+  python: "3.9"
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_compute: ../configs/compute/cpu/aws_small.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
+
+
+- name: workspace_template_02_many_model_training_large
+  group: Workspace templates
+  working_dir: templates/02_many_model_training
+  python: "3.9"
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_compute: ../configs/compute/cpu/aws_large.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
+
+
+- name: workspace_template_03_serving_stable_diffusion
+  group: Workspace templates
+  working_dir: templates/03_serving_stable_diffusion
+  python: "3.9"
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+
+
+- name: workspace_template_03_serving_stable_diffusion
+  group: Workspace templates
+  working_dir: templates/03_serving_stable_diffusion
+  python: "3.9"
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: ../configs/anyscale_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_large.yaml
+
+  run:
+    timeout: 3600
+    script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+
 
 #######################
 # XGBoost release tests
