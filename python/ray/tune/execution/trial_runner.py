@@ -179,7 +179,7 @@ class TrialRunner:
                 )
             remote_experiment_path = self._sync_config.upload_dir
 
-        if not local_experiment_path:
+        if not local_experiment_path and self._experiment_dir_name:
             local_experiment_path = str(
                 Path(_get_default_results_dir()) / self._experiment_dir_name
             )
@@ -441,8 +441,9 @@ class TrialRunner:
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
-            trial._local_experiment_path = self._local_experiment_path
-            trial._remote_experiment_path = self._remote_experiment_path
+            # ATTN: Set `local_experiment_path` to update trial checkpoints!
+            trial.local_experiment_path = self._local_experiment_path
+            trial.remote_experiment_path = self._remote_experiment_path
             trial.sync_config = self._sync_config
             trial.experiment_dir_name = self._experiment_dir_name
 

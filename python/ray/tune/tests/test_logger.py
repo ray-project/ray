@@ -315,7 +315,7 @@ class AimLoggerSuite(unittest.TestCase):
             Trial(
                 evaluated_params=self.config,
                 trial_id="aim_1",
-                experiment_path=self.test_dir,
+                local_dir=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
                 remote_checkpoint_dir="s3://bucket/aim_test/trial_0_logdir",

@@ -772,7 +772,6 @@ def test_tuner_restore_from_moved_experiment_path(
     assert not old_local_dir.exists()
 
 
-# TODO: FIX TEST
 def test_tuner_restore_from_moved_cloud_uri(
     ray_start_2_cpus, tmp_path, clear_memory_filesys
 ):
@@ -786,16 +785,16 @@ def test_tuner_restore_from_moved_cloud_uri(
         session.report(data, checkpoint=Checkpoint.from_dict(data))
         raise RuntimeError("Failing!")
 
-    tuner = Tuner(
-        failing_fn,
-        run_config=RunConfig(
-            name="exp_dir",
-            local_dir=str(tmp_path / "ray_results"),
-            sync_config=tune.SyncConfig(upload_dir="memory:///original"),
-        ),
-        tune_config=TuneConfig(trial_dirname_creator=lambda _: "test"),
-    )
-    tuner.fit()
+    with inject_os_environ({"TEST_TMPDIR": str(tmp_path / "ray_results")}):
+        tuner = Tuner(
+            failing_fn,
+            run_config=RunConfig(
+                name="exp_dir",
+                storage_path="memory:///original",
+            ),
+            tune_config=TuneConfig(trial_dirname_creator=lambda _: "test"),
+        )
+        tuner.fit()
 
     # mv memory:///original/exp_dir memory:///moved/new_exp_dir
     download_from_uri(
@@ -804,18 +803,19 @@ def test_tuner_restore_from_moved_cloud_uri(
     delete_at_uri("memory:///original")
     upload_to_uri(str(tmp_path / "moved"), "memory:///moved")
 
-    tuner = Tuner.restore("memory:///moved/new_exp_dir", resume_errored=True)
-    # Just for the test, since we're using `memory://` to mock a remote filesystem,
-    # the checkpoint needs to be copied to the new local directory.
-    # This is because the trainable actor uploads its checkpoints to a
-    # different `memory://` filesystem than the driver and is not
-    # downloaded along with the other parts of the experiment dir.
-    # NOTE: A new local directory is used since the experiment name got modified.
-    shutil.move(
-        tmp_path / "ray_results/exp_dir/test/checkpoint_000000",
-        tmp_path / "ray_results/new_exp_dir/test/checkpoint_000000",
-    )
-    results = tuner.fit()
+    with inject_os_environ({"TEST_TMPDIR": str(tmp_path / "ray_results")}):
+        tuner = Tuner.restore("memory:///moved/new_exp_dir", resume_errored=True)
+        # Just for the test, since we're using `memory://` to mock a remote filesystem,
+        # the checkpoint needs to be copied to the new local directory.
+        # This is because the trainable actor uploads its checkpoints to a
+        # different `memory://` filesystem than the driver and is not
+        # downloaded along with the other parts of the experiment dir.
+        # NOTE: A new local directory is used since the experiment name got modified.
+        shutil.move(
+            tmp_path / "ray_results/exp_dir/test/checkpoint_000000",
+            tmp_path / "ray_results/new_exp_dir/test/checkpoint_000000",
+        )
+        results = tuner.fit()
 
     assert list_at_uri("memory:///") == ["moved"]
     num_experiment_checkpoints = len(
@@ -982,7 +982,6 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
     assert [ckpt.to_dict()["it"] for ckpt in checkpoints] == [2, 3, 4, 5]
 
 
-# TODO: FIX TEST
 @pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
 def test_tuner_can_restore(tmp_path, upload_dir):
     """Make sure that `can_restore` detects an existing experiment at a
@@ -995,15 +994,16 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         path = tmp_path / name
 
     assert not Tuner.can_restore(path)
-    Tuner(
-        lambda config: None,
-        run_config=RunConfig(
-            name=name,
-            local_dir=str(tmp_path),
-            sync_config=tune.SyncConfig(upload_dir=upload_dir),
-        ),
-        tune_config=TuneConfig(trial_dirname_creator=lambda t: "trial_dir"),
-    )
+
+    with inject_os_environ({"TEST_TMPDIR": str(tmp_path)}):
+        Tuner(
+            lambda config: None,
+            run_config=RunConfig(
+                name=name,
+                storage_path=upload_dir,
+            ),
+            tune_config=TuneConfig(trial_dirname_creator=lambda t: "trial_dir"),
+        )
     (path / "trial_dir").mkdir(parents=True, exist_ok=True)
     if upload_dir:
         upload_to_uri(str(tmp_path / name), str(path))

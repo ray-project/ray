@@ -621,6 +621,14 @@ class Trial:
         return self.local_experiment_path
 
     @property
+    def remote_experiment_path(self) -> str:
+        return str(self._remote_experiment_path)
+
+    @remote_experiment_path.setter
+    def remote_experiment_path(self, remote_path: str):
+        self._remote_experiment_path = remote_path
+
+    @property
     def local_experiment_path(self) -> str:
         return str(self._local_experiment_path)
 

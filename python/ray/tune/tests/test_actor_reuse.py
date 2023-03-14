@@ -471,7 +471,6 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
         assert num_checkpoints == 2
 
 
-# TODO: FIX TEST
 def test_artifact_syncing_with_actor_reuse(
     ray_start_2_cpus, tmp_path, propagate_logs, caplog
 ):

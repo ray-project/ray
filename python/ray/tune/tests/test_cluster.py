@@ -191,7 +191,6 @@ def custom_driver_logdir_callback(tempdir: str):
     return SeparateDriverSyncerCallback()
 
 
-# TODO: FIX TEST(S)
 @pytest.mark.parametrize("durable", [False, True])
 def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     """Removing a node while cluster has space should migrate trial.
@@ -215,7 +214,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
-        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_path": upload_dir + "/exp" if upload_dir else None,
         "experiment_dir_name": "exp",
         "max_failures": 2,
     }
@@ -261,7 +260,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     # Test recovery of trial that won't be checkpointed
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
-        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_path": upload_dir + "/exp" if upload_dir else None,
         "experiment_dir_name": "exp",
     }
 
