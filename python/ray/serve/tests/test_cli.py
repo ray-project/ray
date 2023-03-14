@@ -371,19 +371,39 @@ def test_config(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_multi_app(ray_start_stop):
+    """Deploys multi-app config and checks output of `serve config`."""
+
+    # Check that `serve config` works even if no Serve app is running
+    subprocess.check_output(["serve", "config", "--all-apps"])
+
+    # Deploy config
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    with open(config_file_name, "r") as config_file:
+        config = yaml.safe_load(config_file)
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    # Config should be immediately ready
+    info_response = subprocess.check_output(["serve", "config", "--all-apps"])
+    fetched_configs = list(yaml.safe_load_all(info_response))
+
+    assert config["applications"][0] == fetched_configs[0]
+    assert config["applications"][1] == fetched_configs[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
     """Deploys a config file and checks its status."""
 
     # Check that `serve status` works even if no Serve app is running
-    status_response = subprocess.check_output(["serve", "status"])
-    status = yaml.safe_load(status_response)
+    subprocess.check_output(["serve", "status"])
 
-    assert ServeStatusSchema.get_empty_schema_dict() == status
-
+    # Deploy config
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza.yaml"
     )
-
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     def num_live_deployments():
@@ -487,6 +507,58 @@ def test_status_syntax_error(ray_start_stop):
         )
 
     wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_multi_app(ray_start_stop):
+    """Deploys a multi-app config file and checks their status."""
+    # Check that `serve status` works even if no Serve app is running
+    subprocess.check_output(["serve", "status"])
+    print("Confirmed `serve status` works when nothing has been deployed.")
+
+    # Deploy config
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    subprocess.check_output(["serve", "deploy", config_file_name])
+    print("Deployed config successfully.")
+
+    def num_live_deployments():
+        status_response = subprocess.check_output(["serve", "status"])
+        serve_status = list(yaml.safe_load_all(status_response))
+        return len(serve_status[0]["deployment_statuses"]) and len(
+            serve_status[1]["deployment_statuses"]
+        )
+
+    wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
+    print("All deployments are live.")
+
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:52365/"]
+    )
+    serve_statuses = yaml.safe_load_all(status_response)
+
+    expected_deployments = {
+        "app1_f",
+        "app1_BasicDriver",
+        "app2_DAGDriver",
+        "app2_Multiplier",
+        "app2_Adder",
+        "app2_Router",
+        "app2_create_order",
+    }
+    for status in serve_statuses:
+        for deployment in status["deployment_statuses"]:
+            expected_deployments.remove(deployment["name"])
+            assert deployment["status"] in {"HEALTHY", "UPDATING"}
+            assert "message" in deployment
+    assert len(expected_deployments) == 0
+    print("All expected deployments are present in the status output.")
+
+    for status in serve_statuses:
+        assert status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
+        assert time.time() > status["app_status"]["deployment_timestamp"]
+    print("Verified status and deployment timestamp of both apps.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

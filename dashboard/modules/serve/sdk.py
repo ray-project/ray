@@ -9,6 +9,7 @@ except ImportError:
     requests = None
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.serve.schema import ServeInstanceDetails
 
 
 DEPLOY_PATH = "/api/serve/deployments/"
@@ -81,6 +82,13 @@ class ServeSubmissionClient(SubmissionClient):
         response = self._do_request("GET", INFO_PATH)
         if response.status_code == 200:
             return response.json()
+        else:
+            self._raise_error(response)
+
+    def get_serve_details(self):
+        response = self._do_request("GET", "/api/serve/applications/")
+        if response.status_code == 200:
+            return ServeInstanceDetails(**response.json())
         else:
             self._raise_error(response)
 
