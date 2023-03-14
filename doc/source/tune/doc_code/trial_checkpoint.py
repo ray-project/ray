@@ -64,7 +64,8 @@ def train_func(self):
 tuner = tune.Tuner(
     MyTrainableClass,
     run_config=air.RunConfig(
-        checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10)
+        stop={"training_iteration": 2},
+        checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10),
     ),
 )
 tuner.fit()
@@ -76,9 +77,10 @@ tuner.fit()
 tuner = tune.Tuner(
     MyTrainableClass,
     run_config=air.RunConfig(
+        stop={"training_iteration": 2},
         checkpoint_config=air.CheckpointConfig(
             checkpoint_frequency=10, checkpoint_at_end=True
-        )
+        ),
     ),
 )
 tuner.fit()
@@ -134,8 +136,6 @@ def train_func(config):
             session.report(metrics)
 
 
-tuner = tune.Tuner(train_func)
-results = tuner.fit()
 # __function_api_checkpointing_periodic_end__
 
 
@@ -155,7 +155,7 @@ def write_model_to_dir(model, dir_path):
 
 
 def train_func(config):
-    for epoch in range(config["epoch"]):
+    for epoch in range(config["epochs"]):
         # Model training here
         # ...
 
@@ -168,6 +168,4 @@ def train_func(config):
         )
 
 
-tuner = tune.Tuner(train_func)
-results = tuner.fit()
 # __function_api_checkpointing_from_dir_end__
