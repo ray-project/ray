@@ -187,7 +187,7 @@ def run_release_test(
         )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(
-            cluster_manager, file_manager, working_dir, artifact_path
+            cluster_manager, file_manager, working_dir, artifact_path=artifact_path
         )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e

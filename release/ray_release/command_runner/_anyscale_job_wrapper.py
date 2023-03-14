@@ -387,7 +387,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--artifact-path",
         type=str,
-        help="user provided artifact path (on head node)",
+        help="user provided artifact path (on head node), must be a single file path",
         required=False,
     )
     parser.add_argument(

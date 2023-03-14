@@ -151,5 +151,5 @@ class JobRunner(CommandRunner):
     def fetch_metrics(self) -> Dict[str, Any]:
         return self._fetch_json(self.metrics_output_json)
 
-    def fetch_artifact(self, path):
+    def fetch_artifact(self):
         raise NotImplementedError

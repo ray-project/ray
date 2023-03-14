@@ -231,13 +231,12 @@ class AnyscaleJobRunner(JobRunner):
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
             "--output-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.output_json)}' "
-            "--upload-s3-uri "
-            f"'{self.upload_path}' "
-            "--artifact-path "
-            f"'{self._artifact_path}' "
+            f"--upload-s3-uri '{self.upload_path}' "
             f"--prepare-commands {prepare_commands_shell} "
-            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
+            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
+        if self._artifact_path:
+            full_command += f"--artifact-path '{self._artifact_path}' "
 
         timeout = min(
             (self.cluster_manager.maximum_uptime_minutes - 1) * 60,
