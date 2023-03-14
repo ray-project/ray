@@ -44,9 +44,7 @@ using GcsActorSchedulerFailureCallback =
                        rpc::RequestWorkerLeaseReply::SchedulingFailureType,
                        const std::string &)>;
 using GcsActorSchedulerSuccessCallback =
-    std::function<void(std::shared_ptr<GcsActor>,
-                       const rpc::PushTaskReply &reply,
-                       const Status &creation_task_status)>;
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
 
 class GcsActorSchedulerInterface {
  public:

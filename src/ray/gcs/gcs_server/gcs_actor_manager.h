@@ -422,10 +422,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor that has been created.
   /// \param reply The reply from the PushTask request from creation task executed on a
   /// remote worker.
-  /// \param creation_task_status The creation task status.
   void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
-                              const rpc::PushTaskReply &reply,
-                              const Status &creation_task_status = Status::OK());
+                              const rpc::PushTaskReply &reply);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.

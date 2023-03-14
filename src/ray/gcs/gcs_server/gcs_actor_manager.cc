@@ -282,25 +282,14 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
                 << ", actor id = " << actor_id;
   Status status = CreateActor(
       request,
-      [reply, send_reply_callback, actor_id](
-          const std::shared_ptr<gcs::GcsActor> &actor,
-          const rpc::PushTaskReply &creation_task_reply,
-          const Status &creation_task_status) {
-        if (creation_task_status.IsCreationTaskError()) {
-          RAY_LOG(INFO) << "Failed to create actor due to init method failure, job id = "
-                        << actor_id.JobId() << ", actor id = " << actor_id;
-          // Actor creation task failed but we do have the actor worker address.
-          reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
-          // We still keep track this despite of task failure since we don't destroy the
-          // actors right away but rely on actors being destroyed later when the worker
-          // exits. So we will need to inform the GCS on the borrowed refs as if the
-          // creation task was successful .
-          reply->mutable_borrowed_refs()->CopyFrom(creation_task_reply.borrowed_refs());
-          // Notify the owner so that owner can correctly report failure events for actor
-          // creation
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, creation_task_status);
-          return;
-        }
+      [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
+                                             const rpc::PushTaskReply &task_reply,
+                                             const Status &creation_task_status) {
+        // TODO(rickyx): We should really propagate the task execution status in
+        // PushTaskReply
+        rpc::GcsStatus status;
+        status.set_code(static_cast<int32_t>(creation_task_status.code()));
+        status.set_message(creation_task_status.message());
 
         if (creation_task_status.IsSchedulingCancelled()) {
           // Actor creation is cancelled.
@@ -308,15 +297,17 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
                         << ", actor id = " << actor_id;
           reply->mutable_death_cause()->CopyFrom(
               actor->GetActorTableData().death_cause());
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, creation_task_status);
-          return;
         }
 
-        RAY_CHECK(creation_task_status.ok());
-        RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
-                      << ", actor id = " << actor_id;
+        reply->mutable_status()->CopyFrom(status);
         reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
-        reply->mutable_borrowed_refs()->CopyFrom(creation_task_reply.borrowed_refs());
+        reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
+        RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
+                      << ", actor id = " << actor_id
+                      << ", status = " << creation_task_status;
+        // NOTE: we are still returning Status::OK even if creation task failed because
+        // we need to forward the borrowed_refs of the tasks for reference counting as if
+        // the creation task succeeded.
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
@@ -815,7 +806,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     RunAndClearActorCreationCallbacks(
         actor,
         rpc::PushTaskReply(),
-        Status::SchedulingCancelled("Actor creation cancelled. Actor already dead."));
+        Status::SchedulingCancelled("Actor creation cancelled."));
     return;
   }
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
@@ -1206,8 +1197,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
-                                             const rpc::PushTaskReply &reply,
-                                             const Status &creation_task_status) {
+                                             const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
   liftime_num_created_actors_++;
   RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
@@ -1220,13 +1210,14 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     return;
   }
 
-  if (creation_task_status.IsCreationTaskError()) {
+  if (reply.is_application_error()) {
     RAY_LOG(INFO) << "Actor created failed, actor id = " << actor_id
                   << ", job id = " << actor_id.JobId();
-    // NOTE: we could also destroy the actor here right away. The actor will be eventually
-    // destroyed since the CoreWorker runs the creation task will exit eventually due to
-    // the creation task failure.
-    RunAndClearActorCreationCallbacks(actor, reply, creation_task_status);
+    // NOTE: Alternatively we could also destroy the actor here right away. The actor will
+    // be eventually destroyed as the CoreWorker runs the creation task will exit
+    // eventually due to the creation task failure.
+    RunAndClearActorCreationCallbacks(
+        actor, reply, Status::CreationTaskError("Actor __init__ failed."));
   }
 
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
@@ -1251,14 +1242,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id,
       actor_table_data,
-      [this, actor_id, actor_table_data, actor, reply, creation_task_status](
-          Status status) {
+      [this, actor_id, actor_table_data, actor, reply](Status status) {
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
             actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_create_callbacks_.
-        RunAndClearActorCreationCallbacks(actor, reply, creation_task_status);
+        RunAndClearActorCreationCallbacks(actor, reply, Status::OK());
       }));
 }
 
