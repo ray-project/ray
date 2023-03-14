@@ -46,7 +46,7 @@ class AutoscalingRequester:
         return req
 
 
-def get_or_create_autoscaler_requester_actor():
+def get_or_create_autoscaling_requester_actor():
     ctx = DatasetContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     # Pin the stats actor to the local node so it fate-shares with the driver.
@@ -57,7 +57,7 @@ def get_or_create_autoscaler_requester_actor():
         soft=False,
     )
     return AutoscalingRequester.options(
-        name="AutoscalerRequester",
+        name="AutoscalingRequester",
         namespace="AutoscalingRequester",
         get_if_exists=True,
         lifetime="detached",

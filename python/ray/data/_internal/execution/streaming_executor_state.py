@@ -17,8 +17,8 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.autoscaler_requester import (
-    get_or_create_autoscaler_requester_actor,
+from ray.data._internal.execution.autoscaling_requester import (
+    get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.progress_bar import ProgressBar
 
@@ -376,7 +376,7 @@ def _try_to_scale_up_cluster(topology: Topology):
     if usage.gpu:
         resource_request["GPU"] = math.ceil(usage.gpu)
     # Make autoscaler resource request.
-    actor = get_or_create_autoscaler_requester_actor()
+    actor = get_or_create_autoscaling_requester_actor()
     actor.request_resources.remote(resource_request, 1)
 
 

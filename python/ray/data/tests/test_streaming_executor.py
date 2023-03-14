@@ -249,8 +249,8 @@ def test_execution_allowed():
 
 
 def test_resource_constrained_triggers_autoscaling():
-    from ray.data._internal.execution.autoscaler_requester import (
-        get_or_create_autoscaler_requester_actor,
+    from ray.data._internal.execution.autoscaling_requester import (
+        get_or_create_autoscaling_requester_actor,
     )
 
     # Test that dispatch not being possible due to resource limits triggers a scale-up
@@ -286,7 +286,7 @@ def test_resource_constrained_triggers_autoscaling():
     topo[o4].inqueues[0].append("dummy")
     # We should request incremental resources for only o2, since it's the only op that's
     # ready to dispatch.
-    ac = get_or_create_autoscaler_requester_actor()
+    ac = get_or_create_autoscaling_requester_actor()
     ac._resource_requests = {"CPU": 3, "GPU": 2}
 
 
