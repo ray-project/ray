@@ -178,7 +178,19 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        raise NotImplementedError
+        # Under the new _enable_learner_api the loss function still gets called in order
+        # to initialize the view requirements of the sample batches that are returned by
+        # the sampler. In this case, we don't actually want to compute any loss, however
+        # if we access the keys that are needed for a forward_train pass, then the
+        # sampler will include those keys in the sample batches it returns. This means
+        # that the correct sample batch keys will be available when using the learner
+        # group API.
+        if self.config._enable_learner_api:
+            for k in model.input_specs_train():
+                train_batch[k]
+            return None
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
