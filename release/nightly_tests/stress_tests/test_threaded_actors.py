@@ -64,7 +64,7 @@ class PiCalculator:
             with self.lock:
                 if not self.result_queue.empty():
                     result = self.result_queue.get(block=False)
-                time.sleep(1)
+            time.sleep(1)
         return result
 
 
