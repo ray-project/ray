@@ -100,9 +100,12 @@ class GrpcClient {
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
-    RAY_LOG(INFO) << this << "\tConstruct Client: channel: " << channel_.use_count() << "\t" << channel_.get();
+    RAY_LOG(INFO) << this << "\tConstruct Client: channel: " << channel_.use_count()
+                  << "\t" << channel_.get();
     stub_ = GrpcService::NewStub(channel_);
-    RAY_LOG(INFO) << this << "\tConstruct Client after stub: channel: " << channel_.use_count() << "\t" << channel_.get();
+    RAY_LOG(INFO) << this
+                  << "\tConstruct Client after stub: channel: " << channel_.use_count()
+                  << "\t" << channel_.get();
   }
 
   GrpcClient(const std::string &address,
@@ -124,7 +127,8 @@ class GrpcClient {
   }
   ~GrpcClient() {
     stub_.release();
-    RAY_LOG(INFO) << "Destruct gRPC Channel: " << this << "\t" << channel_.use_count() <<  "\t" << channel_.get();
+    RAY_LOG(INFO) << "Destruct gRPC Channel: " << this << "\t" << channel_.use_count()
+                  << "\t" << channel_.get();
   }
   /// Create a new `ClientCall` and send request.
   ///

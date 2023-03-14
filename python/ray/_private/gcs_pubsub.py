@@ -384,7 +384,9 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, worker_id, address, channel)
+        super().__init__(
+            pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, worker_id, address, channel
+        )
 
     def poll(self, timeout=None) -> Optional[bytes]:
         """Polls for new function key messages.
@@ -605,7 +607,9 @@ class GcsAioResourceUsageSubscriber(_AioSubscriber):
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, worker_id, address, channel)
+        super().__init__(
+            pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, worker_id, address, channel
+        )
 
     async def poll(self, timeout=None) -> Tuple[bytes, str]:
         """Polls for new resource usage message.

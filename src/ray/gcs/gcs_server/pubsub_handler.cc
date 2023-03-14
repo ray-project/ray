@@ -95,12 +95,12 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   auto sender_id = request.sender_id();
-  if(sender_id.empty()) {
+  if (sender_id.empty()) {
     sender_id = request.subscriber_id();
   }
 
   auto iter = sender_to_subscribers_.find(sender_id);
-  if(iter == sender_to_subscribers_.end()) {
+  if (iter == sender_to_subscribers_.end()) {
     iter = sender_to_subscribers_.insert({sender_id, {}}).first;
   }
 
@@ -129,16 +129,15 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void InternalPubSubHandler::OnSenderDied(const std::string& sender_id) {
+void InternalPubSubHandler::OnSenderDied(const std::string &sender_id) {
   auto iter = sender_to_subscribers_.find(sender_id);
   RAY_LOG(INFO) << "WorkerDied: " << WorkerID::FromBinary(sender_id) << "\t"
                 << (iter == sender_to_subscribers_.end() ? 0UL : iter->second.size());
-  if(iter == sender_to_subscribers_.end()) {
+  if (iter == sender_to_subscribers_.end()) {
     return;
   }
-  for(auto& subscriber_id : iter->second) {
-    gcs_publisher_->GetPublisher()->UnregisterSubscriber(
-        subscriber_id);
+  for (auto &subscriber_id : iter->second) {
+    gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
   }
   sender_to_subscribers_.erase(iter);
 }

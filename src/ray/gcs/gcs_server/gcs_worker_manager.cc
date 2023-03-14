@@ -193,7 +193,8 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       };
 
-  Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, NullaryCB<Status>(on_done, LOCATION));
+  Status status = gcs_table_storage_->WorkerTable().Put(
+      worker_id, *worker_data, NullaryCB<Status>(on_done, LOCATION));
   if (!status.ok()) {
     on_done(status);
   }
@@ -220,7 +221,8 @@ void GcsWorkerManager::GetWorkerInfo(
     }
   };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, NullaryCB<Status, boost::optional<WorkerTableData>>(on_done, LOCATION));
+  Status status = gcs_table_storage_->WorkerTable().Get(
+      worker_id, NullaryCB<Status, boost::optional<WorkerTableData>>(on_done, LOCATION));
   if (!status.ok()) {
     on_done(status, boost::none);
   }

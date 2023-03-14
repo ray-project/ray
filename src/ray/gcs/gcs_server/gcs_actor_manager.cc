@@ -560,34 +560,37 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor->GetMutableActorTableData(),
-      NullaryCB<Status>([this, actor](const Status &status) {
-        // The backend storage is supposed to be reliable, so the status must be ok.
-        RAY_CHECK_OK(status);
-        // If a creator dies before this callback is called, the actor could have been
-        // already destroyed. It is okay not to invoke a callback because we don't need
-        // to reply to the creator as it is already dead.
-        auto registered_actor_it = registered_actors_.find(actor->GetActorID());
-        if (registered_actor_it == registered_actors_.end()) {
-          // NOTE(sang): This logic assumes that the ordering of backend call is
-          // guaranteed. It is currently true because we use a single TCP socket to call
-          // the default Redis backend. If ordering is not guaranteed, we should overwrite
-          // the actor state to DEAD to avoid race condition.
-          return;
-        }
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor->GetActorID(), actor->GetActorTableData(), nullptr));
-        // Invoke all callbacks for all registration requests of this actor (duplicated
-        // requests are included) and remove all of them from
-        // actor_to_register_callbacks_.
-        // Reply to the owner to indicate that the actor has been registered.
-        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-        RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
-        auto callbacks = std::move(iter->second);
-        actor_to_register_callbacks_.erase(iter);
-        for (auto &callback : callbacks) {
-          callback(actor);
-        }
-      }, std::string(LOCATION))));
+      NullaryCB<Status>(
+          [this, actor](const Status &status) {
+            // The backend storage is supposed to be reliable, so the status must be ok.
+            RAY_CHECK_OK(status);
+            // If a creator dies before this callback is called, the actor could have been
+            // already destroyed. It is okay not to invoke a callback because we don't
+            // need to reply to the creator as it is already dead.
+            auto registered_actor_it = registered_actors_.find(actor->GetActorID());
+            if (registered_actor_it == registered_actors_.end()) {
+              // NOTE(sang): This logic assumes that the ordering of backend call is
+              // guaranteed. It is currently true because we use a single TCP socket to
+              // call the default Redis backend. If ordering is not guaranteed, we should
+              // overwrite the actor state to DEAD to avoid race condition.
+              return;
+            }
+            RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                actor->GetActorID(), actor->GetActorTableData(), nullptr));
+            // Invoke all callbacks for all registration requests of this actor
+            // (duplicated requests are included) and remove all of them from
+            // actor_to_register_callbacks_.
+            // Reply to the owner to indicate that the actor has been registered.
+            auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
+            RAY_CHECK(iter != actor_to_register_callbacks_.end() &&
+                      !iter->second.empty());
+            auto callbacks = std::move(iter->second);
+            actor_to_register_callbacks_.erase(iter);
+            for (auto &callback : callbacks) {
+              callback(actor);
+            }
+          },
+          std::string(LOCATION))));
   return Status::OK();
 }
 
@@ -852,13 +855,16 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor_table_data,
-      NullaryCB<Status>([this, actor_id, actor_table_data](Status status) {
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
-        RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
-        // Destroy placement group owned by this actor.
-        destroy_owned_placement_group_if_needed_(actor_id);
-      }, std::string(LOCATION))));
+      NullaryCB<Status>(
+          [this, actor_id, actor_table_data](Status status) {
+            RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
+            RAY_CHECK_OK(
+                gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+            // Destroy placement group owned by this actor.
+            destroy_owned_placement_group_if_needed_(actor_id);
+          },
+          std::string(LOCATION))));
 
   // Inform all creation callbacks that the actor was cancelled, not created.
   for (auto &callback : creation_callbacks) {
@@ -1112,10 +1118,14 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        NullaryCB<Status>([this, actor_id, mutable_actor_table_data](Status status) {
-          RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
-        }, std::string(LOCATION))));
+        NullaryCB<Status>(
+            [this, actor_id, mutable_actor_table_data](Status status) {
+              RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                  actor_id,
+                  *GenActorDataOnlyWithStates(*mutable_actor_table_data),
+                  nullptr));
+            },
+            std::string(LOCATION))));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
     RemoveActorNameFromRegistry(actor);
@@ -1129,18 +1139,23 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id,
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        NullaryCB<Status>([this, actor, actor_id, mutable_actor_table_data, death_cause](Status status) {
-          // If actor was an detached actor, make sure to destroy it.
-          // We need to do this because detached actors are not destroyed
-          // when its owners are dead because it doesn't have owners.
-          if (actor->IsDetached()) {
-            DestroyActor(actor_id, death_cause);
-          }
-          RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
-          RAY_CHECK_OK(
-              gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
-        }, std::string(LOCATION))));
+        NullaryCB<Status>(
+            [this, actor, actor_id, mutable_actor_table_data, death_cause](
+                Status status) {
+              // If actor was an detached actor, make sure to destroy it.
+              // We need to do this because detached actors are not destroyed
+              // when its owners are dead because it doesn't have owners.
+              if (actor->IsDetached()) {
+                DestroyActor(actor_id, death_cause);
+              }
+              RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                  actor_id,
+                  *GenActorDataOnlyWithStates(*mutable_actor_table_data),
+                  nullptr));
+              RAY_CHECK_OK(
+                  gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+            },
+            std::string(LOCATION))));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
     // once the owner fails or notifies us that the actor's handle has gone out
@@ -1228,20 +1243,22 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id,
       actor_table_data,
-      NullaryCB<Status>([this, actor_id, actor_table_data, actor, reply](Status status) {
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
-        // Invoke all callbacks for all registration requests of this actor (duplicated
-        // requests are included) and remove all of them from
-        // actor_to_create_callbacks_.
-        auto iter = actor_to_create_callbacks_.find(actor_id);
-        if (iter != actor_to_create_callbacks_.end()) {
-          for (auto &callback : iter->second) {
-            callback(actor, reply, false);
-          }
-          actor_to_create_callbacks_.erase(iter);
-        }
-      }, std::string(LOCATION))));
+      NullaryCB<Status>(
+          [this, actor_id, actor_table_data, actor, reply](Status status) {
+            RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+            // Invoke all callbacks for all registration requests of this actor
+            // (duplicated requests are included) and remove all of them from
+            // actor_to_create_callbacks_.
+            auto iter = actor_to_create_callbacks_.find(actor_id);
+            if (iter != actor_to_create_callbacks_.end()) {
+              for (auto &callback : iter->second) {
+                callback(actor, reply, false);
+              }
+              actor_to_create_callbacks_.erase(iter);
+            }
+          },
+          std::string(LOCATION))));
 }
 
 void GcsActorManager::SchedulePendingActors() {
