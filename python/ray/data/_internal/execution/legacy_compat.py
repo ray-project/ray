@@ -117,7 +117,8 @@ def _get_execution_dag(
 
     # Get DAG of physical operators and input statistics.
     if DatasetContext.get_current().optimizer_enabled:
-        dag, stats = get_execution_plan(plan._logical_plan).dag, None
+        dag = get_execution_plan(plan._logical_plan).dag
+        stats = _get_initial_stats_from_plan(plan)
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
 
@@ -128,6 +129,13 @@ def _get_execution_dag(
         executor._options.preserve_order = True
 
     return dag, stats
+
+
+def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
+    assert DatasetContext.get_current().optimizer_enabled
+    if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
+        return plan._snapshot_stats
+    return plan._in_stats
 
 
 def _to_operator_dag(
