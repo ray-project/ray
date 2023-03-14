@@ -22,13 +22,14 @@ class AutoscalingRequester:
         self._resource_requests = {}
         # Mapping execution_uuid to expiration timestamp of resource request from
         # this execution.
-        self._expiration_timestmap = {}
+        self._expiration_timestamp = {}
         # TTL for requests.
         self._timeout = 60
 
     def request_resources(self, req: Dict, execution_uuid: str):
-        # Purge expired requests before making requests to autoscaler.
+        # Purge expired requests before making request to autoscaler.
         self._purge()
+        self._expiration_timestamp[execution_uuid] = time.time() + self._timeout
         # For the same execution_uuid, we track the high watermark of the resource
         # requested.
         self._resource_requests[execution_uuid] = self._get_high_watermark(
@@ -40,13 +41,13 @@ class AutoscalingRequester:
 
     def _purge(self):
         # Purge requests that are stale.
-        for k, v in list(self._expiration_timestmap.items()):
-            if v < time.time():
-                self._expiration_timestmap.pop(k)
+        now = time.time()
+        for k, v in list(self._expiration_timestamp.items()):
+            if v < now:
+                self._expiration_timestamp.pop(k)
                 self._resource_requests.pop(k)
 
     def _get_high_watermark(self, req: Dict, execution_uuid: str) -> Dict:
-        self._expiration_timestmap[execution_uuid] = time.time() + self._timeout
         if execution_uuid in self._resource_requests:
             reqs = [req, self._resource_requests[execution_uuid]]
         else:
