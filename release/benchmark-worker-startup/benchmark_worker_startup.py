@@ -16,6 +16,7 @@ def main(
     num_cpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_configuration: int,
+    with_runtime_env: bool,
 ):
     metrics_actor_name = "metrics_actor"
     metrics_actor_namespace = "metrics_actor_namespace"
@@ -30,6 +31,7 @@ def main(
         num_cpus_in_cluster,
         num_tasks_or_actors_per_run,
         num_measurements_per_configuration,
+        with_runtime_env,
     )
     print(f"List of tests: {run_matrix}")
 
@@ -95,6 +97,7 @@ def generate_test_matrix(
     num_cpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_test: int,
+    with_runtime_env: bool,
 ):
 
     num_repeated_jobs_or_runs = num_measurements_per_test
@@ -124,6 +127,7 @@ def generate_test_matrix(
                     expensive_import="torch",
                     num_cpus_in_cluster=num_cpus_in_cluster,
                     num_nodes_in_cluster=1,
+                    with_runtime_env=with_runtime_env,
                 )
                 tests.add(test)
 
@@ -137,6 +141,7 @@ class TestConfiguration:
     num_tasks_or_actors_per_run: int
     with_gpu: bool
     with_tasks: bool
+    with_runtime_env: bool
     expensive_import: str
     num_cpus_in_cluster: int
     num_nodes_in_cluster: int
@@ -145,6 +150,8 @@ class TestConfiguration:
         with_gpu_str = "with-gpu" if self.with_gpu else "without-gpu"
         executable_unit = "tasks" if self.with_tasks else "actors"
         cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
+        # This needs more thought.. currently things are all ran as jobs.
+        with_runtime_env_str = "with-runtime-env" if self.with_runtime_env else "without-runtime-env"
         single_node_or_multi_node = (
             "single-node" if self.num_nodes_in_cluster == 1 else "multi-node"
         )
@@ -153,6 +160,7 @@ class TestConfiguration:
                 f"seconds-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",  # noqa: E501
                 f"{with_gpu_str}",
                 f"{single_node_or_multi_node}",
+                f"{with_runtime_env_str}",
             ]
         )
 
@@ -204,9 +212,9 @@ def parse_args():
     parser.add_argument("--num_tasks_or_actors_per_run", type=int, required=True)
     parser.add_argument("--num_measurements_per_configuration", type=int, required=True)
 
-    #group = parser.add_mutually_exclusive_group(required=True)
-    #group.add_argument("--with_gpu", action="store_true")
-    #group.add_argument("--without_gpu", action="store_true")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--with_runtime_env", action="store_true")
+    group.add_argument("--without_runtime_env", action="store_true")
 
     return parser.parse_args()
 
@@ -218,5 +226,6 @@ if __name__ == "__main__":
             args.num_cpus_in_cluster,
             args.num_tasks_or_actors_per_run,
             args.num_measurements_per_configuration,
+            args.with_runtime_env,
         )
     )
