@@ -7,7 +7,7 @@ a single training method).
 
 For a simpler example, see also: multiagent_cartpole.py
 """
-
+# TODO (Kourosh): Migrate this example to the RLModule API.
 import argparse
 
 import gymnasium as gym
@@ -90,9 +90,11 @@ if __name__ == "__main__":
             model={"vf_share_layers": True},
             vf_loss_coeff=0.01,
             num_sgd_iter=6,
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     dqn_config = (
@@ -106,9 +108,11 @@ if __name__ == "__main__":
             model={"vf_share_layers": True},
             n_step=3,
             gamma=0.95,
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     # Specify two policies, each with their own config created above
