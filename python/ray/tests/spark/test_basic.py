@@ -188,7 +188,6 @@ class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
 
 
 class TestSparkLocalCluster:
-
     @classmethod
     def setup_class(cls):
         cls.spark = (

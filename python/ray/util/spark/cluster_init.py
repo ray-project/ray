@@ -904,10 +904,11 @@ def setup_ray_cluster(
 
     spark_master = spark.sparkContext.master
 
-    is_spark_local_mode = (spark_master == "local" or spark_master.startswith("local["))
+    is_spark_local_mode = spark_master == "local" or spark_master.startswith("local[")
 
     if not (
-        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
+        spark_master.startswith("spark://")
+        or spark_master.startswith("local-cluster[")
         or is_spark_local_mode
     ):
         raise RuntimeError(
