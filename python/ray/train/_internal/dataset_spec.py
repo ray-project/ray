@@ -237,12 +237,11 @@ class DataParallelIngestSpec:
                 ctx.execution_options.resource_limits.object_store_memory = (
                     object_store_memory_limit
                 )
-                # TODO: need to implement repeat for streaming split (?)
-                raise NotImplementedError
                 dataset_splits = dataset.streaming_split(
                     len(training_worker_handles),
                     equal=True,
                     locality_hints=_get_node_ids(training_worker_handles),
+                    num_repeats=-1,
                 )
             else:
                 ctx.execution_options.resource_limits.object_store_memory = (

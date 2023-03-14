@@ -1153,6 +1153,7 @@ class Dataset(Generic[T]):
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
+        num_repeats: int = 1,
     ) -> List[DatasetIterator]:
         """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
         be used to read disjoint subsets of the dataset in parallel.
@@ -1178,11 +1179,13 @@ class Dataset(Generic[T]):
             locality_hints: Specify the node ids corresponding to each iterator
                 location. Datasets will try to minimize data movement based on the
                 iterator output locations. This list must have length ``n``.
+            num_repeats: The number of times the consumer can iterate over the dataset,
+                or -1 for unlimited.
 
         Returns:
             The output iterator splits.
         """
-        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints, num_repeats)
 
     @ConsumptionAPI
     def split(

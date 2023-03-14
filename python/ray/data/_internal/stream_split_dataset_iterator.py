@@ -49,6 +49,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
+        num_repeats: int,
     ) -> List["StreamSplitDatasetIterator"]:
         """Create a split iterator from the given base Dataset and options.
 
@@ -62,7 +63,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(ctx, base_dataset, n, equal, locality_hints)
+        ).remote(ctx, base_dataset, n, equal, locality_hints, num_repeats)
 
         return [
             StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
@@ -139,6 +140,7 @@ class SplitCoordinator:
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
+        num_repeats: int,
     ):
         # Automatically set locality with output to the specified location hints.
         if locality_hints:
@@ -150,6 +152,7 @@ class SplitCoordinator:
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
+        self._num_repeats = num_repeats
         self._finished = False
         self._lock = threading.RLock()
         # Guarded by self._lock.
@@ -196,4 +199,5 @@ class SplitCoordinator:
 
             return block
         except StopIteration:
+            # TODO: implement barrier / repeat once all consumers get None
             return None
