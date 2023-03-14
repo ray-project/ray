@@ -33,7 +33,10 @@ Template for testing with these mocks:
     # logger_state.logs, logger_state.config, logger_state.kwargs, ...
 """
 
+import gc
+import numpy as np
 import os
+import pytest
 import time
 import tempfile
 from unittest.mock import (
@@ -41,8 +44,6 @@ from unittest.mock import (
     patch,
 )
 
-import numpy as np
-import pytest
 
 import ray
 from ray.exceptions import RayActorError
@@ -443,9 +444,13 @@ class TestWandbLogger:
         logger.on_trial_complete(0, [], trial)
         # Signalling stop will not cleanup fully due to the hanging finish
         assert logger._trial_logging_actors
+        actor = logger._trial_logging_actors[trial]
         # Experiment end hook should kill actors since upload_timeout < 5
         logger.on_experiment_end(trials=[trial])
         assert not logger._trial_logging_actors
+        gc.collect()
+        with pytest.raises(RayActorError):
+            ray.get(actor.get_state.remote())
 
     def test_wandb_destructor(self, trial):
         """Test that the WandbLoggerCallback destructor forcefully cleans up
@@ -463,10 +468,11 @@ class TestWandbLogger:
         logger.setup()
         # Triggers logging actor run loop
         logger.on_trial_start(0, [], trial)
-        actors = logger._trial_logging_actors
+        actor = logger._trial_logging_actors[trial]
         del logger
+        gc.collect()
         with pytest.raises(RayActorError):
-            ray.get(actors[trial].get_state.remote())
+            ray.get(actor.get_state.remote())
 
 
 class TestWandbClassMixin:
