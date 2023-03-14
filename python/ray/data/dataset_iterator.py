@@ -3,7 +3,7 @@ import numpy as np
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
-from ray.data.block import DataBatch, T
+from ray.data.block import BlockAccessor, DataBatch, T
 from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _is_tensor_schema
@@ -104,7 +104,6 @@ class DatasetIterator(abc.ABC):
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.
 
@@ -127,8 +126,13 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over rows of the dataset.
         """
-
-        raise NotImplementedError
+        target_format = self._default_batch_format()
+        for batch in self.iter_batches(
+            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=target_format
+        ):
+            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+            for row in batch.iter_rows():
+                yield row
 
     @abc.abstractmethod
     def stats(self) -> str:
@@ -700,3 +704,11 @@ class DatasetIterator(abc.ABC):
         if schema is None or isinstance(schema, type):
             return False
         return _is_tensor_schema(schema.names)
+
+    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+        """Returns the best batch format that lines up with the dataset format.
+
+        NOTE: Return "default" here. Subclass can override this method to decide best
+        batch format.
+        """
+        return "default"
