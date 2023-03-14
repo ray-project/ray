@@ -1,10 +1,9 @@
 from collections import Counter
 import json
-import os
-import time
-
 import numpy as np
+import os
 import pickle
+import time
 
 from ray import tune
 from ray.tune.callback import Callback

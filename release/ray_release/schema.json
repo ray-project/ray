@@ -15,20 +15,20 @@
 				"working_dir": {
 					"type": "string"
 				},
-                "env": {
+				"env": {
 					"type": "string"
 				},
 				"stable": {
 					"type": "boolean"
 				},
-                "python": {
+				"python": {
 					"type": "string",
 					"enum": [
 						"3.6",
 						"3.7",
 						"3.8",
 						"3.9"
-                    ]
+					]
 				},
 				"frequency": {
 					"type": "string",
@@ -135,6 +135,9 @@
 				},
 				"long_running": {
 					"type": "boolean"
+				},
+				"artifact_path": {
+					"type": "string"
 				}
 			},
 			"required": [
@@ -167,10 +170,10 @@
 				"working_dir": {
 					"type": "string"
 				},
-                "env": {
+				"env": {
 					"type": "string"
 				},
-                "driver_setup": {
+				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {
@@ -179,7 +182,7 @@
 				"run": {
 					"type": "object"
 				},
-                "alert": {
+				"alert": {
 					"type": "string"
 				},
 				"frequency": {

@@ -221,6 +221,8 @@ def main(
     results_s3_uri: Optional[str],
     metrics_s3_uri: Optional[str],
     output_s3_uri: Optional[str],
+    upload_s3_uri: Optional[str],
+    artifact_path: Optional[str],
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
 ):
@@ -253,6 +255,7 @@ def main(
     uploaded_results = False
     collected_metrics = False
     uploaded_metrics = False
+    uploaded_artifact = artifact_path is not None
     workload_time_taken = None
 
     # If all prepare commands passed, run actual test workload.
@@ -287,6 +290,14 @@ def main(
             uploaded_metrics = run_aws_cp(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
             )
+
+        uploaded_artifact = run_aws_cp(
+            artifact_path,
+            os.path.join(upload_s3_uri, os.environ["USER_GENERATED_ARTIFACT"])
+            if "USER_GENERATED_ARTIFACT" in os.environ
+            else None,
+        )
+
     else:
         return_code = None
 
@@ -300,6 +311,7 @@ def main(
         "uploaded_results": uploaded_results,
         "collected_metrics": collected_metrics,
         "uploaded_metrics": uploaded_metrics,
+        "uploaded_artifact": uploaded_artifact,
     }
     output_json = json.dumps(
         output_json, ensure_ascii=True, sort_keys=True, separators=(",", ":")
@@ -363,6 +375,18 @@ if __name__ == "__main__":
         "--output-s3-uri",
         type=str,
         help="bucket address to upload output.json to",
+        required=False,
+    )
+    parser.add_argument(
+        "--upload-s3-uri",
+        type=str,
+        help="root s3 bucket address to upload stuff",
+        required=False,
+    )
+    parser.add_argument(
+        "--artifact-path",
+        type=str,
+        help="user provided artifact path (on head node), must be a single file path",
         required=False,
     )
     parser.add_argument(
