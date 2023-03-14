@@ -24,6 +24,7 @@ https://huggingface.co/models?filter=text-generation
 from dataclasses import dataclass, field
 import functools
 from itertools import chain
+import json
 import logging
 import os
 from statistics import mean
@@ -315,12 +316,12 @@ def save_json_metrics(metrics):
             mean(metrics["tflops"][2:]) if len(metrics["tflops"]) > 2 else 0.0
         ),
     }
-
-    print("Metrics:", to_report)
-
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/alpa_opt_2_7b_sanity_check.json"
     )
+
+    print("Writing metrics: ", to_report, f" to {test_output_json}")
+
     with open(test_output_json, "wt") as f:
         json.dump(to_report, f)
 
