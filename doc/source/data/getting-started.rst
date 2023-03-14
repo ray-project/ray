@@ -72,7 +72,7 @@ transform datasets. Ray executes transformations in parallel for performance at 
              petal width (cm): double,
              target: int64
           }
-    )
+       )
 
 To learn more about transforming datasets, read
 :ref:`Transforming datasets <transforming_datasets>`.
