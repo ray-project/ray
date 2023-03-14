@@ -1,3 +1,4 @@
+import itertools
 import pytest
 import threading
 import time
@@ -89,12 +90,16 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
 
 
 def test_streaming_split_e2e(ray_start_10_cpus_shared):
-    def get_lengths(*iterators):
+    def get_lengths(*iterators, use_iter_batches=True):
         lengths = []
         for it in iterators:
             x = 0
-            for batch in it.iter_batches():
-                x += len(batch)
+            if use_iter_batches:
+                for batch in it.iter_batches():
+                    x += len(batch)
+            else:
+                for _ in it.iter_rows():
+                    x += 1
             lengths.append(x)
         lengths.sort()
         return lengths
@@ -124,13 +129,15 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
     assert lengths == [0, 1], lengths
 
     ds = ray.data.range(1000, parallelism=10)
-    i1, i2, i3 = ds.streaming_split(3, equal=True)
-    lengths = get_lengths(i1, i2, i3)
-    assert lengths == [333, 333, 333], lengths
-
-    i1, i2, i3 = ds.streaming_split(3, equal=False)
-    lengths = get_lengths(i1, i2, i3)
-    assert lengths == [300, 300, 400], lengths
+    for equal_split, use_iter_batches in itertools.product(
+        [True, False], [True, False]
+    ):
+        i1, i2, i3 = ds.streaming_split(3, equal=equal_split)
+        lengths = get_lengths(i1, i2, i3, use_iter_batches=use_iter_batches)
+        if equal_split:
+            assert lengths == [333, 333, 333], lengths
+        else:
+            assert lengths == [300, 300, 400], lengths
 
 
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):
