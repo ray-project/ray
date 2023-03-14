@@ -304,11 +304,16 @@ def read_datasource(
             datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
-        # Prepare read in a remote task so that in Ray client mode, we aren't
-        # attempting metadata resolution from the client machine.
+        # Prepare read in a remote task at same node.
+        # NOTE: in Ray client mode, this is expected to be run on head node.
+        # So we aren't attempting metadata resolution from the client machine.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
         get_read_tasks = cached_remote_fn(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
-        )
+        ).options(scheduling_strategy=scheduling_strategy)
 
         requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
