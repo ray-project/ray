@@ -243,7 +243,7 @@ class AnyscaleJobRunner(JobRunner):
             full_command,
             full_env,
             # working_dir=".",
-            upload_path=self.upload_path,
+            # upload_path=self.upload_path,
             timeout=int(timeout),
         )
         try:
