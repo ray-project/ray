@@ -9,6 +9,7 @@ import click
 import yaml
 import traceback
 import re
+from pydantic import ValidationError
 
 import ray
 from ray import serve
@@ -25,8 +26,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private import api as _private_api
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -174,9 +175,24 @@ def deploy(config_file_name: str, address: str):
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    # Schematize config to validate format.
-    ServeApplicationSchema.parse_obj(config)
-    ServeSubmissionClient(address).deploy_application(config)
+    try:
+        ServeDeploySchema.parse_obj(config)
+        ServeSubmissionClient(address).deploy_applications(config)
+    except ValidationError:
+        try:
+            ServeApplicationSchema.parse_obj(config)
+            ServeSubmissionClient(address).deploy_application(config)
+        except ValidationError as e:
+            # If the config is neither a valid ServeDeploySchema nor a valid
+            # ServeApplicationSchema, surface the validation error from trying
+            # to parse as a ServeApplicationSchema
+            raise e from None
+        except RuntimeError as e:
+            # Error deploying application
+            raise e from None
+    except RuntimeError:
+        # Error deploying application
+        raise
 
     cli_logger.newline()
     cli_logger.success(
