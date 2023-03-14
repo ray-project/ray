@@ -84,7 +84,7 @@ When using `tqdm <https://tqdm.github.io>`__ in Ray remote tasks or actors, you 
 
 .. literalinclude:: /ray-core/doc_code/tqdm.py
 
-This tqdm implementation work as follows:
+This tqdm implementation works as follows:
 
 1. The ``tqdm_ray`` module translates TQDM calls into special json log messages written to worker stdout.
 2. The Ray log monitor, instead of copying these log messages directly to the driver stdout, routes these messages to a tqdm singleton.
