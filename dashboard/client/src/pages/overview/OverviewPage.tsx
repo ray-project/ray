@@ -43,7 +43,7 @@ export const OverviewPage = () => {
   return (
     <div className={classes.root}>
       <MainNavPageInfo
-        pageInfo={{ title: "Overview", id: "overview", path: "/new/overview" }}
+        pageInfo={{ title: "Overview", id: "overview", path: "/overview" }}
       />
       <div className={classes.overviewCardsContainer}>
         <ClusterUtilizationCard className={classes.overviewCard} />
