@@ -654,6 +654,38 @@ def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_bl
     _check_usage_record(["ReadRange", "Zip"])
 
 
+def test_execute_to_legacy_block_list(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(10)
+    # Stats not initialized until `ds.iter_rows()` is called
+    assert ds._plan._snapshot_stats is None
+
+    for i, row in enumerate(ds.iter_rows()):
+        assert row == i
+
+    assert ds._plan._snapshot_stats is not None
+    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert ds._plan._snapshot_stats.time_total_s > 0
+
+
+def test_execute_to_legacy_block_iterator(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(10)
+    assert ds._plan._snapshot_stats is None
+    for batch in ds.iter_batches():
+        assert batch is not None
+
+    assert ds._plan._snapshot_stats is not None
+    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert ds._plan._snapshot_stats.time_total_s > 0
+
+
 def test_streaming_executor(
     ray_start_regular_shared,
     enable_optimizer,
