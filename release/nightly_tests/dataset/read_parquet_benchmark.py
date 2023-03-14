@@ -74,7 +74,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 compression=compression,
                 data_dir=data_dirs[-1],
             )
-            test_name = f"read-many-parquet-files-s3-{num_files}-{compression}"
+            test_name = f"read-parquet-random-data-{num_files}-{compression}"
             benchmark.run(
                 test_name,
                 read_parquet,
@@ -101,7 +101,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
     #     compression=compression,
     #     data_dir=many_files_dir,
     # )
-    test_name = f"read-many-parquet-files-{num_files}-{compression}"
+    test_name = f"read-many-parquet-files-s3-{num_files}-{compression}"
     benchmark.run(
         test_name,
         read_parquet,
