@@ -7,6 +7,9 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
+    PPOTorchPolicyWithRLModule,
+)
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -24,6 +27,10 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
+
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -99,6 +106,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
+
+        # This test only works on ModelV2 stack. So, we need to disable the RLModule
+        # and Learner API.
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -108,9 +118,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "use_lstm": True,
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
-                }
+                },
+                _enable_learner_api=False,
             )
             .rollouts(create_env_on_local_worker=True)
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config):
@@ -218,12 +230,19 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
+        config = (
+            ppo.PPOConfig()
+            .framework("torch")
+            .rollouts(rollout_fragment_length=200, num_rollout_workers=0)
+        )
+        config.validate()
+        enable_rl_module_api = config._enable_rl_module_api
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=ppo.PPOTorchPolicy,
-            config=ppo.PPOConfig().rollouts(
-                rollout_fragment_length=200, num_rollout_workers=0
-            ),
+            default_policy_class=PPOTorchPolicyWithRLModule
+            if enable_rl_module_api
+            else ppo.PPOTorchPolicy,
+            config=config,
         )
         # Add the next action (a') and 2nd next action (a'') to the view
         # requirements of the policy.
@@ -294,6 +313,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             config=ppo.PPOConfig()
+            .framework("torch")
             .rollouts(
                 rollout_fragment_length=rollout_fragment_length,
                 num_rollout_workers=0,
@@ -308,6 +328,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "use_lstm": True,
                     "max_seq_len": max_seq_len,
                 }
+            )
+            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(module_class=RandomRLModule)
             ),
         )
 
@@ -336,6 +360,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
+            .framework("torch")
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
             .training(model={"max_seq_len": max_seq_len}, train_batch_size=2010)
             .rollouts(
@@ -343,6 +368,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 rollout_fragment_length=rollout_fragment_length,
             )
             .environment(normalize_actions=False)
+            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(module_class=RandomRLModule)
+            )
         )
 
         rollout_worker_w_api = RolloutWorker(

@@ -3,7 +3,8 @@ import numpy as np
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
-from ray.data.block import DataBatch
+from ray.data.block import BlockAccessor, DataBatch, T
+from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _is_tensor_schema
 
@@ -103,6 +104,36 @@ class DatasetIterator(abc.ABC):
         """
         raise NotImplementedError
 
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+        """Return a local row iterator over the dataset.
+
+        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
+        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
+        If the dataset is not tabular, the raw row is yielded.
+
+        Examples:
+            >>> import ray
+            >>> dataset = ray.data.range(10)
+            >>> next(iter(dataset.iterator().iter_rows()))
+            0
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            An iterator over rows of the dataset.
+        """
+        target_format = self._default_batch_format()
+        for batch in self.iter_batches(
+            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=target_format
+        ):
+            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+            for row in batch.iter_rows():
+                yield row
+
     @abc.abstractmethod
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
@@ -136,13 +167,10 @@ class DatasetIterator(abc.ABC):
 
         Examples:
             >>> import ray
-            >>> for batch in ray.data.range( # doctest: +SKIP
-            ...     12,
-            ... ).iterator().iter_torch_batches(batch_size=4):
-            ...     print(batch.shape) # doctest: +SKIP
-            torch.Size([4, 1])
-            torch.Size([4, 1])
-            torch.Size([4, 1])
+            >>> for row in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_rows(): # doctest: +SKIP
+            ...     print(row) # doctest: +SKIP
 
         Time complexity: O(1)
 
@@ -497,7 +525,17 @@ class DatasetIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DatasetIterator(Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}))
+            DatasetIterator(Dataset(
+               num_blocks=1,
+               num_rows=150,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
+            ))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -518,7 +556,17 @@ class DatasetIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DatasetIterator(Concatenator
-            +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}))
+            +- Dataset(
+                  num_blocks=1,
+                  num_rows=150,
+                  schema={
+                     sepal length (cm): double,
+                     sepal width (cm): double,
+                     petal length (cm): double,
+                     petal width (cm): double,
+                     target: int64
+                  }
+               ))
             >>> it.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -656,3 +704,11 @@ class DatasetIterator(abc.ABC):
         if schema is None or isinstance(schema, type):
             return False
         return _is_tensor_schema(schema.names)
+
+    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+        """Returns the best batch format that lines up with the dataset format.
+
+        NOTE: Return "default" here. Subclass can override this method to decide best
+        batch format.
+        """
+        return "default"
