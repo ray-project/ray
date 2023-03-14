@@ -207,56 +207,53 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             },
         )
 
+        # Check HTTP Host
+        host_conflict = self.check_http_options(
+            "host", client.http_config.host, config.host
+        )
+        if host_conflict is not None:
+            return host_conflict
+
+        # Check HTTP Port
+        port_conflict = self.check_http_options(
+            "port", client.http_config.port, config.port
+        )
+        if port_conflict is not None:
+            return port_conflict
+
+        # Check HTTP root path
+        root_path_conflict = self.check_http_options(
+            "root path", client.http_config.root_path, config.root_path
+        )
+        if root_path_conflict is not None:
+            return root_path_conflict
+
+        # Check HTTP location
+        location_conflict = self.check_http_options(
+            "location", client.http_config.location, config.http_location
+        )
+        if location_conflict is not None:
+            return location_conflict
+
+        client.deploy_apps(config)
+        return Response()
+
+    def check_http_options(self, option: str, old: str, new: str):
         http_mismatch_message = (
             "Serve is already running on this Ray cluster. Its HTTP {option} is set to "
             '"{old}". However, the requested {option} is "{new}". The requested '
             "{option} must match the running Serve instance's HTTP {option}. To change "
             "the Serve HTTP {option}, shut down Serve on this Ray cluster using "
-            "the `serve shutdown` CLI command or by sending a DELETE request to this "
-            "Ray cluster's "
-            '"/api/serve/deployments/" endpoint. CAUTION: shutting down Serve will '
-            "also shut down all Serve deployments."
+            "the `serve shutdown` CLI command or by sending a DELETE request to the "
+            '"/api/serve/applications/" endpoint. CAUTION: shutting down Serve will '
+            "also shut down all Serve applications."
         )
 
-        if client.http_config.host != config.host:
+        if not old == new:
             return Response(
                 status=400,
-                text=http_mismatch_message.format(
-                    option="host", old=client.http_config.host, new=config.host
-                ),
+                text=http_mismatch_message.format(option=option, old=old, new=new),
             )
-
-        if client.http_config.port != config.port:
-            return Response(
-                status=400,
-                text=http_mismatch_message.format(
-                    option="port", old=client.http_config.port, new=config.port
-                ),
-            )
-
-        if client.http_config.root_path != config.root_path:
-            return Response(
-                status=400,
-                text=http_mismatch_message.format(
-                    option="root path",
-                    old=client.http_config.root_path,
-                    new=config.root_path,
-                ),
-            )
-
-        if client.http_config.location != config.http_location:
-            return Response(
-                status=400,
-                text=http_mismatch_message.format(
-                    option="location",
-                    old=client.http_config.location,
-                    new=config.http_location,
-                ),
-            )
-
-        client.deploy_apps(config)
-
-        return Response()
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.

@@ -493,6 +493,69 @@ def test_serve_namespace(ray_start_stop):
     serve.shutdown()
 
 
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.parametrize(
+    "option,override",
+    [
+        ("host", "127.0.0.2"),
+        ("port", 8005),
+        ("root_path", "/serve_updated"),
+        ("http_location", "HeadOnly"),
+    ],
+)
+def test_put_with_http_options(ray_start_stop, option, override):
+    """Deploys config with HTTP option specified"""
+
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    original_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "root_path": "/serve",
+        "http_location": "EveryNode",
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": pizza_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(original_config)
+
+    # Wait for deployments to be up
+    wait_for_condition(
+        lambda: requests.post(
+            "http://localhost:8000/serve/app1", json=["ADD", 2]
+        ).json()
+        == "4 pizzas please!",
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/serve/app2").text
+        == "wonderful world",
+        timeout=15,
+    )
+
+    modified_config = copy.deepcopy(original_config)
+    modified_config[option] = override
+
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=modified_config, timeout=5)
+    assert put_response.status_code == 400
+
+    # Deployments should still be up
+    assert (
+        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).json()
+        == "4 pizzas please!"
+    )
+    assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
+
+
 def test_default_dashboard_agent_listen_port():
     """
     Defaults in the code and the documentation assume
