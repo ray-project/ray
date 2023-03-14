@@ -34,24 +34,22 @@ class tqdm:
         iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
-        position: Optional[int] = 0,
-        # Visible for testing.
-        _ray_ip: Optional[str] = None,
-        _ray_pid: Optional[int] = None,
+        position: Optional[int] = None,
     ):
         import ray._private.services as services
 
-        if iterable is not None:
-            raise NotImplementedError("TODO implement iterable support")
-        if position is None:
-            raise NotImplementedError("tqdm_ray requires position to be specified")
+        if total is None and iterable is not None:
+            try:
+                total = len(iterable)
+            except (TypeError, AttributeError):
+                total = None
+
         self._iterable = iterable
-        self._desc = desc
+        self._desc = desc or ""
         self._total = total
-        self._position = position
-        self._ip = _ray_ip or services.get_node_ip_address()
-        self._pid = _ray_pid or os.getpid()
-        self._pos = position
+        self._ip = services.get_node_ip_address()
+        self._pid = os.getpid()
+        self._pos = position or 0
         self._uuid = uuid.uuid4().hex
         self._x = 0
         self._closed = False
@@ -91,6 +89,13 @@ class tqdm:
             "uuid": self._uuid,
             "closed": self._closed,
         }
+
+    def __iter__(self):
+        if self._iterable is None:
+            raise ValueError("No iterable provided")
+        for x in iter(self._iterable):
+            self.update(1)
+            yield x
 
 
 class _Bar:

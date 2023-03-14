@@ -56,6 +56,20 @@ def test_distributed_tqdm_local():
     assert "bar" in bar.bar.desc, bar.bar.desc
 
 
+def test_distributed_tqdm_iterator():
+    mgr = tqdm_ray.instance()
+    mgr.bar_groups.clear()
+
+    assert sum(tqdm_ray.tqdm(range(100), desc="baz")) == sum(range(100))
+    wait_for_condition(lambda: len(mgr.bar_groups) == 1)
+    assert len(mgr.bar_groups) == 1
+    bar_group = list(mgr.bar_groups.values())[0]
+    assert len(bar_group.bars_by_uuid) == 1
+    bar = list(bar_group.bars_by_uuid.values())[0]
+    assert bar.bar.n == 100, bar.bar.n
+    assert "baz" in bar.bar.desc, bar.bar.desc
+
+
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
     if os.environ.get("PARALLEL_CI"):
