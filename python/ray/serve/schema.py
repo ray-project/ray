@@ -548,7 +548,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 @PublicAPI(stability="alpha")
 class DeploymentDetails(BaseModel, extra=Extra.forbid):
     name: str = Field(description="Deployment name.")
-    deployment_status: DeploymentStatus = Field(
+    status: DeploymentStatus = Field(
         description="The current status of the deployment."
     )
     message: str = Field(
@@ -604,10 +604,10 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
             "the `docs_url` for FastAPI-integrated applications."
         ),
     )
-    app_status: ApplicationStatus = Field(
+    status: ApplicationStatus = Field(
         description="The current status of the application."
     )
-    app_message: str = Field(
+    message: str = Field(
         description="A message that gives more insight into the application status."
     )
     last_deployed_time_s: float = Field(

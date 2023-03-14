@@ -498,8 +498,8 @@ def test_get_serve_instance_details(ray_start_stop):
 
         serve_details = ServeInstanceDetails(**response.json())
         return (
-            serve_details.applications["app1"].app_status == ApplicationStatus.RUNNING
-            and serve_details.applications["app2"].app_status
+            serve_details.applications["app1"].status == ApplicationStatus.RUNNING
+            and serve_details.applications["app2"].status
             == ApplicationStatus.RUNNING
         )
 
@@ -549,7 +549,7 @@ def test_get_serve_instance_details(ray_start_stop):
     for app in ["app1", "app2"]:
         assert app_details[app].route_prefix == f"/{app}"
         for dep_details in app_details[app].deployments.values():
-            assert dep_details.deployment_status == DeploymentStatus.HEALTHY
+            assert dep_details.status == DeploymentStatus.HEALTHY
 
             # Route prefix should be app level options eventually
             assert "route_prefix" not in dep_details.deployment_config.dict(

@@ -2027,7 +2027,7 @@ class DeploymentStateManager:
 
         return DeploymentDetails(
             name=deployment_name,
-            deployment_status=status_info.status,
+            status=status_info.status,
             message=status_info.message,
             deployment_config=_deployment_info_to_schema(
                 deployment_name, self.get_deployment(deployment_name)
