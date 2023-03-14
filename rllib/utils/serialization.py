@@ -367,17 +367,19 @@ def deserialize_type(
     Raises:
         ValueError: If `error` is True and `module` cannot be resolved.
     """
+    # Already a class, return as-is.
     if isinstance(module, type):
         return module
-
+    # A string.
     elif isinstance(module, str):
         # Try interpreting (as classpath) and importing the given module.
         try:
             module_path, class_name = module.rsplit(".", 1)
             module = importlib.import_module(module_path)
             return getattr(module, class_name)
-        # Module not found.
+        # Module not found OR not a module (but a registered string?).
         except (ModuleNotFoundError, ImportError, AttributeError, ValueError) as e:
+            # Ignore if error=False.
             if error:
                 raise ValueError(
                     f"Could not deserialize the given classpath `module={module}` into "

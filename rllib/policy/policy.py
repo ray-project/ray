@@ -53,7 +53,11 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.serialization import space_from_dict, space_to_dict
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    space_from_dict,
+    space_to_dict,
+)
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -351,7 +355,10 @@ class Policy(metaclass=ABCMeta):
         self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
-            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
+            self.callbacks: "DefaultCallbacks" = deserialize_type(
+                self.config.get("callbacks"),
+                error=False,
+            )()
         else:
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
