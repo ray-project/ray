@@ -216,14 +216,12 @@ class DataParallelIngestSpec:
         ctx = DatasetContext.get_current()
 
         if config.max_object_store_memory_fraction > 0:
-            object_store_memory_limit = (
-                _estimate_avail_object_store_memory()
-                * config.max_object_store_memory_fraction
-            )
+            memory_fraction = config.max_object_store_memory_fraction
         else:
-            object_store_memory_limit = (
-                _estimate_avail_object_store_memory() * 0.25
-            )  # TODO use constant from datasets
+            memory_fraction = 0.25  # TODO streaming default constant
+        object_store_memory_limit = (
+            _estimate_avail_object_store_memory() * memory_fraction
+        )
 
         if config.split and len(training_worker_handles) > 1:
             ctx.execution_options.resource_limits.object_store_memory = (
