@@ -295,7 +295,7 @@ are supported for each of these storage systems.
 
   .. tip::
     To verify that your GCP project and credentials are set up, validate
-    that your GCS `filesystem` has the right permissions to read the input `path`.
+    that the GCS `filesystem` has permissions to read the input `path`.
 
     .. literalinclude:: ./doc_code/creating_datasets.py
       :language: python
