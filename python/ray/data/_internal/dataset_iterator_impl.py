@@ -89,5 +89,5 @@ class DatasetIteratorImpl(DatasetIterator):
             )
 
             return getattr(self._base_dataset, name)
-        else:
-            return super().__getattr__(name)
+
+        return None

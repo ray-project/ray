@@ -197,7 +197,7 @@ class DataParallelIngestSpec:
             else:
                 print("Using legacy split")
                 dataset_splits = self._get_dataset_splits_legacy_impl(
-                    training_worker_handles
+                    dataset, conf, training_worker_handles
                 )
             assert len(dataset_splits) == len(training_worker_handles)
 
