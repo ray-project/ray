@@ -1848,7 +1848,7 @@ py_test(
 py_test(
     name = "test_catalog",
     tags = ["team:rllib", "core"],
-    size = "small",
+    size = "medium",
     srcs = ["core/models/tests/test_catalog.py"]
 )
 
@@ -2915,6 +2915,15 @@ py_test(
     size = "medium",
     srcs = ["examples/checkpoint_by_custom_criteria.py"],
     args = ["--stop-iters=3 --num-cpus=3"]
+)
+
+
+py_test(
+    name = "examples/coin_game_env",
+    tags = ["team:rllib", "examples"],
+    size = "small",
+    srcs = ["examples/coin_game_env.py"],
+    args = ["--stop-iters=2"]
 )
 
 py_test(
