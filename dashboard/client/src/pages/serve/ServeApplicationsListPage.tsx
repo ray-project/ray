@@ -155,7 +155,7 @@ export const ServeApplicationsListPage = () => {
                 .map((application) => (
                   <ServeApplicationRow
                     key={application.name}
-                    serveApplication={application}
+                    application={application}
                   />
                 ))}
             </TableBody>

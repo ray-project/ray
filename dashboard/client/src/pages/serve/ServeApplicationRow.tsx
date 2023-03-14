@@ -1,49 +1,27 @@
-import {
-  createStyles,
-  Link,
-  makeStyles,
-  TableCell,
-  TableRow,
-  Typography,
-} from "@material-ui/core";
+import { TableCell, TableRow } from "@material-ui/core";
 import dayjs from "dayjs";
-import React, { useState } from "react";
+import React from "react";
 import { Link as RouterLink } from "react-router-dom";
-import DialogWithTitle from "../../common/DialogWithTitle";
+import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeApplication } from "../../type/serve";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    configText: {
-      whiteSpace: "pre",
-    },
-  }),
-);
-
 export type ServeApplicationRowProps = {
-  serveApplication: ServeApplication;
+  application: ServeApplication;
 };
 
 export const ServeApplicationRow = ({
-  serveApplication: {
+  application,
+}: ServeApplicationRowProps) => {
+  const {
     name,
     app_message,
     app_status,
-    deployed_app_config,
     route_prefix,
     deployment_timestamp,
     deployments_details,
-    docs_path,
-  },
-}: ServeApplicationRowProps) => {
-  const classes = useStyles();
-
-  const [showConfigDialog, setShowConfigDialog] = useState(false);
-
-  const handleConfigClick = () => {
-    setShowConfigDialog(true);
-  };
+    deployed_app_config,
+  } = application;
 
   // TODO(aguo): Add duration and end time once available in the API
   return (
@@ -67,23 +45,10 @@ export const ServeApplicationRow = ({
         )}
       </TableCell>
       <TableCell align="center">
-        <Link component="button" onClick={handleConfigClick}>
-          See config
-        </Link>
-        {showConfigDialog && (
-          <DialogWithTitle
-            title={
-              name ? `Application config for ${name}` : `Application config`
-            }
-            handleClose={() => {
-              setShowConfigDialog(false);
-            }}
-          >
-            <Typography className={classes.configText}>
-              {JSON.stringify(deployed_app_config, undefined, 2)}
-            </Typography>
-          </DialogWithTitle>
-        )}
+        <CodeDialogButton
+          title={name ? `Application config for ${name}` : `Application config`}
+          json={deployed_app_config}
+        />
       </TableCell>
     </TableRow>
   );

@@ -21,7 +21,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );

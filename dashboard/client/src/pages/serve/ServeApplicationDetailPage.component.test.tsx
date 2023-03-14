@@ -21,7 +21,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationDetailPage", () => {
   it("renders page with deployments", async () => {
-    expect.assertions(9);
+    expect.assertions(12);
 
     mockUseParams.mockReturnValue({
       name: "home",
@@ -73,6 +73,7 @@ describe("ServeApplicationDetailPage", () => {
     const user = userEvent.setup();
 
     await screen.findByText("home");
+    expect(screen.getByText("home")).toBeVisible();
     expect(screen.getByText("/home")).toBeVisible();
     expect(screen.getByText("RUNNING")).toBeVisible();
 
@@ -86,9 +87,15 @@ describe("ServeApplicationDetailPage", () => {
     expect(screen.getByText("deployment is updating")).toBeVisible();
     expect(screen.getByText("UPDATING")).toBeVisible();
 
-    // Config dialog
-    user.click(screen.getAllByText("See config")[0]);
+    // Config dialog for application
+    user.click(screen.getAllByText("View")[0]);
+    await screen.findByText(/"import_path": "home:graph"/);
+    expect(screen.getByText(/"import_path": "home:graph"/)).toBeVisible();
+
+    // Config dialog for first deployment
+    user.click(screen.getAllByText("View")[1]);
     await screen.findByText(/"test-config": 1/);
+    expect(screen.getByText(/"test-config": 1/)).toBeVisible();
     expect(screen.getByText(/"autoscaling-value": 2/)).toBeVisible();
   });
 });

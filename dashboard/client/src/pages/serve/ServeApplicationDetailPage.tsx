@@ -17,7 +17,9 @@ import { Autocomplete, Pagination } from "@material-ui/lab";
 import dayjs from "dayjs";
 import React, { ReactElement } from "react";
 import { useParams } from "react-router-dom";
+import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
+import { DurationText } from "../../common/DurationText";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
@@ -38,9 +40,6 @@ const columns: { label: string; helpInfo?: ReactElement }[] = [
   { label: "Status" },
   { label: "Message" },
   { label: "Replicas" },
-  { label: "Start time" },
-  { label: "End time" },
-  { label: "Duration" },
   { label: "Deployment config" },
 ];
 
@@ -119,6 +118,19 @@ export const ServeApplicationDetailPage = () => {
             },
           },
           {
+            label: "Application config",
+            content: (
+              <CodeDialogButton
+                title={
+                  application.name
+                    ? `Application config for ${application.name}`
+                    : `Application config`
+                }
+                json={application.deployed_app_config}
+              />
+            ),
+          },
+          {
             label: "Deployed at",
             content: {
               value: dayjs(
@@ -126,19 +138,14 @@ export const ServeApplicationDetailPage = () => {
               ).format("YYYY/MM/DD HH:mm:ss"),
             },
           },
-          // TODO(aguo): Support ended at and duration once available in the API.
-          // {
-          //   label: "Ended at",
-          //   content: {
-          //     value: "-"
-          //   }
-          // },
-          // {
-          //   label: "Duration",
-          //   content: {
-          //     value: "-"
-          //   }
-          // },
+          {
+            label: "Duration",
+            content: (
+              <DurationText
+                startTime={application.deployment_timestamp * 1000}
+              />
+            ),
+          },
         ]}
       />
       <CollapsibleSection title="Deployments" startExpanded>

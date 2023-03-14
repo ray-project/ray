@@ -12,7 +12,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(8);
+    expect.assertions(10);
 
     mockGetServeApplications.mockResolvedValue({
       data: {
@@ -55,6 +55,7 @@ describe("ServeApplicationsListPage", () => {
     const user = userEvent.setup();
 
     await screen.findByText("Serve details");
+    expect(screen.getByText("Serve details")).toBeVisible();
     expect(screen.getByText("1.2.3.4")).toBeVisible();
     expect(screen.getByText("8000")).toBeVisible();
 
@@ -69,7 +70,8 @@ describe("ServeApplicationsListPage", () => {
     expect(screen.getByText("DEPLOYING")).toBeVisible();
 
     // Config dialog
-    user.click(screen.getAllByText("See config")[0]);
+    user.click(screen.getAllByText("View")[0]);
     await screen.findByText(/"import_path": "home:graph"/);
+    expect(screen.getByText(/"import_path": "home:graph"/)).toBeVisible();
   });
 });
