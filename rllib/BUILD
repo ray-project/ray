@@ -2204,7 +2204,7 @@ py_test(
 )
 
 py_test(
-    name = "test_minibatch_utils"
+    name = "test_minibatch_utils",
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/tests/test_minibatch_utils.py"]

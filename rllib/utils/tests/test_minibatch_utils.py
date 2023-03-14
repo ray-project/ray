@@ -1,6 +1,7 @@
 import unittest
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 import numpy as np
+
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
 
 CONFIGS = [
