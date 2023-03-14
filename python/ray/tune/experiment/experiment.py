@@ -149,6 +149,13 @@ class Experiment:
         # Deprecated
         local_dir: Optional[str] = None,
     ):
+        if isinstance(sync_config, dict):
+            sync_config = SyncConfig(**sync_config)
+        else:
+            sync_config = sync_config or SyncConfig()
+
+        self.sync_config = sync_config
+
         # Split the passed storage path
         remote_storage_path, local_storage_path = _split_remote_local_path(
             storage_path, None
@@ -202,11 +209,6 @@ class Experiment:
 
         config = config or {}
 
-        if isinstance(sync_config, dict):
-            sync_config = SyncConfig(**sync_config)
-        else:
-            sync_config = sync_config or SyncConfig()
-
         if isinstance(checkpoint_config, dict):
             checkpoint_config = CheckpointConfig(**checkpoint_config)
         else:
@@ -244,8 +246,6 @@ class Experiment:
                 raise e
 
         self.name = name or self._run_identifier
-
-        self.sync_config = sync_config
 
         if not _experiment_checkpoint_dir:
             self.dir_name = _get_dir_name(run, name, self.name)

@@ -696,10 +696,6 @@ class Trial:
 
     @property
     def remote_path(self) -> Optional[str]:
-        """This is the **per trial** remote checkpoint dir.
-
-        This is different from **per experiment** remote checkpoint dir.
-        """
         assert self.local_path, "Trial {}: logdir not initialized.".format(self)
         if not self._remote_experiment_path or not self.relative_logdir:
             return None
