@@ -3646,8 +3646,8 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish less than 4 mins.
-    timeout: 1200
+    # Expect the benchmark to finish in about 11.5 minutes.
+    timeout: 700
     script: python read_parquet_benchmark.py
 
 
