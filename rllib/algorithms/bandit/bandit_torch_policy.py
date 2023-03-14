@@ -2,7 +2,6 @@ import logging
 import time
 from gymnasium import spaces
 
-import ray
 from ray.rllib.algorithms.bandit.bandit_torch_model import (
     DiscreteLinearModelThompsonSampling,
     DiscreteLinearModelUCB,
@@ -23,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 class BanditTorchPolicy(TorchPolicyV2):
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG, **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,
