@@ -39,6 +39,12 @@ class SchedulingCluster:
         return self._rewrite_resource_requirements(bundle)
 
 
-def scheduling_cluster(bundles, strategy):
+def scheduling_cluster(topologies):
+    bundles = []
+    strategy = None
+    # TODO(jjyao): actually support topologies with different strategies
+    for topology in topologies:
+        bundles.extend(topology[0])
+        strategy = strategy if topology[1] is None else topology[1]
     pg = placement_group(bundles, strategy, is_scheduling_cluster=True)
     return SchedulingCluster(pg)

@@ -7,9 +7,9 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 def test_scheduling_cluster(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2, num_gpus=2, resources={"node_1": 1})
+    cluster.add_node(num_cpus=3, num_gpus=2, resources={"node_1": 1})
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, num_gpus=3, resources={"node_2": 1})
+    cluster.add_node(num_cpus=2, num_gpus=3, resources={"node_2": 1})
 
     @ray.remote(num_cpus=0)
     def get_node_id():
@@ -23,12 +23,14 @@ def test_scheduling_cluster(ray_start_cluster):
     node_1_id = ray.get(get_node_id.options(resources={"node_1": 1}).remote())
     node_2_id = ray.get(get_node_id.options(resources={"node_2": 1}).remote())
 
-    scheduling_cluster = ray.util.scheduling_cluster([{"CPU": 2}, {"GPU": 3}], "PACK")
+    scheduling_cluster = ray.util.scheduling_cluster(
+        [([{"CPU": 3}, {"GPU": 3}], "PACK"), ([{"CPU": 1}], None)]
+    )
     ray.get(scheduling_cluster.ready())
     with scheduling_cluster:
-        assert ray.get(get_node_id.options(num_cpus=1).remote()) == node_1_id
+        assert ray.get(get_node_id.options(num_cpus=2).remote()) == node_1_id
         assert ray.get(get_node_id.options(num_gpus=1).remote()) == node_2_id
-        pg = ray.util.placement_group([{"CPU": 2}, {"GPU": 1}])
+        pg = ray.util.placement_group([{"CPU": 3}, {"GPU": 3}])
         ray.get(pg.ready())
         assert (
             ray.get(
@@ -41,6 +43,8 @@ def test_scheduling_cluster(ray_start_cluster):
             )
             == node_1_id
         )
+        actor_1 = Actor.options(num_cpus=1).remote()
+        assert ray.get(actor_1.get_node_id.remote()) == node_2_id
         assert ray.get(get_node_id.options(num_cpus=1).remote()) == node_2_id
 
 
