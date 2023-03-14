@@ -120,6 +120,9 @@ class DDPPOConfig(PPOConfig):
         # DDPPO
         self.kl_coeff = 0.0
         self.kl_target = 0.0
+        # TODO (Kourosh) RLModule and Learner API is not supported yet
+        self._enable_learner_api = False
+        self._enable_rl_module_api = False
         # __sphinx_doc_end__
         # fmt: on
 
