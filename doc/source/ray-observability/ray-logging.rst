@@ -92,8 +92,8 @@ This tqdm implementation work as follows:
 
 Limitations:
 
-- Only a subset of tqdm functionality is supported.
-- Performance may be poor if there are a lot of progress bar updates (updates are not batched).
+- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
+- Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
 
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~
