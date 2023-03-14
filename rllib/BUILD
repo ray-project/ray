@@ -2204,6 +2204,13 @@ py_test(
 )
 
 py_test(
+    name = "test_minibatch_utils",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_minibatch_utils.py"]
+)
+
+py_test(
     name = "test_nested_dict",
     tags = ["team:rllib", "utils"],
     size = "small",
