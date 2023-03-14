@@ -59,23 +59,38 @@ class RepartitionStage(AllToAllStage):
                     clear_input_blocks,
                     map_ray_remote_args=remote_args,
                     reduce_ray_remote_args=remote_args,
+                    ctx=ctx,
                 )
 
             super().__init__(
-                "Repartition", num_blocks, do_shuffle, supports_block_udf=True
+                "Repartition",
+                num_blocks,
+                do_shuffle,
+                supports_block_udf=True,
+                sub_stage_names=["ShuffleMap", "ShuffleReduce"],
             )
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
+            def do_fast_repartition(
+                block_list,
+                ctx: TaskContext,
+                clear_input_blocks: bool,
+                *_,
+            ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return fast_repartition(blocks, num_blocks)
+                return fast_repartition(blocks, num_blocks, ctx)
 
-            super().__init__("Repartition", num_blocks, do_fast_repartition)
+            super().__init__(
+                "Repartition",
+                num_blocks,
+                do_fast_repartition,
+                sub_stage_names=["Repartition"],
+            )
 
 
 class RandomizeBlocksStage(AllToAllStage):
@@ -136,6 +151,7 @@ class RandomShuffleStage(AllToAllStage):
                 clear_input_blocks,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
+                ctx=ctx,
             )
 
         super().__init__(
@@ -144,6 +160,7 @@ class RandomShuffleStage(AllToAllStage):
             do_shuffle,
             supports_block_udf=True,
             remote_args=remote_args,
+            sub_stage_names=["ShuffleMap", "ShuffleReduce"],
         )
 
 
@@ -295,7 +312,12 @@ class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
     def __init__(self, ds: "Dataset", key: Optional[KeyFn], descending: bool):
-        def do_sort(block_list, clear_input_blocks: bool, *_):
+        def do_sort(
+            block_list,
+            ctx: TaskContext,
+            clear_input_blocks: bool,
+            *_,
+        ):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -311,6 +333,11 @@ class SortStage(AllToAllStage):
                     _validate_key_fn(ds, subkey)
             else:
                 _validate_key_fn(ds, key)
-            return sort_impl(blocks, clear_input_blocks, key, descending)
+            return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
 
-        super().__init__("Sort", None, do_sort)
+        super().__init__(
+            "Sort",
+            None,
+            do_sort,
+            sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
+        )
