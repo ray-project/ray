@@ -8,6 +8,7 @@ from typing import Iterator, Tuple, Any
 
 import ray
 from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.logical.util import record_operators_usage
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
@@ -71,19 +72,9 @@ def execute_to_legacy_bundle_iterator(
     Returns:
         The output as a bundle iterator.
     """
-
-    if DatasetContext.get_current().optimizer_enabled:
-        dag, stats = get_execution_plan(plan._logical_plan).dag, None
-    else:
-        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
     if dag_rewrite:
         dag = dag_rewrite(dag)
-
-    # Enforce to preserve ordering if the plan has stages required to do so, such as
-    # Zip and Sort.
-    # TODO(chengsu): implement this for operator as well.
-    if plan.require_preserve_order():
-        executor._options.preserve_order = True
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
     return bundle_iter
@@ -106,6 +97,25 @@ def execute_to_legacy_block_list(
     Returns:
         The output as a legacy block list.
     """
+    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
+    bundles = executor.execute(dag, initial_stats=stats)
+    block_list = _bundles_to_block_list(bundles)
+    # Set the stats UUID after execution finishes.
+    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
+    return block_list
+
+
+def _get_execution_dag(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+) -> Tuple[PhysicalOperator, DatasetStats]:
+    """Get the physical operators DAG from a plan."""
+    # Record usage of logical operators if available.
+    if hasattr(plan, "_logical_plan") and plan._logical_plan is not None:
+        record_operators_usage(plan._logical_plan.dag)
+
+    # Get DAG of physical operators and input statistics.
     if DatasetContext.get_current().optimizer_enabled:
         dag, stats = get_execution_plan(plan._logical_plan).dag, None
     else:
@@ -117,16 +127,12 @@ def execute_to_legacy_block_list(
     if plan.require_preserve_order():
         executor._options.preserve_order = True
 
-    bundles = executor.execute(dag, initial_stats=stats)
-    block_list = _bundles_to_block_list(bundles)
-    # Set the stats UUID after execution finishes.
-    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-    return block_list
+    return dag, stats
 
 
 def _to_operator_dag(
     plan: ExecutionPlan, allow_clear_input_blocks: bool
-) -> (PhysicalOperator, DatasetStats):
+) -> Tuple[PhysicalOperator, DatasetStats]:
     """Translate a plan into an operator DAG for the new execution backend."""
 
     blocks, stats, stages = plan._optimize()
