@@ -192,23 +192,7 @@ class SplitCoordinator:
         This is intended to be called concurrently from multiple clients.
         """
 
-        if epoch_idx > self._cur_epoch:
-            if epoch_idx != self._cur_epoch + 1:
-                raise ValueError("Epoch out of range")
-            # Decrement and await all clients to arrive here.
-            with self._lock:
-                self._unfinished_clients_in_epoch -= 1
-            while (
-                self._cur_epoch < epoch_idx and self._unfinished_clients_in_epoch != 0
-            ):
-                time.sleep(0.1)
-            # Advance to the next epoch.
-            with self._lock:
-                if self._cur_epoch != epoch_idx:
-                    self._cur_epoch = epoch_idx
-                    self._unfinished_clients_in_epoch = self._n
-                    self._output_iterator = next(self._next_epoch)
-        assert self._output_iterator is not None
+        self._barrier(epoch_idx)
 
         try:
             # Ensure there is at least one bundle.
@@ -234,3 +218,24 @@ class SplitCoordinator:
             return block
         except StopIteration:
             return None
+
+    def _barrier(self, epoch_idx: int) -> None:
+        """Arrive and block until the start of the given epoch."""
+
+        if epoch_idx > self._cur_epoch:
+            if epoch_idx != self._cur_epoch + 1:
+                raise ValueError("Epoch out of range")
+            # Decrement and await all clients to arrive here.
+            with self._lock:
+                self._unfinished_clients_in_epoch -= 1
+            while (
+                self._cur_epoch < epoch_idx and self._unfinished_clients_in_epoch != 0
+            ):
+                time.sleep(0.1)
+            # Advance to the next epoch.
+            with self._lock:
+                if self._cur_epoch != epoch_idx:
+                    self._cur_epoch = epoch_idx
+                    self._unfinished_clients_in_epoch = self._n
+                    self._output_iterator = next(self._next_epoch)
+        assert self._output_iterator is not None
