@@ -35,9 +35,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     Args:
         batch: The input multi-agent batch.
         minibatch_size: The size of the minibatch for each module_id.
-        num_iters: The number of epochs to cover. If the input batch is smaller than
-            minibatch_size, then the iterator will cycle through the batch until it
-            has covered num_iters epochs.
+        num_iters: The minimum number of epochs to cover. If the input batch is smaller
+            than minibatch_size, then the iterator will cycle through the batch until
+            it has covered at least num_iters epochs.
     """
 
     def __init__(
@@ -59,17 +59,20 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
                 s = self._start[module_id]  # start
-                e = s + self._minibatch_size  # end
+                n_steps = self._minibatch_size
 
                 samples_to_concat = []
                 # cycle through the batch until we have enough samples
-                while e >= len(module_batch):
-                    samples_to_concat.append(module_batch[s:])
-                    e = self._minibatch_size - len(module_batch[s:])
+                while n_steps >= len(module_batch[s:]):
+                    sample = module_batch[s:]
+                    samples_to_concat.append(sample)
+                    n_steps -= len(sample)
                     s = 0
                     self._num_covered_epochs[module_id] += 1
 
-                samples_to_concat.append(module_batch[s:e])
+                e = s + n_steps  # end
+                if e > s:
+                    samples_to_concat.append(module_batch[s:e])
 
                 # concatenate all the samples, we should have minibatch_size of sample
                 # after this step
