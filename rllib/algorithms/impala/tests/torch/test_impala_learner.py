@@ -6,13 +6,10 @@ from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-
-tf1, tf, _ = try_import_tf()
-
-tf1.enable_eager_execution()
+torch, nn = try_import_torch()
 
 frag_length = 32
 
@@ -36,7 +33,7 @@ FAKE_BATCH = {
 }
 
 
-class TestImpalaTfLearner(unittest.TestCase):
+class TestImpalaTorchLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -68,14 +65,10 @@ class TestImpalaTfLearner(unittest.TestCase):
             )
         )
 
-        for fw in framework_iterator(config, ("tf2")):
+        for _ in framework_iterator(config, frameworks=["torch"]):
             trainer = config.build()
             policy = trainer.get_policy()
 
-            if fw == "tf2":
-                train_batch = tf.nest.map_structure(
-                    lambda x: tf.convert_to_tensor(x), FAKE_BATCH
-                )
             train_batch = SampleBatch(FAKE_BATCH)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
