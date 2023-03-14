@@ -79,6 +79,9 @@ class AllToAllOperator(PhysicalOperator):
     def get_transformation_fn(self) -> AllToAllTransformFn:
         return self._bulk_fn
 
+    def progress_str(self) -> str:
+        return f"{len(self._output_buffer)} output"
+
     def initialize_sub_progress_bars(self, position: int) -> int:
         """Initialize all internal sub progress bars, and return the number of bars."""
         if self._sub_progress_bar_names is not None:
