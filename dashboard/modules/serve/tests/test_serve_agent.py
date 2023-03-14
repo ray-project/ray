@@ -493,7 +493,7 @@ def test_serve_namespace(ray_start_stop):
     serve.shutdown()
 
 
-# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "option,override",
     [
