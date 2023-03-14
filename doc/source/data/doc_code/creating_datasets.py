@@ -577,7 +577,8 @@ ds = ray.data.read_parquet(path, filesystem=filesystem)
 
 # fmt: off
 # __validate_parquet_gcs_begin__
-filesystem.open(path)
+print(filesystem.open(path))
+# <File-like object GCSFileSystem, path/to/file.parquet>
 # __validate_parquet_gcs_end__
 # fmt: on
 
