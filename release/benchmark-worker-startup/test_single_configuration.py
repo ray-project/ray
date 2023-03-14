@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+"""
+Helper file for benchmark_worker_startup.py. This file runs a particular test
+configuration.
+"""
 
-import ray
-import time
-import sys
 import argparse
+import ray
+import sys
+import time
 
 
 @ray.remote
@@ -25,15 +29,17 @@ def main(
     num_cpus_in_cluster: int,
     use_actors: bool,
     with_gpu: bool,
+    with_runtime_env: bool,
 ):
 
     num_gpus = 0.0001 if with_gpu else 0
     num_cpus = (num_cpus_in_cluster / num_tasks_or_actors_per_run) - 0.01
 
     print(f"Assigning each task/actor {num_cpus} num_cpus and {num_gpus} num_gpus")
-
     actor_with_resources = Actor.options(num_gpus=num_gpus, num_cpus=num_cpus)
     task_with_resources = task.options(num_gpus=num_gpus, num_cpus=num_cpus)
+
+    fail_if_incorrect_runtime_env(expect_runtime_env=with_runtime_env)
 
     def with_actors():
         actors = [
@@ -56,6 +62,20 @@ def main(
         ray.get(metrics_actor.submit.remote(test_name, dur_s))
 
 
+def fail_if_incorrect_runtime_env(expect_runtime_env: bool):
+    ctx = ray.runtime_context.get_runtime_context()
+    print(f"Found runtime_env={ctx.runtime_env}")
+    if expect_runtime_env and ctx.runtime_env == {}:
+        raise AssertionError(
+            f"Expected a runtime environment but found runtime_env={ctx.runtime_env}"
+        )
+
+    if not expect_runtime_env and ctx.runtime_env != {}:
+        raise AssertionError(
+            f"Expected no runtime environment but found runtime_env={ctx.runtime_env}"
+        )
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--metrics_actor_name", type=str, required=True)
@@ -75,6 +95,10 @@ def parse_args():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--with_gpu", action="store_true")
     group.add_argument("--without_gpu", action="store_true")
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--with_runtime_env", action="store_true")
+    group.add_argument("--without_runtime_env", action="store_true")
 
     return parser.parse_args()
 
@@ -96,5 +120,6 @@ if __name__ == "__main__":
             args.num_cpus_in_cluster,
             args.with_actors,
             args.with_gpu,
+            args.with_runtime_env,
         )
     )

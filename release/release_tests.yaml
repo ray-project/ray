@@ -3062,35 +3062,11 @@
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: python benchmark_worker_startup.py
         --num_cpus_in_cluster 64
         --num_tasks_or_actors_per_run 64
         --num_measurements_per_configuration 5
-        --with_runtime_env
-
-- name: benchmark_worker_startup_no_runtime_env
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: benchmark-worker-startup
-  stable: false
-
-  python: "3.9"
-
-  cluster:
-    cluster_env: app_config_gpu.yaml
-    cluster_compute: only_head_node_1gpu_64cpu.yaml
-
-  run:
-    # WIP cade experiment
-    type: sdk_command
-    timeout: 1800
-    script: python benchmark_worker_startup.py
-        --num_cpus_in_cluster 64
-        --num_tasks_or_actors_per_run 64
-        --num_measurements_per_configuration 5
-        --without_runtime_env
 
 - name: dask_on_ray_100gb_sort
   group: core-daily-test

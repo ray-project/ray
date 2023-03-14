@@ -1,5 +1,37 @@
 #!/usr/bin/env python3
 
+"""
+$ ./benchmark_worker_startup.py --help
+usage: benchmark_worker_startup.py [-h] --num_cpus_in_cluster
+                                   NUM_CPUS_IN_CLUSTER
+                                   --num_tasks_or_actors_per_run
+                                   NUM_TASKS_OR_ACTORS_PER_RUN
+                                   --num_measurements_per_configuration
+                                   NUM_MEASUREMENTS_PER_CONFIGURATION
+
+This release test measures Ray worker startup time. Specifically, it measures
+the time to start N different tasks or actors, where each task or actor imports
+a large library (currently PyTorch). N is configurable. The test runs under a
+few different configurations: {task, actor} x {runtime env, no runtime env} x
+{GPU, no GPU} x {cold start, warm start}.
+
+options:
+  -h, --help            show this help message and exit
+  --num_cpus_in_cluster NUM_CPUS_IN_CLUSTER
+                        The number of CPUs in the cluster. This determines how
+                        many CPU resources each actor/task requests.
+  --num_tasks_or_actors_per_run NUM_TASKS_OR_ACTORS_PER_RUN
+                        The number of tasks or actors per 'run'. A run starts
+                        this many tasks/actors and consitutes a single
+                        measurement. Several runs can be composed within a
+                        single job for measure warm start, or spread across
+                        different jobs to measure cold start.
+  --num_measurements_per_configuration NUM_MEASUREMENTS_PER_CONFIGURATION
+                        The number of measurements to record per configuration.
+
+This script uses test_single_configuration.py to run the actual measurements.
+"""
+
 from collections import defaultdict
 from dataclasses import dataclass
 from ray._private.test_utils import safe_write_to_results_json
@@ -9,6 +41,7 @@ import asyncio
 import random
 import ray
 import statistics
+import subprocess
 import sys
 
 
@@ -16,8 +49,10 @@ def main(
     num_cpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_configuration: int,
-    with_runtime_env: bool,
 ):
+    """
+    Generate test cases, then run them in random order via run_and_stream_logs.
+    """
     metrics_actor_name = "metrics_actor"
     metrics_actor_namespace = "metrics_actor_namespace"
     metrics_actor = MetricsActor.options(  # noqa: F841
@@ -31,7 +66,6 @@ def main(
         num_cpus_in_cluster,
         num_tasks_or_actors_per_run,
         num_measurements_per_configuration,
-        with_runtime_env,
     )
     print(f"List of tests: {run_matrix}")
 
@@ -48,6 +82,10 @@ def main(
 
 @ray.remote(num_cpus=0)
 class MetricsActor:
+    """
+    Actor which tests will report metrics to.
+    """
+
     def __init__(self, expected_measurements_per_test: int):
         self.measurements = defaultdict(list)
         self.expected_measurements_per_test = expected_measurements_per_test
@@ -100,7 +138,6 @@ def generate_test_matrix(
     num_cpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_test: int,
-    with_runtime_env_unused: bool,
 ):
 
     num_repeated_jobs_or_runs = num_measurements_per_test
@@ -114,9 +151,10 @@ def generate_test_matrix(
     tests = set()
 
     for with_tasks in [True, False]:
-        for with_runtime_env in [True, False]:
-            for with_gpu in [True, False]:
+        for with_gpu in [True, False]:
+            for with_runtime_env in [True, False]:
                 for num_jobs in num_jobs_per_type.values():
+
                     num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
                     num_runs_per_job = (
                         num_tasks_or_actors_per_job // num_tasks_or_actors_per_run
@@ -154,7 +192,6 @@ class TestConfiguration:
         with_gpu_str = "with-gpu" if self.with_gpu else "without-gpu"
         executable_unit = "tasks" if self.with_tasks else "actors"
         cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
-        # This needs more thought.. currently things are all ran as jobs.
         with_runtime_env_str = (
             "with-runtime-env" if self.with_runtime_env else "without-runtime-env"
         )
@@ -174,48 +211,21 @@ class TestConfiguration:
 async def run_and_stream_logs(
     metrics_actor_name, metrics_actor_namespace, test: TestConfiguration
 ):
+    """
+    Run a particular test configuration by invoking ./test_single_configuration.py.
+    """
     client = JobSubmissionClient("http://127.0.0.1:8265")
+    entrypoint = generate_entrypoint(metrics_actor_name, metrics_actor_namespace, test)
 
-    task_or_actor_arg = "--with_tasks" if test.with_tasks else "--with_actors"
-    with_gpu_arg = "--with_gpu" if test.with_gpu else "--without_gpu"
+    for _ in range(test.num_jobs):
+        print(f"Running {entrypoint}")
 
-    for i in range(test.num_jobs):
         if not test.with_runtime_env:
-            import subprocess
-
-            subprocess.run(
-                " ".join(
-                    [
-                        f"python ./benchmark_single_configuration.py",
-                        f"--metrics_actor_name {metrics_actor_name}",
-                        f"--metrics_actor_namespace {metrics_actor_namespace}",
-                        f"--test_name {test}",
-                        f"--num_runs {test.num_runs_per_job} ",
-                        f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
-                        f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
-                        f"{task_or_actor_arg}",
-                        f"{with_gpu_arg}",
-                        f"--library_to_import {test.expensive_import}",
-                    ]),
-                shell=True,
-            )
+            # On non-workspaces, this will run as a job but without a runtime env.
+            subprocess.check_call(entrypoint, shell=True)
         else:
-            print(f"Running job {i} for {test}")
             job_id = client.submit_job(
-                entrypoint=" ".join(
-                    [
-                        f"python ./benchmark_single_configuration.py",
-                        f"--metrics_actor_name {metrics_actor_name}",
-                        f"--metrics_actor_namespace {metrics_actor_namespace}",
-                        f"--test_name {test}",
-                        f"--num_runs {test.num_runs_per_job} ",
-                        f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
-                        f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
-                        f"{task_or_actor_arg}",
-                        f"{with_gpu_arg}",
-                        f"--library_to_import {test.expensive_import}",
-                    ]
-                ),
+                entrypoint=entrypoint,
                 runtime_env={"working_dir": "./"},
             )
 
@@ -234,15 +244,65 @@ async def run_and_stream_logs(
                 )
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--num_cpus_in_cluster", type=int, required=True)
-    parser.add_argument("--num_tasks_or_actors_per_run", type=int, required=True)
-    parser.add_argument("--num_measurements_per_configuration", type=int, required=True)
+def generate_entrypoint(
+    metrics_actor_name: str, metrics_actor_namespace: str, test: TestConfiguration
+):
 
-    #group = parser.add_mutually_exclusive_group(required=True)
-    #group.add_argument("--with_runtime_env", action="store_true")
-    #group.add_argument("--without_runtime_env", action="store_true")
+    task_or_actor_arg = "--with_tasks" if test.with_tasks else "--with_actors"
+    with_gpu_arg = "--with_gpu" if test.with_gpu else "--without_gpu"
+    with_runtime_env_arg = (
+        "--with_runtime_env" if test.with_runtime_env else "--without_runtime_env"
+    )
+    return " ".join(
+        [
+            "python ./test_single_configuration.py",
+            f"--metrics_actor_name {metrics_actor_name}",
+            f"--metrics_actor_namespace {metrics_actor_namespace}",
+            f"--test_name {test}",
+            f"--num_runs {test.num_runs_per_job} ",
+            f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
+            f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
+            task_or_actor_arg,
+            with_gpu_arg,
+            with_runtime_env_arg,
+            f"--library_to_import {test.expensive_import}",
+        ]
+    )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="This release test measures Ray worker startup time. "
+        "Specifically, it measures the time to start N different tasks or"
+        " actors, where each task or actor imports a large library ("
+        "currently PyTorch). N is configurable.\nThe test runs under a "
+        "few different configurations: {task, actor} x {runtime env, "
+        "no runtime env} x {GPU, no GPU} x {cold start, warm start}.",
+        epilog="This script uses test_single_configuration.py to run the "
+        "actual measurements.",
+    )
+    parser.add_argument(
+        "--num_cpus_in_cluster",
+        type=int,
+        required=True,
+        help="The number of CPUs in the cluster. This determines how many "
+        "CPU resources each actor/task requests.",
+    )
+    parser.add_argument(
+        "--num_tasks_or_actors_per_run",
+        type=int,
+        required=True,
+        help="The number of tasks or actors per 'run'. A run starts this "
+        "many tasks/actors and consitutes a single measurement. Several "
+        "runs can be composed within a single job for measure warm start, "
+        "or spread across different jobs to measure cold start.",
+    )
+    parser.add_argument(
+        "--num_measurements_per_configuration",
+        type=int,
+        required=True,
+        help="The number of measurements to record per configuration.",
+    )
 
     return parser.parse_args()
 
@@ -254,6 +314,5 @@ if __name__ == "__main__":
             args.num_cpus_in_cluster,
             args.num_tasks_or_actors_per_run,
             args.num_measurements_per_configuration,
-            args.with_runtime_env,
         )
     )
