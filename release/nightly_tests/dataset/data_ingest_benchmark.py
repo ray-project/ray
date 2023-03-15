@@ -29,7 +29,7 @@ class ConsumingActor:
 def DoConsume(split, rank):
     prefetch_blocks = 1
     batch_size = 4096
-    num_epochs = 2
+    num_epochs = 1
 
     start = time.perf_counter()
     epochs_read, batches_read, bytes_read = 0, 0, 0
