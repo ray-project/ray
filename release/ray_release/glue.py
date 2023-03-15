@@ -82,7 +82,7 @@ command_runner_to_file_manager = {
 
 
 DEFAULT_RUN_TYPE = "anyscale_job"
-DEFAULT_CORE_RUN_TYPE = "sdk"
+DEFAULT_CORE_RUN_TYPE = "sdk_command"
 TIMEOUT_BUFFER_MINUTES = 15
 
 
