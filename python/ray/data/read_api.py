@@ -305,11 +305,16 @@ def read_datasource(
             datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
-        # Prepare read in a remote task so that in Ray client mode, we aren't
-        # attempting metadata resolution from the client machine.
+        # Prepare read in a remote task at same node.
+        # NOTE: in Ray client mode, this is expected to be run on head node.
+        # So we aren't attempting metadata resolution from the client machine.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
         get_read_tasks = cached_remote_fn(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
-        )
+        ).options(scheduling_strategy=scheduling_strategy)
 
         requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
@@ -344,8 +349,29 @@ def read_datasource(
             "dataset blocks."
         )
 
+    read_stage_name = f"Read{datasource.get_name()}"
+    available_cpu_slots = ray.available_resources().get("CPU", 1)
+    if (
+        requested_parallelism
+        and len(read_tasks) > available_cpu_slots * 4
+        and len(read_tasks) >= 5000
+    ):
+        logger.warn(
+            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
+            "is more than 4x the number of available CPU slots in the cluster of "
+            f"{available_cpu_slots}. This can "
+            "lead to slowdowns during the data reading phase due to excessive "
+            "task creation. Reduce the parallelism to match with the available "
+            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
+            "to automatically determine the parallelism. "
+            "You can ignore this message if the cluster is expected to autoscale."
+        )
+
     block_list = LazyBlockList(
-        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+        read_tasks,
+        read_stage_name=read_stage_name,
+        ray_remote_args=ray_remote_args,
+        owned_by_consumer=False,
     )
 
     # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
@@ -472,7 +498,17 @@ def read_parquet(
         ...           ("variety", pa.string())]
         >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
-        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
+        Dataset(
+           num_blocks=1,
+           num_rows=150,
+           schema={
+              sepal.length: double,
+              sepal.width: double,
+              petal.length: double,
+              petal.width: double,
+              variety: string
+           }
+        )
 
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
@@ -1294,6 +1330,14 @@ def from_pandas(
 
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
+
+    from ray.air.util.data_batch_conversion import (
+        _cast_ndarray_columns_to_tensor_extension,
+    )
+
+    context = DatasetContext.get_current()
+    if context.enable_tensor_extension_casting:
+        dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 

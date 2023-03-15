@@ -14,6 +14,7 @@ from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -32,6 +33,7 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
@@ -428,7 +430,9 @@ class ImpalaConfig(AlgorithmConfig):
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -664,7 +668,7 @@ class Impala(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.config._enable_learner_api:
                 if train_results:
-                    pids = list(train_results["learner"]["loss"].keys())
+                    pids = list(set(train_results.keys()) - {ALL_MODULES})
                 else:
                     pids = []
                 self.update_workers_from_learner_group(
@@ -830,9 +834,9 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            elif self.workers.local_worker() and (
-                self.config.create_env_on_local_worker
-                or self.config.num_rollout_workers == 0
+            elif (
+                self.workers.local_worker()
+                and self.workers.local_worker().async_env is not None
             ):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
@@ -865,11 +869,15 @@ class Impala(Algorithm):
             lg_results = None
 
         if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results["env_steps_trained"]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results["agent_steps_trained"]
-            del lg_results["env_steps_trained"]
-            del lg_results["agent_steps_trained"]
-            result = {"learner": lg_results}
+            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES][
+                NUM_ENV_STEPS_TRAINED
+            ]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES][
+                NUM_AGENT_STEPS_TRAINED
+            ]
+            del lg_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
+            del lg_results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED]
+            result = lg_results
 
         return result
 
