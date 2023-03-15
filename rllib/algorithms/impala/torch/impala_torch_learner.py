@@ -90,10 +90,11 @@ class ImpalaTorchLearner(TorchLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        values = fwd_out[SampleBatch.VF_PREDS]
 
-        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
+        # TODO(Artur): Why are we missing batch[SampleBatch.ACTION_LOGP] here?
+        behaviour_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were
