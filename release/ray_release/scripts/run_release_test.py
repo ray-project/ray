@@ -8,6 +8,8 @@ from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
     DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
+    DEFAULT_CORE_RUN_TYPE,
+    DEFAULT_CORE_ENV_TYPE,
     as_smoke_test,
     find_test,
     parse_python_version,
@@ -115,6 +117,11 @@ def main(
 
     if smoke_test:
         test = as_smoke_test(test)
+
+    team = test.get("team")
+    if team == "core":
+        test["run"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
+        test["env"] = test["env"].get("env", DEFAULT_CORE_ENV_TYPE)
 
     env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
