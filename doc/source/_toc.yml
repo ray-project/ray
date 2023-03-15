@@ -44,7 +44,7 @@ parts:
           - file: ray-air/user-guides
             sections:
               - file: ray-air/preprocessors
-              - file: ray-air/trainer
+              - file: ray-air/trainers
               - file: ray-air/check-ingest
               - file: ray-air/tuner
               - file: ray-air/predictors
