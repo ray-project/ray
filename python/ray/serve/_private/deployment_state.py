@@ -1126,7 +1126,7 @@ class DeploymentState:
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 
-    def get_replica_details(self) -> List[ReplicaDetails]:
+    def list_replica_details(self) -> List[ReplicaDetails]:
         return [
             replica.get_replica_details(state)
             for state in ReplicaState
@@ -2086,7 +2086,7 @@ class DeploymentStateManager:
             deployment_config=_deployment_info_to_schema(
                 deployment_name, self.get_deployment(deployment_name)
             ),
-            replicas=self._deployment_states[deployment_name].get_replica_details(),
+            replicas=self._deployment_states[deployment_name].list_replica_details(),
         )
 
     def get_deployment_statuses(
