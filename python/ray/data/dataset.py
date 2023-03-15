@@ -2811,7 +2811,7 @@ class Dataset(Generic[T]):
             try:
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
-                ).fully_executed()
+                ).cache()
                 datasource.on_write_complete(
                     ray.get(self._write_ds._plan.execute().get_blocks())
                 )
@@ -3927,15 +3927,17 @@ class Dataset(Generic[T]):
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":
+        """Deprecated: use `ds.cache()` instead"""
         warnings.warn(
-            "The 'fully_executed' call has been renamed to 'cache'."
+            "The 'fully_executed' call has been renamed to 'cache'.",
             DeprecationWarning,
         )
         return self.cache()
 
     def is_fully_executed(self) -> bool:
+        """Deprecated: use `ds.is_cached()` instead"""
         warnings.warn(
-            "The 'is_fully_executed' call has been renamed to 'is_cached'."
+            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
             DeprecationWarning,
         )
         return self.is_cached()
@@ -3995,7 +3997,7 @@ class Dataset(Generic[T]):
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
-        manually triggered via ``.fully_executed()``.
+        manually triggered via ``.cache()``.
         """
         ds = Dataset(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
