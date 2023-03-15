@@ -329,11 +329,11 @@ from a local filesystem:
   only for testing or demoing examples.
 
 Reading Compressed Files
-==========================
+========================
 
 Ray Datasets supports reading compressed files using the ``arrow_open_stream_args`` arg.
-`Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.compress>`__
-(brotli, gzip, lz4, lz4_raw, snappy, zstd) are compatible with Ray Datasets.
+`Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__
+(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Datasets.
 For example:
 
 .. literalinclude:: ./doc_code/creating_datasets.py
