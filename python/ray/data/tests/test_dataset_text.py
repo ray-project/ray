@@ -84,7 +84,7 @@ def test_read_text_ignore_missing_paths(
 
     if ignore_missing_paths:
         ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.input_files() == [path]
+        assert ds.input_files() == [os.path.join(path, "file1.txt")]
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)

@@ -168,7 +168,7 @@ def test_default_file_metadata_provider(
         wraps=_get_file_infos_serial,
     ) as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
-    mock_get.assert_called_once_with(paths, fs)
+    mock_get.assert_called_once_with(paths, fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
@@ -264,9 +264,9 @@ def test_default_file_metadata_provider_many_files_basic(
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     if isinstance(fs, LocalFileSystem):
-        mock_get.assert_called_once_with(paths, fs)
+        mock_get.assert_called_once_with(paths, fs, False)
     else:
-        mock_get.assert_called_once_with(paths, _unwrap_protocol(data_path), fs)
+        mock_get.assert_called_once_with(paths, _unwrap_protocol(data_path), fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
@@ -335,12 +335,10 @@ def test_default_file_metadata_provider_many_files_partitioned(
             list, zip(*meta_provider.expand_paths(paths, fs, partitioning))
         )
     if isinstance(fs, LocalFileSystem):
-        mock_get.assert_called_once_with(paths, fs)
+        mock_get.assert_called_once_with(paths, fs, False)
     else:
         mock_get.assert_called_once_with(
-            paths,
-            _unwrap_protocol(partitioning.base_dir),
-            fs,
+            paths, _unwrap_protocol(partitioning.base_dir), fs, False
         )
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
@@ -402,7 +400,7 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
-    mock_get.assert_called_once_with(paths, fs)
+    mock_get.assert_called_once_with(paths, fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
