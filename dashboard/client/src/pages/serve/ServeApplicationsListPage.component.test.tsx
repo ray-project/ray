@@ -71,7 +71,7 @@ describe("ServeApplicationsListPage", () => {
 
     // Config dialog
     await user.click(screen.getAllByText("View")[0]);
-    await screen.findByText(/"import_path": "home:graph"/);
-    expect(screen.getByText(/"import_path": "home:graph"/)).toBeVisible();
+    await screen.findByText(/import_path: home:graph/);
+    expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
   });
 });

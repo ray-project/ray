@@ -55,7 +55,7 @@ export const CodeDialogButton = ({
           }}
         >
           <Typography className={classes.configText}>
-            {typeof code === "string" ? code : yaml.dump(code)}
+            {typeof code === "string" ? code : yaml.dump(code, { indent: 4 })}
           </Typography>
         </DialogWithTitle>
       )}
@@ -92,7 +92,8 @@ export const CodeDialogButtonWithPreview = ({
 }: CodeDialogButtonWithPreviewProps) => {
   const classes = useCodeDialogButtonWithPreviewStyles();
 
-  const codeText = typeof code === "string" ? code : yaml.dump(code);
+  const codeText =
+    typeof code === "string" ? code : yaml.dump(code, { indent: 4 });
 
   const buttonTextToPass = buttonText ?? "Expand";
 

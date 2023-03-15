@@ -89,13 +89,13 @@ describe("ServeApplicationDetailPage", () => {
 
     // Config dialog for application
     await user.click(screen.getAllByText("View")[0]);
-    await screen.findByText(/"import_path": "home:graph"/);
-    expect(screen.getByText(/"import_path": "home:graph"/)).toBeVisible();
+    await screen.findByText(/import_path: home:graph/);
+    expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
 
     // Config dialog for first deployment
     await user.click(screen.getAllByText("View")[1]);
-    await screen.findByText(/"test-config": 1/);
-    expect(screen.getByText(/"test-config": 1/)).toBeVisible();
-    expect(screen.getByText(/"autoscaling-value": 2/)).toBeVisible();
+    await screen.findByText(/test-config: 1/);
+    expect(screen.getByText(/test-config: 1/)).toBeVisible();
+    expect(screen.getByText(/autoscaling-value: 2/)).toBeVisible();
   });
 });
