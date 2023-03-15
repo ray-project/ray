@@ -118,7 +118,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_k_models = {}
         self.last_best_model_path = None
         self.is_checkpoint_step = False
-    
+
     def set_tuning_metric(self, metric: Union[str, None]) -> None:
         self.tuning_metric = metric
 
@@ -187,7 +187,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_model_path = self.best_model_path
 
         # Only report when the tuning metric is ready
-        if self.tuning_metric and self.tuning_metric in kwargs["metrics"]:
+        if self.tuning_metric in kwargs["metrics"]:
             session.report(**kwargs)
 
     def _save_topk_checkpoint(

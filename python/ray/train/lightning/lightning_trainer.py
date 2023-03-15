@@ -2,7 +2,6 @@ import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
@@ -152,12 +151,12 @@ class LightningConfigBuilder:
     def tuning(self, metric: str) -> "LightningConfigBuilder":
         """Specify the configurations for Ray Tuner.
 
-        If you are using `LightningTrainer` as a trainable for Ray Tuner, please set 
-        up the target tuning metrics here. `LightningTrainer` checks and reports to 
+        If you are using `LightningTrainer` as a trainable for Ray Tuner, please set
+        up the target tuning metrics here. `LightningTrainer` checks and reports to
         the Tune session only when this metric is ready.
 
         Args:
-            metric: Only report to Tune session if the specified metric is ready.
+            metric: Only report to Tune session after the specified metric is ready.
                 Make sure you pass the same metric as the one in `tune.TuneConfig`.
         """
         self._tuning_config["metric"] = metric
@@ -458,7 +457,10 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["enable_checkpointing"] = True
 
     ray_checkpoint_callback = RayModelCheckpoint(**model_checkpoint_config)
-    ray_checkpoint_callback.set_tuning_metric(tuning_config.get("metric", None))
+
+    # Choose "epoch" as the default because it is always available.
+    metric = tuning_config.get("metric", "epoch")
+    ray_checkpoint_callback.set_tuning_metric(metric)
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
         ray_checkpoint_callback
     ]

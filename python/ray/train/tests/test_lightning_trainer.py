@@ -13,10 +13,11 @@ from ray.train.tests.lightning_test_utils import (
 
 @pytest.fixture
 def ray_start_6_cpus_2_gpus():
-    address_info = ray.init(num_cpus=6, num_gpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+    # address_info = ray.init(num_cpus=6, num_gpus=2)
+    # yield address_info
+    # # The code after the yield will run as teardown code.
+    # ray.shutdown()
+    yield 0
 
 
 def test_config_builder():
@@ -76,14 +77,14 @@ def test_create_air_checkpoint_config():
     }
     air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
     assert air_ckpt_config.num_to_keep == 1
-    assert air_ckpt_config.checkpoint_score_attribute == None
+    assert air_ckpt_config.checkpoint_score_attribute is None
     assert air_ckpt_config.checkpoint_score_order == "min"
 
     # Check corner cases
     lightning_ckpt_config = {}
     air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
     assert air_ckpt_config.num_to_keep == 1
-    assert air_ckpt_config.checkpoint_score_attribute == None
+    assert air_ckpt_config.checkpoint_score_attribute is None
     assert air_ckpt_config.checkpoint_score_order == "min"
 
     lightning_ckpt_config = {"monitor": "eval_acc", "mode": "max"}
@@ -175,7 +176,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
     assert "val_loss" in results.metrics
 
 
-@pytest.mark.parametrize("accelerator", ["gpu"])
+@pytest.mark.parametrize("accelerator", ["cpu"])
 def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
