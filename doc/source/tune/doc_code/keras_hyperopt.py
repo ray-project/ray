@@ -8,8 +8,7 @@ from ray.tune.search.hyperopt import HyperOptSearch
 import keras
 
 
-# 1. Wrap a Keras model in an objective function.
-def objective(config):
+def objective(config):  # <1>
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(784, activation=config["activation"]))
     model.add(keras.layers.Dense(10, activation="softmax"))
@@ -20,12 +19,10 @@ def objective(config):
     return {"accuracy": accuracy}
 
 
-# 2. Define a search space and initialize the search algorithm.
-search_space = {"activation": tune.choice(["relu", "tanh"])}
+search_space = {"activation": tune.choice(["relu", "tanh"])}  # <2>
 algo = HyperOptSearch()
 
-# 3. Start a Tune run that maximizes accuracy.
-tuner = tune.Tuner(
+tuner = tune.Tuner(  # <3>
     objective,
     tune_config=tune.TuneConfig(
         metric="accuracy",
