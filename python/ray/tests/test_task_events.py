@@ -5,6 +5,8 @@ import sys
 import threading
 import time
 from ray._private.state_api_test_utils import verify_failed_task
+from ray.exceptions import RuntimeEnvSetupError
+from ray.runtime_env import RuntimeEnv
 from ray._private import ray_constants
 
 import ray
@@ -199,10 +201,40 @@ def test_failed_task_unschedulable(shutdown_only):
     )
 
 
-def test_failed_task_runtime_env_setup(shutdown_only):
-    from ray.exceptions import RuntimeEnvSetupError
-    from ray.runtime_env import RuntimeEnv
+def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
+    ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
+    from ray.util.placement_group import placement_group, remove_placement_group
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+    pg = placement_group([{"CPU": 2}])
+    ray.get(pg.ready())
+
+    @ray.remote(num_cpus=2)
+    def sleep():
+        time.sleep(999)
+
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.RequestWorkerLease=3000000:3000000",
+        )
+
+        sleep.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+            name="task-pg-removed",
+            max_retries=0,
+        ).remote()
+
+    remove_placement_group(pg)
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-pg-removed",
+        error_type="TASK_PLACEMENT_GROUP_REMOVED",
+    )
+
+
+def test_failed_task_runtime_env_setup(shutdown_only):
     @ray.remote
     def f():
         pass
@@ -936,13 +968,3 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
             return True
 
         wait_for_condition(verify)
-
-
-if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))

@@ -721,7 +721,7 @@ cdef void execute_task(
         c_bool is_reattempt,
         execution_info,
         title,
-        task_name, 
+        task_name,
         CTaskLogInfo &task_log_info) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
@@ -917,7 +917,8 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the task logs end offsets regardless of task execution results.
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
                     task_log_info.set_stdout_end(worker.get_current_out_offset())
                     task_log_info.set_stderr_end(worker.get_current_err_offset())
 
