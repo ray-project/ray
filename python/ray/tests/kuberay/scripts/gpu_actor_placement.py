@@ -10,7 +10,7 @@ def main():
             assert len(ray.get_gpu_ids()) == 1
             return "on-a-gpu-node"
 
-    GPUActor.options(name="gpu_actor", lifetime="detached").remote()
+    return GPUActor.options(name="gpu_actor", lifetime="detached").remote()
 
 
 if __name__ == "__main__":

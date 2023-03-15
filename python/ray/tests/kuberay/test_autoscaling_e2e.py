@@ -330,10 +330,11 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         with ray_client_port_forward(  # Interaction mode #2: Ray Client
             head_service=HEAD_SERVICE, ray_namespace="gpu-test"
         ):
-            gpu_actor_placement.main()
+            a =gpu_actor_placement.main()
         # 3. Confirm new pod number and presence of fake GPU worker.
         logger.info("Confirming fake GPU worker up-scaling.")
         wait_for_pods(goal_num_pods=4, namespace=RAY_CLUSTER_NAMESPACE)
+        del a
         gpu_workers = [
             pod_name
             for pod_name in get_pod_names(namespace=RAY_CLUSTER_NAMESPACE)
