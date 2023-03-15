@@ -141,7 +141,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
 
 
 @pytest.mark.parametrize("accelerator", ["gpu"])
-def test_trainer_with_categorical_ray_data(accelerator):
+def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
