@@ -1020,8 +1020,7 @@ cdef execute_task_with_cancellation_handler(
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt,
-        CTaskLogInfo &task_log_info,
-        ):
+        CTaskLogInfo &task_log_info):
 
     is_application_error[0] = False
     is_retryable_error[0] = False
