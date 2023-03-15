@@ -3927,7 +3927,30 @@ class Dataset(Generic[T]):
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":
-        """Force full evaluation of the blocks of this dataset.
+        warnings.warn(
+            "The 'fully_executed' call has been renamed to 'cache'."
+            DeprecationWarning,
+        )
+        return self.cache()
+
+    def is_fully_executed(self) -> bool:
+        warnings.warn(
+            "The 'is_fully_executed' call has been renamed to 'is_cached'."
+            DeprecationWarning,
+        )
+        return self.is_cached()
+
+    def is_cached(self) -> bool:
+        """Returns whether this Dataset has been cached in memory.
+
+        This will return False if the output of its final stage hasn't been computed
+        yet.
+        """
+        return self._plan.has_computed_output()
+
+    @ConsumptionAPI(pattern="store memory.", insert_after=True)
+    def cache(self) -> "Dataset[T]":
+        """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
@@ -3937,14 +3960,6 @@ class Dataset(Generic[T]):
         """
         self._plan.execute(force_read=True)
         return self
-
-    def is_fully_executed(self) -> bool:
-        """Returns whether this Dataset has been fully executed.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
-        return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
