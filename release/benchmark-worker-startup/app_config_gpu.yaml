@@ -1,6 +1,7 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py39-gpu") }}
 env_vars: {}
-debian_packages: []
+debian_packages:
+    - hdparm
 
 aws:
     # Fix the volume size so that IOPS is constant even if the default changes.
