@@ -76,7 +76,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         config["actions_in_input_normalized"] = True
 
         # Remove lr schedule from config, not needed here, and not supported by BC.
-        del config.lr_schedule
+        config.lr_schedule = None
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
@@ -117,7 +117,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                         ioctx.config["input_config"]["paths"], ioctx
                     )
                     config["input_config"] = {"paths": config["output"]}
-                    del config.output
+                    config.output = None
                     bc = BC(config=config)
                     bc.train()
                     bc.stop()
