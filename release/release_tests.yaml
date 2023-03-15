@@ -620,10 +620,10 @@
 - name: workspace_template_latest_small_01_batch_inference
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
-  frequency: nightly
+  frequency: manual
   team: ml
   cluster:
-    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
@@ -636,10 +636,10 @@
 - name: workspace_template_latest_large_01_batch_inference
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
-  frequency: nightly
+  frequency: manual
   team: ml
   cluster:
-    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
@@ -655,7 +655,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/release_master_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
@@ -669,10 +669,10 @@
 - name: workspace_template_latest_small_02_many_model_training
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
-  frequency: nightly
+  frequency: manual
   team: ml
   cluster:
-    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_small.yaml
 
   run:
@@ -684,10 +684,10 @@
 - name: workspace_template_latest_large_02_many_model_training
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
-  frequency: nightly
+  frequency: manual
   team: ml
   cluster:
-    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
   run:
@@ -704,7 +704,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/release_master_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
   run:
@@ -718,10 +718,10 @@
 - name: workspace_template_latest_small_03_serving_stable_diffusion
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
-  frequency: nightly
+  frequency: manual
   team: ml
   cluster:
-    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
@@ -734,10 +734,10 @@
 - name: workspace_template_latest_large_03_serving_stable_diffusion
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
-  frequency: nightly
+  frequency: manual
   team: ml
   cluster:
-    cluster_env: ../configs/release_latest_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
@@ -754,7 +754,7 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: ../configs/release_master_cluster_env.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
