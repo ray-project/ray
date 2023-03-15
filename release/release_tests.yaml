@@ -620,6 +620,7 @@
 - name: workspace_template_latest_small_01_batch_inference
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
+  python: "3.9"
   frequency: manual
   team: ml
   cluster:
@@ -636,6 +637,7 @@
 - name: workspace_template_latest_large_01_batch_inference
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
+  python: "3.9"
   frequency: manual
   team: ml
   cluster:
@@ -669,6 +671,7 @@
 - name: workspace_template_latest_small_02_many_model_training
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
+  python: "3.9"
   frequency: manual
   team: ml
   cluster:
@@ -684,6 +687,7 @@
 - name: workspace_template_latest_large_02_many_model_training
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
+  python: "3.9"
   frequency: manual
   team: ml
   cluster:
@@ -718,6 +722,7 @@
 - name: workspace_template_latest_small_03_serving_stable_diffusion
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
+  python: "3.9"
   frequency: manual
   team: ml
   cluster:
@@ -734,6 +739,7 @@
 - name: workspace_template_latest_large_03_serving_stable_diffusion
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
+  python: "3.9"
   frequency: manual
   team: ml
   cluster:
