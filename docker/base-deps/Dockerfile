@@ -51,7 +51,8 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
-        libgcc-ng python=$PYTHON_VERSION \
+        # remove libffi pinning when fixed upstream #33299
+        libgcc-ng libffi=3.3 python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
