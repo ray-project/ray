@@ -108,7 +108,7 @@ class LightningConfigBuilder:
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
                 For valid arguments to pass, please refer to:
-                https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
+                https://lightning.ai/docs/pytorch/stable/common/trainer.html#init.
         """
         self._trainer_init_config.update(**kwargs)
         return self
@@ -119,7 +119,7 @@ class LightningConfigBuilder:
         Args:
             kwargs: The parameter lists for ``pytorch_lightning.Trainer.fit()``
                 For valid arguments to pass, please refer to:
-                https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#fit.
+                https://lightning.ai/docs/pytorch/stable/common/trainer.html#fit.
         """
         self._trainer_fit_params.update(**kwargs)
         return self
@@ -129,7 +129,7 @@ class LightningConfigBuilder:
 
         Args:
             kwargs: For valid arguments to pass, please refer to:
-                https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
         """
         self._ddp_strategy_config.update(**kwargs)
         return self
@@ -142,7 +142,7 @@ class LightningConfigBuilder:
 
         Args:
             kwargs: For valid arguments to pass, please refer to:
-                https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html
         """
         self._model_checkpoint_config.update(**kwargs)
         return self
