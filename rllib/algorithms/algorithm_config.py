@@ -161,7 +161,7 @@ class AlgorithmConfig(_Config):
         Examples:
             >>> from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG, PPOConfig
             >>> ppo_config = PPOConfig.from_dict(DEFAULT_CONFIG)
-            >>> ppo = ppo_config.build(env="Pendulum-v1")
+            >>> ppo = ppo_config.build(env="Pendulum-v1")  # doctest: +SKIP
 
         Args:
             config_dict: The legacy formatted python config dict for some algorithm.
