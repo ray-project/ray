@@ -73,7 +73,6 @@ def test_trainer_with_native_dataloader(
         .module(LinearModule, input_dim=32, output_dim=4)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
     )
-    lightning_config = config_builder.build()
 
     datamodule = DummyDataModule(batch_size, dataset_size)
     train_loader = datamodule.train_dataloader()
@@ -120,7 +119,6 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
         .build()
     )
-    lightning_config = config_builder.build()
 
     scaling_config = ray.air.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
@@ -168,7 +166,6 @@ def test_trainer_with_categorical_ray_data(accelerator):
         .build()
     )
 
-    lightning_config = config_builder.build()
     scaling_config = ray.air.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )

@@ -52,11 +52,13 @@ class RayEnvironment(LightningEnvironment):
         return session.get_node_rank()
 
     def set_world_size(self, size: int) -> None:
-        logger.warning("world_size setter is disabled in AIR LightningTrainer.")
+        if self.global_rank() == 0:
+            logger.warning("world_size setter is disabled in AIR LightningTrainer.")
         pass
 
     def set_global_rank(self, rank: int) -> None:
-        logger.warning("global_rank setter is disabled in AIR LightningTrainer.")
+        if self.global_rank() == 0:
+            logger.warning("global_rank setter is disabled in AIR LightningTrainer.")
         pass
 
     def teardown(self):
@@ -115,6 +117,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         super().setup(*args, **kwargs)
         self.last_best_k_models = {}
         self.last_best_model_path = None
+        self.is_checkpoint_step = False
 
     def format_checkpoint_name(
         self,
@@ -132,9 +135,14 @@ class RayModelCheckpoint(ModelCheckpoint):
 
     def _session_report(self, trainer: "pl.Trainer"):
         """Report latest metrics dict and checkpoint to AIR training session."""
-        kwargs = {}
+
+        # Align the frequency of session.report() and checkpointing.
+        if not self.is_checkpoint_step:
+            return
+        self.is_checkpoint_step = False
 
         # Report latest logged metrics
+        kwargs = {}
         metrics = self._monitor_candidates(trainer)
         for k, v in metrics.items():
             if isinstance(v, torch.Tensor):
@@ -169,6 +177,12 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_model_path = self.best_model_path
         session.report(**kwargs)
 
+    def _save_topk_checkpoint(
+        self, trainer: "pl.Trainer", monitor_candidates: Dict[str, Tensor]
+    ) -> None:
+        self.is_checkpoint_step = True
+        return super()._save_topk_checkpoint(trainer, monitor_candidates)
+
     def on_train_batch_end(
         self,
         trainer: "pl.Trainer",
@@ -191,4 +205,3 @@ class RayModelCheckpoint(ModelCheckpoint):
     ) -> None:
         super().on_validation_end(trainer, pl_module)
         self._session_report(trainer=trainer)
-
