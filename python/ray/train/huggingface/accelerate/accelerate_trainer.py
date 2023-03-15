@@ -122,6 +122,7 @@ class AccelerateTrainer(TorchTrainer):
     - Type of launcher
 
     This Trainer requires ``accelerate>=0.17.0`` package.
+    It is tested with ``accelerate==0.17.1``.
 
     Example:
         .. testcode::
