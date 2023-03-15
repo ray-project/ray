@@ -421,7 +421,10 @@ class StateAPIManager:
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id", "worker_id", "task_log_info", "error_type"]),
+                (
+                    state_updates,
+                    ["node_id", "worker_id", "task_log_info", "error_type"],
+                ),
             ]
             for src, keys in mappings:
                 for key in keys:
