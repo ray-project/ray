@@ -4,7 +4,6 @@ from ray.train.huggingface.huggingface_trainer import (
     HuggingFaceTrainer,
 )
 
-
 __all__ = [
     "HuggingFaceCheckpoint",
     "HuggingFacePredictor",

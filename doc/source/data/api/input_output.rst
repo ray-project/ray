@@ -171,8 +171,8 @@ Torch
 
    from_torch
 
-HuggingFace
------------
+Hugging Face
+------------
 
 .. autosummary::
    :toctree: doc/
