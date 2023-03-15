@@ -6,7 +6,7 @@ from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator
 
 torch, nn = try_import_torch()
 tf1, tf, _ = try_import_tf()
@@ -93,7 +93,6 @@ class TestImpalaTorchLearner(unittest.TestCase):
             learner_group.set_weights(trainer.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
             print(results)
-
 
 
 if __name__ == "__main__":

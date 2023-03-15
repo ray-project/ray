@@ -90,14 +90,14 @@ class ImpalaTorchLearner(TorchLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
+        values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
 
-        values = fwd_out[SampleBatch.VF_PREDS]
+        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
-        # In the old impala code, actions needed to be unsqueezed if they were
-        # multi_discrete
+        # TODO(Artur): In the old impala code, actions were unsqueezed if they were
+        # multi_discrete. Find out why and if we need to do the same here.
         # actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
 
         target_actions_logp_time_major = make_time_major(
@@ -125,6 +125,7 @@ class ImpalaTorchLearner(TorchLearner):
             recurrent_seq_len=self.recurrent_seq_len,
             drop_last=self.vtrace_drop_last_ts,
         )
+
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
         discounts_time_major = (
@@ -159,11 +160,11 @@ class ImpalaTorchLearner(TorchLearner):
         ).to(device)
 
         # The policy gradients loss.
-        pi_loss = -torch.sum(behaviour_actions_logp * pg_advantages)
+        pi_loss = -torch.sum(target_actions_logp_time_major * pg_advantages)
         mean_pi_loss = pi_loss / sample_size
 
         # The baseline loss.
-        delta = values - vtrace_adjusted_target_values
+        delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
         mean_vf_loss = vf_loss / sample_size
 
