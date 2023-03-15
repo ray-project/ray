@@ -86,7 +86,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
 
     # Test reading many small files.
     # TODO: Once performance is further improved, increase to 50K files.
-    num_files = 5000
+    num_files = 1000
     num_row_groups_per_file = 2
     total_rows = num_files * num_row_groups_per_file
     compression = "gzip"
