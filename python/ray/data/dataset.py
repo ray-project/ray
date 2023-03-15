@@ -3930,7 +3930,7 @@ class Dataset(Generic[T]):
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":
-        """Deprecated: use `ds.cache()` instead"""
+        """Deprecated: use `Dataset.cache()` instead"""
         warnings.warn(
             "The 'fully_executed' call has been renamed to 'cache'.",
             DeprecationWarning,
@@ -3938,7 +3938,7 @@ class Dataset(Generic[T]):
         return self.cache()
 
     def is_fully_executed(self) -> bool:
-        """Deprecated: use `ds.is_cached()` instead"""
+        """Deprecated: use `Dataset.is_cached()` instead"""
         warnings.warn(
             "The 'is_fully_executed' call has been renamed to 'is_cached'.",
             DeprecationWarning,
