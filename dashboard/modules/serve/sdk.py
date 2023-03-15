@@ -19,6 +19,7 @@ DELETE_PATH = "/api/serve/deployments/"
 
 DEPLOY_PATH_V2 = "/api/serve/applications/"
 DELETE_PATH_V2 = "/api/serve/applications/"
+STATUS_PATH_V2 = "/api/serve/applications/"
 
 
 class ServeSubmissionClient(SubmissionClient):
@@ -93,7 +94,7 @@ class ServeSubmissionClient(SubmissionClient):
             self._raise_error(response)
 
     def get_serve_details(self) -> ServeInstanceDetails:
-        response = self._do_request("GET", "/api/serve/applications/")
+        response = self._do_request("GET", STATUS_PATH_V2)
         if response.status_code == 200:
             return ServeInstanceDetails(**response.json())
         else:
