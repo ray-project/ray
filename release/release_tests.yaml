@@ -1,7 +1,7 @@
 # Global release test configuration file.
 # All your release test configuration should go here. Adding release tests here
 # will automatically enable them in the Buildkite release testing schedules
-# (except they have frequency: disabled).
+# (except they have frequency: manual).
 # Here is an example configuration for reference:
 #- name: example_test
 #  # Tests with the same group will be grouped in the Buildkite UI
@@ -10,7 +10,7 @@
 #  working_dir: example_dir
 #
 #  # How often to run the tests.
-#  # One of [disabled, any, multi, nightly, weekly].
+#  # One of [manual, any, multi, nightly, weekly].
 #  frequency: weekly
 #  # Owning team. This field will be persisted to the database
 #  team: ml
@@ -134,7 +134,7 @@
 
 
   smoke_test:
-    frequency: disabled
+    frequency: manual
 
     run:
       timeout: 3600
@@ -184,7 +184,7 @@
 
 
   smoke_test:
-    frequency: disabled
+    frequency: manual
 
     run:
       timeout: 1800
@@ -1856,7 +1856,7 @@
     long_running: true
 
   smoke_test:
-    frequency: disabled
+    frequency: manual
     run:
       timeout: 3600
 
@@ -2110,24 +2110,24 @@
 
   alert: default
 
-- name: serve_serve_micro_benchmark_k8s
-  group: Serve tests
-  working_dir: serve_tests
+# - name: serve_serve_micro_benchmark_k8s
+#   group: Serve tests
+#   working_dir: serve_tests
 
-  # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-  frequency: disabled
-  team: serve
+#   # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+#   frequency: manual
+#   team: serve
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_k8s.yaml
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_tpl_single_node_k8s.yaml
 
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
+#   run:
+#     timeout: 7200
+#     long_running: false
+#     script: python workloads/serve_micro_benchmark.py
 
-  alert: default
+#   alert: default
 
 
 - name: deployment_graph_long_chain
