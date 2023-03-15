@@ -547,7 +547,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ReplicaDetails(BaseModel, extra=Extra.forbid):
+class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
     replica_id: str = Field(
         description=(
             "Unique ID for the replica. By default, this will be "
@@ -575,7 +575,7 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentDetails(BaseModel, extra=Extra.forbid):
+class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
@@ -612,7 +612,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ApplicationDetails(BaseModel, extra=Extra.forbid):
+class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
         ...,
@@ -668,7 +668,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
+class ServeInstanceDetails(BaseModel, extra=Extra.forbid, frozen=True):
     host: Optional[str] = Field(
         description="The host on which the HTTP server is listening for requests."
     )

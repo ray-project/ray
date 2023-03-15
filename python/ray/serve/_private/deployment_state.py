@@ -708,6 +708,24 @@ class DeploymentReplica(VersionedReplica):
             is_cross_language=self._actor.is_cross_language,
         )
 
+    def get_replica_details(self, state: ReplicaState) -> ReplicaDetails:
+        """Get replica details.
+
+        Args:
+            state: The state of the replica, which is not stored within a
+                DeploymentReplica object
+        """
+        return ReplicaDetails(
+            replica_id=self.replica_tag,
+            state=state,
+            pid=self.actor_pid,
+            actor_name=self._actor._actor_name,
+            actor_id=self.actor_id,
+            node_id=self.actor_node_id,
+            node_ip=self.actor_node_ip,
+            start_time_s=self._start_time,
+        )
+
     @property
     def replica_tag(self) -> ReplicaTag:
         return self._replica_tag
@@ -1109,23 +1127,11 @@ class DeploymentState:
         ]
 
     def get_replica_details(self) -> List[ReplicaDetails]:
-        details = []
-        for state in ReplicaState:
-            for replica in self._replicas.get([state]):
-                replica_details = ReplicaDetails(
-                    replica_id=replica.replica_tag,
-                    state=state,
-                    pid=replica.actor_pid,
-                    actor_name=replica._actor._actor_name,
-                    actor_id=replica.actor_id,
-                    node_id=replica.actor_node_id,
-                    node_ip=replica.actor_node_ip,
-                    start_time_s=replica._start_time,
-                )
-
-                details.append(replica_details)
-
-        return details
+        return [
+            replica.get_replica_details(state)
+            for state in ReplicaState
+            for replica in self._replicas.get([state])
+        ]
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
