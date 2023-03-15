@@ -512,6 +512,21 @@ def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client
             ray.util.placement_group([])
 
 
+def test_placement_group_equal_hash(ray_start_regular_shared):
+    from copy import copy
+
+    pg1 = ray.util.placement_group([{"CPU": 1}])
+    pg2 = copy(pg1)
+
+    # __eq__
+    assert pg1 == pg2
+
+    # __hash__
+    s = set()
+    s.add(pg1)
+    assert pg2 in s
+
+
 @pytest.mark.filterwarnings("default:placement_group parameter is deprecated")
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
     @ray.remote

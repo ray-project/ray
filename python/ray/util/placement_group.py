@@ -104,6 +104,12 @@ class PlacementGroup:
         if not self.bundle_cache:
             self.bundle_cache = _get_bundle_cache(self.id)
 
+    def __eq__(self, other):
+        return self.id.hex == other.id.hex
+
+    def __hash__(self):
+        return hash(self.id.hex)
+
 
 @client_mode_wrap
 def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -> bool:
