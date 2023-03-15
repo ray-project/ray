@@ -23,7 +23,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
-    OBJECT_STORE_MEMORY_LIMIT_FRACTION,
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
@@ -247,7 +247,7 @@ class StreamingExecutor(Executor, threading.Thread):
             object_store_memory=base.object_store_memory
             if base.object_store_memory is not None
             else round(
-                OBJECT_STORE_MEMORY_LIMIT_FRACTION
+                DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
             ),
         )

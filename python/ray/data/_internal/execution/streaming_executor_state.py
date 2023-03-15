@@ -32,7 +32,7 @@ MaybeRefBundle = Union[RefBundle, Exception, None]
 
 # The fraction of the object store capacity that will be used as the default object
 # store memory limit for the streaming executor.
-OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
+DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
 
 
 @dataclass
