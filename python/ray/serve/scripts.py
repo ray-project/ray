@@ -411,11 +411,11 @@ def run(
     help=(
         "A toggle between single-application and multi-application mode.\n"
         "- If a single application was deployed through a config of the format "
-        "ServeApplicationSchema, then `serve build` should be used without setting "
-        "flag to fetch the current config for the default application with name=''.\n"
+        "ServeApplicationSchema, then `serve config` should be used without setting "
+        "the flag to fetch the current config for the default application with name=''.\n"
         "- If multiple applications were deployed through a config of the format "
-        "ServeDeploySchema, then `serve build` should be used with this flag set to "
-        "getch the current app configs of all live applications on the Ray Cluster."
+        "ServeDeploySchema, then `serve config` should be used with this flag set to "
+        "get the current app configs of all live applications on the Ray Cluster."
     ),
 )
 @click.option(
