@@ -196,7 +196,7 @@ class RayServeHandle:
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
-    def craft_and_assign_request(
+    def _craft_and_assign_request(
         self, deployment_name, handle_options, args, kwargs
     ) -> Tuple[ray.ObjectRef, str]:
         """Creates a request and assigns it to a replica.
@@ -227,7 +227,7 @@ class RayServeHandle:
         """
 
         self.request_counter.inc()
-        result_coro, replica_tag = self.craft_and_assign_request(
+        result_coro, replica_tag = self._craft_and_assign_request(
             self.deployment_name, self.handle_options, args, kwargs
         )
 
@@ -252,6 +252,11 @@ class RayServeHandle:
 
         result_task, _ = self._internal_remote(*args, **kwargs)
         return result_task
+
+    def embargo_replica(self, replica_tag):
+        """Temporarily stop sending requests to replica_tag replica."""
+
+        self.router.embargo_replica(replica_tag)
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -306,7 +311,7 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self.craft_and_assign_request(
+        coro = self._craft_and_assign_request(
             self.deployment_name, self.handle_options, args, kwargs
         )
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(

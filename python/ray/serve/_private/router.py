@@ -19,6 +19,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
+    ExpiringSet,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
@@ -77,9 +78,10 @@ class ReplicaSet:
         # the same node.
         self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
 
-        # Used to unblock this replica set waiting for free replicas. A newly
-        # added replica or updated max_concurrent_queries value means the
-        # query that waits on a free replica might be unblocked on.
+        # config_updated_event is used to unblock this replica set when
+        # waiting for free replicas. A newly added replica or updated
+        # max_concurrent_queries value means the query waiting for a free
+        # replica might be unblocked on.
 
         # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
         # removed it alltogether. Call accordingly.
@@ -87,6 +89,8 @@ class ReplicaSet:
             self.config_updated_event = asyncio.Event()
         else:
             self.config_updated_event = asyncio.Event(loop=event_loop)
+
+        self.deny_set = ExpiringSet(60)
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -140,7 +144,11 @@ class ReplicaSet:
         """
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
-            if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
+            if (
+                replica.replica_tag in self.deny_set
+                or len(self.in_flight_queries[replica])
+                >= replica.max_concurrent_queries
+            ):
                 # This replica is overloaded, try next one
                 continue
 
@@ -265,6 +273,16 @@ class ReplicaSet:
         )
         return assigned_ref, assigned_replica_tag
 
+    def embargo_replica(self, replica_tag: str):
+        """Temporarily embargoes a replica.
+
+        Replica is placed on a local denylist, and no requests are sent to it.
+        After some time, the replica is automatically removed from the denylist
+        and requests start getting sent to it.
+        """
+
+        self.deny_set.add(replica_tag)
+
 
 class Router:
     def __init__(
@@ -302,6 +320,11 @@ class Router:
 
     def get_num_queued_queries(self):
         return self._replica_set.num_queued_queries
+
+    def embargo_replica(self, replica_tag: str):
+        """Temporarily stop sending requests to replica_tag replica."""
+
+        self._replica_set.embargo_replica(replica_tag)
 
     async def assign_request(
         self,
