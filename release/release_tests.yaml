@@ -628,8 +628,10 @@
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test.py batch_inference.ipynb && python _test.py
+
 
 
 - name: workspace_template_latest_large_01_batch_inference
@@ -643,8 +645,9 @@
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test.py batch_inference.ipynb && python _test.py
 
 
 - name: workspace_template_master_large_01_batch_inference
@@ -658,8 +661,10 @@
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path batch_inference.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test.py batch_inference.ipynb && python _test.py
+
 
 # 02_many_model_training
 
@@ -674,9 +679,9 @@
     cluster_compute: ../configs/compute/cpu/aws_small.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
-
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test.py many_model_training.ipynb && python _test.py
 
 - name: workspace_template_latest_large_02_many_model_training
   group: Workspace templates
@@ -689,8 +694,9 @@
     cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test.py many_model_training.ipynb && python _test.py
 
 
 - name: workspace_template_master_large_02_many_model_training
@@ -704,8 +710,9 @@
     cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path many_model_training.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test.py many_model_training.ipynb && python _test.py
 
 # 03_serving_stable_diffusion
 
@@ -720,8 +727,9 @@
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test.py serving_stable_diffusion.ipynb && python _test.py
 
 
 - name: workspace_template_latest_large_03_serving_stable_diffusion
@@ -735,8 +743,9 @@
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test.py serving_stable_diffusion.ipynb && python _test.py
 
 
 - name: workspace_template_master_large_03_serving_stable_diffusion
@@ -750,8 +759,9 @@
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
-    timeout: 3600
-    script: python ../../util/test_myst_doc.py --path serving_stable_diffusion.ipynb
+    timeout: 900
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test.py serving_stable_diffusion.ipynb && python _test.py
 
 
 #######################
