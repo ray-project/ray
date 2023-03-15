@@ -79,9 +79,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
           failure_actors_.emplace_back(std::move(actor));
         },
         /*schedule_success_handler=*/
-        [this](std::shared_ptr<gcs::GcsActor> actor,
-               const rpc::PushTaskReply &reply,
-               const Status &creation_task_status) {
+        [this](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {
           success_actors_.emplace_back(std::move(actor));
         },
         raylet_client_pool_,
