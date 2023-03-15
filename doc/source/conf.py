@@ -55,6 +55,18 @@ extensions = [
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
+    "sphinx_remove_toctrees",
+]
+
+remove_from_toctrees = [
+    "data/api/doc/*",
+    "ray-air/api/doc/*",
+    "ray-core/api/doc/*",
+    "ray-observability/api/doc/*",
+    "serve/api/doc/*",
+    "train/api/doc/*",
+    "tune/api/doc/*",
+    "workflows/api/doc/*",
 ]
 
 myst_enable_extensions = [
