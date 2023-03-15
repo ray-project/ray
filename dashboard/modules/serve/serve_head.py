@@ -1,10 +1,8 @@
-import asyncio
 import logging
 from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
-import ray
 
 from ray.dashboard.datacenter import DataOrganizer
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -33,7 +31,8 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 status=503,
                 text=(
                     "Failed to find the serve agent. "
-                    "Check the dashboard_agent logs to see if the agent failed to launch."
+                    "Check the dashboard_agent logs to see if the agent "
+                    "failed to launch."
                 ),
             )
 
@@ -59,7 +58,8 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 status=503,
                 text=(
                     "Failed to hit serve agent. "
-                    f"Check the dashboard_agent logs to see if the agent failed to launch. {e}"
+                    "Check the dashboard_agent logs to see "
+                    f"if the agent failed to launch. {e}"
                 ),
             )
 

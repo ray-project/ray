@@ -1,21 +1,16 @@
-import copy
 import sys
 from typing import Dict
 
 import pytest
 import requests
 
-import ray
-from ray import serve
 from ray._private.test_utils import wait_for_condition
-import ray._private.ray_constants as ray_constants
-from ray.experimental.state.api import list_actors
-from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
 
 GET_OR_PUT_URL_V2 = "http://localhost:52365/api/serve/applications/"
+
 
 def deploy_config_multi_app(config: Dict):
     put_response = requests.put(GET_OR_PUT_URL_V2, json=config, timeout=30)
@@ -26,10 +21,10 @@ def deploy_config_multi_app(config: Dict):
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_get_serve_instance_details(ray_start_stop):
     """
-    This test is a simplified version of `test_get_serve_instance_details` in test_serve_agent.py
-    because the behavior in serve_head just proxies to the serve_agent endpoint.
+    This test is a simplified version of `test_get_serve_instance_details`
+    in test_serve_agent.py because the behavior in serve_head just proxies
+    to the serve_agent endpoint.
     """
-
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
@@ -71,7 +66,9 @@ def test_get_serve_instance_details(ray_start_stop):
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
-    serve_details = ServeInstanceDetails(**requests.get("http://localhost:8265/api/serve_head/applications/").json())
+    serve_details = ServeInstanceDetails(
+        **requests.get("http://localhost:8265/api/serve_head/applications/").json()
+    )
     # CHECK: host and port
     assert serve_details.host == "127.0.0.1"
     assert serve_details.port == 8000
@@ -121,4 +118,3 @@ def test_get_serve_instance_details(ray_start_stop):
                 exclude_unset=True
             )
     print("Finished checking application details.")
-    
