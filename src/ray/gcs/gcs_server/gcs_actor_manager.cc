@@ -1198,17 +1198,19 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
 
   if (reply.is_application_error()) {
-    RAY_LOG(INFO) << "Actor created failed, actor id = " << actor_id
-                  << ", job id = " << actor_id.JobId();
+    RAY_LOG(INFO)
+        << "Failed to create an actor due to the application failure, actor id = "
+        << actor_id << ", job id = " << actor_id.JobId();
     // NOTE: Alternatively we could also destroy the actor here right away. The actor will
     // be eventually destroyed as the CoreWorker runs the creation task will exit
     // eventually due to the creation task failure.
     RunAndClearActorCreationCallbacks(
         actor, reply, Status::CreationTaskError("Actor __init__ failed."));
+  } else {
+    RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
+                  << ", job id = " << actor_id.JobId();
   }
 
-  RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
-                << ", job id = " << actor_id.JobId();
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
   mutable_actor_table_data->set_timestamp(time);
