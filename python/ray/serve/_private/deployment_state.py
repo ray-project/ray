@@ -692,6 +692,7 @@ class DeploymentReplica(VersionedReplica):
             deployment_name,
             scheduling_strategy,
         )
+        self._replica_details = None
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
@@ -718,11 +719,11 @@ class DeploymentReplica(VersionedReplica):
         return ReplicaDetails(
             replica_id=self.replica_tag,
             state=state,
-            pid=self.actor_pid,
+            pid=self._actor.pid,
             actor_name=self._actor._actor_name,
-            actor_id=self.actor_id,
-            node_id=self.actor_node_id,
-            node_ip=self.actor_node_ip,
+            actor_id=self._actor.actor_id,
+            node_id=self._actor.node_id,
+            node_ip=self._actor.node_ip,
             start_time_s=self._start_time,
         )
 
@@ -743,24 +744,9 @@ class DeploymentReplica(VersionedReplica):
         return self._actor.actor_handle
 
     @property
-    def actor_pid(self) -> Optional[str]:
-        """Returns the pid of the actor, None if not placed."""
-        return self._actor.pid
-
-    @property
-    def actor_id(self) -> Optional[str]:
-        """Returns the actor id, None if not placed."""
-        return self._actor.actor_id
-
-    @property
     def actor_node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
-
-    @property
-    def actor_node_ip(self) -> Optional[str]:
-        """Returns the actor id, None if not placed."""
-        return self._actor.node_ip
 
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """

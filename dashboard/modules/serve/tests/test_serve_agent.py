@@ -463,7 +463,7 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_get_serve_instance_details(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
