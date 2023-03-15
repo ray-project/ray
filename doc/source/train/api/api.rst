@@ -85,6 +85,15 @@ PyTorch Training Loop Utilities
     ~train.torch.backward
     ~train.torch.enable_reproducibility
 
+PyTorch Lightning
+*****************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.lightning.LightningTrainer
+    ~train.lightning.LightningConfigBuilder
+
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
