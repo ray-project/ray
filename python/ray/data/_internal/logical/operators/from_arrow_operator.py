@@ -1,12 +1,15 @@
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
-import ray
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow
     import datasets
+    import pyspark
+
+ArrowTable = Union["pyarrow.Table", bytes]
+ArrowTableOrRefsList = Union[List[ObjectRef[ArrowTable]], List[ArrowTable]]
 
 
 class FromArrowRefs(LogicalOperator):
@@ -14,23 +17,27 @@ class FromArrowRefs(LogicalOperator):
 
     def __init__(
         self,
-        tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
+        tables: ArrowTableOrRefsList,
         op_name: str = "FromArrowRefs",
     ):
         super().__init__(op_name, [])
         self._tables = tables
 
 
-class FromArrow(FromArrowRefs):
-    """Logical operator for `from_arrow`."""
+class FromSpark(LogicalOperator):
+    """Logical operator for `from_spark`."""
 
     def __init__(
-        self, tables: List[Union["pyarrow.Table", bytes]], op_name: str = "FromArrow"
+        self,
+        df: "pyspark.sql.DataFrame",
+        parallelism: Optional[int] = None,
     ):
-        super().__init__([ray.put(t) for t in tables], op_name)
+        self._parallelism = parallelism
+        self._df = df
+        super().__init__("FromSpark", [])
 
 
-class FromHuggingFace(FromArrow):
+class FromHuggingFace(FromArrowRefs):
     """Logical operator for `from_huggingface`."""
 
     def __init__(

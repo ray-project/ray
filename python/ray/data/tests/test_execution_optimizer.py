@@ -10,7 +10,6 @@ from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrow,
     FromArrowRefs,
     FromHuggingFace,
 )
@@ -20,15 +19,11 @@ from ray.data._internal.logical.operators.from_items_operator import (
     FromTF,
     FromTorch,
 )
-from ray.data._internal.logical.operators.from_numpy_operator import (
-    FromNumpy,
-    FromNumpyRefs,
-)
+from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
     FromMARS,
     FromModin,
-    FromPandas,
     FromPandasRefs,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
@@ -880,63 +875,6 @@ def test_from_pandas_refs_e2e(
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
-@pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_operator(
-    ray_start_regular_shared, enable_optimizer, enable_pandas_block
-):
-    ctx = ray.data.context.DatasetContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
-    ctx.enable_pandas_block = enable_pandas_block
-    try:
-        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-
-        planner = Planner()
-        from_pandas_op = FromPandas([df1, df2])
-        plan = LogicalPlan(from_pandas_op)
-        physical_op = planner.plan(plan).dag
-
-        assert from_pandas_op.name == "FromPandas"
-        assert isinstance(physical_op, InputDataBuffer)
-        assert len(physical_op.input_dependencies) == 0
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
-
-
-@pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_e2e(
-    ray_start_regular_shared, enable_optimizer, enable_pandas_block
-):
-    ctx = ray.data.context.DatasetContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
-    ctx.enable_pandas_block = enable_pandas_block
-
-    try:
-        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-
-        ds = ray.data.from_pandas([df1, df2])
-        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
-        values = [(r["one"], r["two"]) for r in ds.take(6)]
-        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-        assert values == rows
-        # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
-
-        # test from single pandas dataframe
-        ds = ray.data.from_pandas(df1)
-        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
-        values = [(r["one"], r["two"]) for r in ds.take(3)]
-        rows = [(r.one, r.two) for _, r in df1.iterrows()]
-        assert values == rows
-        # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
-        # Underlying implementation uses `FromPandasRefs` operator
-        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
-
-
 def test_from_numpy_refs_operator(
     ray_start_regular_shared,
     enable_optimizer,
@@ -975,48 +913,6 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
     assert "from_numpy_refs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
-
-
-def test_from_numpy_operator(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
-    import numpy as np
-
-    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
-    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
-
-    planner = Planner()
-    from_numpy_op = FromNumpy([arr1, arr2])
-    plan = LogicalPlan(from_numpy_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_numpy_op.name == "FromNumpy"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
-
-
-def test_from_numpy_e2e(ray_start_regular_shared, enable_optimizer):
-    import numpy as np
-
-    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
-    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
-
-    ds = ray.data.from_numpy([arr1, arr2])
-    values = np.stack(ds.take(8))
-    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
-    # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
-
-    # Test from single NumPy ndarray.
-    ds = ray.data.from_numpy(arr1)
-    values = np.stack(ds.take(4))
-    np.testing.assert_array_equal(values, arr1)
-    # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
-    # Underlying implementation uses `FromNumpyRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
 
 
@@ -1067,56 +963,6 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     assert values == rows
     # Check that conversion task is included in stats.
     assert "from_arrow_refs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-
-
-def test_from_arrow_operator(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
-    import pyarrow as pa
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-
-    planner = Planner()
-    from_arrow_op = FromArrow(
-        [
-            pa.Table.from_pandas(df1),
-            pa.Table.from_pandas(df2),
-        ]
-    )
-    plan = LogicalPlan(from_arrow_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_arrow_op.name == "FromArrow"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
-
-
-def test_from_arrow_e2e(ray_start_regular_shared, enable_optimizer):
-    import pyarrow as pa
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_arrow([pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)])
-
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
-    # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
-    # Underlying implementation uses `FromArrowRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-
-    # test from single pyarrow table ref
-    ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
-    # Check that conversion task is included in stats.
-    assert "from_arrow_refs" in ds.stats()
-    # Underlying implementation uses `FromArrowRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
 

@@ -8,12 +8,17 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
 )
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
-from ray.data._internal.logical.operators.from_spark_operator import FromSpark
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
+from ray.data._internal.logical.operators.from_arrow_operator import (
+    FromArrowRefs,
+    FromSpark,
+)
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.logical.operators.from_pandas_operator import FromPandasRefs
+from ray.data._internal.logical.operators.from_pandas_operator import (
+    FromPandasRefs,
+    FromDask,
+)
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
@@ -22,7 +27,6 @@ from ray.data._internal.planner.plan_from_arrow_op import _plan_from_arrow_refs_
 from ray.data._internal.planner.plan_from_items_op import _plan_from_items_op
 from ray.data._internal.planner.plan_from_numpy_op import _plan_from_numpy_refs_op
 from ray.data._internal.planner.plan_from_pandas_op import _plan_from_pandas_refs_op
-from ray.data._internal.planner.plan_from_spark_op import _plan_from_spark_op
 from ray.data._internal.planner.plan_udf_map_op import _plan_udf_map_op
 from ray.data._internal.planner.plan_read_op import _plan_read_op
 from ray.data._internal.planner.plan_write_op import _plan_write_op
@@ -58,18 +62,15 @@ class Planner:
         elif isinstance(logical_op, FromItems):
             assert not physical_children
             physical_op = _plan_from_items_op(logical_op)
-        elif isinstance(logical_op, FromPandasRefs):
+        elif isinstance(logical_op, (FromPandasRefs, FromDask)):
             assert not physical_children
             physical_op = _plan_from_pandas_refs_op(logical_op)
         elif isinstance(logical_op, FromNumpyRefs):
             assert not physical_children
             physical_op = _plan_from_numpy_refs_op(logical_op)
-        elif isinstance(logical_op, FromArrowRefs):
+        elif isinstance(logical_op, (FromArrowRefs, FromSpark)):
             assert not physical_children
             physical_op = _plan_from_arrow_refs_op(logical_op)
-        elif isinstance(logical_op, FromSpark):
-            assert not physical_children
-            physical_op = _plan_from_spark_op(logical_op)
         elif isinstance(logical_op, AbstractUDFMap):
             assert len(physical_children) == 1
             physical_op = _plan_udf_map_op(logical_op, physical_children[0])

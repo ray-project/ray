@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data.block import BlockAccessor, BlockExecStats
+from ray.types import ObjectRef
 
 
 def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
@@ -19,9 +20,11 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
 
     def get_input_data() -> List[RefBundle]:
         ref_bundles: List[RefBundle] = []
-        for arr in op._ndarrays:
+        for arr_ref in op._ndarrays:
+            if not isinstance(arr_ref, ObjectRef):
+                arr_ref = ray.put(arr_ref)
             stats = BlockExecStats.builder()
-            block = BlockAccessor.batch_to_block(arr)
+            block = BlockAccessor.batch_to_block(arr_ref)
             block_metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=None, exec_stats=stats.build()
             )
