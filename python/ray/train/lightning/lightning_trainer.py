@@ -178,10 +178,8 @@ class LightningTrainer(TorchTrainer):
     using the arguments provided in ``trainer_init_config`` and then run
     ``pytorch_lightning.Trainer.fit``.
 
-    TODO(yunxuanx): make this example testable
-
     Example:
-        .. test-code:: python
+        .. testcode::
 
             import torch
             import torch.nn.functional as F
