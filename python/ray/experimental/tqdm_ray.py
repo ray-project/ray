@@ -2,8 +2,8 @@ import copy
 import json
 import logging
 import os
-import uuid
 import threading
+import uuid
 from typing import Any, Dict, Iterable, Optional
 
 import colorama
