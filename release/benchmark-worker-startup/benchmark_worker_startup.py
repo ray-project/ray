@@ -15,7 +15,8 @@ This release test measures Ray worker startup time. Specifically, it
 measures the time to start N different tasks or actors, where each task or
 actor imports a large library (currently PyTorch). N is configurable. The
 test runs under a few different configurations: {task, actor} x {runtime
-env, no runtime env} x {GPU, no GPU} x {cold start, warm start}.
+env, no runtime env} x {GPU, no GPU} x {cold start, warm start} x {import
+torch, no imports}.
 
 options:
   -h, --help            show this help message and exit
@@ -304,7 +305,8 @@ def parse_args():
         " actors, where each task or actor imports a large library ("
         "currently PyTorch). N is configurable.\nThe test runs under a "
         "few different configurations: {task, actor} x {runtime env, "
-        "no runtime env} x {GPU, no GPU} x {cold start, warm start}.",
+        "no runtime env} x {GPU, no GPU} x {cold start, warm start} x "
+        "{import torch, no imports}.",
         epilog="This script uses test_single_configuration.py to run the "
         "actual measurements.",
     )
