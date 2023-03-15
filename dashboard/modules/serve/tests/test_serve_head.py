@@ -118,3 +118,7 @@ def test_get_serve_instance_details(ray_start_stop):
                 exclude_unset=True
             )
     print("Finished checking application details.")
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
