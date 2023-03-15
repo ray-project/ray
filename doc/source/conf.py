@@ -62,7 +62,7 @@ remove_from_toctrees = [
     "data/api/doc/*",
     "ray-air/api/doc/*",
     "ray-core/api/doc/*",
-    "ray-observability/api/doc/*",
+    "ray-observability/api/state/doc/*",
     "serve/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
