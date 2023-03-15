@@ -229,7 +229,7 @@ class GBDTTrainer(BaseTrainer):
     def _repartition_datasets_to_match_num_actors(self):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
-        # This is only applicable for xgboost-ray<0.1.14. The version check
+        # This is only applicable for xgboost-ray<0.1.16. The version check
         # is done in subclasses to ensure that xgboost-ray doesn't need to be
         # imported here.
         for dataset_key, dataset in self.datasets.items():

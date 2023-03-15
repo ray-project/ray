@@ -108,6 +108,6 @@ class XGBoostTrainer(GBDTTrainer):
 
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
-        # This is only applicable for xgboost-ray<0.1.14
-        if Version(xgboost_ray.__version__) < Version("0.1.14"):
+        # This is only applicable for xgboost-ray<0.1.16
+        if Version(xgboost_ray.__version__) < Version("0.1.16"):
             self._repartition_datasets_to_match_num_actors()
