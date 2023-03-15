@@ -243,8 +243,6 @@ class _BarManager:
             if log_once("no_tqdm"):
                 logger.warning("tqdm is not installed. Progress bars will be disabled.")
             return
-        if self.in_hidden_state:
-            self.unhide_bars()
         if state["ip"] == self.ip:
             if state["pid"] == self.pid:
                 prefix = ""
