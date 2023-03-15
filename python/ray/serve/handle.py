@@ -1,11 +1,9 @@
+import os
 import asyncio
+import threading
 import concurrent.futures
 from dataclasses import dataclass
-from functools import wraps
-import inspect
-import os
-from typing import Coroutine, Dict, Optional, Union
-import threading
+from typing import Dict, Optional, Union, Tuple
 
 import ray
 from ray._private.utils import get_or_create_event_loop
@@ -38,20 +36,6 @@ _global_async_loop = None
 FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
     os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
 )
-
-
-def _wrap_into_async_task(async_func):
-    """Wrap an async function so it returns async task instead of coroutine
-
-    This makes the returned value awaitable more than once.
-    """
-    assert inspect.iscoroutinefunction(async_func)
-
-    @wraps(async_func)
-    def wrapper(*args, **kwargs):
-        return asyncio.ensure_future(async_func(*args, **kwargs))
-
-    return wrapper
 
 
 def _create_or_get_async_loop_in_thread():
@@ -212,18 +196,48 @@ class RayServeHandle:
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
-    def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+    def craft_and_assign_request(
+        self, deployment_name, handle_options, args, kwargs
+    ) -> Tuple[ray.ObjectRef, str]:
+        """Creates a request and assigns it to a replica.
+
+        Return:
+            Tuple containing
+                1. A Ray object reference pointing to the request's result
+                2. The replica tag of the replica that was assigned the request
+        """
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
             deployment_name,
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
         )
-        coro, _ = self.router.assign_request(request_metadata, *args, **kwargs)
-        return coro
+        result_ref, replica_tag = self.router.assign_request(
+            request_metadata, *args, **kwargs
+        )
+        return result_ref, replica_tag
 
-    @_wrap_into_async_task
-    async def remote(self, *args, **kwargs):
+    def _internal_remote(self, *args, **kwargs) -> Tuple[ray.ObjectRef, str]:
+        """Issue an asynchronous request to the deployment.
+
+        Returns a Ray ObjectRef whose results can be waited for infintely or
+        retrieved using ray.wait or ray.get (or ``await object_ref``),
+        respectively. Also returns the replica_tag of the replica processing
+        the request.
+        """
+
+        self.request_counter.inc()
+        result_coro, replica_tag = self.craft_and_assign_request(
+            self.deployment_name, self.handle_options, args, kwargs
+        )
+
+        # Convert result coroutine to a task, so it's infinitely awaitable,
+        # which allows double awaits in the graph API
+        result_task = asyncio.ensure_future(result_coro)
+
+        return result_task, replica_tag
+
+    def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the deployment.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
@@ -232,16 +246,12 @@ class RayServeHandle:
         Returns:
             ray.ObjectRef
         Args:
-            request_data(dict, Any): If it's a dictionary, the data will be
-                available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.body()``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
-        self.request_counter.inc()
-        return await self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
-        )
+
+        result_task, _ = self._internal_remote(*args, **kwargs)
+        return result_task
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -292,16 +302,13 @@ class RayServeSyncHandle(RayServeHandle):
         Returns:
             ray.ObjectRef
         Args:
-            request_data(dict, Any): If it's a dictionary, the data will be
-                available in ``request.json()`` or ``request.form()``.
-                If it's a Starlette Request object, it will be passed in to the
-                handler directly, unmodified. Otherwise, the data will be
-                available in ``request.data``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
+        coro = self.craft_and_assign_request(
+            self.deployment_name, self.handle_options, args, kwargs
+        )
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._event_loop
         )

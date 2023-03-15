@@ -308,8 +308,8 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ):
-        """Assign a query and returns an object ref represent the result"""
+    ) -> ray.ObjectRef:
+        """Assigns a query and returns an object ref representing the result."""
 
         self.num_router_requests.inc()
         return await self._replica_set.assign_replica(
