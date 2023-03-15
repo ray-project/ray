@@ -1,0 +1,70 @@
+// =========== Primitives for downscaling ====================
+
+enum NodeState {
+  BOOTSTRAPPING = 1;
+  ACTIVE = 2; // Maybe 2 states (one for idle)
+  CRASHED = 3;
+  DRAINING = 4;
+  DRAINED = 5;
+}
+
+message ReportAutoscalerNodeState {
+  bytes node_id = 1;
+  bytes node_ip = 2;
+
+  /*
+  // Option 1:
+  NodeState state = 3;
+  */
+
+  // Option 2:
+  bool success = 3;
+  string reason = 4;
+}
+
+message InfeasibleRequestData {
+  ResourceRequest infeasible_request = 1;
+
+  // Optionally
+  uint64_t timestamp_ns = 2;
+  string reason = 3;
+}
+
+
+
+
+
+
+
+
+// ============= Primitives for upscaling scheduling ====================
+
+message AntiAffinity {
+  string label = 1;
+}
+
+message ResourceBundle {
+  map<string, double> resources = 1;
+  repeated AntiAffinity anti_affinities = 2;
+}
+
+
+message ResourceRequest {
+  repeated ResourceBundle bundles = 1;
+}
+
+message ClusterSizeConstraint {
+  repeated bytes request_ids = 1;
+  repeated ResourceBundle bundles = 2;
+}
+
+message NodeStatus {
+  // The address of the node.
+  string address = 1;
+
+  // The available resources on the node.
+  map<string, double> available_resources = 2;
+
+  // The corresponding total resources on the node.
+  map<string, double> total_resources = 3;
+}
