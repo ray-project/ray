@@ -514,7 +514,7 @@ def status(address: str, name: Optional[str]):
 
     if name is None:
         if len(serve_details.applications) == 0:
-            print("There are no applications running this cluster.")
+            print("There are no applications running on this cluster.")
 
         print(
             "\n---\n\n".join(

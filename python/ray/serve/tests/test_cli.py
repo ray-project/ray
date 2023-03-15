@@ -594,7 +594,7 @@ def test_shutdown(ray_start_stop):
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
-        assert "There are no applications running this cluster." != status
+        assert "There are no applications running on this cluster." != status
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
@@ -609,7 +609,7 @@ def test_shutdown(ray_start_stop):
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
             status = yaml.safe_load(status_response)
-            return "There are no applications running this cluster." == status
+            return "There are no applications running on this cluster." == status
 
         wait_for_condition(serve_config_empty)
         wait_for_condition(serve_status_empty)
@@ -987,7 +987,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     status_response = subprocess.check_output(["serve", "status"])
     status_info = yaml.safe_load(status_response)
 
-    assert status_info == "There are no applications running this cluster."
+    assert status_info == "There are no applications running on this cluster."
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
