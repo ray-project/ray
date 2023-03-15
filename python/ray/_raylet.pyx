@@ -1499,7 +1499,7 @@ cdef class EmptyProfileEvent:
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
     cdef:
-        unique_ptr[CGcsClient] inner
+        shared_ptr[CGcsClient] inner
     
     def __cinit__(self, GcsClientOptions gcs_options):
         self.inner.reset(new CGcsClient(dereference(gcs_options.native())))
