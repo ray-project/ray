@@ -608,7 +608,7 @@
 
   run:
     timeout: 3600
-    script: python ../../util/test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
 
 #####################################
