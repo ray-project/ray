@@ -568,6 +568,8 @@ class TaskState(StateSchema):
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
     task_log_info: Optional[TaskLogInfo] = state_column(detail=True, filterable=False)
+    #: Task error type.
+    error_type: Optional[str] = state_column(detail=False, filterable=False)
 
 
 @dataclass(init=True)
