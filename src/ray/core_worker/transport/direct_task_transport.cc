@@ -48,9 +48,10 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
               if (status.IsCreationTaskError()) {
-                RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
-                                 "creation task, actor id = "
-                              << actor_id << ", task id = " << task_id;
+                RAY_LOG(WARNING)
+                    << "Actor creation failed and we will not be retrying the "
+                       "creation task, actor id = "
+                    << actor_id << ", task id = " << task_id;
               } else {
                 RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
               }
@@ -65,15 +66,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               // Either fails the rpc call or actor scheduling cancelled.
               rpc::RayErrorInfo ray_error_info;
               if (status.IsSchedulingCancelled()) {
-                RAY_LOG(INFO) << "Actor creation cancelled, actor id = " << actor_id;
+                RAY_LOG(WARNING) << "Actor creation cancelled, actor id = " << actor_id;
                 task_finisher_->MarkTaskCanceled(task_id);
                 if (reply.has_death_cause()) {
                   ray_error_info.mutable_actor_died_error()->CopyFrom(
                       reply.death_cause());
                 }
               } else {
-                RAY_LOG(INFO) << "Failed to create actor " << actor_id
-                              << " with status: " << status.ToString();
+                RAY_LOG(WARNING) << "Failed to create actor " << actor_id
+                                 << " with status: " << status.ToString();
               }
               RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                   task_id,

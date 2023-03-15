@@ -285,23 +285,18 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
       [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
                                              const rpc::PushTaskReply &task_reply,
                                              const Status &creation_task_status) {
-        // TODO(rickyx): We should really propagate the task execution status in
         if (creation_task_status.IsSchedulingCancelled()) {
           // Actor creation is cancelled.
-          RAY_LOG(INFO) << "Actor creation was cancelled, job id = " << actor_id.JobId()
-                        << ", actor id = " << actor_id;
           reply->mutable_death_cause()->CopyFrom(
               actor->GetActorTableData().death_cause());
+        } else {
+          reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
+          reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
         }
 
-        reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
-        reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
         RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id
                       << ", status = " << creation_task_status;
-        // NOTE: we are still returning Status::OK even if creation task failed because
-        // we need to forward the borrowed_refs of the tasks for reference counting as if
-        // the creation task succeeded.
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, creation_task_status);
       });
   if (!status.ok()) {
