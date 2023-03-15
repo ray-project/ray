@@ -130,11 +130,11 @@ def vtrace_torch(
 
     rhos = torch.exp(log_rhos)
     if clip_rho_threshold is not None:
-        clipped_rhos = torch.minimum(clip_rho_threshold, rhos)
+        clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
     else:
         clipped_rhos = rhos
 
-    cs = torch.clamp(rhos, 1.0)
+    cs = torch.clamp(rhos, max=1.0)
     # Append bootstrapped value to get [v1, ..., v_t+1]
     values_t_plus_1 = torch.cat(
         [values[1:], torch.unsqueeze(bootstrap_value, 0)], axis=0
@@ -157,7 +157,7 @@ def vtrace_torch(
     # Advantage for policy gradient.
     vs_t_plus_1 = torch.cat([vs[1:], torch.unsqueeze(bootstrap_value, 0)], axis=0)
     if clip_pg_rho_threshold is not None:
-        clipped_pg_rhos = torch.minimum(clip_pg_rho_threshold, rhos)
+        clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
     else:
         clipped_pg_rhos = rhos
     pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
