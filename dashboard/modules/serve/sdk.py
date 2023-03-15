@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from ray._private.utils import split_address
 
 try:
@@ -85,17 +85,17 @@ class ServeSubmissionClient(SubmissionClient):
         else:
             self._raise_error(response)
 
-    def get_serve_details(self) -> ServeInstanceDetails:
-        response = self._do_request("GET", "/api/serve/applications/")
-        if response.status_code == 200:
-            return ServeInstanceDetails(**response.json())
-        else:
-            self._raise_error(response)
-
     def get_status(self) -> Dict:
         response = self._do_request("GET", STATUS_PATH)
         if response.status_code == 200:
             return response.json()
+        else:
+            self._raise_error(response)
+
+    def get_serve_details(self) -> ServeInstanceDetails:
+        response = self._do_request("GET", "/api/serve/applications/")
+        if response.status_code == 200:
+            return ServeInstanceDetails(**response.json())
         else:
             self._raise_error(response)
 
