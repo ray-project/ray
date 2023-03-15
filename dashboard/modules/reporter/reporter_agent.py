@@ -394,6 +394,21 @@ class ReporterAgent(
             if type(e).__name__ == "NVMLError_DriverNotLoaded":
                 enable_gpu_usage_check = False
 
+        """
+        {'index': 0,
+        'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+        'name': 'NVIDIA A10G',
+        'temperature_gpu': 20,
+        'fan_speed': 0,
+        'utilization_gpu': 1,
+        'utilization_enc': 0,
+        'utilization_dec': 0,
+        'power_draw': 51,
+        'enforced_power_limit': 300,
+        'memory_used': 0,
+        'memory_total': 22731,
+        'processes': []}
+        """
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
