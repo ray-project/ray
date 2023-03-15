@@ -1,13 +1,21 @@
 import copy
 import json
+import logging
 import os
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
 import colorama
-import tqdm as real_tqdm
 
 import ray
+from ray.util.debug import log_once
+
+try:
+    import tqdm as real_tqdm
+except ImportError:
+    real_tqdm = None
+
+logger = logging.getLogger(__name__)
 
 # Describes the state of a single progress bar.
 ProgressBarState = Dict[str, Any]
@@ -34,24 +42,22 @@ class tqdm:
         iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
-        position: Optional[int] = 0,
-        # Visible for testing.
-        _ray_ip: Optional[str] = None,
-        _ray_pid: Optional[int] = None,
+        position: Optional[int] = None,
     ):
         import ray._private.services as services
 
-        if iterable is not None:
-            raise NotImplementedError("TODO implement iterable support")
-        if position is None:
-            raise NotImplementedError("tqdm_ray requires position to be specified")
+        if total is None and iterable is not None:
+            try:
+                total = len(iterable)
+            except (TypeError, AttributeError):
+                total = None
+
         self._iterable = iterable
-        self._desc = desc
+        self._desc = desc or ""
         self._total = total
-        self._position = position
-        self._ip = _ray_ip or services.get_node_ip_address()
-        self._pid = _ray_pid or os.getpid()
-        self._pos = position
+        self._ip = services.get_node_ip_address()
+        self._pid = os.getpid()
+        self._pos = position or 0
         self._uuid = uuid.uuid4().hex
         self._x = 0
         self._closed = False
@@ -91,6 +97,13 @@ class tqdm:
             "uuid": self._uuid,
             "closed": self._closed,
         }
+
+    def __iter__(self):
+        if self._iterable is None:
+            raise ValueError("No iterable provided")
+        for x in iter(self._iterable):
+            self.update(1)
+            yield x
 
 
 class _Bar:
@@ -220,6 +233,10 @@ class _BarManager:
         created or destroyed, we also recalculate and update the `pos_offset` of each
         BarGroup on the screen.
         """
+        if not real_tqdm:
+            if log_once("no_tqdm"):
+                logger.warning("tqdm is not installed. Progress bars will be disabled.")
+            return
         if self.in_hidden_state:
             self.unhide_bars()
         if state["ip"] == self.ip:
