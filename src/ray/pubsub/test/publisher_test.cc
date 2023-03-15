@@ -49,7 +49,7 @@ class PublisherTest : public ::testing::Test {
     request_.set_subscriber_id(subscriber_id_.Binary());
   }
 
-  void TearDown() { subscribers_map_.clear(); }
+  void TearDown() {}
 
   const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id) {
     rpc::PubMessage pub_message;
@@ -97,6 +97,8 @@ class PublisherTest : public ::testing::Test {
   }
 
   instrumented_io_context io_service_;
+  rpc::PubsubLongPollingReply reply;
+  rpc::SendReplyCallback send_reply_callback;
   std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> publisher_;
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
@@ -312,18 +314,17 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
 
 TEST_F(PublisherTest, TestSubscriber) {
   absl::flat_hash_set<ObjectID> object_ids_published;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &object_ids_published](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          object_ids_published.emplace(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &object_ids_published](Status status,
+                                                      std::function<void()> success,
+                                                      std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      object_ids_published.emplace(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
@@ -367,18 +368,17 @@ TEST_F(PublisherTest, TestSubscriber) {
 
 TEST_F(PublisherTest, TestSubscriberBatchSize) {
   absl::flat_hash_set<ObjectID> object_ids_published;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &object_ids_published](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          object_ids_published.emplace(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &object_ids_published](Status status,
+                                                      std::function<void()> success,
+                                                      std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      object_ids_published.emplace(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   auto max_publish_size = 5;
   auto subscriber = std::make_shared<SubscriberState>(
@@ -421,11 +421,9 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ///
 
   auto reply_cnt = 0;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status,
-                   std::function<void()> success,
-                   std::function<void()> failure) { reply_cnt++; };
+  send_reply_callback = [&reply_cnt](Status status,
+                                     std::function<void()> success,
+                                     std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
@@ -482,11 +480,9 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   ///
 
   auto reply_cnt = 0;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status,
-                   std::function<void()> success,
-                   std::function<void()> failure) { reply_cnt++; };
+  send_reply_callback = [&reply_cnt](Status status,
+                                     std::function<void()> success,
+                                     std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
@@ -542,11 +538,9 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
   ///
 
   auto reply_cnt = 0;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status,
-                   std::function<void()> success,
-                   std::function<void()> failure) { reply_cnt++; };
+  send_reply_callback = [&reply_cnt](Status status,
+                                     std::function<void()> success,
+                                     std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
@@ -585,18 +579,17 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
 
 TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   const auto oid = ObjectID::FromRandom();
 
@@ -609,18 +602,17 @@ TEST_F(PublisherTest, TestBasicSingleSubscriber) {
 
 TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   const auto oid = ObjectID::FromRandom();
 
@@ -636,18 +628,17 @@ TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
 
 TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   std::vector<ObjectID> oids;
   int num_oids = 5;
@@ -671,18 +662,17 @@ TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
 
 TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   std::vector<NodeID> subscribers;
   std::vector<ObjectID> oids;
@@ -712,10 +702,9 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
 
 TEST_F(PublisherTest, TestMultiSubscribers) {
   absl::flat_hash_set<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
   int reply_invoked = 0;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids, &reply_invoked](
+  send_reply_callback =
+      [this, &batched_ids, &reply_invoked](
           Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
@@ -753,18 +742,17 @@ TEST_F(PublisherTest, TestMultiSubscribers) {
 TEST_F(PublisherTest, TestBatch) {
   // Test if published objects are batched properly.
   std::vector<ObjectID> batched_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &batched_ids](Status status,
+                                             std::function<void()> success,
+                                             std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid =
+          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+      batched_ids.push_back(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   std::vector<ObjectID> oids;
   int num_oids = 5;
@@ -805,8 +793,7 @@ TEST_F(PublisherTest, TestBatch) {
 
 TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -847,8 +834,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
 
 TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -893,8 +879,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
 // Unregistration an entry.
 TEST_F(PublisherTest, TestUnregisterSubscription) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -934,8 +919,7 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
 // Unregistration a subscriber.
 TEST_F(PublisherTest, TestUnregisterSubscriber) {
   bool long_polling_connection_replied = false;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
+  send_reply_callback =
       [&long_polling_connection_replied](
           Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
@@ -998,20 +982,19 @@ TEST_F(PublisherTest, TestPublishFailure) {
   /// Test the publish failure API.
   ///
   std::vector<ObjectID> failed_ids;
-  rpc::PubsubLongPollingReply reply;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &failed_ids](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          RAY_LOG(ERROR) << "ha";
-          if (msg.has_failure_message()) {
-            const auto oid = ObjectID::FromBinary(msg.key_id());
-            failed_ids.push_back(oid);
-          }
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
+  send_reply_callback = [this, &failed_ids](Status status,
+                                            std::function<void()> success,
+                                            std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      RAY_LOG(ERROR) << "ha";
+      if (msg.has_failure_message()) {
+        const auto oid = ObjectID::FromBinary(msg.key_id());
+        failed_ids.push_back(oid);
+      }
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
   const auto oid = ObjectID::FromRandom();
 
