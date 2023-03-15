@@ -56,7 +56,10 @@ def main(
 
     def with_tasks():
         ray.get(
-            [task_with_resources.remote(should_import_torch) for _ in range(num_tasks_or_actors_per_run)]
+            [
+                task_with_resources.remote(should_import_torch)
+                for _ in range(num_tasks_or_actors_per_run)
+            ]
         )
 
     func_to_measure = with_actors if use_actors else with_tasks

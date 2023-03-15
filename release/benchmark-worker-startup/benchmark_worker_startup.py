@@ -176,7 +176,9 @@ def generate_test_matrix(
                 for import_to_try in imports_to_try:
                     for num_jobs in num_jobs_per_type.values():
 
-                        num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
+                        num_tasks_or_actors_per_job = (
+                            total_num_tasks_or_actors // num_jobs
+                        )
                         num_runs_per_job = (
                             num_tasks_or_actors_per_job // num_tasks_or_actors_per_run
                         )
@@ -221,7 +223,9 @@ class TestConfiguration:
         single_node_or_multi_node = (
             "single_node" if self.num_nodes_in_cluster == 1 else "multi_node"
         )
-        import_torch_or_none = "import_torch" if self.import_to_try == "torch" else "no_import"
+        import_torch_or_none = (
+            "import_torch" if self.import_to_try == "torch" else "no_import"
+        )
 
         return "-".join(
             [
