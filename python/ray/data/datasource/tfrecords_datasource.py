@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class TFRecordDatasource(FileBasedDatasource):
-
     _FILE_EXTENSION = "tfrecords"
 
     def _read_stream(
@@ -58,7 +57,6 @@ class TFRecordDatasource(FileBasedDatasource):
         tf_schema: Optional["schema_pb2.Schema"] = None,
         **writer_args,
     ) -> None:
-
         _check_import(self, module="crc32c", package="crc32c")
 
         arrow_table = block.to_arrow()
@@ -111,7 +109,6 @@ def _convert_arrow_table_to_examples(
 
     # Serialize each row[i] of the block to a tf.train.Example and yield it.
     for i in range(arrow_table.num_rows):
-
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
