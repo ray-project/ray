@@ -136,7 +136,7 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
 
 
 def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
-    ds = make_ds(dataset_size_gb, parallelism=200)
+    ds = make_ds(dataset_size_gb)
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
