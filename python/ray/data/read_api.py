@@ -1,5 +1,14 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, Callable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -1156,10 +1165,10 @@ def read_webdataset(
     fileselect: Optional[Union[list, callable]] = None,
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
-    verbose_open: bool=False,
+    verbose_open: bool = False,
 ) -> Dataset[PandasRow]:
     """Create a dataset from WebDataset files.
-    
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.

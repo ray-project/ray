@@ -160,6 +160,7 @@ TensorflowFeatureTypeSpec = Union[
 
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
+
 @PublicAPI
 class Dataset(Generic[T]):
     """A Dataset is a distributed data collection for data loading and processing.
@@ -2681,9 +2682,9 @@ class Dataset(Generic[T]):
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
 
         """
-        
+
         from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
-    
+
         self.write_datasource(
             WebDatasetDatasource(),
             ray_remote_args=ray_remote_args,

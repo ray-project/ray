@@ -1,13 +1,12 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Any, Callable, Dict, Optional, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Union, List, TYPE_CHECKING
 import tarfile
 import io
 import time
 import re
 import uuid
-import os
 import fnmatch
 from functools import partial
 
@@ -26,7 +25,7 @@ def base_plus_ext(path):
     Returns base, allext.
 
     Args:
-        path (str): path with extensions
+        path: path with extensions
 
     Returns:
         str: path with all extensions removed
@@ -41,7 +40,7 @@ def valid_sample(sample):
     """Check whether a sample is valid.
 
     Args:
-        sample (dict): sample to be checked
+        sample: sample to be checked
     """
     return (
         sample is not None
@@ -51,16 +50,19 @@ def valid_sample(sample):
     )
 
 
-def apply_list(f, sample, default=None):
+def apply_list(
+    f: Union[Callable, List[Callable]], sample: Dict[str, Any], default: Callable = None
+):
     """Apply a list of functions to a sample.
 
     Args:
-        f (Union[Callable,List[Callable]]): function or list of functions
-        sample (Dict[str,Any]): sample to be modified
-        default (Callable, optional): default function to be applied to all keys. Defaults to None.
+        f: function or list of functions
+        sample: sample to be modified
+        default: default function to be applied to all keys.
+            Defaults to None.
 
     Returns:
-        _type_: _description_
+        modified sample
     """
     if f is None:
         return sample
@@ -73,7 +75,7 @@ def apply_list(f, sample, default=None):
     return sample
 
 
-def check_suffix(suffix, suffixes):
+def check_suffix(suffix: str, suffixes: Union[list, callable]):
     """Check whether a suffix is valid.
 
     Suffixes can be either None (=accept everything), a callable,
@@ -81,8 +83,8 @@ def check_suffix(suffix, suffixes):
     as a glob pattern, otherwise it is treated as a literal.
 
     Args:
-        suffix (str): suffix to be checked
-        suffixes (list): list of valid suffixes
+        suffix: suffix to be checked
+        suffixes: list of valid suffixes
     """
     if suffixes is None:
         return True
@@ -98,19 +100,21 @@ def check_suffix(suffix, suffixes):
 
 
 def tar_file_iterator(
-    fileobj,
+    fileobj: Any,
     fileselect: Optional[Union[bool, callable, list]] = None,
     filerename: Optional[Union[bool, callable, list]] = None,
     verbose_open: bool = False,
-    meta: dict = {},
+    meta: dict = None,
 ):
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
 
     Args:
-        fileobj (file): file object
-        fileselect (Optional[list,callable])): patterns or function selecting files to be selected
-        meta (dict): metadata to be added to each sample
+        fileobj: file object
+        fileselect: patterns or function selecting
+            files to be selected
+        meta: metadata to be added to each sample
     """
+    meta = meta or {}
     stream = tarfile.open(fileobj=fileobj, mode="r|*")
     if verbose_open:
         print(f"start {meta}")
@@ -129,15 +133,21 @@ def tar_file_iterator(
         print(f"done {meta}")
 
 
-def group_by_keys(data, keys=base_plus_ext, suffixes=None, meta={}):
+def group_by_keys(
+    data,
+    keys: callable = base_plus_ext,
+    suffixes: Optional[Union[list, callable]] = None,
+    meta: dict = None,
+):
     """Return function over iterator that groups key, value pairs into samples.
 
     Args:
-        data (iterator): iterator over key, value pairs
-        keys (function): function that returns key, suffix for a given key
-        suffixes (list): list of suffixes to be included in the sample
-        meta (dict): metadata to be added to each sample
+        data: iterator over key, value pairs
+        keys: function that returns key, suffix for a given key
+        suffixes: list of suffixes to be included in the sample
+        meta: metadata to be added to each sample
     """
+    meta = meta or {}
     current_sample = None
     for filesample in data:
         assert isinstance(filesample, dict)
@@ -154,7 +164,8 @@ def group_by_keys(data, keys=base_plus_ext, suffixes=None, meta={}):
                 current_sample["__url__"] = filesample["__url__"]
         if suffix in current_sample:
             raise ValueError(
-                f"{fname}: duplicate file name in tar file {suffix} {current_sample.keys()}"
+                f"{fname}: duplicate file name in tar file "
+                + f"{suffix} {current_sample.keys()}"
             )
         if suffixes is None or check_suffix(suffix, suffixes):
             current_sample[suffix] = value
@@ -163,30 +174,16 @@ def group_by_keys(data, keys=base_plus_ext, suffixes=None, meta={}):
         yield current_sample
 
 
-def table_to_list(table):
-    """Convert a pyarrow table to a list of dictionaries.
-
-    Args:
-        table (pyarrow table): pyarrow table
-    """
-    result = []
-    for i in range(table.num_rows):
-        row = {}
-        for name in table.column_names:
-            row[name] = table[name][i].as_py()
-        result.append(row)
-    return result
-
-
 def default_decoder(sample: Dict[str, Any], format=True):
     """A default decoder for webdataset.
 
-    This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl.
+    This handles common file extensions: .txt, .cls, .cls2,
+        .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl.
     These are the most common extensions used in webdataset.
     For other extensions, users can provide their own decoder.
 
     Args:
-        sample (Dict[str, Any]): sample, modified in place
+        sample: sample, modified in place
     """
     sample = dict(sample)
     for key, value in sample.items():
@@ -234,7 +231,8 @@ extension_to_format = {"jpg": "jpeg"}
 def default_encoder(sample: Dict[str, Any], format=True):
     """A default encoder for webdataset.
 
-    This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl
+    This handles common file extensions: .txt, .cls, .cls2, .jpg,
+        .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl
     These are the most common extensions used in webdataset.
     For other extensions, users can provide their own encoder.
 
@@ -297,7 +295,7 @@ def make_iterable(block):
     This is a placeholder for dealing with more complex blocks.
 
     Args:
-        block (BlockAccessor): Ray Dataset block
+        block: Ray Dataset block
 
     Returns:
         Iterable[Dict[str,Any]]: Iterable of samples
@@ -324,22 +322,21 @@ class WebDatasetDatasource(FileBasedDatasource):
     ):
         """Read and decode samples from a stream.
 
-        Note that fileselect selects files during reading, while suffixes selects files during the grouping step.
+        Note that fileselect selects files during reading, while suffixes
+        selects files during the grouping step.
 
         Args:
-            stream (pyarrow.NativeFile): File descriptor to read from.
-            path (str): _description_
-            decoder (Union[bool, callable, List[Union[callable, bool]], optional): decoder or list of decoders to be applied to samples
-            fileselect (Union[list, callable], optional): Predicate for skipping files in tar decoder. Defaults to lambda_:False.
-            suffixes (Union[list, callable], optional): List of suffixes to be extracted. Defaults to None.
-            verbose_open (bool, optional): Print message when opening files. Defaults to False.
+            stream: File descriptor to read from.
+            path: Path to the dataset.
+            decoder: decoder or list of decoders to be applied to samples
+            fileselect: Predicate for skipping files in tar decoder.
+                Defaults to lambda_:False.
+            suffixes: List of suffixes to be extracted. Defaults to None.
+            verbose_open: Print message when opening files. Defaults to False.
 
         Yields:
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
-        import pyarrow as pa
-        import pandas as pd
-        from ray.data.extensions import ArrowTensorArray
 
         files = tar_file_iterator(
             stream,
@@ -364,10 +361,10 @@ class WebDatasetDatasource(FileBasedDatasource):
         """Encode and write samples to a stream.
 
         Args:
-            f (pyarrow.NativeFile): File descriptor to write to.
-            block (BlockAccessor): Data to be written.
-            writer_args_fn (Callable, optional): Ignored. Defaults to lambda:{}.
-            encoder (Union[bool, Callable, List[bool, Callable]], optional): (List of) encoder(s) to be applied to samples. Defaults to True.
+            f: File descriptor to write to.
+            block: Data to be written.
+            writer_args_fn: Ignored. Defaults to lambda:{}.
+            encoder: (List of) encoder(s) to be applied to samples. Defaults to True.
         """
 
         stream = tarfile.open(fileobj=f, mode="w|")
@@ -377,7 +374,7 @@ class WebDatasetDatasource(FileBasedDatasource):
                 sample = sample.as_pydict()
             if encoder is not None:
                 sample = apply_list(encoder, sample, default=default_encoder)
-            if not "__key__" in sample:
+            if "__key__" not in sample:
                 sample["__key__"] = uuid.uuid4().hex
             key = sample["__key__"]
             for k, v in sample.items():
