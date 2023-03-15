@@ -22,16 +22,15 @@ class FromPandasRefs(LogicalOperator):
         self._dfs = dfs
 
 
-class FromMARS(FromPandasRefs):
+class FromMARS(LogicalOperator):
     """Logical operator for `from_mars`."""
 
     def __init__(
         self,
         df: "mars.DataFrame",
     ):
-        from mars.dataframe.contrib.raydataset import get_chunk_refs
-
-        super().__init__(get_chunk_refs(df), "FromMARS")
+        self._df = df
+        super().__init__("FromMARS", [])
 
 
 class FromDask(LogicalOperator):
@@ -45,14 +44,11 @@ class FromDask(LogicalOperator):
         super().__init__("FromDask", [])
 
 
-class FromModin(FromPandasRefs):
+class FromModin(LogicalOperator):
     """Logical operator for `from_modin`."""
 
     def __init__(
         self,
         df: "modin.DataFrame",
     ):
-        from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
-
-        parts = unwrap_partitions(df, axis=0)
-        super().__init__(parts, "FromModin")
+        super().__init__("FromModin", [])

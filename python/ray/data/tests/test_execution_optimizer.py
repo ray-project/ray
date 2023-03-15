@@ -12,8 +12,8 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
     FromHuggingFace,
+    FromSpark,
 )
-from ray.data._internal.logical.operators.from_spark_operator import FromSpark
 from ray.data._internal.logical.operators.from_items_operator import (
     FromItems,
     FromTF,

@@ -9,42 +9,64 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromPandasRefs,
     FromDask,
+    FromMARS,
+    FromModin,
 )
 from ray.data.block import BlockAccessor, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
 
-def _plan_from_pandas_refs_op(op: Union[FromPandasRefs, FromDask]) -> PhysicalOperator:
+def _plan_from_pandas_refs_op(
+    op: Union[FromPandasRefs, FromDask, FromMARS, FromModin]
+) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for FromPandasRefs.
 
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
 
+    def _init_data_from_dask(op: FromDask):
+        import dask
+        from ray.util.dask import ray_dask_get
+        import pandas
+
+        partitions = op._df.to_delayed()
+        persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
+
+        def to_ref(df):
+            if isinstance(df, pandas.DataFrame):
+                return ray.put(df)
+            elif isinstance(df, ray.ObjectRef):
+                return df
+            else:
+                raise ValueError(
+                    "Expected a Ray object ref or a Pandas DataFrame, "
+                    f"got {type(df)}"
+                )
+
+        op._dfs = [
+            to_ref(next(iter(part.dask.values()))) for part in persisted_partitions
+        ]
+
+    def _init_data_from_mars(op: FromMARS):
+        from mars.dataframe.contrib.raydataset import get_chunk_refs
+
+        op._dfs = get_chunk_refs(op._df)
+
+    def _init_data_from_modin(op: FromModin):
+        from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
+
+        op._dfs = unwrap_partitions(op._df, axis=0)
+
     def get_input_data() -> List[RefBundle]:
         if isinstance(op, FromDask):
-            import dask
-            from ray.util.dask import ray_dask_get
-            import pandas
+            _init_data_from_dask(op)
+        elif isinstance(op, FromMARS):
+            _init_data_from_mars(op)
+        elif isinstance(op, FromModin):
+            _init_data_from_modin(op)
 
-            partitions = op._df.to_delayed()
-            persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
-
-            def to_ref(df):
-                if isinstance(df, pandas.DataFrame):
-                    return ray.put(df)
-                elif isinstance(df, ray.ObjectRef):
-                    return df
-                else:
-                    raise ValueError(
-                        "Expected a Ray object ref or a Pandas DataFrame, "
-                        f"got {type(df)}"
-                    )
-
-            op._dfs = [
-                to_ref(next(iter(part.dask.values()))) for part in persisted_partitions
-            ]
         ref_bundles: List[RefBundle] = []
 
         context = DatasetContext.get_current()

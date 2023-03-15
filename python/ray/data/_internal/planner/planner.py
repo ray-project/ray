@@ -18,6 +18,7 @@ from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRe
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromPandasRefs,
     FromDask,
+    FromMARS,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
@@ -68,7 +69,7 @@ class Planner:
         elif isinstance(logical_op, FromNumpyRefs):
             assert not physical_children
             physical_op = _plan_from_numpy_refs_op(logical_op)
-        elif isinstance(logical_op, (FromArrowRefs, FromSpark)):
+        elif isinstance(logical_op, (FromArrowRefs, FromSpark, FromMARS)):
             assert not physical_children
             physical_op = _plan_from_arrow_refs_op(logical_op)
         elif isinstance(logical_op, AbstractUDFMap):
