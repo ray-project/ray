@@ -389,7 +389,9 @@ class Monitor:
                     )
                 elif self.autoscaler:
                     # Process autoscaling actions
+                    update_start_time = time.time()
                     self.autoscaler.update()
+                    status["autoscaler_update_time"] = time.time() - update_start_time
                     self.autoscaler.decorate_load_metrics_summary(load_metrics_summary)
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
@@ -435,8 +437,9 @@ class Monitor:
 
                     self.event_summarizer.clear()
 
-                status["load_metrics_summary"] = asdict(load_metrics_summary)
+                status["load_metrics_report"] = asdict(load_metrics_summary)
                 as_json = json.dumps(status)
+                print("Dumping ", as_json)
                 if _internal_kv_initialized():
                     _internal_kv_put(
                         ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True

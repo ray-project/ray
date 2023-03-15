@@ -728,6 +728,7 @@ def format_info_string(
     time=None,
     gcs_request_time: Optional[float] = None,
     non_terminated_nodes_time: Optional[float] = None,
+    autoscaler_update_time: Optional[float] = None,
     verbose: bool = False,
 ):
     if time is None:
@@ -742,6 +743,11 @@ def format_info_string(
             header += (
                 "Node Provider non_terminated_nodes time: "
                 f"{non_terminated_nodes_time:3f}s\n"
+            )
+        if autoscaler_update_time:
+            header += (
+                "Autoscaler iteration time is: "
+                f"{autoscaler_update_time:3f}s\n"
             )
 
     available_node_report_lines = []

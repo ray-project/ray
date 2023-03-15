@@ -1479,7 +1479,7 @@ class StandardAutoscaler:
             pending_resources=pending_resources,
         )
 
-    def decorate_load_metrics_sumamry(self, lm_summary: LoadMetricsSummary) -> None:
+    def decorate_load_metrics_summary(self, lm_summary: LoadMetricsSummary) -> None:
         """In place update fields like `node_type_mapping` with optional
         information from the node provider.
 
