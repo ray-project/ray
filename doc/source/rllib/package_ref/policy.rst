@@ -1,13 +1,13 @@
 .. _policy-reference-docs:
 
 Policy API
-========
+==========
 
 The :py:class:`~ray.rllib.policy.policy.Policy` class contains functionality to compute
 actions for decision making in an environment, as well as computing loss(es) and gradients,
 updating a neural network model as well as postprocessing a collected environment trajectory.
 One or more :py:class:`~ray.rllib.policy.policy.Policy` objects sit inside a
-:py:class:`~ray.rllib.evaluation.RolloutWorker`'s :py:class:`~ray.rllib.policy.policy_map.PolicyMap` and
+:py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`'s :py:class:`~ray.rllib.policy.policy_map.PolicyMap` and
 are - if more than one - are selected based on a multi-agent ``policy_mapping_fn``,
 which maps agent IDs to a policy ID.
 
@@ -21,11 +21,8 @@ which maps agent IDs to a policy ID.
     by sub-classing either of the available, built-in classes, depending on your
     needs.
 
-
-..   policy/policy.rst
-   policy/tf_policy.rst
-   policy/torch_policy.rst
-   policy/custom_policy.rst
+.. include::
+    policy/custom_policies.rst
 
 .. currentmodule:: ray.rllib
 
@@ -37,8 +34,40 @@ Base Policy classes
    :template: autosummary/class_with_autosummary.rst
 
     ~policy.policy.Policy
+
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2
+
     ~policy.torch_policy_v2.TorchPolicyV2
+
+
+.. --------------------------------------------
+
+Making models
+--------------------
+
+Base Policy
+~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+    :toctree: doc/
+
+    ~policy.Policy.make_rl_module
+
+
+Torch Policy
+~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+    :toctree: doc/
+
+    ~policy.torch_policy_v2.TorchPolicyV2.make_model
+    ~policy.torch_policy_v2.TorchPolicyV2.make_model_and_action_dist
+
+
+Tensorflow Policy
+~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+    :toctree: doc/
+
+    ~policy.eager_tf_policy_v2.EagerTFPolicyV2.make_model
 
 .. --------------------------------------------
 
@@ -61,8 +90,9 @@ Torch Policy
     
     ~policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn
     ~policy.torch_policy_v2.TorchPolicyV2.action_distribution_fn
+    ~policy.torch_policy_v2.TorchPolicyV2.extra_action_out
 
-Tf Policy
+Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
@@ -73,29 +103,32 @@ Tf Policy
 
 .. --------------------------------------------
 
-Computing and applying gradients
---------------------
+Computing, processing, and applying gradients
+---------------------------------------------   
 
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
 
-    ~Policy.compute_gradients
-    ~Policy.apply_gradients
+    ~policy.Policy.compute_gradients
+    ~policy.Policy.apply_gradients
 
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
 
+    ~policy.torch_policy_v2.TorchPolicyV2.extra_compute_grad_fetches
+    ~policy.torch_policy_v2.TorchPolicyV2.extra_grad_process
 
-Tf Policy
+
+Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
 
-    ~policy.torch_policy_v2.TorchPolicyV2.grad_stats_fn
+    ~policy.eager_tf_policy_v2.EagerTFPolicyV2.grad_stats_fn
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.compute_gradients_fn
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.apply_gradients_fn
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.extra_learn_fetches_fn
@@ -104,8 +137,8 @@ Tf Policy
 
 .. --------------------------------------------
 
-Updating the neural networks
---------------------
+Updating the Policy's model
+----------------------------
 
 
 Base Policy
@@ -113,35 +146,28 @@ Base Policy
 .. autosummary::
     :toctree: doc/
     
-    Policy.learn_on_batch
-    Policy.load_batch_into_buffer
-    Policy.learn_on_loaded_batch
-    Policy.learn_on_batch_from_replay_buffer
-    Policy.get_num_samples_loaded_into_buffer
-
-Torch Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-
-Tf Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
+    ~policy.Policy.learn_on_batch
+    ~policy.Policy.load_batch_into_buffer
+    ~policy.Policy.learn_on_loaded_batch
+    ~policy.Policy.learn_on_batch_from_replay_buffer
+    ~policy.Policy.get_num_samples_loaded_into_buffer
 
 
 .. --------------------------------------------
 
-Logging and metrics
---------------------
-
+Loss, Logging, optimizers, and trajectory processing
+----------------------------------------------------
 
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
 
+    ~policy.Policy.loss
+    ~policy.Policy.compute_log_likelihoods
+    ~policy.Policy.on_global_var_update
+    ~policy.Policy.postprocess_trajectory
+
 
 
 Torch Policy
@@ -149,41 +175,17 @@ Torch Policy
 .. autosummary::
     :toctree: doc/
 
+    ~policy.torch_policy_v2.TorchPolicyV2.optimizer
+    ~policy.torch_policy_v2.TorchPolicyV2.get_tower_stats
 
-Tf Policy
+
+Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
 
+    ~policy.eager_tf_policy_v2.EagerTFPolicyV2.optimizer
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.stats_fn
-
-
-.. --------------------------------------------
-
-Loss and trajectory processing
---------------------
-
-Base Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-    Policy.loss
-    Policy.on_global_var_update
-    Policy.postprocess_trajectory
-
-
-
-Torch Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-
-Tf Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
 
 
 .. --------------------------------------------
@@ -196,27 +198,15 @@ Base Policy
 .. autosummary::
     :toctree: doc/
 
-    Policy.from_checkpoint
-    Policy.export_checkpoint
-    Policy.from_state
-    Policy.get_weights
-    Policy.set_weights
-    Policy.get_state
-    Policy.set_state
-    Policy.import_model_from_h5
-
-
-Torch Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-
-Tf Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
+    ~policy.Policy.from_checkpoint
+    ~policy.Policy.export_checkpoint
+    ~policy.Policy.export_model
+    ~policy.Policy.from_state
+    ~policy.Policy.get_weights
+    ~policy.Policy.set_weights
+    ~policy.Policy.get_state
+    ~policy.Policy.set_state
+    ~policy.Policy.import_model_from_h5
 
 .. --------------------------------------------
 
@@ -231,19 +221,6 @@ Base Policy
     ~policy.Policy.reset_connectors
     ~policy.Policy.restore_connectors
     ~policy.Policy.get_connector_metrics
-
-
-Torch Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-
-Tf Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
 
 .. --------------------------------------------
 
@@ -260,18 +237,6 @@ Base Policy
     Policy.is_recurrent
 
 
-Torch Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-
-Tf Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-
 .. --------------------------------------------
 
 Miscellaneous
@@ -286,6 +251,7 @@ Base Policy
     ~policy.Policy.get_session
     ~policy.Policy.init_view_requirements
     ~policy.Policy.get_host
+    ~policy.Policy.get_exploration_state
 
 
 Torch Policy
@@ -293,39 +259,14 @@ Torch Policy
 .. autosummary::
     :toctree: doc/
 
+    ~policy.torch_policy_v2.TorchPolicyV2.get_batch_divisibility_req
 
-Tf Policy
+
+Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.variables
+    ~policy.eager_tf_policy_v2.EagerTFPolicyV2.get_batch_divisibility_req
 
-
-.. --------------------------------------------
-
-Making models
---------------------
-
-Base Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-    ~policy.Policy.make_rl_module
-
-
-Torch Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-    ~policy.torch_policy_v2.TorchPolicyV2.make_model
-
-
-Tf Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :toctree: doc/
-
-    ~policy.eager_tf_policy_v2.EagerTFPolicyV2.make_model

@@ -376,7 +376,7 @@ class Policy(metaclass=ABCMeta):
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def make_rl_module(self) -> "RLModule":
-        """Returns the RL Module.
+        """Returns the RL Module (only for when RLModule API is enabled.)
 
         If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
         this method should be implemented and should return the RLModule instance to
