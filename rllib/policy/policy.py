@@ -164,7 +164,7 @@ class PolicySpec:
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
-    """RLLib's base class for all Policy implementations.
+    """RLlib's base class for all Policy implementations.
 
     Policy is the abstract superclass for all DL-framework specific sub-classes
     (e.g. TFPolicy or TorchPolicy). It exposes APIs to
