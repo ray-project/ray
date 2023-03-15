@@ -523,8 +523,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: HTTPOptionsSchema = Field(
-        default=None,
-        description="Options to start the HTTP Proxy with."
+        default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
         default=[],
