@@ -20,6 +20,7 @@ from typing import (
 
 import numpy as np
 
+from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
@@ -694,20 +695,6 @@ def _encode_url(path):
 
 def _decode_url(path):
     return urllib.parse.unquote(path)
-
-
-def _is_local_windows_path(uri: str) -> bool:
-    """Determines if path is a Windows file-system location."""
-    if len(uri) >= 1 and uri[0] == "\\":
-        return True
-    if (
-        len(uri) >= 3
-        and uri[1] == ":"
-        and (uri[2] == "/" or uri[2] == "\\")
-        and uri[0].isalpha()
-    ):
-        return True
-    return False
 
 
 def _unwrap_protocol(path):

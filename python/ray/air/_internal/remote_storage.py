@@ -108,15 +108,21 @@ def _is_local_path(uri: str) -> bool:
         return True
 
     if sys.platform == "win32":
-        if len(uri) >= 1 and uri[0] == "\\":
-            return True
-        if (
-            len(uri) >= 3
-            and uri[1] == ":"
-            and (uri[2] == "/" or uri[2] == "\\")
-            and uri[0].isalpha()
-        ):
-            return True
+        return _is_local_windows_path(uri)
+    return False
+
+
+def _is_local_windows_path(uri: str) -> bool:
+    """Determines if path is a Windows file-system location."""
+    if len(uri) >= 1 and uri[0] == "\\":
+        return True
+    if (
+        len(uri) >= 3
+        and uri[1] == ":"
+        and (uri[2] == "/" or uri[2] == "\\")
+        and uri[0].isalpha()
+    ):
+        return True
     return False
 
 
