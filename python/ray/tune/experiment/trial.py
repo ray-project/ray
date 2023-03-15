@@ -374,10 +374,8 @@ class Trial:
                 experiment_dir_name = Path(local_experiment_path).name
             elif remote_experiment_path:
                 experiment_dir_name = URI(remote_experiment_path).name
-            assert experiment_dir_name
 
-        if not local_experiment_path:
-            assert experiment_dir_name
+        if not local_experiment_path and experiment_path:
             local_experiment_path = str(
                 Path(_get_default_results_dir()) / experiment_dir_name
             )
@@ -395,7 +393,10 @@ class Trial:
 
         # If there is a mismatch between local path name and experiment dir,
         # this is because both were passed in.
-        if not Path(local_experiment_path).name == experiment_dir_name:
+        if (
+            local_experiment_path
+            and Path(local_experiment_path).name != experiment_dir_name
+        ):
             if log_once("trial_experiment_dir"):
                 warnings.warn(
                     f"If both an `experiment_path` and `experiment_dir_name` "
