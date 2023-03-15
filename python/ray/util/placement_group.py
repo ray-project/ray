@@ -105,6 +105,8 @@ class PlacementGroup:
             self.bundle_cache = _get_bundle_cache(self.id)
 
     def __eq__(self, other):
+        if not isinstance(other, PlacementGroup):
+            return False
         return self.id == other.id
 
     def __hash__(self):
