@@ -880,7 +880,9 @@ class ExperimentAnalysis:
         def make_stub_if_needed(trial: Trial) -> Trial:
             if trial.stub:
                 return trial
-            trial_copy = Trial(trial.trainable_name, stub=True)
+            trial_copy = Trial(
+                trial.trainable_name, experiment_path=trial.experiment_path, stub=True
+            )
             trial_copy.__setstate__(trial.__getstate__())
             return trial_copy
 
