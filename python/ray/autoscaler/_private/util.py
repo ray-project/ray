@@ -746,7 +746,7 @@ def format_info_string(
             )
         if autoscaler_update_time:
             header += (
-                "Autoscaler iteration time is: "
+                "Autoscaler iteration time: "
                 f"{autoscaler_update_time:3f}s\n"
             )
 

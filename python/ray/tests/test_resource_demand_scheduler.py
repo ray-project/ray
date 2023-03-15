@@ -3241,6 +3241,7 @@ def test_info_string_verbose_node_types():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 GCS request time: 3.141500s
 Node Provider non_terminated_nodes time: 1.618000s
+Autoscaler iteration time: 3.141500s
 
 Node status
 --------------------------------------------------------
@@ -3290,6 +3291,7 @@ Node: 192.168.1.2 (gpu-worker)
         time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
         gcs_request_time=3.1415,
         non_terminated_nodes_time=1.618,
+        autoscaler_update_time=3.1415,
         verbose=True,
     )
     print(actual)
