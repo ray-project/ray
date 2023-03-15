@@ -6,4 +6,9 @@ head_node_type:
   name: head_node_type
   instance_type: n1-standard-16-nvidia-tesla-t4-1
 
-max_workers: 0
+worker_node_types:
+- name: gpu_worker
+  instance_type: n1-standard-16-nvidia-tesla-t4-1
+  min_workers: 0
+  max_workers: 0
+  use_spot: false
