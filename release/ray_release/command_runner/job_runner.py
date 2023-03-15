@@ -9,7 +9,6 @@ from ray_release.exception import (
     ClusterNodesWaitTimeout,
     CommandError,
     CommandTimeout,
-    RemoteEnvSetupError,
     LocalEnvSetupError,
     LogsError,
     FetchResultError,
@@ -70,13 +69,6 @@ class JobRunner(CommandRunner):
         if os.path.exists("prometheus_metrics.py"):
             os.unlink("prometheus_metrics.py")
         os.link(metrics_script, "prometheus_metrics.py")
-
-        try:
-            self.file_manager.upload()
-        except Exception as e:
-            raise RemoteEnvSetupError(
-                f"Error setting up remote environment: {e}"
-            ) from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Wait script should be uploaded already. Kick off command

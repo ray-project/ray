@@ -242,8 +242,8 @@ class AnyscaleJobRunner(JobRunner):
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
-            # working_dir=".",
-            # upload_path=self.upload_path,
+            working_dir=".",
+            upload_path=self.upload_path,
             timeout=int(timeout),
         )
         try:
