@@ -124,7 +124,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         if context.use_streaming_executor:
             assert (
                 stats
-                == """Stage N ReadRange->MapBatches(dummy_map_batches)->map: N/N blocks executed in T
+                == """Stage N ReadRange->MapBatches(dummy_map_batches)->Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
