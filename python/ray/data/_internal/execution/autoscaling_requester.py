@@ -5,6 +5,10 @@ import ray
 from ray.data.context import DatasetContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+# Resource requests are considered stale after this number of seconds, and
+# will be purged.
+RESOURCE_REQUEST_TIMEOUT = 60
+
 
 @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
@@ -22,7 +26,7 @@ class AutoscalingRequester:
         # the request.
         self._resource_requests = {}
         # TTL for requests.
-        self._timeout = 60
+        self._timeout = RESOURCE_REQUEST_TIMEOUT
 
     def request_resources(self, req: Dict, execution_uuid: str):
         # Purge expired requests before making request to autoscaler.
@@ -51,8 +55,9 @@ class AutoscalingRequester:
             req["GPU"] += r["GPU"] if "GPU" in r else 0
         return req
 
-    def _get_resource_requests(self):
-        return self._resource_requests
+    def _test_set_timeout(self, ttl):
+        """Set the timeout. This is for test only"""
+        self._timeout = ttl
 
 
 def get_or_create_autoscaling_requester_actor():

@@ -317,7 +317,10 @@ def test_resource_constrained_triggers_autoscaling():
         )
         assert selected_op is None
 
+    test_timeout = 3
     ac = get_or_create_autoscaling_requester_actor()
+    ray.get(ac._test_set_timeout.remote(test_timeout))
+
     run_execution("1")
     assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
     run_execution("1")
@@ -326,6 +329,10 @@ def test_resource_constrained_triggers_autoscaling():
     assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
     run_execution("1")
     assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
+
+    time.sleep(test_timeout + 1)
+    run_execution("1")
+    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
