@@ -1,3 +1,6 @@
+# Copyright NVIDIA Corporation 2023
+# SPDX-License-Identifier: Apache-2.0 
+
 from typing import Any, Callable, Dict, TYPE_CHECKING
 import tarfile
 import io
@@ -5,6 +8,7 @@ import time
 import re
 import uuid
 import os
+from functools import partial
 
 from ray.util.annotations import PublicAPI
 from ray.data.block import BlockAccessor
@@ -120,7 +124,7 @@ def table_to_list(table):
     return result
 
 
-def default_decoder(sample: Dict[str, Any]):
+def default_decoder(sample: Dict[str, Any], format=True):
     """A default decoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl.
@@ -143,7 +147,10 @@ def default_decoder(sample: Dict[str, Any]):
             import PIL.Image
             import numpy as np
 
-            sample[key] = np.asarray(PIL.Image.open(io.BytesIO(value)))
+            if format == "PIL":
+                return PIL.Image.open(io.BytesIO(value))
+            else:
+                sample[key] = np.asarray(PIL.Image.open(io.BytesIO(value)))
         elif extension == "json":
             import json
 
@@ -166,8 +173,9 @@ def default_decoder(sample: Dict[str, Any]):
             sample[key] = pickle.loads(value)
     return sample
 
+extension_to_format = {"jpg": "jpeg"}
 
-def default_encoder(sample: Dict[str, Any]):
+def default_encoder(sample: Dict[str, Any], format=True):
     """A default encoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2, .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl
@@ -186,7 +194,7 @@ def default_encoder(sample: Dict[str, Any]):
             sample[key] = value.encode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
-        elif extension in ["jpg", "png", "ppm", "pgm", "pbm", "pnm"]:
+        elif extension in ["jpg", "jpeg", "png", "ppm", "pgm", "pbm", "pnm"]:
             import PIL.Image
             import numpy as np
 
@@ -194,7 +202,7 @@ def default_encoder(sample: Dict[str, Any]):
                 value = PIL.Image.fromarray(value)
             assert isinstance(value, PIL.Image.Image)
             stream = io.BytesIO()
-            value.save(stream, format=extension[1:])
+            value.save(stream, format=extension_to_format.get(extension.lower(), extension))
             sample[key] = stream.getvalue()
         elif extension == "json":
             import json
@@ -231,6 +239,18 @@ def as_arrow(a):
         return pa.Tensor.from_numpy(a)
     return a
 
+def apply_list(f, sample, default=None):
+    if not isinstance(f, list):
+        f = [f]
+    for g in f:
+        if default is not None and not callable(g):
+            g = partial(default, format=g)
+        sample = g(sample)
+    return sample
+
+def make_iterable(block):
+    return block.iter_rows()
+
 @PublicAPI(stability="alpha")
 class WebDatasetDatasource(FileBasedDatasource):
     """A Datasource for WebDataset datasets (tar format with naming conventions)."""
@@ -241,11 +261,23 @@ class WebDatasetDatasource(FileBasedDatasource):
         self,
         stream: "pyarrow.NativeFile",
         path: str,
-        decoder=None,
+        decoder=True,
         skipfn=lambda _: False,
         suffixes=None,
         **kw,
     ):
+        """Read and decode samples from a straem.
+
+        Args:
+            stream (pyarrow.NativeFile): File descriptor to read from.
+            path (str): _description_
+            decoder (Union[bool, callable, List[Union[callable, bool]], optional): decoder or list of decoders to be applied to samples
+            skipfn (Callable[str,bool], optional): Predicate for skipping files in tar decoder. Defaults to lambda_:False.
+            suffixes (List[str], optional): List of suffixes to be extracted. Defaults to None.
+
+        Yields:
+            List[Dict[str, Any]]: List of sample (list of length 1).
+        """
         import pyarrow as pa
         import pandas as pd
         from ray.data.extensions import ArrowTensorArray
@@ -254,31 +286,34 @@ class WebDatasetDatasource(FileBasedDatasource):
         samples = group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
         for sample in samples:
             if decoder is not None:
-                sample = decoder(sample)
-            sample = {k: [v] for k, v in sample.items()}
-            result = pa.Table.from_pydict(sample)
-            # result = ArrowTensorArray.from_numpy(sample)
-            # result = pd.DataFrame(sample)
-            yield result
+                sample = apply_list(decoder, sample, default=default_decoder)
+            yield [sample]
 
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        encoder=None,
+        encoder=True,
+        callback=None,
         **kw,
     ):
-        import pyarrow
+        """Encode and write samples to a stream.
 
-        table = block.to_arrow()
-        # to_pylist is missing from these tables for some reason
-        # samples = table.to_pylist()
-        samples = table_to_list(table)
+        Args:
+            f (pyarrow.NativeFile): File descriptor to write to.
+            block (BlockAccessor): Data to be written.
+            writer_args_fn (Callable, optional): Ignored. Defaults to lambda:{}.
+            encoder (Union[bool, Callable, List[bool, Callable]], optional): (List of) encoder(s) to be applied to samples. Defaults to True.
+        """
+
         stream = tarfile.open(fileobj=f, mode="w|")
+        samples = make_iterable(block)
         for sample in samples:
+            if not isinstance(sample, dict):
+                sample = sample.as_pydict()
             if encoder is not None:
-                sample = encoder(sample)
+                sample = apply_list(encoder, sample, default=default_encoder)
             if not "__key__" in sample:
                 sample["__key__"] = uuid.uuid4().hex
             key = sample["__key__"]
