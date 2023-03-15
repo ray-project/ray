@@ -363,11 +363,15 @@ class Trial:
 
         # Backwards compatibility for `sync_config.upload_dir`
         if self.sync_config.upload_dir:
-            if remote_experiment_path:
-                raise ValueError(
+            if remote_experiment_path and log_once("trial_storage_path"):
+                # Only warn here, as this can come up when manually creating
+                # Experiments and using `tune.run_experiments`.
+                warnings.warn(
                     "If passing a remote path as `storage_path` "
-                    "to the `air.RunConfig`, don't set "
-                    "a `upload_dir` argument in the `tune.SyncConfig`."
+                    "to the `air.RunConfig` or `tune.run`, don't set "
+                    "a `upload_dir` argument in the `tune.SyncConfig`. Got "
+                    f"`experiment_path='{experiment_path}'` and "
+                    f"`upload_dir='{self.sync_config.upload_dir}'."
                 )
             remote_experiment_path = str(
                 URI(self.sync_config.upload_dir) / experiment_dir_name
