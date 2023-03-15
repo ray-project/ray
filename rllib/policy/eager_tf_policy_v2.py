@@ -140,6 +140,9 @@ class EagerTFPolicyV2(Policy):
         # tf.function trace operations, never when calling the already
         # traced function after that.
         self._re_trace_counter = 0
+        
+        if self.config.get("_enable_rl_module_api", False):
+            self._initialize_loss_from_dummy_batch()
 
     @DeveloperAPI
     @staticmethod
@@ -185,7 +188,7 @@ class EagerTFPolicyV2(Policy):
         # sampler will include those keys in the sample batches it returns. This means
         # that the correct sample batch keys will be available when using the learner
         # group API.
-        if self.config._enable_learner_api:
+        if self.config.get("_enable_rl_module_api", False):
             for k in model.input_specs_train():
                 train_batch[k]
             return None
@@ -717,11 +720,12 @@ class EagerTFPolicyV2(Policy):
         # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
 
-        state["global_timestep"] = state["global_timestep"].numpy()
-        if self._optimizer and len(self._optimizer.variables()) > 0:
-            state["_optimizer_variables"] = self._optimizer.variables()
-        # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if not self.config.get("_enable_rl_module_api", False):
+            state["global_timestep"] = state["global_timestep"].numpy()
+            if self._optimizer and len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = self._optimizer.variables()
+            # Add exploration state.
+            state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)

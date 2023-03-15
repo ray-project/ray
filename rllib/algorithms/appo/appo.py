@@ -14,7 +14,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs
+from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
@@ -25,6 +25,8 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
@@ -95,6 +97,7 @@ class APPOConfig(ImpalaConfig):
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
+        self.target_update_frequency = 1
         self.replay_proportion = 0.0
         self.replay_buffer_num_slots = 100
         self.learner_queue_size = 16
@@ -142,6 +145,7 @@ class APPOConfig(ImpalaConfig):
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
         tau: Optional[float] = NotProvided,
+        target_update_frequency: Optional[int] = NotProvided,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -162,6 +166,10 @@ class APPOConfig(ImpalaConfig):
                 `kl_coeff` automatically).
             tau: The factor by which to update the target policy network towards
                 the current policy network. Can range between 0 and 1.
+            target_update_frequency: The number of training updates to wait before 
+                updating the target policy and tuning the kl loss coefficients that are
+                used during training. Note that this is only applicable when using the 
+                learner api (_enable_learner_api=True and _enable_rl_module_api=True).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -191,6 +199,8 @@ class APPOConfig(ImpalaConfig):
         if tau is not NotProvided:
             self.tau = tau
             self._learner_hps.tau = tau
+        if target_update_frequency is not NotProvided:
+            self.target_update_frequency = target_update_frequency
 
         return self
     
@@ -225,9 +235,10 @@ class APPO(Impala):
 
         # TODO(avnishn):
         # does this need to happen in __init__? I think we can move it to setup()
-        self.workers.local_worker().foreach_policy_to_train(
-            lambda p, _: p.update_target()
-        )
+        if not self.config._enable_rl_module_api:
+            self.workers.local_worker().foreach_policy_to_train(
+                lambda p, _: p.update_target()
+            )
 
     @override(Impala)
     def setup(self, config: AlgorithmConfig):
@@ -236,7 +247,8 @@ class APPO(Impala):
         # TODO(avnishn):
         # this attribute isn't used anywhere else in the code. I think we can safely 
         # delete it.
-        self.update_kl = UpdateKL(self.workers)
+        if not self.config._enable_rl_module_api:
+            self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
@@ -251,16 +263,42 @@ class APPO(Impala):
             train_results: The results dict collected during the most recent
                 training step.
         """
-        cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
-        ]
+        
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
         if self.config._enable_learner_api:
-            import ipdb; ipdb.set_trace()
+            if train_results:
+                # using steps trained here instead of sampled ... I'm not sure why the 
+                # other implemenetation uses sampled.
+                # to be quite frank, im not sure if I understand how their target update
+                # freq would work. The difference in steps sampled/trained is pretty 
+                # much always going to be larger than self.config.num_sgd_iter * 
+                # self.config.minibatch_buffer_size unless the number of steps collected 
+                # is really small. The thing is that the default rollout fragment length
+                # is 50, so the minibatch buffer size * num_sgd_iter is going to be
+                # have to be 50 to even meet the threshold of having delayed target 
+                # updates.
+                # we should instead have the target / kl threshold update be based off 
+                # of the train_batch_size * some target update frequency * num_sgd_iter. We can 
+                cur_ts = self._counters[
+                    NUM_ENV_STEPS_TRAINED
+                    if self.config.count_steps_by == "env_steps"
+                    else NUM_AGENT_STEPS_TRAINED
+                ]
+                target_update_steps_freq = (
+                    self.config.num_sgd_iter * self.config.train_batch_size * self.config.target_update_frequency
+                )
+                if cur_ts - last_update > target_update_steps_freq:
+                    self._counters[NUM_TARGET_UPDATES] += 1
+                    self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+                    self.learner_group.additional_update()
+
         else:
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            ]
             target_update_freq = (
                 self.config.num_sgd_iter * self.config.minibatch_buffer_size
             )

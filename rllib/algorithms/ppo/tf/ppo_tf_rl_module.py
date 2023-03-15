@@ -43,7 +43,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
     @override(RLModule)
     def input_specs_train(self) -> List[str]:
-        return [SampleBatch.OBS, SampleBatch.ACTIONS]
+        return [SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.ACTION_LOGP]
 
     @override(RLModule)
     def output_specs_train(self) -> List[str]:

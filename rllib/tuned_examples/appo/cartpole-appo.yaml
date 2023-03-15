@@ -7,8 +7,8 @@ cartpole-appo:
     config:
         # Works for both torch and tf.
         framework: tf2
-        num_envs_per_worker: 1
-        num_workers: 1
+        # num_envs_per_worker: 1
+        num_workers: 4
         num_gpus: 0
         observation_filter: MeanStdFilter
         num_sgd_iter: 1
@@ -21,3 +21,4 @@ cartpole-appo:
         enable_connectors: True
         _enable_learner_api: True
         _enable_rl_module_api: True
+        eager_tracing: True

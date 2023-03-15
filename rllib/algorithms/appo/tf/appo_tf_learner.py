@@ -1,22 +1,19 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import numpy as np
-from typing import Any, List, Mapping
+from typing import Any, Dict, List, Mapping
 import tree
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (OLD_ACTION_DIST_KEY, OLD_ACTION_DIST_LOGITS_KEY)
+from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaHPs, ImpalaTfLearner
+from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (
-    ALL_MODULES,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
-)
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import ResultDict, TensorType
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
+from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
 
@@ -52,12 +49,15 @@ class AppoHPs(ImpalaHPs):
         kl_target: The target kl divergence loss coefficient to use for the KL loss.
         kl_coeff: The coefficient to weight the KL divergence between the old policy
             and the target policy towards the total loss for module updates.
+        tau: The factor by which to update the target policy network towards
+                the current policy network. Can range between 0 and 1.
 
     """
 
     kl_target: float = 0.01
     kl_coeff: float = 0.1
     clip_param = 0.2
+    tau = 1.0
 
 
 class APPOTfLearner(ImpalaTfLearner):
@@ -73,6 +73,8 @@ class APPOTfLearner(ImpalaTfLearner):
         self.kl_target = self._hps.kl_target
         self.clip_param = self._hps.clip_param
         self.kl_coeffs = defaultdict(lambda: self._hps.kl_coeff)
+        self.tau = self._hps.tau
+        self.sampled_kls = {}
 
     @override(TfLearner)
     def compute_loss_per_module(
@@ -144,12 +146,10 @@ class APPOTfLearner(ImpalaTfLearner):
             discounts=discounts_time_major,
         )
 
-        # batch_size = tf.cast(target_actions_logp_time_major.shape[-1], tf.float32)
-
         # The policy gradients loss.
         is_ratio = tf.math.exp(behaviour_actions_logp_time_major - old_actions_logp_time_major)
 
-        logp_ratio = is_ratio * tf.math.exp(target_actions_logp - behaviour_actions_logp_time_major)
+        logp_ratio = is_ratio * tf.math.exp(target_actions_logp_time_major - behaviour_actions_logp_time_major)
 
         surrogate_loss = tf.math.minimum(
             pg_advantages * logp_ratio,
@@ -182,3 +182,58 @@ class APPOTfLearner(ImpalaTfLearner):
             "mean_entropy_loss": mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
+
+    def compile_results(self, batch: MultiAgentBatch, fwd_out: Mapping[str, Any], postprocessed_loss: Mapping[str, Any], postprocessed_gradients: Mapping[str, Any]) -> Mapping[str, Any]:
+        results = super().compile_results(batch, fwd_out, postprocessed_loss, postprocessed_gradients)
+        module_ids = set(results.keys()) - {ALL_MODULES}
+        self.sampled_kls = {module_id : results[module_id][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY] for module_id in module_ids}
+        return results
+    
+    @override(ImpalaTfLearner)
+    def remove_module(self, module_id: str):
+        super().remove_module(module_id)
+        self.kl_coeffs.pop(module_id)
+
+    def _update_module_target_pi(self):
+        """Update the target policy of each module with the current policy.
+
+        Do that update via polyak averaging.
+
+        """
+        module_ids = self.module.keys()
+        for module_id in module_ids:
+            module = self.module[module_id]
+            old_encoder = module.old_encoder
+            old_pi = module.old_pi
+            current_encoder = module.encoder
+            current_pi = module.pi
+
+            encoder_old_current_pair = {"old": old_encoder, "current": current_encoder}
+            pi_old_current_pair = {"old": old_pi, "current": current_pi}
+            for network_pair in [encoder_old_current_pair, pi_old_current_pair]:
+                for old_var, current_var in zip(network_pair["old"].variables, network_pair["current"].variables):
+                    updated_var = self.tau * current_var + (1. - self.tau) * old_var
+                    old_var.assign(updated_var)
+
+    def _update_module_kl_coeff(self):
+        """Dynamically update the KL loss coefficients of each module with.
+        
+        The update is completed using the mean KL divergence between the action 
+        distributions current policy and old policy of each module. That action
+        distribution is computed during the most recent update/call to `compute_loss`.
+
+        """
+        for module_id, sampled_kl in self.sampled_kls.items():
+            # Update the current KL value based on the recently measured value.
+            # Increase.
+            if sampled_kl > 2.0 * self.kl_target:
+                self.kl_coeffs[module_id] *= 1.5
+            # Decrease.
+            elif sampled_kl < 0.5 * self.kl_target:
+                self.kl_coeffs[module_id] *= 0.5
+
+    def additional_update(self, **kwargs) -> Mapping[ModuleID, Any]:
+        self._update_module_target_pi()
+        self._update_module_kl_coeff()
+        return {}
+
