@@ -667,7 +667,7 @@ class ChildActor:
 @ray.remote
 class Actor:
     def fail_parent(self):
-        task_finish_child.remote()
+        ray.get(task_finish_child.remote())
         task_sleep_child.remote()
         raise ValueError("expected to fail.")
 
@@ -863,3 +863,12 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         timeout=15,
         retry_interval_ms=500,
     )
+
+if __name__ == "__main__":
+    import sys
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
