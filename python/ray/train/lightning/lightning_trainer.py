@@ -1,16 +1,19 @@
 import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
 from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayEnvironment,
@@ -18,13 +21,8 @@ from ray.train.lightning._lightning_utils import (
     RayModelCheckpoint,
 )
 
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 import logging
-
-from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -369,6 +367,16 @@ class LightningTrainer(TorchTrainer):
         )
         return air_checkpoint_config
 
+    @DeveloperAPI
+    def _create_lightning_checkpoint_config(
+        self, air_config: CheckpointConfig
+    ) -> Dict[str, Any]:
+        lightning_config = {}
+        lightning_config["save_top_k"] = air_config.num_to_keep
+        lightning_config["monitor"] = air_config.checkpoint_score_attribute
+        lightning_config["mode"] = air_config.checkpoint_score_order
+        return lightning_config
+
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
@@ -440,9 +448,6 @@ def _lightning_train_loop_per_worker(config):
             "object based on `LightningConfig.ddp_strategy_config`."
         )
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
-
-    # TODO(yunxuanx): Next PR, add logging and checkpointing support
-    trainer_config["enable_checkpointing"] = False
 
     # Filter out existing ModelCheckpoint Callbacks
     callbacks = []
