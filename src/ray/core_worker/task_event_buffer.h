@@ -77,7 +77,8 @@ class TaskStatusEvent : public TaskEvent {
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
       absl::optional<NodeID> node_id = absl::nullopt,
-      absl::optional<WorkerID> worker_id = absl::nullopt);
+      absl::optional<WorkerID> worker_id = absl::nullopt,
+      absl::optional<rpc::TaskLogInfo> task_log_info = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -94,6 +95,8 @@ class TaskStatusEvent : public TaskEvent {
   const absl::optional<NodeID> node_id_ = absl::nullopt;
   /// Worker id if it's a SUBMITTED_TO_WORKER status change.
   const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+  /// Task log info.
+  const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.

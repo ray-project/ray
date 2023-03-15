@@ -197,6 +197,22 @@ message ProfileEvents {
   repeated ProfileEventEntry events = 4;
 }
 
+// Represents the info of a worker's log file for which executes the task.
+message TaskLogInfo {
+  // stdout log file path.
+  string stdout_file = 1;
+  // stderr log file path.
+  string stderr_file = 2;
+  // Start offset of stdout when task starts.
+  int32 stdout_start = 3;
+  // End offset of stdout when task finishes.
+  int32 stdout_end = 4;
+  // Start offset of stderr when task starts.
+  int32 stderr_start = 5;
+  // End offset of stderr when task finishes.
+  int32 stderr_end = 6;
+}
+
 // Represents task states which could be changed during task execution.
 message TaskStateUpdate {
   // Node that runs the task.
@@ -215,6 +231,8 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
+  // Task logs info.
+  optional TaskLogInfo task_log_info = 9;
 }
 
 // Represents events and state changes from a single task run.

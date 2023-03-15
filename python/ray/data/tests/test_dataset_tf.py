@@ -7,7 +7,6 @@ import ray
 from ray.air import session
 from ray.air.config import ScalingConfig
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data.extensions import TensorArray
 from ray.data.preprocessors import Concatenator
 from ray.train.tensorflow import TensorflowTrainer
 
@@ -139,7 +138,7 @@ class TestToTF:
     def test_element_spec_shape_with_ragged_tensors(self, batch_size):
         df = pd.DataFrame(
             {
-                "spam": TensorArray([np.zeros([32, 32, 3]), np.zeros([64, 64, 3])]),
+                "spam": [np.zeros([32, 32, 3]), np.zeros([64, 64, 3])],
                 "ham": [0, 0],
             }
         )

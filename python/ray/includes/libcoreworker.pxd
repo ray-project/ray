@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     CRayStatus,
     CTaskArg,
     CTaskOptions,
+    CTaskLogInfo,
     CTaskType,
     CWorkerType,
     CLanguage,
@@ -295,7 +296,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool *is_application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
-            c_bool is_reattempt) nogil
+            c_bool is_reattempt,
+            CTaskLogInfo &task_log_info) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals

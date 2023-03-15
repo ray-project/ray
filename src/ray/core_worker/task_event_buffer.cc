@@ -32,13 +32,15 @@ TaskStatusEvent::TaskStatusEvent(
     int64_t timestamp,
     const std::shared_ptr<const TaskSpecification> &task_spec,
     absl::optional<NodeID> node_id,
-    absl::optional<WorkerID> worker_id)
+    absl::optional<WorkerID> worker_id,
+    absl::optional<rpc::TaskLogInfo> task_log_info)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
       task_spec_(task_spec),
       node_id_(node_id),
-      worker_id_(worker_id) {}
+      worker_id_(worker_id),
+      task_log_info_(task_log_info) {}
 
 TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    JobID job_id,
@@ -82,6 +84,11 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
            "SUBMITTED_TO_WORKER.";
     state_updates->set_worker_id(worker_id_->Binary());
   }
+
+  if (task_log_info_.has_value()) {
+    *state_updates->mutable_task_log_info() = std::move(task_log_info_.value());
+  }
+
   gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, state_updates);
 }
 

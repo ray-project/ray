@@ -35,6 +35,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -49,9 +50,8 @@ from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
+from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -64,7 +64,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
-    _is_tensor_schema,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -92,6 +91,7 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
     DataBatch,
+    FlatMapUDF,
     KeyFn,
     RowUDF,
     T,
@@ -127,7 +127,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -287,7 +287,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -505,8 +505,21 @@ class Dataset(Generic[T]):
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
+            ``fn`` can also be a generator, yielding multiple batches in a single invocation. This is useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks.
+
+            >>> from typing import Iterator
+            >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
+            ...     for i in range(3):
+            ...         yield batch * 100
+            >>> ds = ray.data.from_items([1])
+            >>> ds = ds.map_batches(map_fn_with_large_output)
+            >>> ds
+            MapBatches(map_fn_with_large_output)
+            +- Dataset(num_blocks=1, num_rows=1, schema=<class 'int'>)
+
+
         Args:
-            fn: The function to apply to each record batch, or a class type
+            fn: The function or generator to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy. Note ``fn`` must be
                 pickle-able.
@@ -789,7 +802,11 @@ class Dataset(Generic[T]):
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64, col3: int64})
+            +- Dataset(
+                num_blocks=10,
+                num_rows=10,
+                schema={col1: int64, col2: int64, col3: int64}
+            )
 
 
         Time complexity: O(dataset size / parallelism)
@@ -811,7 +828,7 @@ class Dataset(Generic[T]):
 
     def flat_map(
         self,
-        fn: RowUDF[T, U],
+        fn: FlatMapUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -831,7 +848,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record, or a class type
+            fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
@@ -1565,12 +1582,24 @@ class Dataset(Generic[T]):
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
             block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
+
+            # Gather read task names from input blocks of unioned Datasets,
+            # and concat them before passing to resulting LazyBlockList
+            read_task_names = []
+            self_read_name = self._plan._in_blocks._read_stage_name or "Read"
+            read_task_names.append(self_read_name)
+            other_read_names = [
+                o._plan._in_blocks._read_stage_name or "Read" for o in other
+            ]
+            read_task_names.extend(other_read_names)
+
             for bl in bls:
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
                 tasks,
+                f"Union({','.join(read_task_names)})",
                 block_partition_refs,
                 block_partition_meta_refs,
                 owned_by_consumer=owned_by_consumer,
@@ -2005,7 +2034,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -2073,7 +2102,13 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(ZipStage(other))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        other_logical_plan = other._logical_plan
+        if logical_plan is not None and other_logical_plan is not None:
+            op = Zip(logical_plan.dag, other_logical_plan.dag)
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset[T]":
@@ -2795,7 +2830,7 @@ class Dataset(Generic[T]):
             It is recommended to use ``DatasetIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return BulkDatasetIterator(self)
+        return DatasetIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -2898,23 +2933,15 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator, stats, executor = self._plan.execute_to_iterator()
-        self._current_executor = executor
-        time_start = time.perf_counter()
-
-        yield from batch_block_refs(
-            block_iterator,
-            stats=stats,
+        return self.iterator().iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            collate_fn=_collate_fn,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=_collate_fn,
         )
-
-        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     @ConsumptionAPI
     def iter_torch_batches(
@@ -2983,32 +3010,15 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over Torch Tensor batches.
         """
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        if collate_fn is not None and (dtypes is not None or device is not None):
-            raise ValueError(
-                "collate_fn cannot be used with dtypes and device. It is expected that"
-                "the provided `collate_fn` will move the output Torch tensors to the"
-                "appropriate dtype and device."
-            )
-
-        if collate_fn is None:
-
-            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-                return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch, dtypes=dtypes, device=device
-                )
-
-        yield from self.iter_batches(
+        return self.iterator().iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-            _collate_fn=collate_fn,
         )
 
     @ConsumptionAPI
@@ -3068,19 +3078,14 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
-            convert_ndarray_batch_to_tf_tensor_batch,
-        )
-
-        for batch in self.iter_batches(
+        return self.iterator().iter_tf_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
+        )
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_torch(
@@ -3189,88 +3194,20 @@ class Dataset(Generic[T]):
         Returns:
             A torch IterableDataset.
         """
-        import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
-        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-
-        # If an empty collection is passed in, treat it the same as None
-        if not feature_columns:
-            feature_columns = None
-
-        if feature_column_dtypes and not isinstance(feature_column_dtypes, torch.dtype):
-            if isinstance(feature_columns, dict):
-                if not isinstance(feature_column_dtypes, dict):
-                    raise TypeError(
-                        "If `feature_columns` is a dict, "
-                        "`feature_column_dtypes` must be None, `torch.dtype`,"
-                        f" or dict, got {type(feature_column_dtypes)}."
-                    )
-                if set(feature_columns) != set(feature_column_dtypes):
-                    raise ValueError(
-                        "`feature_columns` and `feature_column_dtypes` "
-                        "must have the same keys."
-                    )
-                if any(not subcolumns for subcolumns in feature_columns.values()):
-                    raise ValueError("column list may not be empty")
-            elif isinstance(feature_columns[0], (list, tuple)):
-                if not isinstance(feature_column_dtypes, (list, tuple)):
-                    raise TypeError(
-                        "If `feature_columns` is a list of lists, "
-                        "`feature_column_dtypes` must be None, `torch.dtype`,"
-                        f" or a sequence, got {type(feature_column_dtypes)}."
-                    )
-                if len(feature_columns) != len(feature_column_dtypes):
-                    raise ValueError(
-                        "`feature_columns` and `feature_column_dtypes` "
-                        "must have the same length."
-                    )
-                if any(not subcolumns for subcolumns in feature_columns):
-                    raise ValueError("column list may not be empty")
-
-        def make_generator():
-            for batch in self.iter_batches(
-                batch_size=batch_size,
-                batch_format="pandas",
-                prefetch_blocks=prefetch_blocks,
-                drop_last=drop_last,
-                local_shuffle_buffer_size=local_shuffle_buffer_size,
-                local_shuffle_seed=local_shuffle_seed,
-            ):
-                if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
-                        batch,
-                        [label_column],
-                        label_column_dtype,
-                        unsqueeze=unsqueeze_label_tensor,
-                    )
-                    batch.pop(label_column)
-                else:
-                    label_tensor = None
-
-                if isinstance(feature_columns, dict):
-                    features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
-                            feature_columns[key],
-                            feature_column_dtypes[key]
-                            if isinstance(feature_column_dtypes, dict)
-                            else feature_column_dtypes,
-                            unsqueeze=unsqueeze_feature_tensors,
-                        )
-                        for key in feature_columns
-                    }
-                else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
-                        columns=feature_columns,
-                        column_dtypes=feature_column_dtypes,
-                        unsqueeze=unsqueeze_feature_tensors,
-                    )
-
-                yield (features_tensor, label_tensor)
-
-        return TorchIterableDataset(make_generator)
+        return self.iterator().to_torch(
+            label_column=label_column,
+            feature_columns=feature_columns,
+            label_column_dtype=label_column_dtype,
+            feature_column_dtypes=feature_column_dtypes,
+            batch_size=batch_size,
+            prefetch_blocks=prefetch_blocks,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            unsqueeze_feature_tensors=unsqueeze_feature_tensors,
+        )
 
     @ConsumptionAPI
     def to_tf(
@@ -3315,7 +3252,8 @@ class Dataset(Generic[T]):
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> ds = preprocessor.transform(ds)
             >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
+            Concatenator
+            +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
             >>> ds.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -4203,13 +4141,6 @@ class Dataset(Generic[T]):
                 return np.ndarray
             return pd.DataFrame
 
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this dataset is a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
-
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="schema",
@@ -4306,6 +4237,7 @@ class Dataset(Generic[T]):
     @ensure_notebook_deps(
         ["ipywidgets", "8"],
     )
+    @fallback_if_colab
     def _ipython_display_(self):
         from ipywidgets import HTML, VBox, Layout
         from IPython.display import display
