@@ -211,6 +211,7 @@ class Checkpoint:
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
         self._override_preprocessor: Optional["Preprocessor"] = None
+        self._override_preprocessor_set = False
 
         self._uuid = uuid.uuid4()
 
@@ -396,7 +397,7 @@ class Checkpoint:
         checkpoint_data[_METADATA_KEY] = self._metadata
 
         # If override_preprocessor is specified, then set that in the output dict.
-        if self._override_preprocessor:
+        if self._override_preprocessor_set:
             checkpoint_data[PREPROCESSOR_KEY] = self._override_preprocessor
         return checkpoint_data
 
@@ -426,16 +427,15 @@ class Checkpoint:
 
         return checkpoint
 
-    # TODO: Deprecate `from_checkpoint`. For context, see #29058.
     @classmethod
+    @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+        """Create a checkpoint from a generic :class:`Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
-        generic :py:class:`Checkpoint` object.
+        generic :class:`Checkpoint` object.
 
         Examples:
-
             >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
             >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
             >>> model = checkpoint.get_model()  # doctest: +SKIP
@@ -541,7 +541,7 @@ class Checkpoint:
 
         self._save_checkpoint_metadata_in_directory(path)
 
-        if self._override_preprocessor:
+        if self._override_preprocessor_set and self._override_preprocessor:
             save_preprocessor_to_dir(self._override_preprocessor, path)
 
     def _to_directory_safe(self, path: str, move_instead_of_copy: bool = False) -> None:
@@ -574,7 +574,7 @@ class Checkpoint:
                 " a local directory"
             )
         path = os.path.normpath(str(path))
-        _make_dir(path, acquire_del_lock=True)
+        _make_dir(path)
         self._local_path = self._to_directory_safe(path, move_instead_of_copy=True)
         return self._local_path
 
@@ -764,7 +764,7 @@ class Checkpoint:
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""
 
-        if self._override_preprocessor:
+        if self._override_preprocessor_set:
             return self._override_preprocessor
 
         # The preprocessor will either be stored in an in-memory dict or
@@ -787,10 +787,11 @@ class Checkpoint:
 
         return preprocessor
 
-    def set_preprocessor(self, preprocessor: "Preprocessor"):
+    def set_preprocessor(self, preprocessor: Optional["Preprocessor"]):
         """Saves the provided preprocessor to this Checkpoint."""
 
         self._override_preprocessor = preprocessor
+        self._override_preprocessor_set = True
 
     @classmethod
     def _get_checkpoint_type(
@@ -858,7 +859,7 @@ def _get_del_lock_path(path: str, pid: str = None) -> str:
     return f"{path}.del_lock_{pid}"
 
 
-def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
+def _make_dir(path: str, acquire_del_lock: bool = False) -> None:
     """Create the temporary checkpoint dir in ``path``."""
     if acquire_del_lock:
         # Each process drops a deletion lock file it then cleans up.

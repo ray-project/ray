@@ -28,6 +28,11 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         TfRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
 
+        if self._is_discrete:
+            self.action_dist_cls = TfCategorical
+        else:
+            self.action_dist_cls = TfDiagGaussian
+
     # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
     # @override(RLModule)
     # def get_initial_state(self) -> NestedDict:
@@ -127,16 +132,11 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        if self._is_discrete:
-            action_dist = TfCategorical(logits=action_logits)
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
-        else:
-            loc, log_std = tf.split(action_logits, num_or_size_splits=2, axis=1)
-            scale = tf.math.exp(log_std)
-            action_dist = TfDiagGaussian(loc=loc, scale=scale)
-            output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
 
-        output[SampleBatch.ACTION_DIST] = action_dist
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
+            logits=action_logits
+        )
 
         return output
 
@@ -166,15 +166,11 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         # Policy head
         pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
-        if self._is_discrete:
-            action_dist = TfCategorical(logits=action_logits)
-        else:
-            loc, log_std = tf.split(action_logits, num_or_size_splits=2, axis=1)
-            scale = tf.math.exp(log_std)
-            action_dist = TfDiagGaussian(loc=loc, scale=scale)
-
+        action_dist = self.action_dist_cls.from_logits(logits=action_logits)
         logp = action_dist.logp(batch[SampleBatch.ACTIONS])
         entropy = action_dist.entropy()
+
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
         output[SampleBatch.ACTION_DIST] = action_dist
         output[SampleBatch.ACTION_LOGP] = logp
         output["entropy"] = entropy

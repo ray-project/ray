@@ -1121,6 +1121,85 @@ class TestDeployApp:
             pids.append(requests.get("http://localhost:8000/f").text)
         assert (pid1 in pids) == config_update
 
+    def test_deploy_separate_runtime_envs(self, client: ServeControllerClient):
+        """Deploy two applications with separate runtime envs."""
+
+        config_template = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "conditional_dag.serve_dag",
+                    "runtime_env": {
+                        "working_dir": (
+                            "https://github.com/ray-project/test_dag/archive/"
+                            "41d09119cbdf8450599f993f51318e9e27c59098.zip"
+                        )
+                    },
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": "hello_world.app",
+                    "runtime_env": {
+                        "working_dir": (
+                            "https://github.com/zcin/test_runtime_env/archive/"
+                            "c96019b6049cd9a2997db5ea0f10432bfeffb844.zip"
+                        )
+                    },
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**config_template))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "0 pizzas please!"
+        )
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2").text == "Hello world!"
+        )
+
+    def test_deploy_one_app_failed(self, client: ServeControllerClient):
+        """Deploy two applications with separate runtime envs."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        fail_import_path = "ray.serve.tests.test_config_files.fail.node"
+        config_template = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": world_import_path,
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": fail_import_path,
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**config_template))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world"
+        )
+
+        wait_for_condition(
+            lambda: client.get_serve_status("app1").app_status.status
+            == ApplicationStatus.RUNNING
+            and client.get_serve_status("app2").app_status.status
+            == ApplicationStatus.DEPLOY_FAILED
+        )
+
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
@@ -1202,6 +1281,72 @@ class TestServeRequestProcessingTimeoutS:
         assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
         serve.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+        },
+    ],
+    indirect=True,
+)
+def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
+    """Test max_concurrent_queries can be honorded with long poll timeout
+
+    issue: https://github.com/ray-project/ray/issues/32652
+    """
+
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    async def f():
+        await signal_actor.wait.remote()
+        return "hello"
+
+    handle = serve.run(f.bind())
+    first_ref = handle.remote()
+
+    # Clear all the internal longpoll client objects within handle
+    # long poll client will receive new updates from long poll host,
+    # this is to simulate the longpoll timeout
+    object_snapshots1 = handle.router.long_poll_client.object_snapshots
+    handle.router.long_poll_client._reset()
+    wait_for_condition(
+        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
+    )
+    object_snapshots2 = handle.router.long_poll_client.object_snapshots
+
+    # Check object snapshots between timeout interval
+    assert object_snapshots1.keys() == object_snapshots2.keys()
+    assert len(object_snapshots1.keys()) == 1
+    key = list(object_snapshots1.keys())[0]
+    assert (
+        object_snapshots1[key][0].actor_handle != object_snapshots2[key][0].actor_handle
+    )
+    assert (
+        object_snapshots1[key][0].actor_handle._actor_id
+        == object_snapshots2[key][0].actor_handle._actor_id
+    )
+
+    # Make sure the inflight queries still one
+    assert len(handle.router._replica_set.in_flight_queries) == 1
+    key = list(handle.router._replica_set.in_flight_queries.keys())[0]
+    assert len(handle.router._replica_set.in_flight_queries[key]) == 1
+
+    # Make sure the first request is being run.
+    replicas = list(handle.router._replica_set.in_flight_queries.keys())
+    assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
+    # First ref should be still ongoing
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(first_ref, timeout=1)
+    # Unblock the first request.
+    signal_actor.send.remote()
+    assert ray.get(first_ref) == "hello"
+
+    serve.shutdown()
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
