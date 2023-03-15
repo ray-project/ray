@@ -31,12 +31,15 @@ class TestMemoryLeaks(unittest.TestCase):
             .rollouts(create_env_on_local_worker=True)
         )
         algo = config.build()
-        results = check_memory_leaks(algo, to_check={"env"}, repeats=150)
+        results = check_memory_leaks(algo, to_check={"env"}, repeats=15)
         assert results["env"]
         algo.stop()
 
     def test_leaky_policy(self):
         """Tests, whether our diagnostics tools can detect leaks in a policy."""
+
+        # if the leak is small you need more repeats to catch it. So we intentionally
+        # increase the leakage size to make it easier to catch with fewer repeats.
         config = (
             dqn.DQNConfig()
             .environment("CartPole-v1")
@@ -45,12 +48,15 @@ class TestMemoryLeaks(unittest.TestCase):
             .rollouts(create_env_on_local_worker=True)
             .multi_agent(
                 policies={
-                    "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
+                    "default_policy": PolicySpec(
+                        policy_class=MemoryLeakingPolicy,
+                        config={"leakage_size": "large"},
+                    ),
                 }
             )
         )
         algo = config.build()
-        results = check_memory_leaks(algo, to_check={"policy"}, repeats=300)
+        results = check_memory_leaks(algo, to_check={"policy"}, repeats=10)
         assert results["policy"]
         algo.stop()
 

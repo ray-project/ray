@@ -109,7 +109,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-
+from ray.includes.global_state_accessor cimport RedisDelKeySync
 from ray.includes.optional cimport (
     optional
 )
@@ -134,6 +134,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
+from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
@@ -164,6 +165,9 @@ logger = logging.getLogger(__name__)
 # interruption for ray.cancel.
 current_task_id = None
 current_task_id_lock = threading.Lock()
+
+job_config_initialized = False
+job_config_initialization_lock = threading.Lock()
 
 
 class ObjectRefGenerator:
@@ -743,8 +747,8 @@ cdef void execute_task(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
     function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
+    extra_data = (b'{"name": "' + function_name.encode("ascii") +
+                  b'", "task_id": "' + task_id.hex().encode("ascii") + b'"}')
 
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
@@ -771,10 +775,17 @@ cdef void execute_task(
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=inspect.iscoroutinefunction)) == 0:
+                    error_message = (
+                        "Failed to create actor. The failure reason "
+                        "is that you set the async flag, but the actor does not "
+                        "have any coroutine functions.")
                     raise RayActorError(
-                        f"Failed to create the actor {core_worker.get_actor_id()}. "
-                        "The failure reason is that you set the async flag, "
-                        "but the actor has no any coroutine function.")
+                        ActorDiedErrorContext(
+                            error_message=error_message,
+                            actor_id=core_worker.get_actor_id(),
+                            class_name=class_name
+                            )
+                        )
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
@@ -801,11 +812,6 @@ cdef void execute_task(
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
-            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                     and function_name == "__ray_terminate__") and
-                    ray._config.memory_monitor_refresh_ms() == 0):
-                worker.memory_monitor.raise_if_low_memory()
-
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
@@ -1156,6 +1162,10 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt) nogil:
 
     with gil, disable_client_hook():
+        # Initialize job_config if it hasn't already.
+        # Setup system paths configured in job_config.
+        maybe_initialize_job_config()
+
         try:
             try:
                 # Exceptions, including task cancellation, should be handled
@@ -1380,6 +1390,43 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
         worker.raise_errors([(data, metadata)], object_ids)
+
+
+def maybe_initialize_job_config():
+    with job_config_initialization_lock:
+        global job_config_initialized
+        if job_config_initialized:
+            return
+        # Add code search path to sys.path, set load_code_from_local.
+        core_worker = ray._private.worker.global_worker.core_worker
+        code_search_path = core_worker.get_job_config().code_search_path
+        load_code_from_local = False
+        if code_search_path:
+            load_code_from_local = True
+            for p in code_search_path:
+                if os.path.isfile(p):
+                    p = os.path.dirname(p)
+                sys.path.insert(0, p)
+        ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+        # Add driver's system path to sys.path
+        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        if py_driver_sys_path:
+            for p in py_driver_sys_path:
+                sys.path.insert(0, p)
+
+        # Record the task name via :task_name: magic token in the log file.
+        # This is used for the prefix in driver logs `(task_name pid=123) ...`
+        job_id_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+        # Print on both .out and .err
+        print(job_id_magic_token, end="")
+        print(job_id_magic_token, file=sys.stderr, end="")
+
+        # Only start import thread after job_config is initialized
+        ray._private.worker.start_import_thread()
+
+        job_config_initialized = True
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
@@ -2601,10 +2648,7 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
@@ -2749,3 +2793,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)
+
+
+def del_key_from_storage(host, port, password, use_ssl, key):
+    return RedisDelKeySync(host, port, password, use_ssl, key)

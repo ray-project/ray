@@ -28,7 +28,7 @@ Concepts
 
 - **Packages**. External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client <ray-client-ref>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or use `ray attach` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**. A :ref:`Ray job <cluster-clients-and-jobs>` is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
 
@@ -62,6 +62,7 @@ It is installed dynamically on the cluster at runtime and cached for future use 
 
 Runtime environments can be used on top of the prepared environment from :ref:`the Ray Cluster launcher <using-the-cluster-launcher>` if it was used.
 For example, you can use the Cluster launcher to install a base set of packages, and then use runtime environments to install additional packages.
+In contrast with the base cluster environment, a runtime environment will only be active for Ray processes.  (For example, if using a runtime environment specifying a ``pip`` package ``my_pkg``, the statement ``import my_pkg`` will fail if called outside of a Ray task, actor, or job.)
 
 Runtime environments also allow you to set dependencies per-task, per-actor, and per-job on a long-running Ray cluster.
 
@@ -109,7 +110,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`, or using :ref:`Ray Client <ray-client-ref>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
@@ -137,16 +138,6 @@ You can specify a runtime environment for your whole job, whether running a scri
     If using the Ray Jobs API (either the Python SDK or the CLI), specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit``, not in the ``ray.init()`` call in the entrypoint script (in this example, ``my_ray_script.py``). 
     
     This ensures the runtime environment is installed on the cluster before the entrypoint script is run.
-
-..
-  TODO(architkulkarni): run Ray Client doc example in CI
-
-.. code-block:: python
-
-    # Option 4: Connecting to remote cluster using Ray Client
-    ray.init("ray://<head-node-ip>:10001", runtime_env=runtime_env)
-
-This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.
 
 .. note::
 
@@ -313,7 +304,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: Setting a local directory per-task or per-actor is currently unsupported; it can only be set per-job (i.e., in ``ray.init()``).
 
-  Note: If your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
+  Note: If the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
   Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
@@ -334,7 +325,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
-  Note: For option (1), if your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
+  Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
   Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
@@ -412,8 +403,6 @@ Runtime environment resources on each node (such as conda environments, pip pack
 
 When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
 
-To disable all deletion behavior (for example, for debugging purposes) you may set the environment variable ``RAY_RUNTIME_ENV_SKIP_LOCAL_GC`` to ``1`` on each node in your cluster before starting Ray.
-
 Inheritance
 """""""""""
 
@@ -464,8 +453,6 @@ Where are the environments cached?
 
 Any local files downloaded by the environments are cached at ``/tmp/ray/session_latest/runtime_resources``.
 
-
-
 How long does it take to install or to load from cache?
 """""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -483,6 +470,11 @@ What is the relationship between runtime environments and Docker?
 They can be used independently or together.  
 A container image can be specified in the :ref:`Cluster Launcher <vm-cluster-quick-start>` for large or static dependencies, and runtime environments can be specified per-job or per-task/actor for more dynamic use cases.
 The runtime environment will inherit packages, files, and environment variables from the container image.
+
+My ``runtime_env`` was installed, but when I log into the node I can't import the packages.
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The runtime environment is only active for the Ray worker processes; it does not install any packages "globally" on the node.
 
 .. _remote-uris:
 
@@ -572,7 +564,8 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
-
+Note that the ``smart_open``, ``boto3``, and ``google-cloud-storage`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
+The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------

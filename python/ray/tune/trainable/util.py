@@ -14,9 +14,9 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air._internal.uri_utils import URI
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
-from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -148,9 +148,10 @@ class TrainableUtil:
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
+            basename = os.path.basename(chkpt_dir)
 
             # Skip temporary checkpoints
-            if os.path.basename(chkpt_dir).startswith("checkpoint_tmp"):
+            if basename.startswith("checkpoint_tmp"):
                 continue
 
             metadata_file = glob.glob(
@@ -162,9 +163,21 @@ class TrainableUtil:
                 os.path.join(glob.escape(chkpt_dir), _TUNE_METADATA_FILENAME)
             )
             metadata_file = list(set(metadata_file))  # avoid duplication
-            if len(metadata_file) != 1:
+            if len(metadata_file) == 0:
+                logger.warning(
+                    f"The checkpoint {basename} does not have a metadata file. "
+                    f"This usually means that the training process was interrupted "
+                    f"while the checkpoint was being written. The checkpoint will be "
+                    f"excluded from analysis. Consider deleting the directory. "
+                    f"Full path: {chkpt_dir}"
+                )
+                continue
+            elif len(metadata_file) > 1:
                 raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(chkpt_dir)
+                    f"The checkpoint {basename} contains more than one metadata file. "
+                    f"If this happened without manual intervention, please file an "
+                    f"issue at https://github.com/ray-project/ray/issues. "
+                    f"Full path: {chkpt_dir}"
                 )
 
             metadata_file = metadata_file[0]
@@ -184,6 +197,18 @@ class TrainableUtil:
             iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"]
         )
         return chkpt_df
+
+    @staticmethod
+    def get_remote_storage_path(
+        local_path: str, logdir: str, remote_checkpoint_dir: str
+    ) -> str:
+        """Converts a ``local_path`` to be based off of
+        ``remote_checkpoint_dir`` instead of ``logdir``.
+
+        ``logdir`` is assumed to be a prefix of ``local_path``."""
+        rel_local_path = os.path.relpath(local_path, logdir)
+        uri = URI(remote_checkpoint_dir)
+        return str(uri / rel_local_path)
 
 
 @DeveloperAPI
@@ -314,13 +339,13 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
         1. ``tune.with_parameters`` stores parameters in the object store and
         attaches object references to the trainable, but the objects they point to
-        may not exist anymore upon restore.
+        may not exist anymore upon restoring in a new Ray cluster.
 
         2. The attached objects could be arbitrarily large, so Tune does not save the
         object data along with the trainable.
 
         To restore, Tune allows the trainable to be re-specified in
-        :meth:`Tuner.restore(overwrite_trainable=...) <ray.tune.tuner.Tuner.restore>`.
+        :meth:`Tuner.restore(path, trainable=...) <ray.tune.tuner.Tuner.restore>`.
         Continuing from the previous examples, here's an example of restoration:
 
         .. code-block:: python
@@ -331,7 +356,8 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
             tuner = Tuner.restore(
                 "/path/to/experiment/",
-                overwrite_trainable=tune.with_parameters(MyTrainable, data=data)
+                trainable=tune.with_parameters(MyTrainable, data=data),
+                # ...
             )
 
     """
@@ -511,7 +537,7 @@ def with_resources(
             @classmethod
             def default_resource_request(
                 cls, config: Dict[str, Any]
-            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            ) -> Optional[PlacementGroupFactory]:
                 if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
                     return pgf(config)
                 return pgf

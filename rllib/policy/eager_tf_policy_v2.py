@@ -108,8 +108,12 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        self.dist_class = self._init_dist_class()
-        self.model = self.make_model()
+        if self.config.get("_enable_rl_module_api", False):
+            self.model = self.make_rl_module()
+            self.dist_class = None
+        else:
+            self.dist_class = self._init_dist_class()
+            self.model = self.make_model()
 
         self._init_view_requirements()
 
@@ -174,7 +178,19 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        raise NotImplementedError
+        # Under the new _enable_learner_api the loss function still gets called in order
+        # to initialize the view requirements of the sample batches that are returned by
+        # the sampler. In this case, we don't actually want to compute any loss, however
+        # if we access the keys that are needed for a forward_train pass, then the
+        # sampler will include those keys in the sample batches it returns. This means
+        # that the correct sample batch keys will be available when using the learner
+        # group API.
+        if self.config._enable_learner_api:
+            for k in model.input_specs_train():
+                train_batch[k]
+            return None
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -515,13 +531,14 @@ class EagerTFPolicyV2(Policy):
     @override(Policy)
     def compute_log_likelihoods(
         self,
-        actions,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        actions_normalized=True,
-    ):
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        actions_normalized: bool = True,
+        in_training: bool = True,
+    ) -> TensorType:
         if is_overridden(self.action_sampler_fn) and not is_overridden(
             self.action_distribution_fn
         ):
@@ -533,7 +550,10 @@ class EagerTFPolicyV2(Policy):
 
         seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
         input_batch = SampleBatch(
-            {SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)},
+            {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                SampleBatch.ACTIONS: actions,
+            },
             _is_training=False,
         )
         if prev_action_batch is not None:
@@ -553,11 +573,29 @@ class EagerTFPolicyV2(Policy):
             dist_inputs, self.dist_class, _ = self.action_distribution_fn(
                 self, self.model, input_batch, explore=False, is_training=False
             )
+            action_dist = self.dist_class(dist_inputs, self.model)
         # Default log-likelihood calculation.
         else:
-            dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
+            if self.config.get("_enable_rl_module_api", False):
+                if in_training:
+                    output = self.model.forward_train(input_batch)
+                else:
+                    self.model.eval()
+                    output = self.model.forward_exploration(input_batch)
 
-        action_dist = self.dist_class(dist_inputs, self.model)
+                action_dist = output.get(SampleBatch.ACTION_DIST)
+
+                if action_dist is None:
+                    raise ValueError(
+                        "The model output must contain the key "
+                        "`SampleBatch.ACTION_DIST` when using the RL module API."
+                        "Make sure if is_eval_mode is True the forward_exploration "
+                        "returns this key, and if it is False the forward_train "
+                        "returns this key."
+                    )
+            else:
+                dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
+                action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
         if not actions_normalized and self.config["normalize_actions"]:
@@ -715,6 +753,9 @@ class EagerTFPolicyV2(Policy):
 
     @override(Policy)
     def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        enable_rl_module_api = self.config.get("enable_rl_module_api", False)
+        if enable_rl_module_api:
+            raise ValueError("ONNX export not supported for RLModule API.")
         if onnx:
             try:
                 import tf2onnx
@@ -771,7 +812,10 @@ class EagerTFPolicyV2(Policy):
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
-        self._re_trace_counter += 1
+        # NOTE: On the new RLModule API, we won't trace the sampling side, so we should
+        # not increment this counter to trigger excess re-tracing error.
+        if not self.config.get("_enable_rl_module_api", False):
+            self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
         batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -782,7 +826,28 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if is_overridden(self.action_sampler_fn):
+            if self.config.get("_enable_rl_module_api", False):
+
+                if explore:
+                    fwd_out = self.model.forward_exploration(input_dict)
+                else:
+                    fwd_out = self.model.forward_inference(input_dict)
+
+                action_dist = fwd_out[SampleBatch.ACTION_DIST]
+                if explore:
+                    actions, logp = action_dist.sample(return_logp=True)
+                else:
+                    actions = action_dist.sample()
+                    logp = None
+                state_out = fwd_out.get("state_out", {})
+
+                # anything but action_dist and state_out is an extra fetch
+                for k, v in fwd_out.items():
+                    if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                        extra_fetches[k] = v
+                dist_inputs = None
+
+            elif is_overridden(self.action_sampler_fn):
                 dist_inputs = None
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(

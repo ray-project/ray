@@ -7,6 +7,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID
+from ray.rllib.utils.numpy import convert_to_numpy
 
 
 @DeveloperAPI
@@ -109,6 +110,8 @@ def compute_advantages(
         SampleBatch.VF_PREDS in rollout or not use_critic
     ), "use_critic=True but values not found"
     assert use_critic or not use_gae, "Can't use gae without using a value function"
+    rollout = convert_to_numpy(rollout)
+    last_r = convert_to_numpy(last_r)
 
     if use_gae:
         vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS], np.array([last_r])])
@@ -188,7 +191,7 @@ def compute_gae_for_sample_batch(
             policy.model.view_requirements, index="last"
         )
 
-        if policy.config["_enable_rl_module_api"]:
+        if policy.config.get("_enable_rl_module_api"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be
@@ -205,7 +208,7 @@ def compute_gae_for_sample_batch(
             # will not be needed but takes time to compute.
             input_dict = policy._lazy_tensor_dict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
-            last_r = fwd_out[SampleBatch.VF_PREDS]
+            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
         else:
             last_r = policy._value(**input_dict)
 

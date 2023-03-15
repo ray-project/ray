@@ -1,14 +1,16 @@
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
 import ray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -90,25 +92,35 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
+    import builtins
+
+    if parallelism == 0:
+        raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
     detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DatasetContext.get_current(),
     )
-    block_size = max(
-        1,
-        len(items) // detected_parallelism,
-    )
+    # Truncate parallelism to number of items to avoid empty blocks.
+    detected_parallelism = min(len(items), detected_parallelism)
 
+    if detected_parallelism > 0:
+        block_size, remainder = divmod(len(items), detected_parallelism)
+    else:
+        block_size, remainder = 0, 0
+    # NOTE: We need to explicitly use the builtins range since we override range below,
+    # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
-    i = 0
-    while i < len(items):
+    for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        for item in items[i : i + block_size]:
-            builder.add(item)
+        # Evenly distribute remainder across block slices while preserving record order.
+        block_start = i * block_size + min(i, remainder)
+        block_end = (i + 1) * block_size + min(i + 1, remainder)
+        for j in builtins.range(block_start, block_end):
+            builder.add(items[j])
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
@@ -116,7 +128,6 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
                 input_files=None, exec_stats=stats.build()
             )
         )
-        i += block_size
 
     return Dataset(
         ExecutionPlan(
@@ -125,7 +136,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -209,7 +220,8 @@ def range_tensor(
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
+    type. The dataset elements take the form
+    {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -275,8 +287,7 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    # TODO(ekl) remove this feature flag.
-    force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    force_local = False
     cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
@@ -293,11 +304,16 @@ def read_datasource(
             datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
-        # Prepare read in a remote task so that in Ray client mode, we aren't
-        # attempting metadata resolution from the client machine.
+        # Prepare read in a remote task at same node.
+        # NOTE: in Ray client mode, this is expected to be run on head node.
+        # So we aren't attempting metadata resolution from the client machine.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
         get_read_tasks = cached_remote_fn(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
-        )
+        ).options(scheduling_strategy=scheduling_strategy)
 
         requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
@@ -332,16 +348,41 @@ def read_datasource(
             "dataset blocks."
         )
 
+    read_stage_name = f"Read{datasource.get_name()}"
+    available_cpu_slots = ray.available_resources().get("CPU", 1)
+    if (
+        requested_parallelism
+        and len(read_tasks) > available_cpu_slots * 4
+        and len(read_tasks) >= 5000
+    ):
+        logger.warn(
+            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
+            "is more than 4x the number of available CPU slots in the cluster of "
+            f"{available_cpu_slots}. This can "
+            "lead to slowdowns during the data reading phase due to excessive "
+            "task creation. Reduce the parallelism to match with the available "
+            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
+            "to automatically determine the parallelism. "
+            "You can ignore this message if the cluster is expected to autoscale."
+        )
+
     block_list = LazyBlockList(
-        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+        read_tasks,
+        read_stage_name=read_stage_name,
+        ray_remote_args=ray_remote_args,
+        owned_by_consumer=False,
     )
-    block_list.compute_first_block()
-    block_list.ensure_metadata_for_first_block()
+
+    # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
+    # LazyBlockList code path.
+    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
+    logical_plan = LogicalPlan(read_op)
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         epoch=0,
         lazy=True,
+        logical_plan=logical_plan,
     )
 
 
@@ -456,7 +497,17 @@ def read_parquet(
         ...           ("variety", pa.string())]
         >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
-        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
+        Dataset(
+           num_blocks=1,
+           num_rows=150,
+           schema={
+              sepal.length: double,
+              sepal.width: double,
+              petal.length: double,
+              petal.width: double,
+              variety: string
+           }
+        )
 
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
@@ -1041,6 +1092,22 @@ def read_tfrecords(
            length  width    species
         0     5.1    3.5  b'setosa'
 
+        We can also read compressed TFRecord files which uses one of the
+        `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
+
+        >>> compressed_path = os.path.join(tempfile.gettempdir(), "data_compressed.tfrecords")
+        >>> options = tf.io.TFRecordOptions(compression_type="GZIP") # "ZLIB" also supported by TensorFlow
+        >>> with tf.io.TFRecordWriter(path=compressed_path, options=options) as writer:
+        ...     writer.write(example.SerializeToString())
+
+        >>> ds = ray.data.read_tfrecords(
+        ...     [compressed_path],
+        ...     arrow_open_stream_args={"compression": "gzip"},
+        ... )
+        >>> ds.to_pandas()  # doctest: +SKIP
+           length  width    species
+        0     5.1    3.5  b'setosa'
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -1048,7 +1115,9 @@ def read_tfrecords(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files in the dataset.
         arrow_open_stream_args: Key-word arguments passed to
-            ``pyarrow.fs.FileSystem.open_input_stream``.
+            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
+            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -1214,6 +1283,14 @@ def from_pandas(
 
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
+
+    from ray.air.util.data_batch_conversion import (
+        _cast_ndarray_columns_to_tensor_extension,
+    )
+
+    context = DatasetContext.get_current()
+    if context.enable_tensor_extension_casting:
+        dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 
@@ -1256,7 +1333,7 @@ def from_pandas_refs(
                 run_by_consumer=False,
             ),
             0,
-            False,
+            True,
         )
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
@@ -1271,7 +1348,7 @@ def from_pandas_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1330,7 +1407,7 @@ def from_numpy_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1382,7 +1459,7 @@ def from_arrow_refs(
             run_by_consumer=False,
         ),
         0,
-        False,
+        True,
     )
 
 
@@ -1609,7 +1686,7 @@ def _resolve_parquet_args(
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.
-                np_col = np.array(
+                np_col = _create_possibly_ragged_ndarray(
                     [
                         np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
                         for buf in block.column(tensor_col_name)

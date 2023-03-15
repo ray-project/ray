@@ -5,6 +5,8 @@ from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_C
 
 import numpy as np
 
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
@@ -44,11 +46,13 @@ class SimpleBlockBuilder(BlockBuilder[T]):
                 f"{block}"
             )
         self._items.extend(block)
-        for item in block:
-            self._size_estimator.add(item)
+        self._size_estimator.add_block(block)
 
     def num_rows(self) -> int:
         return len(self._items)
+
+    def will_build_yield_copy(self) -> bool:
+        return True
 
     def build(self) -> Block:
         return list(self._items)
@@ -103,7 +107,7 @@ class SimpleBlockAccessor(BlockAccessor):
             if not isinstance(columns, list):
                 columns = [columns]
             return BlockAccessor.for_block(self.select(columns)).to_numpy()
-        return np.array(self._items)
+        return _create_possibly_ragged_ndarray(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow

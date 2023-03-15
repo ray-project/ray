@@ -334,6 +334,8 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self.__policy_id = config.get("__policy_id")
         # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
@@ -380,10 +382,29 @@ class Policy(metaclass=ABCMeta):
         this method should be implemented and should return the RLModule instance to
         use for this Policy. Otherwise, RLlib will error out.
         """
-        module_class: RLModule = self.config["rl_module_class"]
-        return module_class.from_model_config(
-            self.observation_space, self.action_space, model_config=self.config["model"]
-        )
+        # if imported on top it creates circular dependency
+        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+        if self.__policy_id is None:
+            raise ValueError(
+                "When using RLModule API, `policy_id` within the policies must be "
+                "set. This should have happened automatically. If you see this "
+                "bug, please file a github issue."
+            )
+
+        spec = self.config["__marl_module_spec"]
+        if isinstance(spec, SingleAgentRLModuleSpec):
+            module = spec.build()
+        else:
+            # filter the module_spec to only contain the policy_id of this policy
+            marl_spec = type(spec)(
+                marl_module_class=spec.marl_module_class,
+                module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
+            )
+            marl_module = marl_spec.build()
+            module = marl_module[self.__policy_id]
+
+        return module
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -404,6 +425,24 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
+
+    def get_connector_metrics(self) -> Dict:
+        """Get metrics on timing from connectors."""
+        return {
+            "agent_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+            "action_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+        }
+
+    def reset_connectors(self, env_id) -> None:
+        """Reset action- and agent-connectors for this policy."""
+        self.agent_connectors.reset(env_id=env_id)
+        self.action_connectors.reset(env_id=env_id)
 
     @DeveloperAPI
     def compute_single_action(
@@ -517,7 +556,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
@@ -622,6 +661,7 @@ class Policy(metaclass=ABCMeta):
         prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
         prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
@@ -640,7 +680,8 @@ class Policy(metaclass=ABCMeta):
                 (between -1.0 and 1.0) or not? If not and
                 `normalize_actions=True`, we need to normalize the given
                 actions first, before calculating log likelihoods.
-
+            in_training: Whether to use the forward_train() or forward_exploration() of
+                the underlying RLModule.
         Returns:
             Batch of log probs/likelihoods, with shape: [BATCH_SIZE].
         """
@@ -1175,6 +1216,7 @@ class Policy(metaclass=ABCMeta):
         """
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
+
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and not fake_gpus
@@ -1182,8 +1224,14 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # If head node, take num_gpus.
-            num_gpus = self.config["num_gpus"]
+            # if we are in the new rl trainer world num_gpus is deprecated.
+            # so use num_gpus_per_worker for policy sampling
+            # we need this .get() syntax here to ensure backwards compatibility.
+            if self.config.get("_enable_learner_api", False):
+                num_gpus = self.config["num_gpus_per_worker"]
+            else:
+                # If head node, take num_gpus.
+                num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take num_gpus_per_worker
             num_gpus = self.config["num_gpus_per_worker"]
@@ -1302,7 +1350,10 @@ class Policy(metaclass=ABCMeta):
         # Save for later so that loss init does not change global timestep
         global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
-        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
+        sample_batch_size = min(
+            max(self.batch_divisibility_req * 4, 32),
+            self.config["train_batch_size"],  # Don't go over the asked batch size.
+        )
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )

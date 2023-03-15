@@ -111,6 +111,15 @@ class BackendExecutor:
             actor_cls_kwargs=train_cls_kwargs,
             placement_group=placement_group,
         )
+        # Hack to avoid OOMs.
+        # This is just a temporary solution for Train loading entire checkpoints
+        # into memory by ensuring that the rank 0 worker is on the same node as
+        # trainable, thus allowing for lazy checkpoint transfer to be used.
+        # See https://github.com/ray-project/ray/issues/33073
+        # for more context.
+        # TODO remove
+        if self._trial_info and self._trial_info.driver_ip:
+            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
@@ -231,6 +240,7 @@ class BackendExecutor:
 
         futures = []
         for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            gpu_ids = sorted(gpu_ids)
             all_gpu_ids = ",".join(gpu_ids)
 
             def set_gpu_ids():
@@ -401,6 +411,8 @@ class BackendExecutor:
                     encode_data_fn=self._backend._encode_data,
                 )
             )
+
+        self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
 

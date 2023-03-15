@@ -2,14 +2,13 @@ import math
 import uuid
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
-import numpy as np
-
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.data._internal.util import _split_list
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -34,6 +33,7 @@ class LazyBlockList(BlockList):
     def __init__(
         self,
         tasks: List[ReadTask],
+        read_stage_name: Optional[str] = None,
         block_partition_refs: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
         block_partition_meta_refs: Optional[List[ObjectRef[BlockMetadata]]] = None,
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
@@ -46,6 +46,8 @@ class LazyBlockList(BlockList):
 
         Args:
             tasks: The read tasks that will produce the blocks of this lazy block list.
+            read_stage_name: An optional name for the read stage, derived from the
+                underlying Datasource
             block_partition_refs: An optional list of already submitted read task
                 futures (i.e. block partition refs). This should be the same length as
                 the tasks argument.
@@ -60,6 +62,7 @@ class LazyBlockList(BlockList):
                 stats. If not provided, a new UUID will be created.
         """
         self._tasks = tasks
+        self._read_stage_name = read_stage_name
         self._num_blocks = len(self._tasks)
         if stats_uuid is None:
             stats_uuid = uuid.uuid4()
@@ -98,6 +101,9 @@ class LazyBlockList(BlockList):
         self._owned_by_consumer = owned_by_consumer
         self._stats_actor = _get_or_create_stats_actor()
 
+    def __repr__(self):
+        return f"LazyBlockList(owned_by_consumer={self._owned_by_consumer})"
+
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
         if all(meta is not None for meta in self._cached_metadata):
@@ -126,6 +132,7 @@ class LazyBlockList(BlockList):
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(
             self._tasks.copy(),
+            read_stage_name=self._read_stage_name,
             block_partition_refs=self._block_partition_refs.copy(),
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),
             cached_metadata=self._cached_metadata,
@@ -154,22 +161,22 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
         num_splits = math.ceil(len(self._tasks) / split_size)
-        tasks = np.array_split(self._tasks, num_splits)
-        block_partition_refs = np.array_split(self._block_partition_refs, num_splits)
-        block_partition_meta_refs = np.array_split(
+        tasks = _split_list(self._tasks, num_splits)
+        block_partition_refs = _split_list(self._block_partition_refs, num_splits)
+        block_partition_meta_refs = _split_list(
             self._block_partition_meta_refs, num_splits
         )
-        cached_metadata = np.array_split(self._cached_metadata, num_splits)
+        cached_metadata = _split_list(self._cached_metadata, num_splits)
         output = []
         for t, b, m, c in zip(
             tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
         ):
             output.append(
                 LazyBlockList(
-                    t.tolist(),
-                    b.tolist(),
-                    m.tolist(),
-                    c.tolist(),
+                    t,
+                    b,
+                    m,
+                    c,
                     owned_by_consumer=self._owned_by_consumer,
                 )
             )

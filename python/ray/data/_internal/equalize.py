@@ -152,7 +152,11 @@ def _split_leftovers(
         prev = split_indices[i]
     split_result: Tuple[
         List[List[ObjectRef[Block]]], List[List[BlockMetadata]]
-    ] = _split_at_indices(leftovers, split_indices)
+    ] = _split_at_indices(
+        leftovers.get_blocks_with_metadata(),
+        split_indices,
+        leftovers._owned_by_consumer,
+    )
     return [list(zip(block_refs, meta)) for block_refs, meta in zip(*split_result)][
         :num_splits
     ]

@@ -20,6 +20,7 @@
 #include <thread>
 
 #include "absl/container/btree_map.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -184,7 +185,7 @@ class GcsRpcClient {
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
         timer_(std::make_unique<boost::asio::deadline_timer>(*io_context_)) {
-    grpc::ChannelArguments arguments;
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,

@@ -1,21 +1,24 @@
 # coding: utf-8
 import copy
-import inspect
 import logging
 import os
 import random
 import time
 import traceback
-from collections import deque, defaultdict, Counter
+from collections import deque
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
-from typing import Callable, Dict, Iterable, List, Optional, Set, Union, Tuple
+from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
-from ray.air import Checkpoint, AcquiredResources, ResourceRequest
+from ray.actor import ActorHandle
+from ray.air import Checkpoint, AcquiredResources
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
+from ray.air.constants import (
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+)
 from ray.air.execution import ResourceManager
 from ray.air.execution.resources.placement_group import (
     PlacementGroupResourceManager,
@@ -27,10 +30,15 @@ from ray.tune.error import (
     _TuneNoNextExecutorEventError,
     _TuneStartTrialError,
 )
-from ray.tune.logger import NoopLogger
 from ray.tune.result import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
-from ray.tune.experiment.trial import Trial, _Location, _TrialInfo
+from ray.tune.experiment.trial import (
+    Trial,
+    _Location,
+    _TrialInfo,
+    _get_trainable_kwargs,
+)
 from ray.tune.utils import warn_if_slow
+from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.trainable.util import TrainableUtil
 from ray.util import log_once
@@ -45,6 +53,7 @@ DEFAULT_ENV_VARS = {
     "PL_DISABLE_FORK": "1"
 }
 ENV_VARS_TO_PROPAGATE = {
+    DISABLE_LAZY_CHECKPOINTING_ENV,
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
     "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
@@ -130,20 +139,6 @@ class _TrialCleanup:
         return len(self._future_to_insert_time) == 0
 
 
-def _noop_logger_creator(config, logdir, should_chdir: bool = True):
-    # Upon remote process setup, record the actor's original working dir before
-    # changing to the Tune logdir
-    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
-
-    os.makedirs(logdir, exist_ok=True)
-    if should_chdir:
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
-    return NoopLogger(config, logdir)
-
-
 class _ExecutorEventType(Enum):
     """The executor event type.
 
@@ -156,8 +151,7 @@ class _ExecutorEventType(Enum):
     SAVING_RESULT = 4
     RESTORING_RESULT = 5
     STOP_RESULT = 6  # Internally to executor only.
-    ERROR = 7  # This is to signal to TrialRunner that there is an error.
-    YIELD = 8  # Yielding back to TrialRunner's main event loop.
+    YIELD = 7  # Yielding back to TrialRunner's main event loop.
 
 
 class _ExecutorEvent:
@@ -205,6 +199,9 @@ class RayTrialExecutor:
 
         # future --> (type, trial/pg)
         self._futures = {}
+        # Cache futures that are ready to reduce the number times we iterate through
+        # all futures (and e.g. shuffle them)
+        self._cached_ready_futures = []
 
         # Cleanup
         force_trial_cleanup = int(os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "600"))
@@ -227,12 +224,10 @@ class RayTrialExecutor:
         # Actor re-use.
         # For details, see docstring of `_maybe_cache_trial_actor()`
         self._reuse_actors = reuse_actors
-        self._resource_request_to_cached_actors: Dict[
-            ResourceRequest, List[Tuple[ray.actor.ActorHandle, AcquiredResources]]
-        ] = defaultdict(list)
+        self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # Trials for which we requested resources
-        self._staged_trials = set()
+        self._staged_trials = set()  # Staged trials
         self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
@@ -253,7 +248,7 @@ class RayTrialExecutor:
     def setup(
         self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
     ) -> None:
-        if len(self._resource_request_to_cached_actors) > 0:
+        if self._actor_cache.num_cached_objects:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
                 "during a run."
@@ -319,6 +314,7 @@ class RayTrialExecutor:
             resource_request = trial.placement_group_factory
 
             self._staged_trials.add(trial)
+            self._actor_cache.increase_max(resource_request)
             self._resource_manager.request_resources(resource_request=resource_request)
 
         self._resource_manager.update_state()
@@ -335,7 +331,7 @@ class RayTrialExecutor:
         for trial in self._staged_trials:
             resource_request = trial.placement_group_factory
             # If we have a cached actor for these resources, return
-            if self._resource_request_to_cached_actors[resource_request]:
+            if self._actor_cache.has_cached_object(resource_request):
                 return trial
 
             # If the resources are available from the resource manager, return
@@ -346,17 +342,18 @@ class RayTrialExecutor:
 
         return None
 
-    def _maybe_use_cached_actor(self, trial, logger_creator) -> Optional:
+    def _maybe_use_cached_actor(self, trial, logger_creator) -> Optional[ActorHandle]:
         if not self._reuse_actors:
             return None
 
         resource_request = trial.placement_group_factory
-        if not self._resource_request_to_cached_actors[resource_request]:
+
+        if not self._actor_cache.has_cached_object(resource_request):
             return None
 
-        actor, acquired_resources = self._resource_request_to_cached_actors[
+        actor, acquired_resources = self._actor_cache.pop_cached_object(
             resource_request
-        ].pop(0)
+        )
 
         logger.debug(f"Trial {trial}: Reusing cached actor " f"{actor}")
 
@@ -380,14 +377,15 @@ class RayTrialExecutor:
         return actor
 
     def _setup_remote_runner(self, trial):
-        trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self._trials_to_cache.add(trial)
-        logger_creator = partial(
-            _noop_logger_creator,
-            logdir=trial.logdir,
+
+        trainable_kwargs = _get_trainable_kwargs(
+            trial,
+            additional_kwargs=self._trainable_kwargs,
             should_chdir=self._chdir_to_trial_dir,
         )
+        logger_creator = trainable_kwargs["logger_creator"]
 
         existing_runner = self._maybe_use_cached_actor(trial, logger_creator)
         if existing_runner:
@@ -417,47 +415,9 @@ class RayTrialExecutor:
         # since we don't know where the remote runner is placed.
         trial.set_location(_Location())
         logger.debug("Trial %s: Setting up new remote runner.", trial)
-        # Logging for trials is handled centrally by TrialRunner, so
-        # configure the remote runner to use a noop-logger.
-        trial_config = copy.deepcopy(trial.config)
-        trial_config[TRIAL_INFO] = _TrialInfo(trial)
-
-        stdout_file, stderr_file = trial.log_to_file
-        trial_config[STDOUT_FILE] = stdout_file
-        trial_config[STDERR_FILE] = stderr_file
-        kwargs = {
-            "config": trial_config,
-            "logger_creator": logger_creator,
-        }
-        if trial.uses_cloud_checkpointing:
-            # We keep these kwargs separate for backwards compatibility
-            # with trainables that don't provide these keyword arguments
-            kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["custom_syncer"] = trial.custom_syncer
-
-            if self._trainable_kwargs:
-                kwargs.update(self._trainable_kwargs)
-
-            # Throw a meaningful error if trainable does not use the
-            # new API
-            sig = inspect.signature(trial.get_trainable_cls())
-            try:
-                sig.bind_partial(**kwargs)
-            except Exception as e:
-                raise RuntimeError(
-                    "Your trainable class does not accept a "
-                    "`remote_checkpoint_dir` or `custom_syncer` argument "
-                    "in its constructor, but you've passed a "
-                    "`upload_dir` to your SyncConfig. Without accepting "
-                    "these parameters and passing them to the base trainable "
-                    "constructor in the init call, cloud checkpointing is "
-                    "effectively disabled. To resolve this issue, add the "
-                    "parameters to your trainable class constructor or "
-                    "disable cloud checkpointing by setting `upload_dir=None`."
-                ) from e
 
         with self._change_working_directory(trial):
-            return full_actor_class.remote(**kwargs)
+            return full_actor_class.remote(**trainable_kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
@@ -533,6 +493,7 @@ class RayTrialExecutor:
         # Case 1: The trial we started was staged. Just remove it
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
+            self._actor_cache.decrease_max(trial.placement_group_factory)
             return
 
         # Case 2: We staged a trial "A" with the same resources, but our trial "B"
@@ -551,6 +512,7 @@ class RayTrialExecutor:
 
         if candidate_trial:
             self._staged_trials.remove(candidate_trial)
+            self._actor_cache.decrease_max(candidate_trial.placement_group_factory)
             return
 
         raise RuntimeError(
@@ -583,16 +545,8 @@ class RayTrialExecutor:
         acquired_resources = self._trial_to_acquired_resources[trial]
         cached_resource_request = acquired_resources.resource_request
 
-        staged_resource_count = self._count_staged_resources()
-        if (
-            # If we have at least one cached actor already
-            any(v for v in self._resource_request_to_cached_actors.values())
-            # and we haven't requested resources for an actor with the
-            # same resources as the actor we want to cache
-            and len(self._resource_request_to_cached_actors[cached_resource_request])
-            >= staged_resource_count[cached_resource_request]
-            # then we don't have an immediate need for the actor and don't
-            # want to cache it.
+        if not self._actor_cache.cache_object(
+            cached_resource_request, (trial.runner, acquired_resources)
         ):
             logger.debug(
                 f"Could not cache actor of trial {trial} for "
@@ -603,9 +557,6 @@ class RayTrialExecutor:
 
         logger.debug(f"Caching actor of trial {trial} for re-use")
 
-        self._resource_request_to_cached_actors[cached_resource_request].append(
-            (trial.runner, acquired_resources)
-        )
         self._trial_to_acquired_resources.pop(trial)
 
         trial.set_runner(None)
@@ -793,7 +744,11 @@ class RayTrialExecutor:
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset.remote(extra_config, logger_creator),
+                        trainable.reset.remote(
+                            extra_config,
+                            logger_creator=logger_creator,
+                            remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                        ),
                         timeout=DEFAULT_GET_TIMEOUT,
                     )
                 except GetTimeoutError:
@@ -819,7 +774,7 @@ class RayTrialExecutor:
 
         return (
             trial in self._staged_trials
-            or self._resource_request_to_cached_actors[resource_request]
+            or self._actor_cache.has_cached_object(resource_request)
             or len(self._staged_trials) < self._max_staged_actors
             or self._resource_manager.has_resources_ready(resource_request)
         )
@@ -843,18 +798,13 @@ class RayTrialExecutor:
         """Before step() is called, update the available resources."""
         self._resource_updater.update_avail_resources()
 
-    def on_step_end(self) -> None:
-        self._cleanup_cached_actors()
+    def on_step_end(self, search_ended: bool = False) -> None:
+        self._cleanup_cached_actors(search_ended=search_ended)
         self._do_force_trial_cleanup()
 
-    def _count_staged_resources(self):
-        counter = Counter()
-        for trial in self._staged_trials:
-            resource_request = trial.placement_group_factory
-            counter[resource_request] += 1
-        return counter
-
-    def _cleanup_cached_actors(self, force_all: bool = False):
+    def _cleanup_cached_actors(
+        self, search_ended: bool = False, force_all: bool = False
+    ):
         """Clean up unneeded cached actors.
 
         Ray Tune caches actors for re-use to avoid initialization overhead. This is
@@ -884,25 +834,22 @@ class RayTrialExecutor:
         resources for all cached actors. If we cached more actors than we need, we
         terminate the excess actors and free the resources.
         """
-        if not self._staged_trials and not force_all:
-            # If we don't have any staged trials, keep cached actors
+        if not self._staged_trials and not force_all and not search_ended:
+            # If we don't have any staged trials, keep cached actors,
+            # unless cleanup is forced or no new trials are going to be generated
+            # (if the search ended).
             return
 
-        staged_resources = self._count_staged_resources()
-
-        for resource_request, actors in self._resource_request_to_cached_actors.items():
-            while len(actors) > staged_resources.get(resource_request, 0) or (
-                force_all and len(actors)
-            ):
-                actor, acquired_resources = actors[-1]
-                actors.pop()
-                future = actor.stop.remote()
-                self._futures[future] = (
-                    _ExecutorEventType.STOP_RESULT,
-                    acquired_resources,
-                )
-                if self._trial_cleanup:  # force trial cleanup within a deadline
-                    self._trial_cleanup.add(future)
+        for (actor, acquired_resources) in self._actor_cache.flush_cached_objects(
+            force_all=force_all
+        ):
+            future = actor.stop.remote()
+            self._futures[future] = (
+                _ExecutorEventType.STOP_RESULT,
+                acquired_resources,
+            )
+            if self._trial_cleanup:  # force trial cleanup within a deadline
+                self._trial_cleanup.add(future)
 
     def _resolve_stop_event(
         self,
@@ -986,7 +933,16 @@ class RayTrialExecutor:
             else:
                 value = trial.runner.save.remote()
                 checkpoint = _TrackedCheckpoint(
-                    dir_or_data=value, storage_mode=storage, metrics=result
+                    dir_or_data=value,
+                    storage_mode=storage,
+                    metrics=result,
+                    local_to_remote_path_fn=partial(
+                        TrainableUtil.get_remote_storage_path,
+                        logdir=trial.logdir,
+                        remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                    )
+                    if trial.uses_cloud_checkpointing
+                    else None,
                 )
                 trial.saving_to = checkpoint
                 self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)
@@ -1173,18 +1129,12 @@ class RayTrialExecutor:
             # when next_trial_exists and there are cached resources
             ###################################################################
             # There could be existing PGs from either
-            # `self._resource_request_to_cached_actors`
+            # `self._actor_cache`
             # or from ready trials. If so and if there is indeed
             # a next trial to run, we return `PG_READY` future for trial
             # runner. The next trial can then be scheduled on this PG.
             if next_trial_exists:
-                if (
-                    sum(
-                        len(cached)
-                        for cached in self._resource_request_to_cached_actors.values()
-                    )
-                    > 0
-                ):
+                if self._actor_cache.num_cached_objects > 0:
                     return _ExecutorEvent(_ExecutorEventType.PG_READY)
                 # TODO(xwjiang): Expose proper API when we decide to do
                 #  ActorPool abstraction.
@@ -1199,24 +1149,44 @@ class RayTrialExecutor:
             ###################################################################
             # Prepare for futures to wait
             ###################################################################
-            futures_to_wait = list(self._futures.keys())
-            random.shuffle(futures_to_wait)
-            if next_trial_exists:
-                # Only wait for pg explicitly if there is next trial to run.
-                # In which case, handling PG_READY triumphs handling other events.
-                # Since we want to place pending trial ASAP.
-                futures_to_wait = (
-                    self._resource_manager.get_resource_futures() + futures_to_wait
+            if self._cached_ready_futures and not next_trial_exists:
+                # If there are cached ready futures, handle the first.
+                # But: If next trial exists, we want to prioritize PG_READY events.
+                ready_futures = [self._cached_ready_futures.pop(0)]
+            else:
+                # Otherwise, wait for new futures
+                futures_to_wait = list(self._futures.keys())
+                random.shuffle(futures_to_wait)
+                if next_trial_exists:
+                    # Only wait for pg explicitly if there is next trial to run.
+                    # In which case, handling PG_READY triumphs handling other events.
+                    # Since we want to place pending trial ASAP.
+                    futures_to_wait = (
+                        self._resource_manager.get_resource_futures() + futures_to_wait
+                    )
+                logger.debug(
+                    f"get_next_executor_event before wait with futures "
+                    f"{futures_to_wait} and "
+                    f"next_trial_exists={next_trial_exists}"
                 )
-            logger.debug(
-                f"get_next_executor_event before wait with futures "
-                f"{futures_to_wait} and "
-                f"next_trial_exists={next_trial_exists}"
-            )
 
-            ready_futures, _ = ray.wait(
-                futures_to_wait, num_returns=1, timeout=self._get_next_event_wait
-            )
+                # Try to resolve all ready futures that are immediately ready
+                ready, _ = ray.wait(
+                    futures_to_wait, num_returns=len(futures_to_wait), timeout=0
+                )
+
+                if ready:
+                    # If at least one future resolved, use that one. Cache the other
+                    # ones.
+                    ready_futures = [ready.pop(0)]
+                    self._cached_ready_futures = ready
+                else:
+                    # Otherwise, wait for next future with timeout.
+                    ready_futures, _ = ray.wait(
+                        futures_to_wait,
+                        num_returns=1,
+                        timeout=self._get_next_event_wait,
+                    )
 
             ###################################################################
             # Dealing with no future returned case.
@@ -1243,7 +1213,7 @@ class RayTrialExecutor:
             ###################################################################
             # If it is a PG_READY event.
             ###################################################################
-            if ready_future not in self._futures.keys():
+            if ready_future not in self._futures:
                 self._resource_manager.update_state()
                 return _ExecutorEvent(_ExecutorEventType.PG_READY)
 
@@ -1259,37 +1229,29 @@ class RayTrialExecutor:
             else:
                 trial = trial_or_acquired_resources
                 assert isinstance(trial, Trial)
+                assert result_type in (
+                    _ExecutorEventType.TRAINING_RESULT,
+                    _ExecutorEventType.SAVING_RESULT,
+                    _ExecutorEventType.RESTORING_RESULT,
+                )
                 try:
                     future_result = ray.get(ready_future)
                     # For local mode
                     if isinstance(future_result, _LocalWrapper):
                         future_result = future_result.unwrap()
-                    if result_type in (
-                        _ExecutorEventType.TRAINING_RESULT,
-                        _ExecutorEventType.SAVING_RESULT,
-                        _ExecutorEventType.RESTORING_RESULT,
-                    ):
-                        logger.debug(f"Returning [{result_type}] for trial {trial}")
-                        return _ExecutorEvent(
-                            result_type,
-                            trial,
-                            result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
-                        )
-                    else:
-                        raise TuneError(f"Unexpected future type - [{result_type}]")
-                except RayTaskError as e:
+                    logger.debug(f"Returning [{result_type}] for trial {trial}")
                     return _ExecutorEvent(
-                        _ExecutorEventType.ERROR,
+                        result_type,
                         trial,
-                        result={_ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
+                        result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
                     )
-                except Exception:
+                except Exception as e:
                     return _ExecutorEvent(
-                        _ExecutorEventType.ERROR,
+                        result_type,
                         trial,
                         result={
-                            _ExecutorEvent.KEY_EXCEPTION: _TuneNoNextExecutorEventError(
-                                traceback.format_exc()
-                            )
+                            _ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()
+                            if isinstance(e, RayTaskError)
+                            else _TuneNoNextExecutorEventError(traceback.format_exc())
                         },
                     )

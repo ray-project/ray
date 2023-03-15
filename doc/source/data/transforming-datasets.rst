@@ -10,6 +10,12 @@ is a transformation that applies a
 and returns a new dataset as the result. Datasets transformations can be composed to
 express a chain of computations.
 
+.. tip::
+
+    If you're performing common ML transformations like normalization and label 
+    encoding, create a :class:`~ray.data.preprocessor.Preprocessor` instead. To learn 
+    more, read :ref:`Using Preprocessors <air-preprocessors>`.
+
 .. _transform_datasets_transformations:
 
 ---------------
@@ -89,28 +95,55 @@ API in Datasets.
 
 Here are the basics that you need to know about UDFs:
 
-* A UDF can be either a function, or if using the :ref:`actor compute strategy <transform_datasets_compute_strategy>`, a :ref:`callable class <transform_datasets_callable_classes>`.
+* A UDF can be either a function, a generator, or if using the :ref:`actor compute strategy <transform_datasets_compute_strategy>`, a :ref:`callable class <transform_datasets_callable_classes>`.
 * Select the UDF input :ref:`batch format <transform_datasets_batch_formats>` using the ``batch_format`` argument.
 * The UDF output type determines the Dataset schema of the transformation result.
 
 .. _transform_datasets_callable_classes:
 
-Callable Class UDFs
-===================
+Types of UDFs
+=============
+There are three types of UDFs that you can use with Ray Data: Function UDFs, Callable Class UDFs, and Generator UDFs.
 
-When using the actor compute strategy, per-row and per-batch UDFs can also be
-*callable classes*, i.e. classes that implement the ``__call__`` magic method. The
-constructor of the class can be used for stateful setup, and will be only invoked once
-per worker actor.
+.. tabbed:: "Function UDFs"
 
-.. note::
-  These transformation APIs take the uninstantiated callable class as an argument,
-  not an instance of the class.
+  The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datasets_batch_formats` for the supported batch formats.
 
-.. literalinclude:: ./doc_code/transforming_datasets.py
-   :language: python
-   :start-after: __writing_callable_classes_udfs_begin__
-   :end-before: __writing_callable_classes_udfs_end__
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_default_udfs_tabular_begin__
+    :end-before: __writing_default_udfs_tabular_end__
+
+.. tabbed:: "Callable Class UDFs"
+
+  With the actor compute strategy, you can use per-row and per-batch UDFs
+  *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
+  can use the constructor of the class for stateful setup, and it is only invoked once
+  per worker actor.
+
+  Callable classes are useful if you need to load expensive state (such as a model) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
+
+  .. note::
+    These transformation APIs take the uninstantiated callable class as an argument,
+    not an instance of the class.
+
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_callable_classes_udfs_begin__
+    :end-before: __writing_callable_classes_udfs_end__
+
+.. tabbed:: "Generator UDFs"
+
+  UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+
+  .. warning::
+    When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Dataset.flat_map>` API and not the :meth:`.map() <ray.data.Dataset.map>` API.
+
+  .. literalinclude:: ./doc_code/transforming_datasets.py
+    :language: python
+    :start-after: __writing_generator_udfs_begin__
+    :end-before: __writing_generator_udfs_end__
+
 
 .. _transform_datasets_batch_formats:
 
@@ -381,7 +414,7 @@ is set to too large of a value for your dataset), the number of parallel tasks
 may be less than expected.
 
 If your ``Dataset`` blocks are smaller than your ``batch_size`` and you want to increase
-`:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
 ``batch_size`` to prevent this block bundling. If you think that your ``Dataset`` blocks
 are too small, try decreasing ``parallelism`` during the read to create larger blocks.
 
@@ -418,3 +451,110 @@ for batch inference:
    :language: python
    :start-after: __dataset_compute_strategy_begin__
    :end-before: __dataset_compute_strategy_end__
+
+.. _datasets-groupbys:
+
+--------------------------
+Group-bys and aggregations
+--------------------------
+
+Unlike mapping operations, groupbys and aggregations are global. Grouped aggregations
+are executed lazily. Global aggregations are executed *eagerly* and block until the
+aggregation has been computed.
+
+.. code-block:: python
+
+    ds: ray.data.Dataset = ray.data.from_items([
+        {"A": x % 3, "B": 2 * x, "C": 3 * x}
+        for x in range(10)])
+
+    # Group by the A column and calculate the per-group mean for B and C columns.
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).fully_executed()
+    # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
+    # -> Dataset(num_blocks=10, num_rows=3, schema={})
+    agg_ds.to_pandas()
+    # ->
+    #    A  mean(B)  mean(C)
+    # 0  0      9.0     13.5
+    # 1  1      8.0     12.0
+    # 2  2     10.0     15.0
+
+    # Global mean on B column.
+    ds.mean("B")
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 2851.91it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 319.69it/s]
+    # -> 9.0
+
+    # Global mean on multiple columns.
+    ds.mean(["B", "C"])
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1730.32it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 231.41it/s]
+    # -> {'mean(B)': 9.0, 'mean(C)': 13.5}
+
+    # Multiple global aggregations on multiple columns.
+    from ray.data.aggregate import Mean, Std
+    ds.aggregate(Mean("B"), Std("B", ddof=0), Mean("C"), Std("C", ddof=0))
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1568.73it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 133.51it/s]
+    # -> {'mean(A)': 0.9, 'std(A)': 0.8306623862918076, 'mean(B)': 9.0, 'std(B)': 5.744562646538029}
+
+Combine aggreations with batch mapping to transform datasets using computed statistics.
+For example, you can efficiently standardize feature columns and impute missing values
+with calculated column means.
+
+.. code-block:: python
+
+    # Impute missing values with the column mean.
+    b_mean = ds.mean("B")
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 4054.03it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 359.22it/s]
+    # -> 9.0
+
+    def impute_b(df: pd.DataFrame):
+        df["B"].fillna(b_mean)
+        return df
+
+    ds = ds.map_batches(impute_b, batch_format="pandas")
+    # -> MapBatches(impute_b)
+    #    +- Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
+
+    # Standard scaling of all feature columns.
+    stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
+    # -> MapBatches(impute_b): 100%|██████████████████████████████| 10/10 [00:01<00:00,  7.16it/s]
+    # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1260.99it/s]
+    # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 128.77it/s]
+    # -> {'mean(B)': 9.0, 'std(B)': 6.0553007081949835, 'mean(C)': 13.5, 'std(C)': 9.082951062292475}
+
+    def batch_standard_scaler(df: pd.DataFrame):
+        def column_standard_scaler(s: pd.Series):
+            s_mean = stats[f"mean({s.name})"]
+            s_std = stats[f"std({s.name})"]
+            return (s - s_mean) / s_std
+
+        cols = df.columns.difference(["A"])
+        df.loc[:, cols] = df.loc[:, cols].transform(column_standard_scaler)
+        return df
+
+    ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
+    ds.fully_executed()
+    # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
+    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
+
+--------------
+Shuffling data
+--------------
+
+Call :meth:`Dataset.random_shuffle() <ray.data.Dataset.random_shuffle>` to
+perform a global shuffle.
+
+.. doctest::
+
+    >>> import ray
+    >>> dataset = ray.data.range(10)
+    >>> dataset.random_shuffle().take_all()  # doctest: +SKIP
+    [7, 0, 9, 3, 5, 1, 4, 2, 8, 6]
+
+For better performance, perform a local shuffle. Read 
+:ref:`Shuffling Data <air-shuffle>` in the AIR user guide to learn more.

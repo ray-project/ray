@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Union
 
 import numpy as np
 
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -20,8 +21,9 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> dataset  # doctest: +ellipsis
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
 
-        :class:`TorchVisionPreprocessor` passes ndarrays to your transform. To convert
-        ndarrays to Torch tensors, add ``ToTensor`` to your pipeline.
+        Torch models expect inputs of shape :math:`(B, C, H, W)` in the range
+        :math:`[0.0, 1.0]`. To convert images to this format, add ``ToTensor`` to your
+        preprocessing pipeline.
 
         >>> from torchvision import transforms
         >>> from ray.data.preprocessors import TorchVisionPreprocessor
@@ -36,10 +38,15 @@ class TorchVisionPreprocessor(Preprocessor):
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
 
+        >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        ...     tensor = torch.as_tensor(batch, dtype=torch.float)
+        ...     # (B, H, W, C) -> (B, C, H, W)
+        ...     tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        ...     # [0., 255.] -> [0., 1.]
+        ...     tensor = tensor.div(255)
+        ...     return tensor
         >>> transform = transforms.Compose([
-        ...     transforms.Lambda(
-        ...         lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2))
-        ...     ),
+        ...     transforms.Lambda(to_tensor),
         ...     transforms.Resize((224, 224))
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(
@@ -51,7 +58,8 @@ class TorchVisionPreprocessor(Preprocessor):
     Args:
         columns: The columns to apply the TorchVision transform to.
         transform: The TorchVision transform you want to apply. This transform should
-            accept an ``np.ndarray`` as input and return a ``torch.Tensor`` as output.
+            accept a ``np.ndarray`` or ``torch.Tensor`` as input and return a
+            ``torch.Tensor`` as output.
         batched: If ``True``, apply ``transform`` to batches of shape
             :math:`(B, H, W, C)`. Otherwise, apply ``transform`` to individual images.
     """  # noqa: E501
@@ -61,35 +69,54 @@ class TorchVisionPreprocessor(Preprocessor):
     def __init__(
         self,
         columns: List[str],
-        transform: Callable[["np.ndarray"], "torch.Tensor"],
+        transform: Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"],
         batched: bool = False,
     ):
         self._columns = columns
-        self._fn = transform
+        self._torchvision_transform = transform
         self._batched = batched
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(columns={self._columns}, "
-            f"transform={self._fn!r})"
+            f"transform={self._torchvision_transform!r})"
         )
 
     def _transform_numpy(
         self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
     ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
-        def transform(batch: np.ndarray) -> np.ndarray:
+        import torch
+        from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
+
+        def apply_torchvision_transform(array: np.ndarray) -> np.ndarray:
+            try:
+                tensor = convert_ndarray_to_torch_tensor(array)
+                output = self._torchvision_transform(tensor)
+            except TypeError:
+                # Transforms like `ToTensor` expect a `np.ndarray` as input.
+                output = self._torchvision_transform(array)
+
+            if not isinstance(output, torch.Tensor):
+                raise ValueError(
+                    "`TorchVisionPreprocessor` expected your transform to return a "
+                    "`torch.Tensor`, but your transform returned a "
+                    f"`{type(output).__name__}` instead."
+                )
+
+            return output.numpy()
+
+        def transform_batch(batch: np.ndarray) -> np.ndarray:
             if self._batched:
-                return self._fn(batch).numpy()
-            return np.array([self._fn(array).numpy() for array in batch])
+                return apply_torchvision_transform(batch)
+            return _create_possibly_ragged_ndarray(
+                [apply_torchvision_transform(array) for array in batch]
+            )
 
         if isinstance(np_data, dict):
-            outputs = {}
-            for column, batch in np_data.items():
-                if column in self._columns:
-                    outputs[column] = transform(batch)
-                else:
-                    outputs[column] = batch
+            outputs = np_data
+            for column in self._columns:
+                outputs[column] = transform_batch(np_data[column])
         else:
-            outputs = transform(np_data)
+            outputs = transform_batch(np_data)
 
         return outputs

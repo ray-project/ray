@@ -1,9 +1,11 @@
-from typing import List, Callable, Optional, Tuple
+from typing import List, Optional
 
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
+    AllToAllTransformFn,
     RefBundle,
     PhysicalOperator,
+    TaskContext,
 )
 
 
@@ -15,7 +17,7 @@ class AllToAllOperator(PhysicalOperator):
 
     def __init__(
         self,
-        bulk_fn: Callable[[List[RefBundle]], Tuple[List[RefBundle], StatsDict]],
+        bulk_fn: AllToAllTransformFn,
         input_op: PhysicalOperator,
         num_outputs: Optional[int] = None,
         name: str = "AllToAll",
@@ -31,6 +33,7 @@ class AllToAllOperator(PhysicalOperator):
             name: The name of this operator.
         """
         self._bulk_fn = bulk_fn
+        self._next_task_index = 0
         self._num_outputs = num_outputs
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
@@ -38,16 +41,23 @@ class AllToAllOperator(PhysicalOperator):
         super().__init__(name, [input_op])
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._num_outputs
+        return (
+            self._num_outputs
+            if self._num_outputs
+            else self.input_dependencies[0].num_outputs_total()
+        )
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
+        assert not self.completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
 
-    def inputs_done(self, input_index: int) -> None:
-        assert input_index == 0, input_index
-        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer)
+    def inputs_done(self) -> None:
+        ctx = TaskContext(task_idx=self._next_task_index)
+        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
+        self._next_task_index += 1
         self._input_buffer.clear()
+        super().inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
@@ -57,3 +67,6 @@ class AllToAllOperator(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def get_transformation_fn(self) -> AllToAllTransformFn:
+        return self._bulk_fn

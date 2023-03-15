@@ -19,6 +19,7 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/protobuf/monitor.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -30,6 +31,11 @@ namespace rpc {
 
 #define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
   RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
+
+#define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(MonitorGcsService,     \
+                      HANDLER,               \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(NodeInfoGcsService,      \
@@ -78,6 +84,8 @@ namespace rpc {
 
 class JobInfoGcsServiceHandler {
  public:
+  using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
+
   virtual ~JobInfoGcsServiceHandler() = default;
 
   virtual void HandleAddJob(AddJobRequest request,
@@ -92,8 +100,7 @@ class JobInfoGcsServiceHandler {
                                    GetAllJobInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void AddJobFinishedListener(
-      std::function<void(std::shared_ptr<JobID>)> listener) = 0;
+  virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
 
   virtual void HandleReportJobError(ReportJobErrorRequest request,
                                     ReportJobErrorReply *reply,
@@ -206,6 +213,51 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   ActorInfoGcsServiceHandler &service_handler_;
+};
+
+class MonitorGcsServiceHandler {
+ public:
+  virtual ~MonitorGcsServiceHandler() = default;
+
+  virtual void HandleGetRayVersion(GetRayVersionRequest request,
+                                   GetRayVersionReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDrainAndKillNode(DrainAndKillNodeRequest request,
+                                      DrainAndKillNodeReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetSchedulingStatus(GetSchedulingStatusRequest request,
+                                         GetSchedulingStatusReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `MonitorServer`.
+class MonitorGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit MonitorGrpcService(instrumented_io_context &io_service,
+                              MonitorGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
+    MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
+    MONITOR_SERVICE_RPC_HANDLER(GetSchedulingStatus);
+  }
+
+ private:
+  /// The grpc async service object.
+  MonitorGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  MonitorGcsServiceHandler &service_handler_;
 };
 
 class NodeInfoGcsServiceHandler {
@@ -436,6 +488,10 @@ class InternalKVGcsServiceHandler {
                                    InternalKVGetReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
+                                        InternalKVMultiGetReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleInternalKVPut(InternalKVPutRequest request,
                                    InternalKVPutReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
@@ -461,6 +517,7 @@ class InternalKVGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVMultiGet);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
@@ -580,6 +637,7 @@ class InternalPubSubGrpcService : public GrpcService {
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
+using MonitorServiceHandler = MonitorGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;

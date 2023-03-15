@@ -54,9 +54,6 @@ class StdStreamHandler:
 
 
 def log_status_change_thread(log_queue, request_iterator):
-    """This is run in a separate thread and therefore needs a separate logging
-    configuration outside of the default ray logging configuration.
-    """
     std_handler = StdStreamHandler(log_queue)
     current_handler = None
     root_logger = logging.getLogger("ray")

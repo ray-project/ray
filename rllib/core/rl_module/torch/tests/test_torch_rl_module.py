@@ -1,8 +1,10 @@
 import gymnasium as gym
+import tempfile
 import torch
 from typing import Mapping
 import unittest
 
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.utils.test_utils import check
@@ -12,10 +14,12 @@ class TestRLModule(unittest.TestCase):
     def test_compilation(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
+        module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         self.assertIsInstance(module, TorchRLModule)
@@ -24,10 +28,12 @@ class TestRLModule(unittest.TestCase):
 
         bsize = 1024
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
+        module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         obs_shape = env.observation_space.shape
@@ -52,10 +58,12 @@ class TestRLModule(unittest.TestCase):
         """Test forward inference and exploration of"""
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
+        module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         obs_shape = env.observation_space.shape
@@ -68,19 +76,23 @@ class TestRLModule(unittest.TestCase):
     def test_get_set_state(self):
 
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
+        module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
 
-        module2 = DiscreteBCTorchModule.from_model_config(
-            env.observation_space,
-            env.action_space,
-            model_config={"hidden_dim": 32},
+        module2 = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
         )
         state2 = module2.get_state()
         check(state, state2, false=True)
@@ -88,6 +100,23 @@ class TestRLModule(unittest.TestCase):
         module2.set_state(state)
         state2_after = module2.get_state()
         check(state, state2_after)
+
+    def test_checkpointing(self):
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = "/tmp/rl_module_test"
+            module.save_to_checkpoint(tmpdir)
+            new_module = DiscreteBCTorchModule.from_checkpoint(tmpdir)
+
+        check(module.get_state(), new_module.get_state())
+        self.assertNotEqual(id(module), id(new_module))
 
 
 if __name__ == "__main__":

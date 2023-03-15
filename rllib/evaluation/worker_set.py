@@ -18,6 +18,8 @@ from typing import (
 
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
+from ray.rllib.core.learner import LearnerGroup
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -145,6 +147,7 @@ class WorkerSet:
             "num_cpus": self._remote_config.num_cpus_per_worker,
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
+            "max_num_worker_restarts": config.max_num_worker_restarts,
         }
 
         # See if we should use a custom RolloutWorker class for testing purpose.
@@ -381,18 +384,22 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker: Optional[RolloutWorker] = None,
+        from_worker_or_trainer: Optional[Union[RolloutWorker, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
     ) -> None:
-        """Syncs model weights from the local worker to all remote workers.
+        """Syncs model weights from the given weight source to all remote workers.
+
+        Weight source can be either a (local) rollout worker or a learner_group. It
+        should just implement a `get_weights` method.
 
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker: Optional local RolloutWorker instance to sync from.
-                If None (default), sync from this WorkerSet's local worker.
+            from_worker_or_trainer: Optional (local) RolloutWorker instance or
+                LearnerGroup instance to sync from. If None (default),
+                sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
                 weights to. If None (default), sync to all remote workers.
             global_vars: An optional global vars dict to set this
@@ -402,16 +409,23 @@ class WorkerSet:
                 for any sync calls to finish). This significantly improves
                 algorithm performance.
         """
-        if self.local_worker() is None and from_worker is None:
+        if self.local_worker() is None and from_worker_or_trainer is None:
             raise TypeError(
                 "No `local_worker` in WorkerSet, must provide `from_worker` "
                 "arg in `sync_weights()`!"
             )
 
-        # Only sync if we have remote workers or `from_worker` is provided.
+        # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         weights = None
-        if self.num_remote_workers() or from_worker is not None:
-            weights = (from_worker or self.local_worker()).get_weights(policies)
+        if self.num_remote_workers() or from_worker_or_trainer is not None:
+            weights_src = from_worker_or_trainer or self.local_worker()
+
+            if weights_src is None:
+                raise ValueError(
+                    "`from_worker_or_trainer` is None. In this case, workerset "
+                    "should have local_worker. But local_worker is also None."
+                )
+            weights = weights_src.get_weights(policies)
 
             def set_weight(w):
                 w.set_weights(weights, global_vars)
@@ -431,7 +445,7 @@ class WorkerSet:
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
         if self.local_worker() is not None:
-            if from_worker is not None:
+            if from_worker_or_trainer is not None:
                 self.local_worker().set_weights(weights, global_vars=global_vars)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
@@ -456,6 +470,7 @@ class WorkerSet:
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:
@@ -487,6 +502,9 @@ class WorkerSet:
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
             workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
@@ -532,6 +550,7 @@ class WorkerSet:
                 policies_to_train=list(policies_to_train)
                 if policies_to_train
                 else None,
+                module_spec=module_spec,
             )
         # Policy instance provided: Create clones of this very policy on the different
         # workers (copy all its properties here for the calls to add_policy on the
@@ -548,6 +567,7 @@ class WorkerSet:
                 policies_to_train=list(policies_to_train)
                 if policies_to_train
                 else None,
+                module_spec=module_spec,
             )
 
         def _create_new_policy_fn(worker: RolloutWorker):
@@ -562,6 +582,7 @@ class WorkerSet:
                     policy=policy,
                     policy_mapping_fn=policy_mapping_fn,
                     policies_to_train=policies_to_train,
+                    module_spec=module_spec,
                 )
             else:
                 self.local_worker().add_policy(**new_policy_instance_kwargs)
@@ -660,6 +681,7 @@ class WorkerSet:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> List[T]:
         """Calls the given function with each worker instance as the argument.
 
@@ -673,6 +695,7 @@ class WorkerSet:
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
+            mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -691,6 +714,7 @@ class WorkerSet:
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -782,12 +806,14 @@ class WorkerSet:
         *,
         timeout_seconds: Optional[int] = 0,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
+            mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -796,6 +822,7 @@ class WorkerSet:
         remote_results = self.__worker_manager.fetch_ready_async_reqs(
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -906,7 +933,9 @@ class WorkerSet:
         Returns:
             IDs of the workers that were restored.
         """
-        return self.__worker_manager.probe_unhealthy_actors()
+        return self.__worker_manager.probe_unhealthy_actors(
+            timeout_seconds=self._remote_config.worker_health_probe_timeout_s
+        )
 
     @staticmethod
     def _from_existing(

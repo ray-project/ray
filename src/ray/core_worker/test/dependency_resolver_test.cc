@@ -31,11 +31,13 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 std::string serialized_runtime_env = "") {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
+  rpc::JobConfig job_config;
   builder.SetCommonTaskSpec(TaskID::Nil(),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
                             JobID::Nil(),
+                            job_config,
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),
@@ -45,7 +47,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             resources,
                             serialized_runtime_env,
-                            depth);
+                            depth,
+                            TaskID::Nil());
   return builder.Build();
 }
 TaskSpecification BuildEmptyTaskSpec() {
@@ -66,7 +69,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
+  bool RetryTaskIfPossible(const TaskID &task_id,
+                           const rpc::RayErrorInfo &error_info) override {
     num_task_retries_attempted++;
     return false;
   }
@@ -104,7 +108,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
   void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                   const NodeID &node_id) override {}
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;

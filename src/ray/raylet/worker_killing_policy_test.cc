@@ -14,8 +14,6 @@
 
 #include "ray/raylet/worker_killing_policy.h"
 
-#include <sys/sysinfo.h>
-
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"

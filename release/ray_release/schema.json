@@ -15,23 +15,20 @@
 				"working_dir": {
 					"type": "string"
 				},
-                "env": {
+				"env": {
 					"type": "string"
-				},
-				"legacy": {
-					"$ref": "#/definitions/Legacy"
 				},
 				"stable": {
 					"type": "boolean"
 				},
-                "python": {
+				"python": {
 					"type": "string",
 					"enum": [
 						"3.6",
 						"3.7",
 						"3.8",
 						"3.9"
-                    ]
+					]
 				},
 				"frequency": {
 					"type": "string",
@@ -99,23 +96,6 @@
 			],
 			"title": "Cluster"
 		},
-		"Legacy": {
-			"type": "object",
-			"additionalProperties": false,
-			"properties": {
-				"test_name": {
-					"type": "string"
-				},
-				"test_suite": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"test_name",
-				"test_suite"
-			],
-			"title": "Legacy"
-		},
 		"Run": {
 			"type": "object",
 			"additionalProperties": false,
@@ -126,7 +106,8 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
+						"client",
+						"anyscale_job"
 					]
 				},
 				"file_manager": {
@@ -154,6 +135,9 @@
 				},
 				"long_running": {
 					"type": "boolean"
+				},
+				"artifact_path": {
+					"type": "string"
 				}
 			},
 			"required": [
@@ -186,10 +170,10 @@
 				"working_dir": {
 					"type": "string"
 				},
-                "env": {
+				"env": {
 					"type": "string"
 				},
-                "driver_setup": {
+				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {
@@ -198,7 +182,7 @@
 				"run": {
 					"type": "object"
 				},
-                "alert": {
+				"alert": {
 					"type": "string"
 				},
 				"frequency": {

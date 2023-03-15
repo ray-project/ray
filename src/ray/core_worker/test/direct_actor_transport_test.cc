@@ -55,7 +55,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
       caller_worker_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(counter);
-  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_num_returns(0);
   return task;
 }
 

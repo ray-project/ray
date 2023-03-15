@@ -26,7 +26,7 @@ def try_import_jax(error: bool = False):
     """
     if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
         logger.warning("Not importing JAX for test purposes.")
-        return None
+        return None, None
 
     try:
         import jax
@@ -59,11 +59,12 @@ def try_import_tf(error: bool = False):
     Raises:
         ImportError: If error=True and tf is not installed.
     """
+    tf_stub = _TFStub()
     # Make sure, these are reset after each test case
     # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
-        return None, None, None
+        return None, tf_stub, None
 
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -86,7 +87,7 @@ def try_import_tf(error: bool = False):
                     "install at least one deep-learning framework: "
                     "`pip install [torch|tensorflow|jax]`."
                 )
-            return None, None, None
+            return None, tf_stub, None
 
     # Try "reducing" tf to tf.compat.v1.
     try:
@@ -106,6 +107,28 @@ def try_import_tf(error: bool = False):
         version = 2 if "2." in tf_module.__version__[:2] else 1
 
     return tf1_module, tf_module, version
+
+
+# Fake module for tf.
+class _TFStub:
+    def __init__(self) -> None:
+        self.keras = _KerasStub()
+
+    def __bool__(self):
+        # if tf should return False
+        return False
+
+
+# Fake module for tf.keras.
+class _KerasStub:
+    def __init__(self) -> None:
+        self.Model = _FakeTfClassStub
+
+
+# Fake classes under keras (e.g for tf.keras.Model)
+class _FakeTfClassStub:
+    def __init__(self, *a, **kw):
+        raise ImportError("Could not import `tensorflow`. Try pip install tensorflow.")
 
 
 @DeveloperAPI
@@ -157,13 +180,20 @@ class _NNStub:
     def __init__(self, *a, **kw):
         # Fake nn.functional module within torch.nn.
         self.functional = None
-        self.Module = _ModuleStub
+        self.Module = _FakeTorchClassStub
+        self.parallel = _ParallelStub()
 
 
-# Fake class for torch.nn.Module to allow it to be inherited from.
-class _ModuleStub:
+# Fake class for e.g. torch.nn.Module to allow it to be inherited from.
+class _FakeTorchClassStub:
     def __init__(self, *a, **kw):
-        raise ImportError("Could not import `torch`.")
+        raise ImportError("Could not import `torch`. Try pip install torch.")
+
+
+class _ParallelStub:
+    def __init__(self, *a, **kw):
+        self.DataParallel = _FakeTorchClassStub
+        self.DistributedDataParallel = _FakeTorchClassStub
 
 
 @PublicAPI
