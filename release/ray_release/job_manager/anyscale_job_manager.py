@@ -62,7 +62,6 @@ class AnyscaleJobManager:
         runtime_env = None
         if working_dir:
             runtime_env = {"working_dir": working_dir}
-            runtime_env["config"] = {"eager_install": False}
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 

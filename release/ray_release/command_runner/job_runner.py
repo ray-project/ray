@@ -70,6 +70,9 @@ class JobRunner(CommandRunner):
             os.unlink("prometheus_metrics.py")
         os.link(metrics_script, "prometheus_metrics.py")
 
+        # Do not upload the files here. Instead, we use the job runtime environment
+        # to automatically upload the local working dir.
+
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Wait script should be uploaded already. Kick off command
         try:
