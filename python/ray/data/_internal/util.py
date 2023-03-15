@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import List, Union, Optional, TYPE_CHECKING
+from typing import Any, List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
@@ -9,10 +9,17 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.context import DatasetContext
 from ray._private.utils import _get_pyarrow_version
 
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+
 if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -343,7 +350,7 @@ def _consumption_api(
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
-        "this dataset, and will block until execution completes."
+        "this dataset."
     )
     if delegate:
         message = delegate + base
@@ -380,3 +387,45 @@ def ConsumptionAPI(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
     return _consumption_api(*args, **kwargs)
+
+
+def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
+    """Split the list into `num_splits` lists.
+
+    The splits will be even if the `num_splits` divides the length of list, otherwise
+    the remainder (suppose it's R) will be allocated to the first R splits (one for
+    each).
+    This is the same as numpy.array_split(). The reason we make this a separate
+    implementation is to allow the heterogeneity in the elements in the list.
+    """
+    assert num_splits > 0
+    q, r = divmod(len(arr), num_splits)
+    splits = [
+        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+    ]
+    return splits
+
+
+def _default_batch_format(
+    ds: "Dataset",
+) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+    """Get the best batch format that lines up with the dataset format."""
+    ctx = DatasetContext.get_current()
+    if ctx.use_streaming_executor:
+        # TODO: calling dataset_format() triggers bulk execution.
+        batch_format = "default"
+    else:
+        try:
+            dataset_format = ds.dataset_format()
+        except ValueError:
+            # Dataset is empty or cleared, so fall back to "default".
+            batch_format = "default"
+        else:
+            batch_format = (
+                "pyarrow"
+                if dataset_format == BlockFormat.ARROW
+                else "pandas"
+                if dataset_format == BlockFormat.PANDAS
+                else "default"
+            )
+    return batch_format
