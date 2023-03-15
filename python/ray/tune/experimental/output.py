@@ -1,0 +1,527 @@
+from typing import List, Dict, Optional, Tuple, Any
+
+import collections
+from dataclasses import dataclass
+import datetime
+from enum import Enum
+import numbers
+import numpy as np
+import os
+import pandas as pd
+from tabulate import tabulate
+import textwrap
+import time
+
+from ray._private.dict import unflattened_lookup
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.tune import Callback
+from ray.tune.result import (
+    AUTO_RESULT_KEYS,
+    EPISODE_REWARD_MEAN,
+    MEAN_ACCURACY,
+    MEAN_LOSS,
+    TIME_TOTAL_S,
+    TIMESTEPS_TOTAL,
+    TRAINING_ITERATION,
+)
+from ray.tune.trial import Trial
+
+# defines the mapping of the key in result and the key to be printed in table.
+# Note this is ordered!
+DEFAULT_COLUMNS = collections.OrderedDict(
+    {
+        MEAN_ACCURACY: "acc",
+        MEAN_LOSS: "loss",
+        TRAINING_ITERATION: "iter",
+        TIME_TOTAL_S: "total time (s)",
+        TIMESTEPS_TOTAL: "ts",
+        EPISODE_REWARD_MEAN: "reward",
+    }
+)
+
+VALID_SUMMARY_TYPES = {
+    int,
+    float,
+    np.float32,
+    np.float64,
+    np.int32,
+    np.int64,
+    type(None),
+}
+
+
+class AirVerbosity(Enum):
+    SILENT = 0
+    DEFAULT = 1
+    VERBOSE = 2
+
+
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
+
+
+def get_air_verbosity() -> Optional[AirVerbosity]:
+    return os.environ.get("AIR_VERBOSITY", None)
+
+
+def _get_current_time():
+    return datetime.datetime.fromtimestamp(time.time())
+
+
+def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
+    """Get strings representing the current and elapsed time.
+
+    Args:
+        start_time: POSIX timestamp of the start of the tune run
+        current_time: POSIX timestamp giving the current time
+
+    Returns:
+        Current time and elapsed time for the current run
+    """
+    current_time_dt = datetime.datetime.fromtimestamp(current_time)
+    start_time_dt = datetime.datetime.fromtimestamp(start_time)
+    delta: datetime.timedelta = current_time_dt - start_time_dt
+
+    rest = delta.total_seconds()
+    days = rest // (60 * 60 * 24)
+
+    rest -= days * (60 * 60 * 24)
+    hours = rest // (60 * 60)
+
+    rest -= hours * (60 * 60)
+    minutes = rest // 60
+
+    seconds = rest - minutes * 60
+
+    if days > 0:
+        running_for_str = f"{days:.0f} days, "
+    else:
+        running_for_str = ""
+
+    running_for_str += f"{hours:02.0f}:{minutes:02.0f}:{seconds:05.2f}"
+
+    return f"{current_time_dt:%Y-%m-%d %H:%M:%S}", running_for_str
+
+
+def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
+    trials_by_state = collections.defaultdict(list)
+    for t in trials:
+        trials_by_state[t.status].append(t)
+    return trials_by_state
+
+
+def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
+    """Try to infer the metrics to print out."""
+    result = list()
+    for t in trials:
+        if not t.last_result:
+            continue
+        for metric, value in t.last_result.items():
+            if metric not in DEFAULT_COLUMNS:
+                if metric not in AUTO_RESULT_KEYS:
+                    if type(value) in VALID_SUMMARY_TYPES:
+                        result.append(metric)
+
+            if len(result) >= limit:
+                return result
+    return result
+
+
+def _current_best_trial(trials: List[Trial], metric: str, mode: str):
+    if not trials:
+        return None, None
+
+    if not metric or not mode:
+        return None, metric
+
+    metric_op = 1.0 if mode == "max" else -1.0
+    best_metric = float("-inf")
+    best_trial = None
+    for t in trials:
+        if not t.last_result:
+            continue
+        metric_value = unflattened_lookup(metric, t.last_result, default=None)
+        if pd.isnull(metric_value):
+            continue
+        if not best_trial or metric_value * metric_op > best_metric:
+            best_metric = metric_value * metric_op
+            best_trial = t
+    return best_trial, metric
+
+
+@dataclass
+class _PerStatusTrialTableData:
+    trial_infos: List[List[str]]
+    more_info: str
+
+
+@dataclass
+class _TrialTableData:
+    header: List[str]
+    data: List[_PerStatusTrialTableData]
+
+
+def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
+    """Abbreviate a string representation of an object to `max_len` characters.
+
+    For numbers, booleans and None, the original value will be returned for
+    correct rendering in the table formatting tool.
+
+    Args:
+        value: Object to be represented as a string.
+        max_len: Maximum return string length.
+    """
+    if value is None or isinstance(value, (int, float, numbers.Number, bool)):
+        return value
+
+    string = str(value)
+    if len(string) <= max_len:
+        return string
+
+    if wrap:
+        # Maximum two rows.
+        # Todo: Make this configurable in the refactor
+        if len(value) > max_len * 2:
+            value = "..." + string[(3 - (max_len * 2)) :]
+
+        wrapped = textwrap.wrap(value, width=max_len)
+        return "\n".join(wrapped)
+
+    result = "..." + string[(3 - max_len) :]
+    return result
+
+
+def _get_trial_info(trial: Trial, metric_keys: List[str]):
+    """Returns the following information about a trial:
+
+    name | status | metrics...
+
+    Args:
+        trial: Trial to get information for.
+        metric_keys: Names of metrics to include.
+    """
+    result = trial.last_result
+    trial_info = [str(trial), trial.status]
+    trial_info.extend(
+        [
+            _max_len(
+                unflattened_lookup(metric, result, default=None),
+            )
+            for metric in metric_keys
+        ]
+    )
+    return trial_info
+
+
+def _get_trial_table_data_per_status(
+    status: str,
+    trials: List[Trial],
+    metric_keys: List[str],
+) -> Optional[_PerStatusTrialTableData]:
+    # TODO: configure it.
+    max_row = 3
+    if not trials:
+        return None
+
+    trial_infos = list()
+    more_info = None
+    for t in trials:
+        if len(trial_infos) >= max_row:
+            more_info = f"... and {str(len(trials) - max_row)} more {status} ..."
+            break
+        trial_infos.append(_get_trial_info(t, metric_keys))
+    return _PerStatusTrialTableData(trial_infos, more_info)
+
+
+def _get_progress_table_data(
+    trials: List[Trial],
+    metric_keys: List[str],
+) -> _TrialTableData:
+    """Generate a table showing the current progress of tuning trials.
+
+    Args:
+        trials: List of trials for which progress is to be shown.
+        metric_keys: ordered list of metrics to be displayed in the table.
+            Including both default and user defined.
+            Will only be shown if at least one trial is having the key.
+
+    Returns:
+    """
+    max_column_length = 20
+    trials_by_state = _get_trials_by_state(trials)
+
+    order = [
+        Trial.RUNNING,
+        Trial.TERMINATED,
+        Trial.PAUSED,
+        Trial.PENDING,
+        Trial.ERROR,
+    ]
+
+    # get the right metric to show.
+    metric_keys = [
+        k
+        for k in metric_keys
+        if any(
+            unflattened_lookup(k, t.last_result, default=None) is not None
+            for t in trials
+        )
+    ]
+
+    # get header from metric keys
+    formatted_metric_columns = [
+        _max_len(k, max_len=max_column_length, wrap=True) for k in metric_keys
+    ]
+    # Map to the abbreviated version if necessary.
+    header = ["Trial name", "status"] + [
+        DEFAULT_COLUMNS[key] if key in DEFAULT_COLUMNS else key
+        for key in formatted_metric_columns
+    ]
+
+    trial_data = list()
+    for t_status in order:
+        trial_data_per_status = _get_trial_table_data_per_status(
+            t_status,
+            trials_by_state[t_status],
+            metric_keys=formatted_metric_columns,
+        )
+        if trial_data_per_status:
+            trial_data.append(trial_data_per_status)
+    return _TrialTableData(header, trial_data)
+
+
+def _best_trial_str(
+    trial: Trial,
+    metric: str,
+):
+    """Returns a readable message stating the current best trial."""
+    val = unflattened_lookup(metric, trial.last_result, default=None)
+    config = trial.last_result.get("config", {})
+    parameter_columns = list(config.keys())
+    params = {p: unflattened_lookup(p, config) for p in parameter_columns}
+    return (
+        f"Current best trial: {trial.trial_id} with {metric}={val} and "
+        f"parameters={params}"
+    )
+
+
+class ProgressReporter:
+    """Periodically prints out status update."""
+
+    # TODO: Make this configurable
+    _heartbeat_freq = 30  # every 30 sec
+    # to be updated by subclasses.
+    _heartbeat_threshold = AirVerbosity.DEFAULT
+
+    def __init__(self, verbosity: AirVerbosity):
+        """
+
+        Args:
+            verbosity: AirVerbosity level.
+        """
+        self._verbosity = verbosity
+        self._start_time = time.time()
+        self._last_heartbeat_time = 0
+
+    @property
+    def _time_passed_str(self):
+        current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
+        return f"Current time: {current_time_str} " f"(running for {running_for_str})"
+
+    def print_heartbeat(self, trials, *args):
+        if self._verbosity < self._heartbeat_threshold:
+            return
+        if time.time() - self._last_heartbeat_time > self._heartbeat_freq:
+            self._print_heartbeat(trials, args)
+            self._last_heartbeat_time = time.time()
+
+    def _print_heartbeat(self, trials, *args):
+        raise NotImplementedError
+
+
+def _detect_reporter(verbosity: AirVerbosity, num_samples: Optional[int] = None):
+    # TODO: Add JupyterNotebook and Ray Client case later.
+    if num_samples and num_samples > 1:
+        reporter = TuneTerminalReporter(verbosity, num_samples)
+    else:
+        reporter = TrainReporter(verbosity)
+    return reporter
+
+
+class TuneReporterBase(ProgressReporter):
+    _heartbeat_threshold = AirVerbosity.DEFAULT
+
+    def __init__(
+        self,
+        verbosity: AirVerbosity,
+        num_samples: int,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+    ):
+        self._num_samples = num_samples
+        self._metric = metric
+        self._mode = mode
+        # will be populated when first result comes in.
+        self._inferred_metric = None
+        super(TuneReporterBase, self).__init__(verbosity=verbosity)
+
+    def _get_overall_trial_progress_str(self, trials):
+        trial_status = _get_trials_by_state(trials)
+        num_finished = len(trial_status.get(Trial.Terminated, [])) + len(
+            trial_status.get(Trial.ERROR, [])
+        )
+        return "Trial status: {:.2%} finished".format(
+            float(num_finished / self._num_samples)
+        )
+
+    # TODO: Return a more structured type to share code with Jupyter flow.
+    def _get_heartbeat(self, trials, *sys_args) -> Tuple[List[str], _TrialTableData]:
+        result = list()
+        # Trial status: 10%|█         | 1/10 COMPLETED, x RUNNING, x PENDING
+        result.append(self._get_overall_trial_progress_str(trials))
+        # Current time: 2023-02-24 12:35:39 (Running for 00:00:37.40)
+        result.append(self._time_passed_str)
+        # Logical Resource Usage: CPUs 12/64, GPUs 5/18
+        result.extend(sys_args)
+        # Current best trial: TRIAL NAME, metrics: {...}, parameters: {...}
+        current_best_trial, metric = _current_best_trial(
+            trials, self._metric, self._mode
+        )
+        if current_best_trial:
+            result.append(_best_trial_str(current_best_trial, metric))
+        # Now populating the trial table data.
+        if not self._inferred_metric:
+            # try inferring again.
+            self._inferred_metric = _infer_user_metrics(trials)
+
+        all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
+
+        trial_table_data = _get_progress_table_data(trials, all_metrics)
+        return result, trial_table_data
+
+    def _print_heartbeat(self, trials, *sys_args):
+        raise NotImplementedError
+
+
+class TuneTerminalReporter(TuneReporterBase):
+    def _print_heartbeat(self, trials, *sys_args):
+        if self._verbosity < self._heartbeat_threshold:
+            return
+        heartbeat_strs, table_data = self._get_heartbeat(trials, sys_args)
+        for s in heartbeat_strs:
+            print(s)
+        # now print the table using Tabulate
+        header = table_data.header
+        table_data_list = table_data.data
+        header_printed = False
+        for table in table_data_list:
+            if not header_printed:
+                print(
+                    tabulate(
+                        table.trial_infos,
+                        headers=header,
+                        tablefmt="psql",
+                        showindex=False,
+                    )
+                )
+                header_printed = True
+                if table.more_info:
+                    print(table.more_info)
+            else:
+                print(tabulate(table.trial_infos, tablefmt="psql", showindex=False))
+
+
+class TuneRichReporter(TuneReporterBase):
+    def _print_heartbeat(self, trials, *args):
+        # TODO: display `self._get_heartbeat` using Rich
+        pass
+
+
+class TrainReporter(ProgressReporter):
+    # the minimal verbosity threshold at which heartbeat starts getting printed.
+    _heartbeat_threshold = AirVerbosity.VERBOSE
+
+    def _get_heartbeat(self, trials: List[Trial]):
+        # Iteration 2 is running at 2023-02-24 12:35:39. Running time: 42min 14s
+        if len(trials) == 0:
+            return
+        trial = trials[0]
+        if trial.status != Trial.RUNNING:
+            return " ".join(
+                [f"Training is in {trial.status} status.", self._time_passed_str]
+            )
+        if not trial.last_result:
+            iter_num = 1
+        else:
+            iter_num = trial.last_result[TRAINING_ITERATION] - 1
+        return " ".join([f"Training on iteration {iter_num}.", self._time_passed_str])
+
+    def _print_heartbeat(self, trials, *args):
+        print(self._get_heartbeat(trials))
+
+
+class AirResultProgressCallback(Callback):
+    def __init__(self, verbosity):
+        self._verbosity = verbosity
+
+    def _print_result(self, trial, result=None):
+        print(result or trial.last_result)
+
+    def _print_config(self, trial):
+        print(trial.config)
+
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List[Trial],
+        trial: Trial,
+        result: Dict,
+        **info,
+    ):
+        if self._verbosity < self._intermediate_result_verbosity:
+            return
+        self._print_result(trial, result)
+
+    def on_trial_complete(
+        self, iteration: int, trials: List[Trial], trial: Trial, **info
+    ):
+        if self._verbosity < self._start_end_verbosity:
+            return
+        self._print_result(trial)
+
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List[Trial],
+        trial: Trial,
+        checkpoint: "_TrackedCheckpoint",
+        **info,
+    ):
+        if self._verbosity < self._intermediate_result_verbosity:
+            return
+        ckpt_msg = f"Trial {trial} checkpoint saved at {checkpoint.dir_or_data}"
+        print(ckpt_msg)
+
+    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
+        if self._verbosity < self._start_end_verbosity:
+            return
+        start_msg = f"Trial {trial} started with configuration: "
+        print(start_msg)
+        self._print_config(trial)
+
+
+class TuneResultProgressCallback(AirResultProgressCallback):
+    _intermediate_result_verbosity = AirVerbosity.VERBOSE
+    _start_end_verbosity = AirVerbosity.DEFAULT
+
+
+class TrainResultProgressCallback(AirResultProgressCallback):
+    _intermediate_result_verbosity = AirVerbosity.DEFAULT
+    _start_end_verbosity = AirVerbosity.DEFAULT
+
+
+def _detect_result_progress_callback(verbosity: AirVerbosity, is_tuning: bool):
+    return

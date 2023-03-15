@@ -3,6 +3,7 @@ import os
 from typing import List, Optional, Type, Union
 
 from ray.tune.callback import Callback, CallbackList
+from ray.tune.experimental.output import _detect_result_progress_callback, AirVerbosity
 from ray.tune.syncer import SyncConfig
 from ray.tune.logger import (
     CSVLoggerCallback,
@@ -38,7 +39,10 @@ def _get_artifact_templates_for_callbacks(
 
 def _create_default_callbacks(
     callbacks: Optional[List[Callback]],
+    *,
     sync_config: SyncConfig,
+    air_verbosity: Optional[AirVerbosity],
+    is_tuning: bool,
     metric: Optional[str] = None,
     progress_metrics: Optional[List[str]] = None,
 ):
@@ -77,7 +81,17 @@ def _create_default_callbacks(
         isinstance(c, TrialProgressCallback) for c in callbacks
     )
 
-    if not has_trial_progress_callback:
+    if has_trial_progress_callback and air_verbosity:
+        logger.warning(
+            "AIR_VERBOSITY is set, ignoring passed-in TrialProgressCallback."
+        )
+        new_callbacks = [
+            c for c in callbacks if not isinstance(c, TrialProgressCallback)
+        ]
+        callbacks = new_callbacks
+    if air_verbosity:  # new flow
+        callbacks.append(_detect_result_progress_callback(air_verbosity, is_tuning))
+    elif not has_trial_progress_callback:  # old flow
         trial_progress_callback = TrialProgressCallback(
             metric=metric, progress_metrics=progress_metrics
         )

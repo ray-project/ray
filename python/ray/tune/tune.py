@@ -8,7 +8,17 @@ import sys
 import threading
 import time
 import warnings
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Mapping,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray.air import CheckpointConfig
@@ -17,6 +27,10 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+    _detect_reporter as _detect_air_reporter,
+)
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
@@ -57,10 +71,17 @@ from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils.log import (
+    Verbosity,
+    has_verbosity,
+    set_verbosity,
+)
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
+
+if TYPE_CHECKING:
+    from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
 
 logger = logging.getLogger(__name__)
@@ -125,6 +146,17 @@ def _check_gpus_in_resources(
         return bool(resources.get("gpu", None))
 
 
+def _print_heartbeat(runner, reporter):
+    """Print heartbeat information for training/tuning workflow.
+
+    New console output flow.
+    Only relevant if `AIR_VERBOSITY` is set.
+    By default, on for tuning and off for training.
+    """
+    trials = runner.get_trials()
+    reporter.print_heartbeat(trials)
+
+
 def _report_progress(
     runner: TrialRunner, reporter: ProgressReporter, done: bool = False
 ):
@@ -140,6 +172,14 @@ def _report_progress(
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
+
+
+def _report_air_progress(runner: TrialRunner, reporter: "AirProgressReporter"):
+    trials = runner.get_trials()
+    reporter_args = []
+    executor_debug_str = runner.trial_executor.debug_string()
+    reporter_args.append(executor_debug_str)
+    reporter.report(trials, *reporter_args)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -449,6 +489,12 @@ def run(
         _ray_auto_init()
 
     if _remote:
+        if get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
+
         remote_run = ray.remote(num_cpus=0)(run)
 
         # Make sure tune.run is called on the sever node.
@@ -482,7 +528,15 @@ def run(
             "['min', 'max']"
         )
 
-    set_verbosity(verbose)
+    air_verbosity = get_air_verbosity()
+    if air_verbosity:
+        logger.warning(
+            f"Testing new AIR console output flow with verbosity={air_verbosity}. "
+            f"This will also disable the old flow - setting it to 0 now."
+        )
+        set_verbosity(0)
+    else:
+        set_verbosity(verbose)
 
     config = config or {}
     if isinstance(config, _Config):
@@ -708,7 +762,12 @@ def run(
 
     # Create syncer callbacks
     callbacks = _create_default_callbacks(
-        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+        callbacks,
+        sync_config=sync_config,
+        air_verbosity=air_verbosity,
+        is_tuning=search_alg.total_samples > 1,
+        metric=metric,
+        progress_metrics=progress_metrics,
     )
 
     # User Warning for GPUs
@@ -734,7 +793,14 @@ def run(
 
     experiment_interrupted_event = _setup_signal_catching()
 
-    progress_reporter = progress_reporter or _detect_reporter()
+    if progress_reporter and air_verbosity:
+        logger.warning(
+            "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
+        )
+        progress_reporter = None
+
+    if not air_verbosity:
+        progress_reporter = progress_reporter or _detect_reporter()
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors,
@@ -776,16 +842,28 @@ def run(
 
     tune_start = time.time()
 
-    progress_reporter.setup(
-        start_time=tune_start,
-        total_samples=search_alg.total_samples,
-        metric=metric,
-        mode=mode,
-    )
+    air_progress_reporter = None
+    if not air_verbosity:
+        progress_reporter.setup(
+            start_time=tune_start,
+            total_samples=search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+        )
+    else:
+        air_progress_reporter = _detect_air_reporter(
+            start_time=tune_start,
+            total_samples=search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+            air_verbosity=air_verbosity,
+        )
+
     while not runner.is_finished() and not experiment_interrupted_event.is_set():
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
+
     tune_taken = time.time() - tune_start
 
     try:
@@ -795,6 +873,9 @@ def run(
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
+        if air_verbosity:
+            # to be implemented
+            _report_air_progress(runner, air_progress_reporter)
 
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.checkpoint_file
@@ -833,14 +914,15 @@ def run(
             "saved. You can continue running this experiment by passing "
             "`resume=True` to `tune.run()`"
         )
-
-    return ExperimentAnalysis(
+    ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
     )
+
+    return ea
 
 
 @PublicAPI
@@ -883,6 +965,11 @@ def run_experiments(
         _ray_auto_init()
 
     if _remote:
+        if get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
