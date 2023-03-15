@@ -69,5 +69,7 @@ class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
     framework = "tf"
 
     def __init__(self, config: ModelConfig) -> None:
-        ActorCriticEncoder.__init__(self, config)
+        # We have to call TfModel.__init__ first, because it calls the constructor of
+        # tf.keras.Model, which is required to be called before models are created.
         TfModel.__init__(self, config)
+        ActorCriticEncoder.__init__(self, config)

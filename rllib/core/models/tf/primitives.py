@@ -24,7 +24,7 @@ def _raise_not_decorated_exception(input_or_output):
     )
 
 
-class TfModel(Model, tf.Module, abc.ABC):
+class TfModel(Model, tf.keras.Model, abc.ABC):
     """Base class for RLlib's TensorFlow models.
 
     This class defines the interface for RLlib's TensorFlow models and checks
@@ -33,7 +33,7 @@ class TfModel(Model, tf.Module, abc.ABC):
     """
 
     def __init__(self, config: ModelConfig):
-        tf.Module.__init__(self)
+        tf.keras.Model.__init__(self)
         Model.__init__(self, config)
 
         # automatically apply spec checking
@@ -59,7 +59,7 @@ class TfModel(Model, tf.Module, abc.ABC):
         return self._forward(input_dict, **kwargs)
 
 
-class TfMLP(tf.Module):
+class TfMLP(tf.keras.Model):
     """A multi-layer perceptron.
 
     Attributes:
