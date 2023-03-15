@@ -3968,7 +3968,11 @@ class Dataset(Generic[T]):
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
-        """Returns a string containing execution timing information."""
+        """Returns a string containing execution timing information.
+
+        Note that this does not trigger execution, so if the Dataset has not yet
+        executed, an empty string will be returned.
+        """
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
