@@ -12,8 +12,6 @@ torch, nn = try_import_torch()
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
 
-torch.autograd.set_detect_anomaly(True)
-
 frag_length = 32
 
 FAKE_BATCH = {
