@@ -150,6 +150,7 @@ if TYPE_CHECKING:
     from ray.data.grouped_dataset import GroupedDataset
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -2568,6 +2569,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
+        tf_schema: Optional["schema_pb2.Schema"] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2626,6 +2628,7 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+            tf_schema=tf_schema,
         )
 
     @ConsumptionAPI
