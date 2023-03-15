@@ -326,7 +326,7 @@ async def test_pass_job_id(job_manager):
     )
 
     # Check that the same job_id is rejected.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         await job_manager.submit_job(
             entrypoint="echo hello", submission_id=submission_id
         )
