@@ -512,7 +512,7 @@ def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client
             ray.util.placement_group([])
 
 
-def test_placement_group_equal_hash(ray_start_regular_shared):
+def test_placement_group_equal_hash(ray_start_regular):
     from copy import copy
 
     pg1 = ray.util.placement_group([{"CPU": 1}])
