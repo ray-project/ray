@@ -69,5 +69,5 @@ class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
     framework = "tf"
 
     def __init__(self, config: ModelConfig) -> None:
-        ActorCriticEncoder.__init__(self, config)
         TfModel.__init__(self, config)
+        ActorCriticEncoder.__init__(self, config)
