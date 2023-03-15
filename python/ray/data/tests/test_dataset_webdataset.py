@@ -1,3 +1,6 @@
+# Copyright NVIDIA Corporation 2023
+# SPDX-License-Identifier: Apache-2.0 
+
 import json
 import os
 import io
