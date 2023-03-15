@@ -62,6 +62,8 @@ def main(
         expected_measurements_per_test=num_measurements_per_configuration,
     )
 
+    print_disk_config()
+
     run_matrix = generate_test_matrix(
         num_cpus_in_cluster,
         num_tasks_or_actors_per_run,
@@ -132,6 +134,11 @@ class MetricsActor:
 
         results["perf_metrics"] = perf_metrics
         return results
+
+
+def print_disk_config():
+    print("Getting disk sizes via df -h")
+    subprocess.check_call("df -h", shell=True)
 
 
 def generate_test_matrix(

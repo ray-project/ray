@@ -8,7 +8,8 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 500
+            # 150GB is the default in Anyscale.
+            VolumeSize: 150
 
 python:
   pip_packages: []
