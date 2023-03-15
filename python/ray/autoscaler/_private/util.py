@@ -780,6 +780,7 @@ def format_info_string(
             assert record.unavailable_node_information is not None
             node_type = record.node_type
             category = record.unavailable_node_information.category
+            description = record.unavailable_node_information.description
             attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
             formatted_time = (
                 # This `:02d` funny business is python syntax for printing a 2
@@ -789,6 +790,8 @@ def format_info_string(
                 f"{attempted_time.second:02d}"
             )
             line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
+            if verbose:
+                line += f" - {description}"
             failure_lines.append(line)
 
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]

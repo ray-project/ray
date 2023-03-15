@@ -3457,6 +3457,96 @@ Demands:
     assert expected == actual
 
 
+def test_info_string_with_launch_failures_verbose():
+    lm_summary = LoadMetricsSummary(
+        usage={
+            "CPU": (530.0, 544.0),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (0, 2),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
+        },
+        resource_demand=[({"CPU": 1}, 150)],
+        pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
+        request_demand=[({"CPU": 16}, 100)],
+        node_types=[],
+    )
+    base_timestamp = datetime(
+        year=2012, month=12, day=21, hour=13, minute=3, second=1
+    ).timestamp()
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        pending_nodes=[
+            ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+            ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+        ],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+        node_availability_summary=NodeAvailabilitySummary(
+            node_availabilities={
+                "A100": NodeAvailabilityRecord(
+                    node_type="A100",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp + 1,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InstanceLimitExceeded",
+                        description="not fun issue. you should fix it",
+                    ),
+                ),
+                "Inferentia-Spot": NodeAvailabilityRecord(
+                    node_type="Inferentia-Spot",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InsufficientInstanceCapacity",
+                        description="mo nodes mo problems",
+                    ),
+                ),
+            }
+        ),
+    )
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+
+Node status
+--------------------------------------------------------
+Healthy:
+ 2 p3.2xlarge
+ 20 m4.4xlarge
+Pending:
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
+Recent failures:
+ A100: InstanceLimitExceeded (latest_attempt: 13:03:02) - not fun issue. you should fix it
+ Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01) - mo nodes mo problems
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+
+Resources
+--------------------------------------------------------
+Total Usage:
+ 0/2 AcceleratorType:V100
+ 530.0/544.0 CPU
+ 2/2 GPU
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
+
+Total Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+""".strip()
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+        verbose=True,
+    )
+    print(actual)
+    assert expected == actual
+
+
 def test_info_string_failed_node_cap():
     lm_summary = LoadMetricsSummary(
         usage={
