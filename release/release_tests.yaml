@@ -621,7 +621,7 @@
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
   python: "3.9"
-  frequency: disabled
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_latest_cluster_env.yaml
@@ -638,7 +638,7 @@
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
   python: "3.9"
-  frequency: disabled
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_latest_cluster_env.yaml
@@ -672,7 +672,7 @@
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
   python: "3.9"
-  frequency: disabled
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_latest_cluster_env.yaml
@@ -688,7 +688,7 @@
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
   python: "3.9"
-  frequency: disabled
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_latest_cluster_env.yaml
@@ -723,7 +723,7 @@
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
   python: "3.9"
-  frequency: disabled
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_latest_cluster_env.yaml
@@ -740,7 +740,7 @@
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
   python: "3.9"
-  frequency: disabled
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_latest_cluster_env.yaml
