@@ -59,7 +59,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 
 MOCK_MODULES = [
-    "accelerate",
     "ax",
     "ax.service.ax_client",
     "ConfigSpace",
