@@ -326,3 +326,9 @@ class RunningReplicaInfo:
                 self._hash == other._hash,
             ]
         )
+
+
+class ServeDeployMode(str, Enum):
+    UNSET = "UNSET"
+    SINGLE_APP = "SINGLE_APP"
+    MULTI_APP = "MULTI_APP"

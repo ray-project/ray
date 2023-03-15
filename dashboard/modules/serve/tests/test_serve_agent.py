@@ -558,6 +558,106 @@ def test_get_serve_instance_details(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_deploy_single_then_multi(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    multi_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    single_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "import_path": world_import_path,
+    }
+
+    def check_app():
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+            timeout=15,
+        )
+
+    # Deploy single app config
+    deploy_and_check_config(single_app_config)
+    check_app()
+
+    # Deploying multi app config afterwards should fail
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=multi_app_config, timeout=5)
+    assert put_response.status_code == 400
+    print(put_response.text)
+
+    # The original application should still be up and running
+    check_app()
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_deploy_multi_then_single(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    multi_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    single_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "import_path": world_import_path,
+    }
+
+    def check_apps():
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "6 pizzas please!",
+            timeout=15,
+        )
+
+    # Deploy multi app config
+    deploy_config_multi_app(multi_app_config)
+    check_apps()
+
+    # Deploying single app config afterwards should fail
+    put_response = requests.put(GET_OR_PUT_URL, json=single_app_config, timeout=5)
+    assert put_response.status_code == 400
+
+    # The original applications should still be up and running
+    check_apps()
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_serve_namespace(ray_start_stop):
     """
     Check that the Dashboard's Serve can interact with the Python API
