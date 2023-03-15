@@ -412,7 +412,7 @@ def run(
         "A toggle between single-application and multi-application mode.\n"
         "- If a single application was deployed through a config of the format "
         "ServeApplicationSchema, then `serve config` should be used without setting "
-        "the flag to fetch the current config for the default application with name=''.\n"
+        'flag to fetch the current config for the default app with name="".\n'
         "- If multiple applications were deployed through a config of the format "
         "ServeDeploySchema, then `serve config` should be used with this flag set to "
         "get the current app configs of all live applications on the Ray Cluster."
@@ -443,14 +443,15 @@ def config(address: str, multi_app: bool, app_name: Optional[str]):
 
         # Fetch app configs for all live applications on the cluster
         if multi_app:
-            for app in serve_details.applications.values():
-                print("---\n")
-                print(
+            print(
+                "\n---\n\n".join(
                     yaml.safe_dump(
                         app.deployed_app_config.dict(exclude_unset=True),
                         sort_keys=False,
                     )
+                    for app in serve_details.applications.values()
                 )
+            )
 
         # Fetch a specific app config by name.
         elif app_name is not None:
@@ -515,16 +516,17 @@ def status(address: str, app_name: Optional[str]):
         if len(serve_details.applications) == 0:
             print("There are no applications running this cluster.")
 
-        for application in serve_details.applications.values():
-            print("---\n")
-            print(
+        print(
+            "\n---\n\n".join(
                 yaml.safe_dump(
                     # Ensure exception tracebacks in app_status are printed correctly
                     process_dict_for_yaml_dump(application.get_status_dict()),
                     default_flow_style=False,
                     sort_keys=False,
                 )
+                for application in serve_details.applications.values()
             )
+        )
     else:
         if app_name not in serve_details.applications:
             cli_logger.error(f'Application "{app_name}" does not exist.')

@@ -15,7 +15,7 @@ import ray
 from ray import serve
 from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
-from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -594,22 +594,25 @@ def test_shutdown(ray_start_stop):
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
-        assert ServeStatusSchema.get_empty_schema_dict() != status
+        assert "There are no applications running this cluster." != status
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
-        wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
-        print("Deletion successful. All deployments have shut down.")
 
         # `serve config` and `serve status` should print empty schemas
-        config_response = subprocess.check_output(["serve", "config"])
-        config = yaml.safe_load(config_response)
-        assert ServeApplicationSchema.get_empty_schema_dict() == config
+        def serve_config_empty():
+            config_response = subprocess.check_output(["serve", "config"])
+            config = yaml.safe_load(config_response)
+            return ServeApplicationSchema.get_empty_schema_dict() == config
 
-        status_response = subprocess.check_output(["serve", "status"])
-        status = yaml.safe_load(status_response)
-        assert ServeStatusSchema.get_empty_schema_dict() == status
+        def serve_status_empty():
+            status_response = subprocess.check_output(["serve", "status"])
+            status = yaml.safe_load(status_response)
+            return "There are no applications running this cluster." == status
+
+        wait_for_condition(serve_config_empty)
+        wait_for_condition(serve_status_empty)
         print("`serve config` and `serve status` print empty responses.\n")
 
 
@@ -984,7 +987,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     status_response = subprocess.check_output(["serve", "status"])
     status_info = yaml.safe_load(status_response)
 
-    assert len(status_info["deployment_statuses"]) == 0
+    assert status_info == "There are no applications running this cluster."
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
