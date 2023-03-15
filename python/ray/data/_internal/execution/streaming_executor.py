@@ -139,9 +139,6 @@ class StreamingExecutor(Executor, threading.Thread):
                     state.progress_bar.close()
             if self._output_info:
                 self._output_info.close()
-            # Make request for zero resources to autoscaler for this execution.
-            actor = get_or_create_autoscaling_requester_actor()
-            actor.request_resources.remote({}, execution_id)
 
     def run(self):
         """Run the control loop in a helper thread.

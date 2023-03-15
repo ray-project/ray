@@ -12,28 +12,26 @@ class AutoscalingRequester:
 
     The resource requests are set to timeout for 60s.
     For those live requests (i.e. those made in last 60s), we keep track of the
-    highest amount requested for each resource dimension for each execution; then
-    sum the requested amounts across all executions as the final request to the
-    autoscaler.
+    last request made for each execution, which overrides all previous requests it
+    made; then sum the requested amounts across all executions as the final request
+    to the autoscaler.
     """
 
     def __init__(self):
-        # Mapping execution_uuid to high-watermark of resource request.
+        # Mapping execution_uuid to latest resource request and time we received
+        # the request.
         self._resource_requests = {}
-        # Mapping execution_uuid to expiration timestamp of resource request from
-        # this execution.
-        self._expiration_timestamp = {}
         # TTL for requests.
         self._timeout = 60
 
     def request_resources(self, req: Dict, execution_uuid: str):
         # Purge expired requests before making request to autoscaler.
         self._purge()
-        self._expiration_timestamp[execution_uuid] = time.time() + self._timeout
-        # For the same execution_uuid, we track the high watermark of the resource
-        # requested.
-        self._resource_requests[execution_uuid] = self._get_high_watermark(
-            req, execution_uuid
+        # For the same execution_uuid, we track the latest resource request and
+        # the current timestamp.
+        self._resource_requests[execution_uuid] = (
+            req,
+            time.time() + self._timeout,
         )
         # We aggregate the resource requests across all execution_uuid's to Ray
         # autoscaler.
@@ -42,34 +40,19 @@ class AutoscalingRequester:
     def _purge(self):
         # Purge requests that are stale.
         now = time.time()
-        for k, v in list(self._expiration_timestamp.items()):
-            if v < now:
-                self._expiration_timestamp.pop(k)
+        for k, (_, t) in list(self._resource_requests.items()):
+            if t < now:
                 self._resource_requests.pop(k)
 
-    def _get_high_watermark(self, req: Dict, execution_uuid: str) -> Dict:
-        if execution_uuid in self._resource_requests:
-            reqs = [req, self._resource_requests[execution_uuid]]
-        else:
-            reqs = [req]
-        req = {}
-        req["CPU"] = max(r["CPU"] if "CPU" in r else 0 for r in reqs)
-        req["GPU"] = max(r["GPU"] if "GPU" in r else 0 for r in reqs)
+    def _aggregate_requests(self) -> Dict:
+        req = {"CPU": 0, "GPU": 0}
+        for _, (r, _) in self._resource_requests.items():
+            req["CPU"] += r["CPU"] if "CPU" in r else 0
+            req["GPU"] += r["GPU"] if "GPU" in r else 0
         return req
 
-    def _aggregate_requests(self) -> Dict:
-        req = {}
-        req["CPU"] = (
-            sum(self._resource_requests["CPU"])
-            if "CPU" in self._resource_requests
-            else 0
-        )
-        req["GPU"] = (
-            sum(self._resource_requests["GPU"])
-            if "GPU" in self._resource_requests
-            else 0
-        )
-        return req
+    def _get_resource_requests(self):
+        return self._resource_requests
 
 
 def get_or_create_autoscaling_requester_actor():

@@ -308,10 +308,21 @@ def test_resource_constrained_triggers_autoscaling():
     # Make sure only two operator's inqueues has data.
     topo[o2].inqueues[0].append("dummy")
     topo[o4].inqueues[0].append("dummy")
+    selected_op = select_operator_to_run(
+        topo,
+        TopologyResourceUsage(
+            ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+            EMPTY_DOWNSTREAM_USAGE,
+        ),
+        ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+        True,
+        "1",
+    )
+    assert selected_op is None
     # We should request incremental resources for only o2, since it's the only op that's
     # ready to dispatch.
     ac = get_or_create_autoscaling_requester_actor()
-    ac._resource_requests = {"CPU": 3, "GPU": 2}
+    assert ray.get(ac._get_resource_requests.remote())["1"][0] == {"CPU": 3, "GPU": 2}
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
