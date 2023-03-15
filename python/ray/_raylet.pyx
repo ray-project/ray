@@ -1495,6 +1495,40 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+
+cdef class GcsClient:
+    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+    cdef:
+        unique_ptr[CGcsClient] inner
+    
+    def __cinit__(self, GcsClientOptions gcs_options):
+        self.inner.reset(new CGcsClient(dereference(gcs_options.native())))
+
+    def connect(self):
+        check_status(self.inner.get().Connect())
+
+    def internal_kv_get(self, key, namespace, timeout):
+        cdef:
+            c_string value
+        check_status(self.inner.get().InternalKV().Get(namespace.encode("ascii"), key.encode("ascii"), value))
+
+        return value
+
+    def internal_kv_keys(self, prefix, namespace, timeout):
+        cdef:
+            c_vector[c_string] keys
+            c_string key
+
+        check_status(self.inner.get().InternalKV().Keys(namespace.encode("ascii"), prefix.encode("ascii"), keys))
+
+        result = []
+
+        for key in keys:
+            result.append(key)
+
+        return result
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,

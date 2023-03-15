@@ -303,9 +303,24 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
 
+cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
+
+    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
+
+        CRayStatus Get(const c_string &ns, const c_string &key, c_string &value)
+
+        CRayStatus Keys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value)
+
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
+
+    cdef cppclass CGcsClient "ray::gcs::GcsClient":
+        CGcsClient(const CGcsClientOptions &options)
+
+        CRayStatus Connect()
+
+        CInternalKVAccessor &InternalKV()
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
