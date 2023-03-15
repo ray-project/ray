@@ -76,7 +76,7 @@ class MockTrial:
         self.uses_cloud_checkpointing = False
         self.sync_on_checkpoint = True
 
-        self.logdir = logdir
+        self.local_path = self.logdir = logdir
         self._local_ip = ray.util.get_node_ip_address()
         self._on_dead_node = on_dead_node
 

@@ -641,7 +641,7 @@ class Trial:
         return str(self._local_experiment_path)
 
     @local_experiment_path.setter
-    def local_experiment_path(self, local_path):
+    def local_experiment_path(self, local_path: str):
         relative_checkpoint_dirs = []
         if self.local_path:
             # Save the relative paths of persistent trial checkpoints, which are saved
@@ -655,7 +655,7 @@ class Trial:
 
         # Update the underlying `_local_experiment_path`,
         # which also updates the trial `local_path`
-        self._local_experiment_path = Path(local_path)
+        self._local_experiment_path = local_path
 
         if self.local_path:
             for checkpoint, relative_checkpoint_dir in zip(

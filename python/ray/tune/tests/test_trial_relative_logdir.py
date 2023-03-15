@@ -262,7 +262,7 @@ def test_load_trial_from_json_state(tmpdir):
     and then creating a new trial using the `Trial.from_json_state` alternate
     constructor loads the trial with equivalent state."""
     trial = Trial(
-        "MockTrainable", stub=True, trial_id="abcd1234", storage_path=str(tmpdir)
+        "MockTrainable", stub=True, trial_id="abcd1234", experiment_path=str(tmpdir)
     )
     trial.create_placement_group_factory()
     trial.init_local_path()
@@ -285,7 +285,7 @@ def test_load_trial_from_json_state(tmpdir):
 
 def test_change_trial_local_dir(tmpdir):
     trial = Trial(
-        "MockTrainable", stub=True, trial_id="abcd1234", storage_path=str(tmpdir)
+        "MockTrainable", stub=True, trial_id="abcd1234", experiment_path=str(tmpdir)
     )
     trial.init_local_path()
     trial.status = Trial.TERMINATED
