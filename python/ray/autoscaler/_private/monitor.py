@@ -372,6 +372,11 @@ class Monitor:
                 self.update_resource_requests()
                 self.update_event_summary()
                 load_metrics_summary = self.load_metrics.summary()
+                status = {
+                    "gcs_request_time": gcs_request_time,
+                    "time": time.time(),
+                    "monitor_pid": os.getpid(),
+                }
 
                 if self.autoscaler and not self.load_metrics:
                     # load_metrics is Falsey iff we haven't collected any
@@ -410,7 +415,7 @@ class Monitor:
                                 resource=resource_name,
                                 SessionName=self.prom_metrics.session_name,
                             ).set(pending)
-                    
+
                     self.prom_metrics.pending_nodes.set(
                         len(autoscaler_summary.pending_nodes)
                         + len(autoscaler_summary.pending_launches)
@@ -430,13 +435,7 @@ class Monitor:
 
                     self.event_summarizer.clear()
 
-                status = {
-                    "gcs_request_time": gcs_request_time,
-                    "load_metrics_report": asdict(load_metrics_summary),
-                    "time": time.time(),
-                    "monitor_pid": os.getpid(),
-                }
-
+                status["load_metrics_summary"] = asdict(load_metrics_summary)
                 as_json = json.dumps(status)
                 if _internal_kv_initialized():
                     _internal_kv_put(

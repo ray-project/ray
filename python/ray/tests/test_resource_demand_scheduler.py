@@ -1947,7 +1947,12 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary_dict["failed_nodes"] == [("172.0.0.4", "m4.4xlarge")]
 
-        assert lm_summary.node_type_mapping == {'172.0.0.0': 'empty_node', '172.0.0.1': 'm4.large', '172.0.0.2': 'm4.large', '172.0.0.3': 'p2.xlarge'}
+        assert lm_summary.node_type_mapping == {
+            "172.0.0.0": "empty_node",
+            "172.0.0.1": "m4.large",
+            "172.0.0.2": "m4.large",
+            "172.0.0.3": "p2.xlarge",
+        }
 
         # Ensure summary is json-serializable
         json.dumps(summary_dict)
@@ -3220,7 +3225,7 @@ def test_info_string_verbose_node_types():
         node_type_mapping={
             "192.168.1.1": "head-node",
             "192.168.1.2": "gpu-worker",
-        }
+        },
     )
     autoscaler_summary = AutoscalerSummary(
         active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
