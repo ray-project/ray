@@ -41,7 +41,7 @@ const useStyles = makeStyles((theme) =>
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Name" },
   { label: "Status" },
-  { label: "Message", width: "30%" },
+  { label: "Status message", width: "30%" },
   { label: "Replicas" },
   { label: "Deployment config" },
 ];

@@ -1,4 +1,5 @@
 import { createStyles, Link, makeStyles, Typography } from "@material-ui/core";
+import yaml from "js-yaml";
 import React, { useState } from "react";
 import DialogWithTitle from "../DialogWithTitle";
 
@@ -20,7 +21,7 @@ export type CodeDialogButtonProps = {
    */
   buttonText?: string;
   /**
-   * Code to show in the dialog. If an object is passed in, that object will be stringified.
+   * Code to show in the dialog. If an object is passed in, that object will be stringified to yaml.
    */
   code: string | object;
 };
@@ -54,9 +55,7 @@ export const CodeDialogButton = ({
           }}
         >
           <Typography className={classes.configText}>
-            {typeof code === "string"
-              ? code
-              : JSON.stringify(code, undefined, 2)}
+            {typeof code === "string" ? code : yaml.dump(code)}
           </Typography>
         </DialogWithTitle>
       )}
@@ -93,8 +92,7 @@ export const CodeDialogButtonWithPreview = ({
 }: CodeDialogButtonWithPreviewProps) => {
   const classes = useCodeDialogButtonWithPreviewStyles();
 
-  const codeText =
-    typeof code === "string" ? code : JSON.stringify(code, undefined, 2);
+  const codeText = typeof code === "string" ? code : yaml.dump(code);
 
   const buttonTextToPass = buttonText ?? "Expand";
 

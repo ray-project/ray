@@ -11,8 +11,9 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Typography,
 } from "@material-ui/core";
-import { Autocomplete, Pagination } from "@material-ui/lab";
+import { Alert, Autocomplete, Pagination } from "@material-ui/lab";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import Loading from "../../components/Loading";
@@ -26,6 +27,9 @@ const useStyles = makeStyles((theme) =>
     table: {
       tableLayout: "fixed",
     },
+    serveInstanceWarning: {
+      marginBottom: theme.spacing(2),
+    },
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
@@ -36,7 +40,7 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Application name" },
   { label: "Route prefix" },
   { label: "Status" },
-  { label: "Message", width: "30%" },
+  { label: "Status message", width: "30%" },
   { label: "Num deployments" },
   { label: "Last deployed at" },
   { label: "Duration (since last deploy)" },
@@ -48,11 +52,16 @@ export const ServeApplicationsListPage = () => {
   const {
     serveDetails,
     serveApplicationsList,
+    error,
     unfilteredList,
     page,
     setPage,
     changeFilter,
   } = useServeApplications();
+
+  if (error) {
+    return <Typography color="error">{error.toString()}</Typography>;
+  }
 
   if (serveDetails === undefined) {
     return <Loading loading={true} />;
@@ -61,24 +70,31 @@ export const ServeApplicationsListPage = () => {
   return (
     <div>
       <CollapsibleSection title="Serve details" startExpanded>
-        <MetadataSection
-          metadataList={[
-            {
-              label: "Host",
-              content: {
-                copyableValue: serveDetails.host,
-                value: serveDetails.host,
+        {serveDetails.host && serveDetails.port ? (
+          <MetadataSection
+            metadataList={[
+              {
+                label: "Host",
+                content: {
+                  copyableValue: serveDetails.host,
+                  value: serveDetails.host,
+                },
               },
-            },
-            {
-              label: "Port",
-              content: {
-                copyableValue: `${serveDetails.port}`,
-                value: `${serveDetails.port}`,
+              {
+                label: "Port",
+                content: {
+                  copyableValue: `${serveDetails.port}`,
+                  value: `${serveDetails.port}`,
+                },
               },
-            },
-          ]}
-        />
+            ]}
+          />
+        ) : (
+          <Alert className={classes.serveInstanceWarning} severity="warning">
+            Serve instance not started yet. Please deploy a serve application
+            first.
+          </Alert>
+        )}
       </CollapsibleSection>
       <CollapsibleSection title="Serve applications" startExpanded>
         <TableContainer>

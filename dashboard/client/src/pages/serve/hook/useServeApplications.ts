@@ -23,7 +23,7 @@ export const useServeApplications = () => {
     setFilter([...filter]);
   };
 
-  const { data } = useSWR(
+  const { data, error } = useSWR(
     "useServeApplications",
     async () => {
       const rsp = await getServeApplications();
@@ -49,6 +49,7 @@ export const useServeApplications = () => {
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
     ),
+    error,
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
@@ -79,7 +80,7 @@ export const useServeApplicationDetails = (
   };
 
   // TODO(aguo): Use a fetch by applicationName endpoint?
-  const { data } = useSWR(
+  const { data, error } = useSWR(
     "useServeApplications",
     async () => {
       const rsp = await getServeApplications();
@@ -109,6 +110,7 @@ export const useServeApplicationDetails = (
           : true,
       ),
     ),
+    error,
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),

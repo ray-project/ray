@@ -14,7 +14,7 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export const ServePage = () => {
+export const ServeLayout = () => {
   const classes = useStyles();
 
   return (

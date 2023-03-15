@@ -25,7 +25,7 @@ import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
 import { ServeApplicationDetailPage } from "./pages/serve/ServeApplicationDetailPage";
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
-import { ServePage } from "./pages/serve/ServePage";
+import { ServeLayout } from "./pages/serve/ServeLayout";
 import { getNodeList } from "./service/node";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
@@ -249,7 +249,7 @@ const App = () => {
                       <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
                   </Route>
-                  <Route element={<ServePage />} path="serve">
+                  <Route element={<ServeLayout />} path="serve">
                     <Route element={<ServeApplicationsListPage />} path="" />
                     <Route
                       element={<ServeApplicationDetailPage />}
