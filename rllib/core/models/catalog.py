@@ -1,4 +1,5 @@
 from typing import Optional, Mapping, Any
+import functools
 
 import numpy as np
 import gymnasium as gym
@@ -12,16 +13,6 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.models.tf.tf_distributions import (
-    TfCategorical,
-    TfDeterministic,
-    TfDiagGaussian,
-)
-from ray.rllib.models.torch.torch_distributions import (
-    TorchCategorical,
-    TorchDeterministic,
-    TorchDiagGaussian,
-)
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -57,8 +48,8 @@ class Catalog:
                 super().__init__(observation_space, action_space, model_config_dict)
                 self.my_model_config_dict = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
-                    input_dim=self.observation_space.shape[0],
-                    output_dim=1,
+                    input_dims=[self.observation_space.shape[0]],
+                    output_dims=[1],
                 )
 
             def build_my_head(self, framework: str):
@@ -98,22 +89,54 @@ class Catalog:
         self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self.view_requirements = view_requirements
 
-        # Produce a basic encoder config.
+        self._latent_dims = None
+
+        # Overwrite this post-init hook in subclasses
+        self.__post_init__()
+
+    @property
+    def latent_dims(self):
+        """Returns the latent dimensions of the encoder.
+
+        This establishes an agreement between encoder and heads about the latent
+        dimensions. Encoders can be built to output a latent tensor with
+        `latent_dims` dimensions, and heads can be built with tensors of
+        `latent_dims` dimensions as inputs. This can be safely ignored if this
+        agreement is not needed in case of modifications to the Catalog.
+
+        Returns:
+            The latent dimensions of the encoder.
+        """
+        return self._latent_dims
+
+    @latent_dims.setter
+    def latent_dims(self, value):
+        self._latent_dims = value
+
+    def __post_init__(self):
+        """Post-init hook for subclasses to override.
+
+        This makes it so that subclasses are not forced to create an encoder config
+        if the rest of their catalog is not dependent on it or if it breaks.
+        At the end of Catalog initialization, an attribute `Catalog.latent_dims`
+        should be set so that heads can be built using that information.
+        """
         self.encoder_config = self.get_encoder_config(
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config_dict=model_config_dict,
-            view_requirements=view_requirements,
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config_dict=self.model_config_dict,
+            view_requirements=self.view_requirements,
         )
 
-        # Get a mapping from framework to action distribution class
-        self.action_dist_cls_dict = self.get_action_dist_cls_dict(
-            action_space=action_space,
+        # Create a function that can be called when framework is known to retrieve the
+        # class type for action distributions
+        self.action_dist_class_fn = functools.partial(
+            self.get_dist_cls_from_action_space, action_space=self.action_space
         )
 
         # The dimensions of the latent vector that is output by the encoder and fed
         # to the heads.
-        self.latent_dim = self.encoder_config.output_dim
+        self.latent_dims = self.encoder_config.output_dims
 
     def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
@@ -126,7 +149,34 @@ class Catalog:
         Returns:
             The encoder.
         """
+        assert hasattr(self, "encoder_config"), (
+            "You must define a `Catalog.encoder_config` attribute in your Catalog "
+            "subclass or override the `Catalog.build_encoder` method. By default, "
+            "an encoder_config is created in the __post_init__ method."
+        )
         return self.encoder_config.build(framework=framework)
+
+    def get_action_dist_cls(self, framework: str):
+        """Get the action distribution class.
+
+        The default behavior is to get the action distribution from the
+        `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
+        distribution as a means of configuring the behavior of a PPORLModuleBase
+        implementation.
+
+        Args:
+            framework: The framework to use. Either "torch" or "tf".
+
+        Returns:
+            The action distribution.
+        """
+        assert hasattr(self, "action_dist_class_fn"), (
+            "You must define a `Catalog.action_dist_class_fn` attribute in your "
+            "Catalog subclass or override the `Catalog.action_dist_class_fn` method. "
+            "By default, an action_dist_class_fn is created in the __post_init__ "
+            "method."
+        )
+        return self.action_dist_class_fn(framework=framework)
 
     @classmethod
     def get_encoder_config(
@@ -172,20 +222,22 @@ class Catalog:
         encoder_latent_dim = (
             model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
         )
+        use_lstm = model_config_dict["use_lstm"]
+        use_attention = model_config_dict["use_attention"]
 
-        if model_config_dict["use_lstm"]:
+        if use_lstm:
             encoder_config = LSTMEncoderConfig(
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_first=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dim=model_config_dict["lstm_cell_size"],
+                output_dims=[model_config_dict["lstm_cell_size"]],
                 output_activation=output_activation,
                 observation_space=observation_space,
                 action_space=action_space,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )
-        elif model_config_dict["use_attention"]:
+        elif use_attention:
             raise NotImplementedError
         else:
             # TODO (Artur): Maybe check for original spaces here
@@ -199,10 +251,10 @@ class Catalog:
                 else:
                     hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
                 encoder_config = MLPEncoderConfig(
-                    input_dim=observation_space.shape[0],
+                    input_dims=[observation_space.shape[0]],
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    output_dim=encoder_latent_dim,
+                    output_dims=[encoder_latent_dim],
                     output_activation=output_activation,
                 )
 
@@ -220,12 +272,18 @@ class Catalog:
                     filter_specifiers=model_config_dict["conv_filters"],
                     filter_layer_activation=activation,
                     output_activation=output_activation,
-                    output_dim=encoder_latent_dim,
+                    output_dims=[encoder_latent_dim],
                 )
             # input_space is a possibly nested structure of spaces.
             else:
                 # NestedModelConfig
-                raise NotImplementedError("No default config for complex spaces yet!")
+                raise ValueError(
+                    f"No default encoder config for "
+                    f"obs space={observation_space},"
+                    f" lstm={use_lstm} and "
+                    f"attention={use_attention} "
+                    f"found."
+                )
 
         return encoder_config
 
@@ -249,12 +307,14 @@ class Catalog:
         )
 
     @classmethod
-    def get_action_dist_cls_dict(
+    def get_dist_cls_from_action_space(
         cls,
         action_space: gym.Space,
+        *,
+        framework: Optional[str] = None,
         deterministic: Optional[bool] = False,
     ) -> Mapping[str, Any]:
-        """Returns a mapping from framework to distribution class.
+        """Returns a distribution class for the given action space.
 
         You can get the required input dimension for the distribution by calling
         `action_dict_cls.required_model_output_shape(action_space, model_config_dict)`
@@ -264,20 +324,47 @@ class Catalog:
 
         Args:
             action_space: Action space of the target gym env.
+            framework: The framework to use.
             deterministic: Whether to return a Deterministic distribution on input
                 logits instead of a stochastic distributions. For example for Discrete
                 spaces, the stochastic is a Categorical distribution with output logits,
                 while the deterministic distribution will be to output the argmax of
                 logits directly.
 
+
         Returns:
-                Mapping from framework to distribution class.
+            The distribution class for the given action space.
         """
-        distribution_dicts = {
-            "deterministic": {"torch": TorchDeterministic, "tf": TfDeterministic},
-            "gaussian": {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
-            "categorical": {"torch": TorchCategorical, "tf": TfCategorical},
-        }
+
+        if framework == "torch":
+            from ray.rllib.models.torch.torch_distributions import (
+                TorchCategorical,
+                TorchDeterministic,
+                TorchDiagGaussian,
+            )
+
+            distribution_dicts = {
+                "deterministic": TorchDeterministic,
+                "gaussian": TorchDiagGaussian,
+                "categorical": TorchCategorical,
+            }
+        elif framework == "tf":
+            from ray.rllib.models.tf.tf_distributions import (
+                TfCategorical,
+                TfDeterministic,
+                TfDiagGaussian,
+            )
+
+            distribution_dicts = {
+                "deterministic": TfDeterministic,
+                "gaussian": TfDiagGaussian,
+                "categorical": TfCategorical,
+            }
+        else:
+            raise ValueError(
+                f"Unknown framework: {framework}. Only 'torch' and 'tf2' are "
+                "supported for RLModule Catalogs."
+            )
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
@@ -322,19 +409,3 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
-
-    def get_action_dist_cls(self, framework: str):
-        """Get the action distribution class.
-
-        The default behavior is to get the action distribution from the
-        action_dist_cls_dict. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
-        implementation.
-
-        Args:
-            framework: The framework to use. Either "torch" or "tf".
-
-        Returns:
-            The action distribution.
-        """
-        return self.action_dist_cls_dict[framework]

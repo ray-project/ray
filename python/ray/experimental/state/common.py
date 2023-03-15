@@ -564,6 +564,8 @@ class TaskState(StateSchema):
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: Task error type.
+    error_type: Optional[str] = state_column(detail=False, filterable=False)
 
 
 @dataclass(init=True)
