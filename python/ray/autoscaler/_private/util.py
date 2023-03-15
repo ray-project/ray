@@ -745,10 +745,7 @@ def format_info_string(
                 f"{non_terminated_nodes_time:3f}s\n"
             )
         if autoscaler_update_time:
-            header += (
-                "Autoscaler iteration time: "
-                f"{autoscaler_update_time:3f}s\n"
-            )
+            header += "Autoscaler iteration time: " f"{autoscaler_update_time:3f}s\n"
 
     available_node_report_lines = []
     for node_type, count in autoscaler_summary.active_nodes.items():
