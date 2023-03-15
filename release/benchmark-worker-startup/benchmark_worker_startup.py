@@ -211,25 +211,25 @@ class TestConfiguration:
     num_nodes_in_cluster: int
 
     def __repr__(self):
-        with_gpu_str = "with-gpu" if self.with_gpu else "without-gpu"
+        with_gpu_str = "with_gpu" if self.with_gpu else "without_gpu"
         executable_unit = "tasks" if self.with_tasks else "actors"
         cold_or_warm_start = "cold" if self.num_jobs > 1 else "warm"
         with_runtime_env_str = (
-            "with-runtime-env" if self.with_runtime_env else "without-runtime-env"
+            "with_runtime_env" if self.with_runtime_env else "without_runtime_env"
         )
         single_node_or_multi_node = (
-            "single-node" if self.num_nodes_in_cluster == 1 else "multi-node"
+            "single_node" if self.num_nodes_in_cluster == 1 else "multi_node"
         )
-        import_torch_or_none = "import-torch" if self.import_to_try == "torch" else "no-import"
+        import_torch_or_none = "import_torch" if self.import_to_try == "torch" else "no_import"
 
-        return "_".join(
+        return "-".join(
             [
-                f"seconds-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{executable_unit}",
+                f"seconds_to_{cold_or_warm_start}_start_{self.num_tasks_or_actors_per_run}_{executable_unit}",
                 import_torch_or_none,
                 with_gpu_str,
                 single_node_or_multi_node,
                 with_runtime_env_str,
-                f"{self.num_cpus_in_cluster}-CPU-{self.num_gpus_in_cluster}-GPU-cluster",
+                f"{self.num_cpus_in_cluster}_CPU_{self.num_gpus_in_cluster}_GPU_cluster",
             ]
         )
 
