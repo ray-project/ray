@@ -1972,6 +1972,7 @@ def connect(
     ray._private.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
+    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2121,7 +2122,6 @@ def connect(
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
-    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
     worker.gcs_error_subscriber = GcsErrorSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
@@ -2216,9 +2216,12 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        worker.gcs_function_key_subscriber.close()
-        worker.gcs_error_subscriber.close()
-        worker.gcs_log_subscriber.close()
+        if hasattr(worker, "gcs_function_key_subscriber"):
+            worker.gcs_function_key_subscriber.close()
+        if hasattr(worker, "gcs_error_subscriber"):
+            worker.gcs_error_subscriber.close()
+        if hasattr(worker, "gcs_log_subscriber"):
+            worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
