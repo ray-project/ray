@@ -164,28 +164,84 @@ class PolicySpec:
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
-    """Policy base class: Calculates actions, losses, and holds NN models.
+    """RLLib's base class for all Policy implementations.
 
     Policy is the abstract superclass for all DL-framework specific sub-classes
     (e.g. TFPolicy or TorchPolicy). It exposes APIs to
 
-    1) Compute actions from observation (and possibly other) inputs.
-    2) Manage the Policy's NN model(s), like exporting and loading their
-       weights.
-    3) Postprocess a given trajectory from the environment or other input
-       via the `postprocess_trajectory` method.
-    4) Compute losses from a train batch.
-    5) Perform updates from a train batch on the NN-models (this normally
-       includes loss calculations) either a) in one monolithic step
-       (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
-       loss computations and updates (`load_batch_into_buffer` +
-       `learn_on_loaded_batch`).
+    1. Compute actions from observation (and possibly other) inputs.
 
-    Note: It is not recommended to sub-class Policy directly, but rather use
-    one of the following two convenience methods:
-    `rllib.policy.policy_template::build_policy_class` (PyTorch) or
-    `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
+    2. Manage the Policy's NN model(s), like exporting and loading their weights.
+
+    3. Postprocess a given trajectory from the environment or other input via the
+        `postprocess_trajectory` method.
+
+    4. Compute losses from a train batch.
+
+    5. Perform updates from a train batch on the NN-models (this normally includes loss
+        calculations) either:
+
+        a. in one monolithic step (`learn_on_batch`)
+
+        b. via batch pre-loading, then n steps of actual loss computations  and updates
+            (`load_batch_into_buffer` + `learn_on_loaded_batch`).
     """
+
+    @DeveloperAPI
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        config: AlgorithmConfigDict,
+    ):
+        """Initializes a Policy instance.
+
+        Args:
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: A complete Algorithm/Policy config dict. For the default
+                config keys and values, see rllib/trainer/trainer.py.
+        """
+        self.observation_space: gym.Space = observation_space
+        self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self.__policy_id = config.get("__policy_id")
+        # The base struct of the observation/action spaces.
+        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
+        # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(observation_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        self.config: AlgorithmConfigDict = config
+        self.framework = self.config.get("framework")
+        # Create the callbacks object to use for handling custom callbacks.
+        if self.config.get("callbacks"):
+            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
+        else:
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+
+        # The global timestep, broadcast down from time to time from the
+        # local worker to all remote workers.
+        self.global_timestep: int = 0
+        # The number of gradient updates this policy has undergone.
+        self.num_grad_updates: int = 0
+
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class: Optional[Type] = None
+
+        # Initialize view requirements.
+        self.init_view_requirements()
+
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
+        self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @staticmethod
     def from_checkpoint(
@@ -316,62 +372,6 @@ class Policy(metaclass=ABCMeta):
         new_policy.set_state(state)
         # Return the new policy.
         return new_policy
-
-    @DeveloperAPI
-    def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        config: AlgorithmConfigDict,
-    ):
-        """Initializes a Policy instance.
-
-        Args:
-            observation_space: Observation space of the policy.
-            action_space: Action space of the policy.
-            config: A complete Algorithm/Policy config dict. For the default
-                config keys and values, see rllib/trainer/trainer.py.
-        """
-        self.observation_space: gym.Space = observation_space
-        self.action_space: gym.Space = action_space
-        # the policy id in the global context.
-        self.__policy_id = config.get("__policy_id")
-        # The base struct of the observation/action spaces.
-        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
-        # action_space_struct = {"a": Discrete(2)}
-        self.observation_space_struct = get_base_struct_from_space(observation_space)
-        self.action_space_struct = get_base_struct_from_space(action_space)
-
-        self.config: AlgorithmConfigDict = config
-        self.framework = self.config.get("framework")
-        # Create the callbacks object to use for handling custom callbacks.
-        if self.config.get("callbacks"):
-            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
-        else:
-            from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
-
-        # The global timestep, broadcast down from time to time from the
-        # local worker to all remote workers.
-        self.global_timestep: int = 0
-        # The number of gradient updates this policy has undergone.
-        self.num_grad_updates: int = 0
-
-        # The action distribution class to use for action sampling, if any.
-        # Child classes may set this.
-        self.dist_class: Optional[Type] = None
-
-        # Initialize view requirements.
-        self.init_view_requirements()
-
-        # Whether the Model's initial state (method) has been added
-        # automatically based on the given view requirements of the model.
-        self._model_init_state_automatically_added = False
-
-        # Connectors.
-        self.agent_connectors = None
-        self.action_connectors = None
 
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
