@@ -570,6 +570,46 @@
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
 
+
+#######################
+# AIR examples
+#######################
+
+
+# Test additional CPU nodes for preprocessing.
+- name: air_example_dreambooth_finetuning
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: dreambooth_env.yaml
+    cluster_compute: dreambooth_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash dreambooth_run.sh
+
+
+- name: air_example_gptj_deepspeed_fine_tuning
+  group: AIR examples
+  working_dir: air_examples/gptj_deepspeed_finetuning
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: gptj_deepspeed_env.yaml
+    cluster_compute: gptj_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+
 #######################
 # XGBoost release tests
 #######################
@@ -2244,6 +2284,30 @@
     wait_for_nodes:
       num_nodes: 2
 
+
+  alert: default
+
+########################
+# Alpa tests
+########################
+
+- name: alpa_opt_2_7b_sanity_check
+  group: Alpa tests
+  working_dir: alpa_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2_g4dn_12xlarge.yaml
+
+  run:
+    timeout: 3600
+    script: bash run.sh
+
+    wait_for_nodes:
+      num_nodes: 2
 
   alert: default
 

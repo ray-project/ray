@@ -2631,9 +2631,7 @@ Status CoreWorker::ExecuteTask(
         /* We will record the terminal state on the submitter worker */
         rpc::TaskStatus::NIL,
         /* include_task_info */ false,
-        /* node_id */ absl::nullopt,
-        /* worker_id */ absl::nullopt,
-        task_log_info);
+        worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
