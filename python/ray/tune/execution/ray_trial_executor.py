@@ -1,6 +1,5 @@
 # coding: utf-8
 import copy
-import inspect
 import logging
 import os
 import random
@@ -31,9 +30,13 @@ from ray.tune.error import (
     _TuneNoNextExecutorEventError,
     _TuneStartTrialError,
 )
-from ray.tune.logger import NoopLogger
 from ray.tune.result import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
-from ray.tune.experiment.trial import Trial, _Location, _TrialInfo
+from ray.tune.experiment.trial import (
+    Trial,
+    _Location,
+    _TrialInfo,
+    _get_trainable_kwargs,
+)
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
@@ -134,20 +137,6 @@ class _TrialCleanup:
 
     def is_empty(self):
         return len(self._future_to_insert_time) == 0
-
-
-def _noop_logger_creator(config, logdir, should_chdir: bool = True):
-    # Upon remote process setup, record the actor's original working dir before
-    # changing to the Tune logdir
-    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
-
-    os.makedirs(logdir, exist_ok=True)
-    if should_chdir:
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
-    return NoopLogger(config, logdir)
 
 
 class _ExecutorEventType(Enum):
@@ -388,14 +377,15 @@ class RayTrialExecutor:
         return actor
 
     def _setup_remote_runner(self, trial):
-        trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self._trials_to_cache.add(trial)
-        logger_creator = partial(
-            _noop_logger_creator,
-            logdir=trial.logdir,
+
+        trainable_kwargs = _get_trainable_kwargs(
+            trial,
+            additional_kwargs=self._trainable_kwargs,
             should_chdir=self._chdir_to_trial_dir,
         )
+        logger_creator = trainable_kwargs["logger_creator"]
 
         existing_runner = self._maybe_use_cached_actor(trial, logger_creator)
         if existing_runner:
@@ -425,46 +415,9 @@ class RayTrialExecutor:
         # since we don't know where the remote runner is placed.
         trial.set_location(_Location())
         logger.debug("Trial %s: Setting up new remote runner.", trial)
-        # Logging for trials is handled centrally by TrialRunner, so
-        # configure the remote runner to use a noop-logger.
-        trial_config = copy.deepcopy(trial.config)
-        trial_config[TRIAL_INFO] = _TrialInfo(trial)
-        stdout_file, stderr_file = trial.log_to_file
-        trial_config[STDOUT_FILE] = stdout_file
-        trial_config[STDERR_FILE] = stderr_file
-        kwargs = {
-            "config": trial_config,
-            "logger_creator": logger_creator,
-        }
-        if trial.uses_cloud_checkpointing:
-            # We keep these kwargs separate for backwards compatibility
-            # with trainables that don't provide these keyword arguments
-            kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["sync_config"] = trial.sync_config
-
-            if self._trainable_kwargs:
-                kwargs.update(self._trainable_kwargs)
-
-            # Throw a meaningful error if trainable does not use the
-            # new API
-            sig = inspect.signature(trial.get_trainable_cls())
-            try:
-                sig.bind_partial(**kwargs)
-            except Exception as e:
-                raise RuntimeError(
-                    "Your trainable class does not accept a "
-                    "`remote_checkpoint_dir` or `syncer` argument "
-                    "in its constructor, but you've passed a "
-                    "`upload_dir` to your SyncConfig. Without accepting "
-                    "these parameters and passing them to the base trainable "
-                    "constructor in the init call, cloud checkpointing is "
-                    "effectively disabled. To resolve this issue, add the "
-                    "parameters to your trainable class constructor or "
-                    "disable cloud checkpointing by setting `upload_dir=None`."
-                ) from e
 
         with self._change_working_directory(trial):
-            return full_actor_class.remote(**kwargs)
+            return full_actor_class.remote(**trainable_kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
