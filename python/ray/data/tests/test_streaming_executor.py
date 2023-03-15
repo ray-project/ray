@@ -277,52 +277,55 @@ def test_resource_constrained_triggers_autoscaling():
         get_or_create_autoscaling_requester_actor,
     )
 
-    # Test that dispatch not being possible due to resource limits triggers a scale-up
-    # request to the autoscaler.
-    opt = ExecutionOptions()
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(
-        make_transform(lambda block: [b * -1 for b in block]),
-        o1,
-    )
-    o2.num_active_work_refs = MagicMock(return_value=1)
-    # Mock operator current resource usage to add object store memory usage.
-    o2.current_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=1, object_store_memory=1000)
-    )
-    o3 = MapOperator.create(
-        make_transform(lambda block: [b * 2 for b in block]),
-        o2,
-    )
-    o3.num_active_work_refs = MagicMock(return_value=1)
-    o4 = MapOperator.create(
-        make_transform(lambda block: [b * 3 for b in block]),
-        o3,
-        compute_strategy=ray.data.ActorPoolStrategy(1, 2),
-        ray_remote_args={"num_gpus": 1},
-    )
-    o4.num_active_work_refs = MagicMock(return_value=1)
-    o4.incremental_resource_usage = MagicMock(return_value=ExecutionResources(gpu=1))
-    topo = build_streaming_topology(o4, opt)
-    # Make sure only two operator's inqueues has data.
-    topo[o2].inqueues[0].append("dummy")
-    topo[o4].inqueues[0].append("dummy")
-    selected_op = select_operator_to_run(
-        topo,
-        TopologyResourceUsage(
+    def run_execution(execution_id: str):
+        opt = ExecutionOptions()
+        inputs = make_ref_bundles([[x] for x in range(20)])
+        o1 = InputDataBuffer(inputs)
+        o2 = MapOperator.create(
+            make_transform(lambda block: [b * -1 for b in block]),
+            o1,
+        )
+        o2.num_active_work_refs = MagicMock(return_value=1)
+        o3 = MapOperator.create(
+            make_transform(lambda block: [b * 2 for b in block]),
+            o2,
+        )
+        o3.num_active_work_refs = MagicMock(return_value=1)
+        o4 = MapOperator.create(
+            make_transform(lambda block: [b * 3 for b in block]),
+            o3,
+            compute_strategy=ray.data.ActorPoolStrategy(1, 2),
+            ray_remote_args={"num_gpus": 1},
+        )
+        o4.num_active_work_refs = MagicMock(return_value=1)
+        o4.incremental_resource_usage = MagicMock(
+            return_value=ExecutionResources(gpu=1)
+        )
+        topo = build_streaming_topology(o4, opt)
+        # Make sure only two operator's inqueues has data.
+        topo[o2].inqueues[0].append("dummy")
+        topo[o4].inqueues[0].append("dummy")
+        selected_op = select_operator_to_run(
+            topo,
+            TopologyResourceUsage(
+                ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+                EMPTY_DOWNSTREAM_USAGE,
+            ),
             ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
-            EMPTY_DOWNSTREAM_USAGE,
-        ),
-        ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
-        True,
-        "1",
-    )
-    assert selected_op is None
-    # We should request incremental resources for only o2, since it's the only op that's
-    # ready to dispatch.
+            True,
+            execution_id,
+        )
+        assert selected_op is None
+
     ac = get_or_create_autoscaling_requester_actor()
-    assert ray.get(ac._get_resource_requests.remote())["1"][0] == {"CPU": 3, "GPU": 2}
+    run_execution("1")
+    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+    run_execution("1")
+    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+    run_execution("2")
+    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
+    run_execution("1")
+    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
