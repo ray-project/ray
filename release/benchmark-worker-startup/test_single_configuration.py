@@ -27,13 +27,14 @@ def main(
     num_runs: int,
     num_tasks_or_actors_per_run: int,
     num_cpus_in_cluster: int,
+    num_gpus_in_cluster: int,
     use_actors: bool,
     with_gpu: bool,
     with_runtime_env: bool,
 ):
 
-    num_gpus = 0.0001 if with_gpu else 0
-    num_cpus = (num_cpus_in_cluster / num_tasks_or_actors_per_run) - 0.01
+    num_gpus = (num_gpus_in_cluster / num_tasks_or_actors_per_run) if with_gpu else 0
+    num_cpus = num_cpus_in_cluster / num_tasks_or_actors_per_run
 
     print(f"Assigning each task/actor {num_cpus} num_cpus and {num_gpus} num_gpus")
     actor_with_resources = Actor.options(num_gpus=num_gpus, num_cpus=num_cpus)
@@ -84,6 +85,7 @@ def parse_args():
     parser.add_argument("--num_runs", type=int, required=True)
     parser.add_argument("--num_tasks_or_actors_per_run", type=int, required=True)
     parser.add_argument("--num_cpus_in_cluster", type=int, required=True)
+    parser.add_argument("--num_gpus_in_cluster", type=int, required=True)
     parser.add_argument(
         "--library_to_import", type=str, required=True, choices=["torch"]
     )
@@ -118,6 +120,7 @@ if __name__ == "__main__":
             args.num_runs,
             args.num_tasks_or_actors_per_run,
             args.num_cpus_in_cluster,
+            args.num_gpus_in_cluster,
             args.with_actors,
             args.with_gpu,
             args.with_runtime_env,

@@ -2,34 +2,41 @@
 
 """
 $ ./benchmark_worker_startup.py --help
-usage: benchmark_worker_startup.py [-h] --num_cpus_in_cluster
+usage: benchmark_worker_startup.py [-h] --num_gpus_in_cluster
+                                   NUM_GPUS_IN_CLUSTER
+                                   --num_cpus_in_cluster
                                    NUM_CPUS_IN_CLUSTER
                                    --num_tasks_or_actors_per_run
                                    NUM_TASKS_OR_ACTORS_PER_RUN
                                    --num_measurements_per_configuration
                                    NUM_MEASUREMENTS_PER_CONFIGURATION
 
-This release test measures Ray worker startup time. Specifically, it measures
-the time to start N different tasks or actors, where each task or actor imports
-a large library (currently PyTorch). N is configurable. The test runs under a
-few different configurations: {task, actor} x {runtime env, no runtime env} x
-{GPU, no GPU} x {cold start, warm start}.
+This release test measures Ray worker startup time. Specifically, it
+measures the time to start N different tasks or actors, where each task or
+actor imports a large library (currently PyTorch). N is configurable. The
+test runs under a few different configurations: {task, actor} x {runtime
+env, no runtime env} x {GPU, no GPU} x {cold start, warm start}.
 
 options:
   -h, --help            show this help message and exit
+  --num_gpus_in_cluster NUM_GPUS_IN_CLUSTER
+                        The number of GPUs in the cluster. This determines
+                        how many GPU resources each actor/task requests.
   --num_cpus_in_cluster NUM_CPUS_IN_CLUSTER
-                        The number of CPUs in the cluster. This determines how
-                        many CPU resources each actor/task requests.
+                        The number of CPUs in the cluster. This determines
+                        how many CPU resources each actor/task requests.
   --num_tasks_or_actors_per_run NUM_TASKS_OR_ACTORS_PER_RUN
-                        The number of tasks or actors per 'run'. A run starts
-                        this many tasks/actors and consitutes a single
-                        measurement. Several runs can be composed within a
-                        single job for measure warm start, or spread across
-                        different jobs to measure cold start.
+                        The number of tasks or actors per 'run'. A run
+                        starts this many tasks/actors and consitutes a
+                        single measurement. Several runs can be composed
+                        within a single job for measure warm start, or
+                        spread across different jobs to measure cold start.
   --num_measurements_per_configuration NUM_MEASUREMENTS_PER_CONFIGURATION
-                        The number of measurements to record per configuration.
+                        The number of measurements to record per
+                        configuration.
 
-This script uses test_single_configuration.py to run the actual measurements.
+This script uses test_single_configuration.py to run the actual
+measurements.
 """
 
 from collections import defaultdict
@@ -47,6 +54,7 @@ import sys
 
 def main(
     num_cpus_in_cluster: int,
+    num_gpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_configuration: int,
 ):
@@ -66,6 +74,7 @@ def main(
 
     run_matrix = generate_test_matrix(
         num_cpus_in_cluster,
+        num_gpus_in_cluster,
         num_tasks_or_actors_per_run,
         num_measurements_per_configuration,
     )
@@ -143,6 +152,7 @@ def print_disk_config():
 
 def generate_test_matrix(
     num_cpus_in_cluster: int,
+    num_gpus_in_cluster: int,
     num_tasks_or_actors_per_run: int,
     num_measurements_per_test: int,
 ):
@@ -176,6 +186,7 @@ def generate_test_matrix(
                         with_runtime_env=with_runtime_env,
                         expensive_import="torch",
                         num_cpus_in_cluster=num_cpus_in_cluster,
+                        num_gpus_in_cluster=num_gpus_in_cluster,
                         num_nodes_in_cluster=1,
                     )
                     tests.add(test)
@@ -193,6 +204,7 @@ class TestConfiguration:
     with_runtime_env: bool
     expensive_import: str
     num_cpus_in_cluster: int
+    num_gpus_in_cluster: int
     num_nodes_in_cluster: int
 
     def __repr__(self):
@@ -208,9 +220,10 @@ class TestConfiguration:
         return "_".join(
             [
                 f"seconds-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",  # noqa: E501
-                f"{with_gpu_str}",
-                f"{single_node_or_multi_node}",
-                f"{with_runtime_env_str}",
+                with_gpu_str,
+                f"{self.num_cpus_in_cluster}-CPU-{self.num_gpus_in_cluster}-GPU-cluster",
+                single_node_or_multi_node,
+                with_runtime_env_str,
             ]
         )
 
@@ -269,6 +282,7 @@ def generate_entrypoint(
             f"--num_runs {test.num_runs_per_job} ",
             f"--num_tasks_or_actors_per_run {test.num_tasks_or_actors_per_run}",
             f"--num_cpus_in_cluster {test.num_cpus_in_cluster}",
+            f"--num_gpus_in_cluster {test.num_gpus_in_cluster}",
             task_or_actor_arg,
             with_gpu_arg,
             with_runtime_env_arg,
@@ -287,6 +301,13 @@ def parse_args():
         "no runtime env} x {GPU, no GPU} x {cold start, warm start}.",
         epilog="This script uses test_single_configuration.py to run the "
         "actual measurements.",
+    )
+    parser.add_argument(
+        "--num_gpus_in_cluster",
+        type=int,
+        required=True,
+        help="The number of GPUs in the cluster. This determines how many "
+        "GPU resources each actor/task requests.",
     )
     parser.add_argument(
         "--num_cpus_in_cluster",
@@ -319,6 +340,7 @@ if __name__ == "__main__":
     sys.exit(
         main(
             args.num_cpus_in_cluster,
+            args.num_gpus_in_cluster,
             args.num_tasks_or_actors_per_run,
             args.num_measurements_per_configuration,
         )

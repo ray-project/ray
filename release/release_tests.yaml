@@ -3065,6 +3065,7 @@
     timeout: 3600
     script: python benchmark_worker_startup.py
         --num_cpus_in_cluster 64
+        --num_gpus_in_cluster 64
         --num_tasks_or_actors_per_run 64
         --num_measurements_per_configuration 5
 
