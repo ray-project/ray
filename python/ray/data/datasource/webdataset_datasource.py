@@ -1,5 +1,5 @@
 # Copyright NVIDIA Corporation 2023
-# SPDX-License-Identifier: Apache-2.0 
+# SPDX-License-Identifier: Apache-2.0
 
 from typing import Any, Callable, Dict, Optional, Union, TYPE_CHECKING
 import tarfile
@@ -72,13 +72,14 @@ def apply_list(f, sample, default=None):
         sample = g(sample)
     return sample
 
+
 def check_suffix(suffix, suffixes):
     """Check whether a suffix is valid.
 
     Suffixes can be either None (=accept everything), a callable,
     or a list of patterns. If the pattern contains */? it is treated
     as a glob pattern, otherwise it is treated as a literal.
-    
+
     Args:
         suffix (str): suffix to be checked
         suffixes (list): list of valid suffixes
@@ -88,15 +89,21 @@ def check_suffix(suffix, suffixes):
     if callable(suffixes):
         return suffixes(suffix)
     for pattern in suffixes:
-        if "*" in pattern or "?" in pattern:            
-            if fnmatch.fnmatch("."+suffix, pattern):
+        if "*" in pattern or "?" in pattern:
+            if fnmatch.fnmatch("." + suffix, pattern):
                 return True
-        elif suffix == pattern or "."+suffix == pattern:
+        elif suffix == pattern or "." + suffix == pattern:
             return True
     return False
 
 
-def tar_file_iterator(fileobj, fileselect: Optional[Union[bool,callable, list]]=None, filerename: Optional[Union[bool, callable, list]]=None, verbose_open:bool=False, meta: dict={}):
+def tar_file_iterator(
+    fileobj,
+    fileselect: Optional[Union[bool, callable, list]] = None,
+    filerename: Optional[Union[bool, callable, list]] = None,
+    verbose_open: bool = False,
+    meta: dict = {},
+):
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
 
     Args:
@@ -120,8 +127,8 @@ def tar_file_iterator(fileobj, fileselect: Optional[Union[bool,callable, list]]=
         yield result
     if verbose_open:
         print(f"done {meta}")
-        
-        
+
+
 def group_by_keys(data, keys=base_plus_ext, suffixes=None, meta={}):
     """Return function over iterator that groups key, value pairs into samples.
 
@@ -220,7 +227,9 @@ def default_decoder(sample: Dict[str, Any], format=True):
             sample[key] = pickle.loads(value)
     return sample
 
+
 extension_to_format = {"jpg": "jpeg"}
+
 
 def default_encoder(sample: Dict[str, Any], format=True):
     """A default encoder for webdataset.
@@ -249,7 +258,9 @@ def default_encoder(sample: Dict[str, Any], format=True):
                 value = PIL.Image.fromarray(value)
             assert isinstance(value, PIL.Image.Image)
             stream = io.BytesIO()
-            value.save(stream, format=extension_to_format.get(extension.lower(), extension))
+            value.save(
+                stream, format=extension_to_format.get(extension.lower(), extension)
+            )
             sample[key] = stream.getvalue()
         elif extension == "json":
             import json
@@ -279,9 +290,10 @@ def default_encoder(sample: Dict[str, Any], format=True):
             sample[key] = stream.getvalue()
     return sample
 
+
 def make_iterable(block):
     """Make a block iterable.
-    
+
     This is a placeholder for dealing with more complex blocks.
 
     Args:
@@ -291,6 +303,7 @@ def make_iterable(block):
         Iterable[Dict[str,Any]]: Iterable of samples
     """
     return block.iter_rows()
+
 
 @PublicAPI(stability="alpha")
 class WebDatasetDatasource(FileBasedDatasource):
@@ -302,15 +315,15 @@ class WebDatasetDatasource(FileBasedDatasource):
         self,
         stream: "pyarrow.NativeFile",
         path: str,
-        decoder: Optional[Union[bool, str, callable, list]]=True,
-        fileselect: Optional[Union[bool, callable, list]]=None,
-        filerename: Optional[Union[bool, callable, list]]=None,
-        suffixes: Optional[Union[bool, callable, list]]=None,
-        verbose_open: bool=False,
+        decoder: Optional[Union[bool, str, callable, list]] = True,
+        fileselect: Optional[Union[bool, callable, list]] = None,
+        filerename: Optional[Union[bool, callable, list]] = None,
+        suffixes: Optional[Union[bool, callable, list]] = None,
+        verbose_open: bool = False,
         **kw,
     ):
         """Read and decode samples from a stream.
-        
+
         Note that fileselect selects files during reading, while suffixes selects files during the grouping step.
 
         Args:
@@ -327,8 +340,13 @@ class WebDatasetDatasource(FileBasedDatasource):
         import pyarrow as pa
         import pandas as pd
         from ray.data.extensions import ArrowTensorArray
-        
-        files = tar_file_iterator(stream, fileselect=fileselect, filerename=filerename, verbose_open=verbose_open)
+
+        files = tar_file_iterator(
+            stream,
+            fileselect=fileselect,
+            filerename=filerename,
+            verbose_open=verbose_open,
+        )
         samples = group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
         for sample in samples:
             if decoder is not None:
@@ -340,7 +358,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        encoder: Optional[Union[bool, str, callable, list]]=True,
+        encoder: Optional[Union[bool, str, callable, list]] = True,
         **kw,
     ):
         """Encode and write samples to a stream.

@@ -1,5 +1,5 @@
 # Copyright NVIDIA Corporation 2023
-# SPDX-License-Identifier: Apache-2.0 
+# SPDX-License-Identifier: Apache-2.0
 
 import json
 import os
@@ -22,15 +22,19 @@ class TarWriter:
     def __init__(self, path):
         self.path = path
         self.tar = tarfile.open(path, "w")
+
     def __enter__(self):
         return self
+
     def __exit__(self, *args):
         self.tar.close()
+
     def write(self, name, data):
         f = self.tar.tarinfo()
         f.name = name
         f.size = len(data)
         self.tar.addfile(f, io.BytesIO(data))
+
 
 def test_webdataset_read(ray_start_2_cpus, tmp_path):
     path = os.path.join(tmp_path, "bar_000000.tar")
@@ -62,24 +66,29 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
     assert os.path.exists(path)
     assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
     # ds = ray.data.read_datasource(WebDatasetDatasource(), paths=[str(tmp_path)], parallelism=1)
-    
+
     # test simple suffixes
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=["txt", "cls"])
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], parallelism=1, suffixes=["txt", "cls"]
+    )
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
         assert set(sample.keys()) == {"__url__", "__key__", "txt", "cls"}
-        
+
     # test fnmatch patterns for suffixes
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=["*.txt", "*.cls"])
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], parallelism=1, suffixes=["*.txt", "*.cls"]
+    )
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
         assert set(sample.keys()) == {"__url__", "__key__", "txt", "cls", "test.txt"}
-        
+
     # test selection function
     def select(name):
         return name.endswith("txt")
+
     ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=select)
     samples = ds.take(100)
     assert len(samples) == 100
@@ -91,12 +100,22 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
         result = name.replace("txt", "text")
         print("***", name, result)
         return result
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, filerename=renamer)
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], parallelism=1, filerename=renamer
+    )
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
-        assert set(sample.keys()) == {"__url__", "__key__", "text", "cls", "test.text", "test.cls2"}
-        
+        assert set(sample.keys()) == {
+            "__url__",
+            "__key__",
+            "text",
+            "cls",
+            "test.text",
+            "test.cls2",
+        }
+
 
 def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
@@ -111,6 +130,7 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
         for i in range(100):
             assert tf.extractfile(f"{i}.a").read().decode("utf-8") == str(i)
             assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
+
 
 def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     import numpy as np
@@ -128,15 +148,15 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         "gray.png": gray,
         "mp": dstruct,
         "json": dstruct,
-        "pt": ttensor,    
+        "pt": ttensor,
     }
-        
+
     # write the encoded data using the default encoder
     data = [sample]
     ds = ray.data.from_items(data).repartition(1)
     # ds.write_datasource(WebDatasetDatasource(), path=tmp_path, try_create_dir=True, dataset_uuid="foo", overwrite=True, parallelism=1)
     ds.write_webdataset(path=tmp_path, try_create_dir=True)
-    
+
     # read the encoded data using the default decoder
     paths = glob.glob(f"{tmp_path}/*.tar")
     assert len(paths) == 1
@@ -169,8 +189,8 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert sample["__key__"] == "foo"
         assert isinstance(sample["jpg"], PIL.Image.Image)
         assert isinstance(sample["gray.png"], PIL.Image.Image)
-        
-        
+
+
 if __name__ == "__main__":
     import sys
 
