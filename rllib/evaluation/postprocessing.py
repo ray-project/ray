@@ -110,7 +110,6 @@ def compute_advantages(
         SampleBatch.VF_PREDS in rollout or not use_critic
     ), "use_critic=True but values not found"
     assert use_critic or not use_gae, "Can't use gae without using a value function"
-    rollout = convert_to_numpy(rollout)
     last_r = convert_to_numpy(last_r)
 
     if use_gae:
