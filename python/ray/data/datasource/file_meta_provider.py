@@ -498,6 +498,8 @@ def _get_file_infos(
     else:
         raise FileNotFoundError(path)
 
+    return file_infos
+
 
 def _expand_directory(
     path: str,
