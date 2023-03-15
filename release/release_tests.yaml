@@ -3062,7 +3062,7 @@
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
-    timeout: 3600
+    timeout: 7200
     script: python benchmark_worker_startup.py
         --num_cpus_in_cluster 64
         --num_gpus_in_cluster 64

@@ -165,31 +165,34 @@ def generate_test_matrix(
         "warm_start": 1,
     }
 
+    imports_to_try = ["torch", "none"]
+
     tests = set()
 
     for with_tasks in [True, False]:
         for with_gpu in [True, False]:
             for with_runtime_env in [True, False]:
-                for num_jobs in num_jobs_per_type.values():
+                for import_to_try in imports_to_try:
+                    for num_jobs in num_jobs_per_type.values():
 
-                    num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
-                    num_runs_per_job = (
-                        num_tasks_or_actors_per_job // num_tasks_or_actors_per_run
-                    )
+                        num_tasks_or_actors_per_job = total_num_tasks_or_actors // num_jobs
+                        num_runs_per_job = (
+                            num_tasks_or_actors_per_job // num_tasks_or_actors_per_run
+                        )
 
-                    test = TestConfiguration(
-                        num_jobs=num_jobs,
-                        num_runs_per_job=num_runs_per_job,
-                        num_tasks_or_actors_per_run=num_tasks_or_actors_per_run,
-                        with_tasks=with_tasks,
-                        with_gpu=with_gpu,
-                        with_runtime_env=with_runtime_env,
-                        expensive_import="torch",
-                        num_cpus_in_cluster=num_cpus_in_cluster,
-                        num_gpus_in_cluster=num_gpus_in_cluster,
-                        num_nodes_in_cluster=1,
-                    )
-                    tests.add(test)
+                        test = TestConfiguration(
+                            num_jobs=num_jobs,
+                            num_runs_per_job=num_runs_per_job,
+                            num_tasks_or_actors_per_run=num_tasks_or_actors_per_run,
+                            with_tasks=with_tasks,
+                            with_gpu=with_gpu,
+                            with_runtime_env=with_runtime_env,
+                            import_to_try=import_to_try,
+                            num_cpus_in_cluster=num_cpus_in_cluster,
+                            num_gpus_in_cluster=num_gpus_in_cluster,
+                            num_nodes_in_cluster=1,
+                        )
+                        tests.add(test)
 
     return tests
 
@@ -202,7 +205,7 @@ class TestConfiguration:
     with_gpu: bool
     with_tasks: bool
     with_runtime_env: bool
-    expensive_import: str
+    import_to_try: str
     num_cpus_in_cluster: int
     num_gpus_in_cluster: int
     num_nodes_in_cluster: int
@@ -217,13 +220,16 @@ class TestConfiguration:
         single_node_or_multi_node = (
             "single-node" if self.num_nodes_in_cluster == 1 else "multi-node"
         )
+        import_torch_or_none = "import-torch" if self.import_to_try == "torch" else "no-import"
+
         return "_".join(
             [
-                f"seconds-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{self.expensive_import}-{executable_unit}-over-{self.num_cpus_in_cluster}-cpus",  # noqa: E501
+                f"seconds-to-{cold_or_warm_start}-start-{self.num_tasks_or_actors_per_run}-{executable_unit}",
+                import_torch_or_none,
                 with_gpu_str,
-                f"{self.num_cpus_in_cluster}-CPU-{self.num_gpus_in_cluster}-GPU-cluster",
                 single_node_or_multi_node,
                 with_runtime_env_str,
+                f"{self.num_cpus_in_cluster}-CPU-{self.num_gpus_in_cluster}-GPU-cluster",
             ]
         )
 
@@ -286,7 +292,7 @@ def generate_entrypoint(
             task_or_actor_arg,
             with_gpu_arg,
             with_runtime_env_arg,
-            f"--library_to_import {test.expensive_import}",
+            f"--library_to_import {test.import_to_try}",
         ]
     )
 

@@ -12,13 +12,15 @@ import time
 
 @ray.remote
 class Actor:
-    def run_code(self):
-        import torch  # noqa: F401
+    def run_code(self, should_import_torch: bool):
+        if should_import_torch:
+            import torch  # noqa: F401
 
 
 @ray.remote
-def task():
-    import torch  # noqa: F401
+def task(should_import_torch: bool):
+    if should_import_torch:
+        import torch  # noqa: F401
 
 
 def main(
@@ -28,6 +30,7 @@ def main(
     num_tasks_or_actors_per_run: int,
     num_cpus_in_cluster: int,
     num_gpus_in_cluster: int,
+    library_to_import: str,
     use_actors: bool,
     with_gpu: bool,
     with_runtime_env: bool,
@@ -40,17 +43,20 @@ def main(
     actor_with_resources = Actor.options(num_gpus=num_gpus, num_cpus=num_cpus)
     task_with_resources = task.options(num_gpus=num_gpus, num_cpus=num_cpus)
 
+    should_import_torch = library_to_import == "torch"
+    print(f"should_import_torch: {should_import_torch}")
+
     fail_if_incorrect_runtime_env(expect_runtime_env=with_runtime_env)
 
     def with_actors():
         actors = [
             actor_with_resources.remote() for _ in range(num_tasks_or_actors_per_run)
         ]
-        ray.get([actor.run_code.remote() for actor in actors])
+        ray.get([actor.run_code.remote(should_import_torch) for actor in actors])
 
     def with_tasks():
         ray.get(
-            [task_with_resources.remote() for _ in range(num_tasks_or_actors_per_run)]
+            [task_with_resources.remote(should_import_torch) for _ in range(num_tasks_or_actors_per_run)]
         )
 
     func_to_measure = with_actors if use_actors else with_tasks
@@ -87,7 +93,7 @@ def parse_args():
     parser.add_argument("--num_cpus_in_cluster", type=int, required=True)
     parser.add_argument("--num_gpus_in_cluster", type=int, required=True)
     parser.add_argument(
-        "--library_to_import", type=str, required=True, choices=["torch"]
+        "--library_to_import", type=str, required=True, choices=["torch", "none"]
     )
 
     group = parser.add_mutually_exclusive_group(required=True)
@@ -121,6 +127,7 @@ if __name__ == "__main__":
             args.num_tasks_or_actors_per_run,
             args.num_cpus_in_cluster,
             args.num_gpus_in_cluster,
+            args.library_to_import,
             args.with_actors,
             args.with_gpu,
             args.with_runtime_env,
