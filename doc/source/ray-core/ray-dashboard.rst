@@ -11,15 +11,18 @@ SANG-TODO Replace the image with GIF.
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/Dashboard-overview.png
     :align: center
 
+Common Workflows
+----------------
+
 Here are common workflows when using the Ray dashboard.
 
-- :ref:`See the metrics graphs <dash-workflow-critial-system-metrics>` (requires Prometheus and Grafana to be deployed).
+- :ref:`See the metrics graphs <dash-metrics-view>`.
 - :ref:`See the progress of your job <dash-workflow-job-progress>`.
 - :ref:`Find the application logs or error messages of failed tasks or actors <dash-workflow-logs>`.
 - :ref:`Profile, trace dump, and visualize the timeline of the Ray jobs, tasks, or actors <dashboard-profiling>`.
 - :ref:`Analyze the CPU and memory usage of the cluster, tasks and actors <dash-workflow-cpu-memory-analysis>`.
-- :ref:`See individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
-- :ref:`View the hardware utilization (CPU, GPU, memory) <dash-workflow-resource-utilization>` so that you can compare it to Ray's logical resource usages.
+- :ref:`See individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines from a cluster) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
+- :ref:`View the hardware utilization (CPU, GPU, memory) <dash-workflow-resource-utilization>`.
 
 Getting Started
 ---------------
@@ -41,75 +44,16 @@ You can access the dashboard through a URL printed when Ray is initialized (the 
 
   INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
 
-Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-cluster>` for more details.
+Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-cluster-via-dashboard>` for more details.
 
 .. note:: 
 
   When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana. 
   Ray dashboard has a tight integration with these tools, and core features such as :ref:`Metrics View <dash-metrics-view>` won't work without them.
-
-See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
-
-If you need to customize the port on which the dashboard will run, you can pass
-the ``--dashboard-port`` argument with ``ray start`` in the command line, or you can pass the
-keyword argument ``dashboard_port`` in your call to ``ray.init()``.
+  See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
 How to Guides
 -------------
-
-.. _dash-workflow-critial-system-metrics:
-
-View system metrics
-~~~~~~~~~~~~~~~~~~~
-
-Ray exports default metrics which are available from the :ref:`Metrics View <dash-metrics-view>`. Here are some available example metrics.
-
-- The tasks, actors, and placement groups broken down by states.
-- The :ref:`logical resource usage <logical-resources>` across nodes.
-- The hardware resource usage across nodes.
-- The autoscaler status.
-
-See :ref:`System Metrics Page <system-metrics>` for available metrics.
-
-.. _dash-workflow-resource-utilization:
-
-Comparing the hardware and logical resource utilization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
-These values are used for scheduling, but may not always match the actual resource utilization. 
-
-If the logical resources don't match the physical resource usage, it can lead to the under-utilization of the cluster because the number of tasks and actors are throttled by
-the logical resource requirements.
-
-You can check the :ref:`Metrics View <dash-metrics-view>` to compare logical and hardware resource utilization. 
-
-Let's see an example.
-
-.. code-block:: python
-
-    @ray.remote(num_cpus=1)
-    def task():
-        import time
-        time.sleep(30)
-    
-    # Launch 30 tasks
-    ray.get([task.remote() for _ in range(30)])
-
-When you run the below code that executes many tasks that sleep, 
-you will see from the metrics page that there are many logical CPU allocations but little to no hardware CPU usage.
-It is because the logical resource requirement is 1 CPU for each task, but each task uses nearly no CPU because it just sleeps.
-
-TODO-SANG Add images
-
-resource specification for those tasks will lead to wasted physical resources. To address this issue, let's adjust the ``num_cpus`` value to 0.1 so that other tasks or actors can be scheduled to leverage the hardware resources.
-
-.. code-block:: python
-
-    @ray.remote(num_cpus=0.1)
-    def task():
-        import time
-        time.sleep(30)
 
 .. _dash-workflow-logs:
 
@@ -117,21 +61,25 @@ View the application logs and errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Driver Logs**
+
 If the Ray job is submitted by :ref:`Ray job API <jobs-quickstart>`, the job logs are available from the dashboard. The log file follows the following format; ``job-driver-<job_submission_id>.log``.
 
 .. note:: 
 
-  If the driver is executed directly at the Ray cluster (without the job API), the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
+  If the driver is executed directly on the head node of the Ray cluster (without the job API) or run via :ref:`Ray client <ray-client-ref>`, the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
 
 TODO-SANG Show the log button at the job row.
 
 **Task and Actor Logs**
+
 Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
-You can see the worker logs that execute the task and actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from the tasks and actors. The core worker logs contains the system-level logs for the corresponding worker.
+You can see the worker logs (``worker-[worker_id]-[job_id]-[pid].[out|err]``) that execute the task and actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from the tasks and actors. 
+The core worker logs (``python-core-worker-[worker_id]_[pid].log``) contain the system-level logs for the corresponding worker.
 
 SANG-TODO Add an image.
 
 **Task and Actor Errors**
+
 You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table. 
 The table displays the name of the failed tasks or actors and provides access to their corresponding log or error messages.
 
@@ -151,6 +99,18 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`cl
 
 SANG-TODO Add an image.
 
+.. _dash-workflow-resource-utilization:
+
+See the Resource Utilization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
+These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
+
+- You can see the logical and physical resource utilization over time from the :ref:`Metrics View <dash-metrics-view>`.
+- The snapshot of physical resource utilization (CPU, GPU, memory, disk, network) is also available from the :ref:`Cluster View <dash-node-view>`.
+
+SANG-TODO Add two images for logical and physical utilization.
 
 .. _dash-overview:
 
@@ -251,7 +211,7 @@ TODO-SANG Add images
 Ray Status
 ~~~~~~~~~~
 
-The job page displays the output of the helpful CLI tool ray status, which shows the autoscaler status of the Ray cluster.
+The job page displays the output of the helpful CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
 
 The left page shows the autoscaling status, including pending, active, and failed nodes. 
 The right page displays the cluster's demands, which lists demanded resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
@@ -329,6 +289,15 @@ TODO-SANG Add an image.
 Metrics View
 ------------
 
+Ray exports default metrics which are available from the :ref:`Metrics View <dash-metrics-view>`. Here are some available example metrics.
+
+- The tasks, actors, and placement groups broken down by states.
+- The :ref:`logical resource usage <logical-resources>` across nodes.
+- The hardware resource usage across nodes.
+- The autoscaler status.
+
+See :ref:`System Metrics Page <system-metrics>` for available metrics.
+
 .. note:: 
 
   The metrics view required the Prometheus and Grafana setup. **See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana**.
@@ -358,6 +327,28 @@ The log viewer provides various search functionality to help find the log messag
 
 Advanced Usage
 --------------
+
+Change the dashboard ports
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabbed:: CLI
+
+  If you need to customize the port on which the dashboard will run, you can pass
+  the ``--dashboard-port`` argument with ``ray start`` in the command line.
+
+.. tabbed:: Python
+
+  If you need to customize the port on which the dashboard will run, you can pass the
+  keyword argument ``dashboard_port`` in your call to ``ray.init()``.
+
+.. tabbed:: VM Cluster Launcher
+
+  To customize the dashboard port while using the "VM cluster launcher", simply include the "ray start --head --dashboard-port" argument 
+  and specify the desired port number in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
+
+.. tabbed:: Kubernetes
+
+  See the `Specifying non-default ports <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports>`_ page.
 
 Viewing built-in dashboard API metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -425,11 +416,20 @@ To disable the dashboard, use the following arguments `--include-dashboard`.
 
         ray start --include-dashboard=False
 
-.. tabbed:: Python SDK
+.. tabbed:: Python
 
     .. code-block:: python
 
         ray.init(include_dashboard=False)
+
+.. tabbed:: VM Cluster Launcher
+
+  To disable the dashboard while using the "VM cluster launcher", simply include the "ray start --head --include-dashboard=False" argument 
+  in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
+
+.. tabbed:: Kubernetes
+
+  TODO
 
 .. _dash-reference:
 
@@ -542,11 +542,6 @@ Actors
     - Get the Python stack trace for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
   * - **CPU Flame Graph**
     - Get a CPU flame graph for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
-
-Logs
-~~~~
-
-Details of the different log files can be found here: :ref:`ray-logging`.
 
 Resources
 ---------

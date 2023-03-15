@@ -11,6 +11,8 @@ For more information on these tools, check out the more comprehensive :ref:`Obse
 
 The rest of this page will focus on how to access these services when running a Ray Cluster.
 
+.. _monitor-cluster-via-dashboard:
+
 Monitoring the cluster via the dashboard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
