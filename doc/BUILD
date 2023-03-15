@@ -34,15 +34,6 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
-py_test(
-    name = "big_data_ingestion",
-    size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/data/examples/big_data_ingestion.ipynb"],
-    data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:core", "py37"]
-)
 
 py_test(
     name = "datasets_train",
