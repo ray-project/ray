@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 
 from torch import Tensor
 from copy import deepcopy
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.strategies import DDPStrategy
@@ -118,6 +118,9 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_k_models = {}
         self.last_best_model_path = None
         self.is_checkpoint_step = False
+    
+    def set_tuning_metric(self, metric: Union[str, None]) -> None:
+        self.tuning_metric = metric
 
     def format_checkpoint_name(
         self,
@@ -182,7 +185,10 @@ class RayModelCheckpoint(ModelCheckpoint):
 
         self.last_best_k_models = deepcopy(self.best_k_models)
         self.last_best_model_path = self.best_model_path
-        session.report(**kwargs)
+
+        # Only report when the tuning metric is ready
+        if self.tuning_metric and self.tuning_metric in kwargs["metrics"]:
+            session.report(**kwargs)
 
     def _save_topk_checkpoint(
         self, trainer: "pl.Trainer", monitor_candidates: Dict[str, Tensor]

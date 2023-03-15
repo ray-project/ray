@@ -80,7 +80,7 @@ class LightningConfigBuilder:
         self._trainer_fit_params = {}
         self._ddp_strategy_config = {}
         self._model_checkpoint_config = {}
-        self._ray_dataset_iter_config = {}
+        self._tuning_config = {}
 
     def module(
         self, cls: Type[pl.LightningModule], **kwargs
@@ -147,6 +147,20 @@ class LightningConfigBuilder:
                 https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
         """
         self._model_checkpoint_config.update(**kwargs)
+        return self
+
+    def tuning(self, metric: str) -> "LightningConfigBuilder":
+        """Specify the configurations for Ray Tuner.
+
+        If you are using `LightningTrainer` as a trainable for Ray Tuner, please set 
+        up the target tuning metrics here. `LightningTrainer` checks and reports to 
+        the Tune session only when this metric is ready.
+
+        Args:
+            metric: Only report to Tune session if the specified metric is ready.
+                Make sure you pass the same metric as the one in `tune.TuneConfig`.
+        """
+        self._tuning_config["metric"] = metric
         return self
 
     def build(self) -> Dict["str", Any]:
@@ -382,6 +396,7 @@ def _lightning_train_loop_per_worker(config):
     module_init_config = ptl_config["_module_init_config"]
     ddp_strategy_config = ptl_config["_ddp_strategy_config"]
     model_checkpoint_config = ptl_config["_model_checkpoint_config"]
+    tuning_config = ptl_config["_tuning_config"]
 
     # Prepare data
     datamodule = trainer_fit_params.get("datamodule", None)
@@ -439,23 +454,14 @@ def _lightning_train_loop_per_worker(config):
         )
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
-    # Filter out existing ModelCheckpoint Callbacks
-    callbacks = []
-    for callback in trainer_config.get("callbacks", []):
-        if isinstance(callback, ModelCheckpoint):
-            logger.warning(
-                "LightningTrainer will create a Ray ModelCheckpoint callback "
-                "based on `LightningConfig.model_checkpoint_config`. All the other"
-                " ModelCheckpoint callbacks are ignored."
-            )
-        else:
-            callbacks.append(callback)
-
     # AIR needs a RayModelCheckpoint for metircs logging anyway.
     trainer_config["enable_checkpointing"] = True
-    callbacks.append(RayModelCheckpoint(**model_checkpoint_config))
 
-    trainer_config["callbacks"] = callbacks
+    ray_checkpoint_callback = RayModelCheckpoint(**model_checkpoint_config)
+    ray_checkpoint_callback.set_tuning_metric(tuning_config.get("metric", None))
+    trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
+        ray_checkpoint_callback
+    ]
 
     trainer = pl.Trainer(**trainer_config)
 
