@@ -29,6 +29,11 @@ gcloud container clusters create autoscaler-ray-cluster \
     --zone=us-central1-c --machine-type e2-standard-16 --disk-size 1000GB
 ```
 
+Make sure you are connected to your Kubernetes cluster. For GCP, you can do so by:
+* Navigate to your GKE cluster page, and click "CONNECT" button. Then, copy "Command-line access".
+* `gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>` ([Link](https://cloud.google.com/sdk/gcloud/reference/container/clusters/get-credentials))
+* `kubectl config use-context` ([Link](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/))
+
 ```{admonition} Optional: Set up an autopilot GKE cluster
 **If you would like to try running the workload with autoscaling enabled**, use an autoscaling
 node group or pool with a 1 node minimum and a 10 node maximum.
