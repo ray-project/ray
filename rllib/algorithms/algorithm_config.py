@@ -3134,7 +3134,7 @@ class AlgorithmConfig(_Config):
             config["exploration_config"]["type"] = serialize_type(
                 config["exploration_config"]["type"]
             )
-        if isinstance(config["model"]["custom_model"], type):
+        if isinstance(config["model"].get("custom_model"), type):
             config["model"]["custom_model"] = serialize_type(
                 config["model"]["custom_model"]
             )
