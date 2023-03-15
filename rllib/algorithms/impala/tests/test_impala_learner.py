@@ -40,7 +40,7 @@ FAKE_BATCH = {
 class TestImpalaTorchLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
