@@ -353,15 +353,18 @@ class Policy(metaclass=ABCMeta):
 
         self.config: AlgorithmConfigDict = config
         self.framework = self.config.get("framework")
+
         # Create the callbacks object to use for handling custom callbacks.
-        if self.config.get("callbacks"):
+        from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+        callbacks = self.config.get("callbacks")
+        if isinstance(callbacks, DefaultCallbacks):
+            self.callbacks = callbacks()
+        elif isinstance(callbacks, (str, type)):
             self.callbacks: "DefaultCallbacks" = deserialize_type(
-                self.config.get("callbacks"),
-                error=False,
+                self.config.get("callbacks")
             )()
         else:
-            from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
 
         # The global timestep, broadcast down from time to time from the
