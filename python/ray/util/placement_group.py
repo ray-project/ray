@@ -105,10 +105,10 @@ class PlacementGroup:
             self.bundle_cache = _get_bundle_cache(self.id)
 
     def __eq__(self, other):
-        return self.id.hex == other.id.hex
+        return self.id == other.id
 
     def __hash__(self):
-        return hash(self.id.hex)
+        return hash(self.id)
 
 
 @client_mode_wrap
