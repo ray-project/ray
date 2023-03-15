@@ -3,8 +3,6 @@ import time
 import json
 
 import pytorch_lightning as pl
-from pytorch_lightning import trainer
-from pytorch_lightning.core import datamodule
 
 import torch
 import torch.nn.functional as F
@@ -102,7 +100,6 @@ def get_mnist_dataloaders():
 
 if __name__ == "__main__":
     start = time.time()
-    datamodule = MNISTDataModule(batch_size=128)
 
     lightning_config = (
         LightningConfigBuilder()
@@ -112,7 +109,7 @@ if __name__ == "__main__":
             accelerator="gpu",
             logger=CSVLogger("logs", name="my_exp_name"),
         )
-        .fit_params(datamodule=datamodule)
+        .fit_params(datamodule=MNISTDataModule(batch_size=128))
         .checkpointing(monitor="ptl/val_accuracy", mode="max", save_last=True)
         .build()
     )
