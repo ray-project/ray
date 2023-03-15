@@ -1,9 +1,9 @@
-import numpy as np
-from ray.train.lightning import LightningConfigBuilder, LightningTrainer
-import ray
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 import pytest
+import numpy as np
 
+import ray
+from ray.train.lightning import LightningConfigBuilder, LightningTrainer
+from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DoubleLinearModule,
@@ -56,6 +56,41 @@ def test_config_builder():
     assert config["_trainer_init_config"]["log_every_n_steps"] == 100
     assert not config["_ddp_strategy_config"]
     assert not config["_model_checkpoint_config"]
+
+
+def test_create_air_checkpoint_config():
+    trainer = LightningTrainer()
+    # Check monitored checkpoint config
+    lightning_ckpt_config = {
+        "monitor": "eval_loss",
+        "save_top_k": 3,
+    }
+    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
+    assert air_ckpt_config.num_to_keep == 3
+    assert air_ckpt_config.checkpoint_score_attribute == "eval_loss"
+    assert air_ckpt_config.checkpoint_score_order == "min"
+
+    # Check non-monitored checkpoint config
+    lightning_ckpt_config = {
+        "every_n_epochs": 3,
+    }
+    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
+    assert air_ckpt_config.num_to_keep == 1
+    assert air_ckpt_config.checkpoint_score_attribute == None
+    assert air_ckpt_config.checkpoint_score_order == "min"
+
+    # Check corner cases
+    lightning_ckpt_config = {}
+    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
+    assert air_ckpt_config.num_to_keep == 1
+    assert air_ckpt_config.checkpoint_score_attribute == None
+    assert air_ckpt_config.checkpoint_score_order == "min"
+
+    lightning_ckpt_config = {"monitor": "eval_acc", "mode": "max"}
+    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
+    assert air_ckpt_config.num_to_keep == 1
+    assert air_ckpt_config.checkpoint_score_attribute == "eval_acc"
+    assert air_ckpt_config.checkpoint_score_order == "max"
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])

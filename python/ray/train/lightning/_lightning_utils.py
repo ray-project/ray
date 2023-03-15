@@ -1,20 +1,20 @@
 import os
 import logging
 import torch
+import pytorch_lightning as pl
+
 from torch import Tensor
 from copy import deepcopy
 from typing import Any, Dict, Optional
-
-import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
+
 import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
-
 from torch.utils.data import IterableDataset, DataLoader
 from ray.data.dataset import DatasetIterator
 
@@ -133,7 +133,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         filepath = super().format_checkpoint_name(metrics, filename, ver)
         return f"{filepath}/{MODEL_KEY}"
 
-    def _session_report(self, trainer: "pl.Trainer"):
+    def _session_report(self, trainer: "pl.Trainer", stage: str):
         """Report latest metrics dict and checkpoint to AIR training session."""
 
         # Align the frequency of session.report() and checkpointing.
@@ -147,6 +147,13 @@ class RayModelCheckpoint(ModelCheckpoint):
         for k, v in metrics.items():
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.cpu().numpy()
+
+        if "_stage" in metrics:
+            logger.warning(
+                "'_stage' is a reserved key in AIR report metrics. "
+                "Original values are overwritten!"
+            )
+        metrics["_stage"] = stage
         kwargs["metrics"] = metrics
 
         filepath = None
@@ -162,7 +169,7 @@ class RayModelCheckpoint(ModelCheckpoint):
 
         # Report latest saved checkpoint
         # Note that AIR only takes the checkpoint of rank 0.
-        # Just save a dummy checkpoint on the other workers.
+        # Save a dummy checkpoint on the other workers to avoid blocking.
         if filepath:
             if trainer.global_rank == 0:
                 kwargs["checkpoint"] = LightningCheckpoint.from_directory(
@@ -192,16 +199,16 @@ class RayModelCheckpoint(ModelCheckpoint):
         batch_idx: int,
     ) -> None:
         super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
-        self._session_report(trainer=trainer)
+        self._session_report(trainer=trainer, stage="train_batch_end")
 
     def on_train_epoch_end(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
     ) -> None:
         super().on_train_epoch_end(trainer, pl_module)
-        self._session_report(trainer=trainer)
+        self._session_report(trainer=trainer, stage="train_epoch_end")
 
     def on_validation_end(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
     ) -> None:
         super().on_validation_end(trainer, pl_module)
-        self._session_report(trainer=trainer)
+        self._session_report(trainer=trainer, stage="validation_end")

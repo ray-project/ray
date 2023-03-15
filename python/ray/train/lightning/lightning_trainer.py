@@ -313,17 +313,17 @@ class LightningTrainer(TorchTrainer):
         if not lightning_config:
             lightning_config = LightningConfigBuilder().build()
 
-        train_loop_config = {
-            "lightning_config": lightning_config,
-            "datasets_iter_config": datasets_iter_config,
-        }
-
         if not run_config:
             run_config = RunConfig()
 
         run_config.checkpoint_config = self._create_air_checkpoint_config(
             lightning_config["_model_checkpoint_config"]
         )
+
+        train_loop_config = {
+            "lightning_config": lightning_config,
+            "datasets_iter_config": datasets_iter_config,
+        }
 
         super(LightningTrainer, self).__init__(
             train_loop_per_worker=_lightning_train_loop_per_worker,
@@ -339,7 +339,7 @@ class LightningTrainer(TorchTrainer):
 
     @DeveloperAPI
     def _create_air_checkpoint_config(
-        self, model_checkpoint_config: Optional[Dict] = None
+        self, lightning_checkpoint_config: Optional[Dict] = None
     ) -> CheckpointConfig:
         """
         Generate AIR CheckpointConfig based on provided Lightning checkpoint config.
@@ -351,12 +351,12 @@ class LightningTrainer(TorchTrainer):
                monitor +    save_top_k:  n/a
         """
 
-        if not model_checkpoint_config:
-            model_checkpoint_config = {}
+        if not lightning_checkpoint_config:
+            lightning_checkpoint_config = {}
 
-        mode = model_checkpoint_config.get("mode", "min")
-        monitor = model_checkpoint_config.get("monitor", None)
-        num_to_keep = model_checkpoint_config.get("save_top_k", 1)
+        mode = lightning_checkpoint_config.get("mode", "min")
+        monitor = lightning_checkpoint_config.get("monitor", None)
+        num_to_keep = lightning_checkpoint_config.get("save_top_k", 1)
         if not monitor and num_to_keep != 1:
             num_to_keep = None
 
@@ -366,16 +366,6 @@ class LightningTrainer(TorchTrainer):
             checkpoint_score_order=mode,
         )
         return air_checkpoint_config
-
-    @DeveloperAPI
-    def _create_lightning_checkpoint_config(
-        self, air_config: CheckpointConfig
-    ) -> Dict[str, Any]:
-        lightning_config = {}
-        lightning_config["save_top_k"] = air_config.num_to_keep
-        lightning_config["monitor"] = air_config.checkpoint_score_attribute
-        lightning_config["mode"] = air_config.checkpoint_score_order
-        return lightning_config
 
 
 def _lightning_train_loop_per_worker(config):
