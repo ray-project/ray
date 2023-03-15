@@ -18,19 +18,26 @@ from ray.data import datasource
 from ray.data.datasource import WebDatasetDatasource
 
 
+class TarWriter:
+    def __init__(self, path):
+        self.path = path
+        self.tar = tarfile.open(path, "w")
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        self.tar.close()
+    def write(self, name, data):
+        f = self.tar.tarinfo()
+        f.name = name
+        f.size = len(data)
+        self.tar.addfile(f, io.BytesIO(data))
+
 def test_webdataset_read(ray_start_2_cpus, tmp_path):
     path = os.path.join(tmp_path, "bar_000000.tar")
-    with open(path, "wb") as stream:
-        tf = tarfile.open(fileobj=stream, mode="w")
-        def write_file(name, data):
-            f = tf.tarinfo()
-            f.name = name
-            f.size = len(data)
-            tf.addfile(f, io.BytesIO(data))
+    with TarWriter(path) as tf:
         for i in range(100):
-            write_file(f"{i}.a", str(i).encode("utf-8"))
-            write_file(f"{i}.b", str(i**2).encode("utf-8"))
-        tf.close()
+            tf.write(f"{i}.a", str(i).encode("utf-8"))
+            tf.write(f"{i}.b", str(i**2).encode("utf-8"))
     assert os.path.exists(path)
     assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
     # ds = ray.data.read_datasource(WebDatasetDatasource(), paths=[str(tmp_path)], parallelism=1)
@@ -38,10 +45,58 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
+        assert isinstance(sample, dict), sample
         assert sample["__key__"] == str(i)
         assert sample["a"].decode("utf-8") == str(i)
         assert sample["b"].decode("utf-8") == str(i**2)
 
+
+def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "bar_000000.tar")
+    with TarWriter(path) as tf:
+        for i in range(100):
+            tf.write(f"{i}.txt", str(i).encode("utf-8"))
+            tf.write(f"{i}.test.txt", str(i**2).encode("utf-8"))
+            tf.write(f"{i}.cls", str(i**2).encode("utf-8"))
+            tf.write(f"{i}.test.cls2", str(i**2).encode("utf-8"))
+    assert os.path.exists(path)
+    assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
+    # ds = ray.data.read_datasource(WebDatasetDatasource(), paths=[str(tmp_path)], parallelism=1)
+    
+    # test simple suffixes
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=["txt", "cls"])
+    samples = ds.take(100)
+    assert len(samples) == 100
+    for i, sample in enumerate(samples):
+        assert set(sample.keys()) == {"__url__", "__key__", "txt", "cls"}
+        
+    # test fnmatch patterns for suffixes
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=["*.txt", "*.cls"])
+    samples = ds.take(100)
+    assert len(samples) == 100
+    for i, sample in enumerate(samples):
+        assert set(sample.keys()) == {"__url__", "__key__", "txt", "cls", "test.txt"}
+        
+    # test selection function
+    def select(name):
+        return name.endswith("txt")
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=select)
+    samples = ds.take(100)
+    assert len(samples) == 100
+    for i, sample in enumerate(samples):
+        assert set(sample.keys()) == {"__url__", "__key__", "txt", "test.txt"}
+
+    # test filerename
+    def renamer(name):
+        result = name.replace("txt", "text")
+        print("***", name, result)
+        return result
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, filerename=renamer)
+    samples = ds.take(100)
+    assert len(samples) == 100
+    for i, sample in enumerate(samples):
+        assert set(sample.keys()) == {"__url__", "__key__", "text", "cls", "test.text", "test.cls2"}
+        
 
 def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
@@ -60,6 +115,7 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
 def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     import numpy as np
     import torch
+    import PIL.Image
 
     image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
     gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
@@ -90,6 +146,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     samples = ds.take(1)
     assert len(samples) == 1
     for i, sample in enumerate(samples):
+        assert isinstance(sample, dict), sample
         assert sample["__key__"] == "foo"
         assert isinstance(sample["jpg"], np.ndarray)
         assert sample["jpg"].shape == (100, 100, 3)
@@ -103,6 +160,17 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert isinstance(sample["pt"], torch.Tensor)
         assert sample["pt"].tolist() == [1, 2, 3]
 
+    # test the format argument to the default decoder
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, decoder="PIL")
+    samples = ds.take(1)
+    assert len(samples) == 1
+    for i, sample in enumerate(samples):
+        assert isinstance(sample, dict), sample
+        assert sample["__key__"] == "foo"
+        assert isinstance(sample["jpg"], PIL.Image.Image)
+        assert isinstance(sample["gray.png"], PIL.Image.Image)
+        
+        
 if __name__ == "__main__":
     import sys
 

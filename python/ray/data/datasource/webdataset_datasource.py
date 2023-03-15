@@ -1,13 +1,14 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0 
 
-from typing import Any, Callable, Dict, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Union, TYPE_CHECKING
 import tarfile
 import io
 import time
 import re
 import uuid
 import os
+import fnmatch
 from functools import partial
 
 from ray.util.annotations import PublicAPI
@@ -17,8 +18,6 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow
-
-verbose_open = False
 
 
 def base_plus_ext(path):
@@ -52,29 +51,77 @@ def valid_sample(sample):
     )
 
 
-def tar_file_iterator(fileobj, skipfn=lambda fname: False):
+def apply_list(f, sample, default=None):
+    """Apply a list of functions to a sample.
+
+    Args:
+        f (Union[Callable,List[Callable]]): function or list of functions
+        sample (Dict[str,Any]): sample to be modified
+        default (Callable, optional): default function to be applied to all keys. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    if f is None:
+        return sample
+    if not isinstance(f, list):
+        f = [f]
+    for g in f:
+        if default is not None and not callable(g):
+            g = partial(default, format=g)
+        sample = g(sample)
+    return sample
+
+def check_suffix(suffix, suffixes):
+    """Check whether a suffix is valid.
+
+    Suffixes can be either None (=accept everything), a callable,
+    or a list of patterns. If the pattern contains */? it is treated
+    as a glob pattern, otherwise it is treated as a literal.
+    
+    Args:
+        suffix (str): suffix to be checked
+        suffixes (list): list of valid suffixes
+    """
+    if suffixes is None:
+        return True
+    if callable(suffixes):
+        return suffixes(suffix)
+    for pattern in suffixes:
+        if "*" in pattern or "?" in pattern:            
+            if fnmatch.fnmatch("."+suffix, pattern):
+                return True
+        elif suffix == pattern or "."+suffix == pattern:
+            return True
+    return False
+
+
+def tar_file_iterator(fileobj, fileselect: Optional[Union[bool,callable, list]]=None, filerename: Optional[Union[bool, callable, list]]=None, verbose_open:bool=False, meta: dict={}):
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
 
     Args:
         fileobj (file): file object
-        skipfn (function): function indicating that files should be skipped
+        fileselect (Optional[list,callable])): patterns or function selecting files to be selected
         meta (dict): metadata to be added to each sample
     """
-    global verbose_open
     stream = tarfile.open(fileobj=fileobj, mode="r|*")
     if verbose_open:
         print(f"start {meta}")
     for tarinfo in stream:
         fname = tarinfo.name
-        if not tarinfo.isreg() or fname is None or skipfn(fname):
+        if not tarinfo.isreg() or fname is None:
             continue
         data = stream.extractfile(tarinfo).read()
+        fname = apply_list(filerename, fname)
+        assert isinstance(fname, str)
+        if not check_suffix(fname, fileselect):
+            continue
         result = dict(fname=fname, data=data)
         yield result
     if verbose_open:
         print(f"done {meta}")
-
-
+        
+        
 def group_by_keys(data, keys=base_plus_ext, suffixes=None, meta={}):
     """Return function over iterator that groups key, value pairs into samples.
 
@@ -102,7 +149,7 @@ def group_by_keys(data, keys=base_plus_ext, suffixes=None, meta={}):
             raise ValueError(
                 f"{fname}: duplicate file name in tar file {suffix} {current_sample.keys()}"
             )
-        if suffixes is None or suffix in suffixes:
+        if suffixes is None or check_suffix(suffix, suffixes):
             current_sample[suffix] = value
     if valid_sample(current_sample):
         current_sample.update(meta)
@@ -139,7 +186,7 @@ def default_decoder(sample: Dict[str, Any], format=True):
         extension = key.split(".")[-1]
         if key.startswith("__"):
             continue
-        elif extension in ["txt"]:
+        elif extension in ["txt", "text"]:
             sample[key] = value.decode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = int(value.decode("utf-8"))
@@ -148,7 +195,7 @@ def default_decoder(sample: Dict[str, Any], format=True):
             import numpy as np
 
             if format == "PIL":
-                return PIL.Image.open(io.BytesIO(value))
+                sample[key] = PIL.Image.open(io.BytesIO(value))
             else:
                 sample[key] = np.asarray(PIL.Image.open(io.BytesIO(value)))
         elif extension == "json":
@@ -232,23 +279,17 @@ def default_encoder(sample: Dict[str, Any], format=True):
             sample[key] = stream.getvalue()
     return sample
 
-def as_arrow(a):
-    import numpy as np
-    import pyarrow as pa
-    if isinstance(a, np.ndarray):
-        return pa.Tensor.from_numpy(a)
-    return a
-
-def apply_list(f, sample, default=None):
-    if not isinstance(f, list):
-        f = [f]
-    for g in f:
-        if default is not None and not callable(g):
-            g = partial(default, format=g)
-        sample = g(sample)
-    return sample
-
 def make_iterable(block):
+    """Make a block iterable.
+    
+    This is a placeholder for dealing with more complex blocks.
+
+    Args:
+        block (BlockAccessor): Ray Dataset block
+
+    Returns:
+        Iterable[Dict[str,Any]]: Iterable of samples
+    """
     return block.iter_rows()
 
 @PublicAPI(stability="alpha")
@@ -261,19 +302,24 @@ class WebDatasetDatasource(FileBasedDatasource):
         self,
         stream: "pyarrow.NativeFile",
         path: str,
-        decoder=True,
-        skipfn=lambda _: False,
-        suffixes=None,
+        decoder: Optional[Union[bool, str, callable, list]]=True,
+        fileselect: Optional[Union[bool, callable, list]]=None,
+        filerename: Optional[Union[bool, callable, list]]=None,
+        suffixes: Optional[Union[bool, callable, list]]=None,
+        verbose_open: bool=False,
         **kw,
     ):
-        """Read and decode samples from a straem.
+        """Read and decode samples from a stream.
+        
+        Note that fileselect selects files during reading, while suffixes selects files during the grouping step.
 
         Args:
             stream (pyarrow.NativeFile): File descriptor to read from.
             path (str): _description_
             decoder (Union[bool, callable, List[Union[callable, bool]], optional): decoder or list of decoders to be applied to samples
-            skipfn (Callable[str,bool], optional): Predicate for skipping files in tar decoder. Defaults to lambda_:False.
-            suffixes (List[str], optional): List of suffixes to be extracted. Defaults to None.
+            fileselect (Union[list, callable], optional): Predicate for skipping files in tar decoder. Defaults to lambda_:False.
+            suffixes (Union[list, callable], optional): List of suffixes to be extracted. Defaults to None.
+            verbose_open (bool, optional): Print message when opening files. Defaults to False.
 
         Yields:
             List[Dict[str, Any]]: List of sample (list of length 1).
@@ -282,7 +328,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         import pandas as pd
         from ray.data.extensions import ArrowTensorArray
         
-        files = tar_file_iterator(stream, skipfn=skipfn)
+        files = tar_file_iterator(stream, fileselect=fileselect, filerename=filerename, verbose_open=verbose_open)
         samples = group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
         for sample in samples:
             if decoder is not None:
@@ -294,8 +340,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        encoder=True,
-        callback=None,
+        encoder: Optional[Union[bool, str, callable, list]]=True,
         **kw,
     ):
         """Encode and write samples to a stream.

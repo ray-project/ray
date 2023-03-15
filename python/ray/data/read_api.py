@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, Callable
 
 import numpy as np
 
@@ -1152,6 +1152,11 @@ def read_webdataset(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    decoder: Optional[Union[bool, str, callable, list]] = True,
+    fileselect: Optional[Union[list, callable]] = None,
+    filerename: Optional[Union[list, callable]] = None,
+    suffixes: Optional[Union[list, callable]] = None,
+    verbose_open: bool=False,
 ) -> Dataset[PandasRow]:
     """Create a dataset from WebDataset files.
     
@@ -1169,8 +1174,11 @@ def read_webdataset(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this filters out any file paths whose file extension does not
-            match ``"*.tfrecords*"``.
+        decoder: A function or list of functions to decode the data.
+        fileselect: A callable or list of glob patterns to select files.
+        filerename: A function or list of tuples to rename files prior to grouping.
+        suffixes: A function or list of suffixes to select for creating samples.
+        verbose_open: Whether to print the file names as they are opened.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1186,6 +1194,11 @@ def read_webdataset(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        decoder=decoder,
+        fileselect=fileselect,
+        filerename=filerename,
+        suffixes=suffixes,
+        verbose_open=verbose_open,
     )
 
 

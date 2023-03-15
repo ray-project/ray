@@ -2637,6 +2637,7 @@ class Dataset(Generic[T]):
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         ray_remote_args: Dict[str, Any] = None,
+        encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
         """Write the dataset to WebDataset files.
 
@@ -2692,6 +2693,7 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+            encoder=encoder,
         )
 
     @ConsumptionAPI
