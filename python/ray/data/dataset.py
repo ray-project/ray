@@ -125,7 +125,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
@@ -3929,16 +3929,16 @@ class Dataset(Generic[T]):
             )
         return pipe
 
+    @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "Dataset[T]":
-        """Deprecated: use `Dataset.cache()` instead"""
         warnings.warn(
             "The 'fully_executed' call has been renamed to 'cache'.",
             DeprecationWarning,
         )
         return self.cache()
 
+    @Deprecated(message="Use `Dataset.is_cached()` instead.")
     def is_fully_executed(self) -> bool:
-        """Deprecated: use `Dataset.is_cached()` instead"""
         warnings.warn(
             "The 'is_fully_executed' call has been renamed to 'is_cached'.",
             DeprecationWarning,
