@@ -107,6 +107,10 @@ class LoadMetricsSummary:
     # Optionally included for backwards compatibility: Resource breakdown by
     # node. Mapping from node id to resource usage.
     usage_by_node: Optional[Dict[str, Usage]] = None
+    # A mapping from node name (the same key as `usage_by_node`) to node type.
+    # Optional for deployment modes which have the concept of node types and
+    # backwards compatibility.
+    node_type_mapping: Optional[Dict[str, str]] = None
 
 
 class ConcurrentCounter:
@@ -700,10 +704,17 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
 def get_per_node_breakdown(lm_summary: LoadMetricsSummary, verbose: bool):
     sio = StringIO()
 
+    node_types_by_ip = lm_summary.node_type_mapping or {}
+
     print(file=sio)
     for node_ip, usage in lm_summary.usage_by_node.items():
         print(file=sio)  # Print a newline.
-        print(f"Node: {node_ip}", file=sio)
+        node_string = f"Node: {node_ip}"
+        if node_ip in node_types_by_ip:
+            node_type = node_types_by_ip[node_ip]
+            node_string += f" ({node_type})"
+
+        print(node_string, file=sio)
         print(" Usage:", file=sio)
         for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)
