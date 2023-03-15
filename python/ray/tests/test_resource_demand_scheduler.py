@@ -3490,7 +3490,7 @@ def test_info_string_with_launch_failures_verbose():
                     last_checked_timestamp=base_timestamp + 1,
                     unavailable_node_information=UnavailableNodeInformation(
                         category="InstanceLimitExceeded",
-                        description="not fun issue. you should fix it",
+                        description="you should fix it",
                     ),
                 ),
                 "Inferentia-Spot": NodeAvailabilityRecord(
@@ -3499,7 +3499,7 @@ def test_info_string_with_launch_failures_verbose():
                     last_checked_timestamp=base_timestamp,
                     unavailable_node_information=UnavailableNodeInformation(
                         category="InsufficientInstanceCapacity",
-                        description="mo nodes mo problems",
+                        description="desc",
                     ),
                 ),
             }
@@ -3519,8 +3519,8 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- A100: InstanceLimitExceeded (latest_attempt: 13:03:02) - not fun issue. you should fix it
- Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01) - mo nodes mo problems
+ A100: InstanceLimitExceeded (latest_attempt: 13:03:02) - you should fix it
+ Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01) - desc
  p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
 
 Resources
