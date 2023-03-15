@@ -37,9 +37,6 @@ def filter_tests(
             continue
 
         test_frequency = get_frequency(test["frequency"])
-        if test_frequency == Frequency.DISABLED:
-            # Skip disabled tests
-            continue
 
         if frequency == Frequency.ANY or frequency == test_frequency:
             if prefer_smoke_tests and "smoke_test" in test:
