@@ -67,6 +67,7 @@ remove_from_toctrees = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "workflows/api/doc/*",
+    "cluster/running-applications/job-submission/doc/*",
 ]
 
 myst_enable_extensions = [
