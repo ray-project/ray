@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -68,10 +68,10 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
+Connection = Any
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
 
 @PublicAPI
 def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
@@ -1205,6 +1205,29 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_sql(
+    sql: str,
+    connection_factory: Callable[[], Connection],
+    *,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Read from a database that provides a Python DB API2-compatible connector.
+
+    Args:
+        sql: The SQL query to execute.
+        connection_factory: A function that takes no arguments and returns a
+            `Python DB API2 Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        parallelism: The requested parallelism of the read.
+        ray_remote_args: Keyword arguments passed to :func:`ray.remote` in read tasks.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+    """
+    raise NotImplementedError
 
 
 @PublicAPI

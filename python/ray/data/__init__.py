@@ -40,6 +40,7 @@ from ray.data.read_api import (  # noqa: F401
     read_numpy,
     read_parquet,
     read_parquet_bulk,
+    read_sql,
     read_text,
     read_mongo,
     read_tfrecords,
