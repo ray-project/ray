@@ -630,7 +630,7 @@
   run:
     timeout: 900
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test batch_inference.ipynb && python _test.py
+      --to script --output _test batch_inference.ipynb && ipython _test.py
 
 
 
@@ -647,7 +647,7 @@
   run:
     timeout: 900
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test batch_inference.ipynb && python _test.py
+      --to script --output _test batch_inference.ipynb && ipython _test.py
 
 
 - name: workspace_template_master_large_01_batch_inference
@@ -663,7 +663,7 @@
   run:
     timeout: 900
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test batch_inference.ipynb && python _test.py
+      --to script --output _test batch_inference.ipynb && ipython _test.py
 
 
 # 02_many_model_training
@@ -680,8 +680,9 @@
 
   run:
     timeout: 900
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test many_model_training.ipynb && python _test.py
+    script: pip install -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test many_model_training.ipynb && ipython _test.py
 
 - name: workspace_template_latest_large_02_many_model_training
   group: Workspace templates
@@ -695,8 +696,9 @@
 
   run:
     timeout: 900
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test many_model_training.ipynb && python _test.py
+    script: pip install --user -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test many_model_training.ipynb && ipython _test.py
 
 
 - name: workspace_template_master_large_02_many_model_training
@@ -711,8 +713,9 @@
 
   run:
     timeout: 900
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test many_model_training.ipynb && python _test.py
+    script: pip install --user -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test many_model_training.ipynb && ipython _test.py
 
 # 03_serving_stable_diffusion
 
@@ -728,8 +731,9 @@
 
   run:
     timeout: 900
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test serving_stable_diffusion.ipynb && python _test.py
+    script:  pip install -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
 
 - name: workspace_template_latest_large_03_serving_stable_diffusion
@@ -744,8 +748,9 @@
 
   run:
     timeout: 900
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test serving_stable_diffusion.ipynb && python _test.py
+    script: pip install --user -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
 
 - name: workspace_template_master_large_03_serving_stable_diffusion
@@ -760,8 +765,9 @@
 
   run:
     timeout: 900
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test serving_stable_diffusion.ipynb && python _test.py
+    script: pip install --user -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
+      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
 
 #######################

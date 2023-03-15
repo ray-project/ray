@@ -7,5 +7,3 @@ post_build_cmds:
   # Install Ray
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
-  # Install cluster-wide dependencies from `requirements.txt`, if it exists in the working directory.
-  - if [ -f requirements.txt ]; then pip install --user -U -r requirements.txt; fi
