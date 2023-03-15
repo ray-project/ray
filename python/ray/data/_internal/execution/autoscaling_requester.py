@@ -6,7 +6,7 @@ from ray.data.context import DatasetContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
     """Actor to make resource requests to autoscaler for the datasets.
 
@@ -28,7 +28,7 @@ class AutoscalingRequester:
         # Purge expired requests before making request to autoscaler.
         self._purge()
         # For the same execution_uuid, we track the latest resource request and
-        # the current timestamp.
+        # the its expiration timestamp.
         self._resource_requests[execution_uuid] = (
             req,
             time.time() + self._timeout,
