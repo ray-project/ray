@@ -12,23 +12,16 @@ import time
 
 @ray.remote
 class Actor:
-    def run_code(self):
+    def run_code(self, should_import_torch: bool):
+        if should_import_torch:
+            import torch  # noqa: F401
+
+
+@ray.remote
+def task(should_import_torch: bool):
+    if should_import_torch:
         import torch  # noqa: F401
 
-
-@ray.remote
-def task():
-    import torch  # noqa: F401
-
-@ray.remote
-class ActorNoImport:
-    def run_code(self):
-        pass
-
-
-@ray.remote
-def task_no_import():
-    pass
 
 def main(
     metrics_actor,
@@ -42,22 +35,16 @@ def main(
     with_gpu: bool,
     with_runtime_env: bool,
 ):
-    should_import_torch = library_to_import == "torch"
-    print(f"should_import_torch: {should_import_torch}")
-
-    if should_import_torch:
-        actor_to_use = Actor
-        task_to_use = task
-    else:
-        actor_to_use = ActorNoImport
-        task_to_use = task_no_import
 
     num_gpus = (num_gpus_in_cluster / num_tasks_or_actors_per_run) if with_gpu else 0
     num_cpus = num_cpus_in_cluster / num_tasks_or_actors_per_run
 
     print(f"Assigning each task/actor {num_cpus} num_cpus and {num_gpus} num_gpus")
-    actor_with_resources = actor_to_use.options(num_gpus=num_gpus, num_cpus=num_cpus)
-    task_with_resources = task_to_use.options(num_gpus=num_gpus, num_cpus=num_cpus)
+    actor_with_resources = Actor.options(num_gpus=num_gpus, num_cpus=num_cpus)
+    task_with_resources = task.options(num_gpus=num_gpus, num_cpus=num_cpus)
+
+    should_import_torch = library_to_import == "torch"
+    print(f"should_import_torch: {should_import_torch}")
 
     fail_if_incorrect_runtime_env(expect_runtime_env=with_runtime_env)
 
@@ -65,12 +52,12 @@ def main(
         actors = [
             actor_with_resources.remote() for _ in range(num_tasks_or_actors_per_run)
         ]
-        ray.get([actor.run_code.remote() for actor in actors])
+        ray.get([actor.run_code.remote(should_import_torch) for actor in actors])
 
     def with_tasks():
         ray.get(
             [
-                task_with_resources.remote()
+                task_with_resources.remote(should_import_torch)
                 for _ in range(num_tasks_or_actors_per_run)
             ]
         )
