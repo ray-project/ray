@@ -181,7 +181,7 @@ class LightningTrainer(TorchTrainer):
     TODO(yunxuanx): make this example testable
 
     Example:
-        .. code-block:: python
+        .. test-code:: python
 
             import torch
             import torch.nn.functional as F
@@ -191,7 +191,8 @@ class LightningTrainer(TorchTrainer):
             from torchvision import transforms
             import pytorch_lightning as pl
             from ray.air.config import ScalingConfig
-            from ray.train.lightning import LightningTrainer, LightningConfig
+            from ray.train.lightning import LightningTrainer, LightningConfigBuilder
+
 
             class MNISTClassifier(pl.LightningModule):
                 def __init__(self, lr, feature_dim):
@@ -211,7 +212,7 @@ class LightningTrainer(TorchTrainer):
                     x, y = batch
                     y_hat = self(x)
                     loss = torch.nn.functional.cross_entropy(y_hat, y)
-                    self.log('train_loss', loss)
+                    self.log("train_loss", loss)
                     return loss
 
                 def validation_step(self, val_batch, batch_idx):
@@ -232,9 +233,8 @@ class LightningTrainer(TorchTrainer):
                     return optimizer
 
             # Prepare MNIST Datasets
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))]
+            transform = transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
             )
             mnist_train = MNIST(
                 './data', train=True, download=True, transform=transform
@@ -248,8 +248,8 @@ class LightningTrainer(TorchTrainer):
             mnist_train = Subset(mnist_train, range(1000))
             mnist_train = Subset(mnist_train, range(500))
 
-            train_loader = DataLoader(mnist_train, batch_size=32, shuffle=True)
-            val_loader = DataLoader(mnist_val, batch_size=32, shuffle=False)
+            train_loader = DataLoader(mnist_train, batch_size=128, shuffle=True)
+            val_loader = DataLoader(mnist_val, batch_size=128, shuffle=False)
 
             lightning_config = (
                 LightningConfigBuilder()
@@ -267,6 +267,8 @@ class LightningTrainer(TorchTrainer):
                 scaling_config=scaling_config,
             )
             results = trainer.fit()
+            print(results)
+
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
