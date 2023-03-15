@@ -132,6 +132,9 @@ def _get_default_results_dir():
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = _get_default_results_dir()
 
+# If no
+DEFAULT_EXPERIMENT_DIR = "default"
+
 # Meta file about status under each experiment directory, can be
 # parsed by automlboard if exists.
 JOB_META_FILE = "job_status.json"

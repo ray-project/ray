@@ -40,6 +40,7 @@ from ray.tune.result import (
     STDOUT_FILE,
     STDERR_FILE,
     _get_default_results_dir,
+    DEFAULT_EXPERIMENT_DIR,
 )
 from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
@@ -346,20 +347,12 @@ class Trial:
         self.experiment_path = experiment_path
         self.experiment_dir_name = experiment_dir_name
 
-        # If we have neither experiment_path nor experiment_dir_name, we
-        # can't construct a Trial directory.
-        if not experiment_path and not experiment_dir_name:
-            raise ValueError(
-                "At least one of `experiment_path` or `experiment_dir_name` "
-                "has to be passed to `Trial()`."
-            )
-
         # Split the passed experiment path
         remote_experiment_path, local_experiment_path = _split_remote_local_path(
             experiment_path, None
         )
 
-        # Backwards compatibility for `local_dir` and `sync_config.upload_dir`
+        # Backwards compatibility for `local_dir`
         if local_dir:
             if experiment_path:
                 raise ValueError(
@@ -368,18 +361,7 @@ class Trial:
                 )
             local_experiment_path = local_dir
 
-        if not experiment_dir_name:
-            # Maybe derive experiment dir name from local storage dir
-            if local_experiment_path:
-                experiment_dir_name = Path(local_experiment_path).name
-            elif remote_experiment_path:
-                experiment_dir_name = URI(remote_experiment_path).name
-
-        if not local_experiment_path and experiment_path:
-            local_experiment_path = str(
-                Path(_get_default_results_dir()) / experiment_dir_name
-            )
-
+        # Backwards compatibility for `sync_config.upload_dir`
         if self.sync_config.upload_dir:
             if remote_experiment_path:
                 raise ValueError(
@@ -390,6 +372,27 @@ class Trial:
             remote_experiment_path = str(
                 URI(self.sync_config.upload_dir) / experiment_dir_name
             )
+
+        # If no path or only remote path is given, derive results dir
+        if not local_experiment_path:
+            # If no `experiment_dir_name` is given, this will default
+            # to the `~/ray_results/DEFAULT_EXPERIMENT_DIR` directory.
+            if experiment_dir_name:
+                local_experiment_path = str(
+                    Path(_get_default_results_dir()) / experiment_dir_name
+                )
+            else:
+                local_experiment_path = str(
+                    Path(_get_default_results_dir()) / DEFAULT_EXPERIMENT_DIR
+                )
+            Path(local_experiment_path).mkdir(exist_ok=True)
+
+        if not experiment_dir_name:
+            # Maybe derive experiment dir name from local storage dir
+            if local_experiment_path:
+                experiment_dir_name = Path(local_experiment_path).name
+            elif remote_experiment_path:
+                experiment_dir_name = URI(remote_experiment_path).name
 
         # If there is a mismatch between local path name and experiment dir,
         # this is because both were passed in.
