@@ -178,7 +178,19 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        raise NotImplementedError
+        # Under the new _enable_learner_api the loss function still gets called in order
+        # to initialize the view requirements of the sample batches that are returned by
+        # the sampler. In this case, we don't actually want to compute any loss, however
+        # if we access the keys that are needed for a forward_train pass, then the
+        # sampler will include those keys in the sample batches it returns. This means
+        # that the correct sample batch keys will be available when using the learner
+        # group API.
+        if self.config._enable_learner_api:
+            for k in model.input_specs_train():
+                train_batch[k]
+            return None
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -636,7 +648,6 @@ class EagerTFPolicyV2(Policy):
     def compute_gradients(
         self, postprocessed_batch: SampleBatch
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
-
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             shuffle=False,
@@ -741,6 +752,9 @@ class EagerTFPolicyV2(Policy):
 
     @override(Policy)
     def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        enable_rl_module_api = self.config.get("enable_rl_module_api", False)
+        if enable_rl_module_api:
+            raise ValueError("ONNX export not supported for RLModule API.")
         if onnx:
             try:
                 import tf2onnx
@@ -812,7 +826,6 @@ class EagerTFPolicyV2(Policy):
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
             if self.config.get("_enable_rl_module_api", False):
-
                 if explore:
                     fwd_out = self.model.forward_exploration(input_dict)
                 else:
@@ -844,7 +857,6 @@ class EagerTFPolicyV2(Policy):
                 )
             else:
                 if is_overridden(self.action_distribution_fn):
-
                     # Try new action_distribution_fn signature, supporting
                     # state_batches and seq_lens.
                     (

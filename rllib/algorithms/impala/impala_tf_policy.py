@@ -7,7 +7,6 @@ import logging
 import gymnasium as gym
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -264,6 +263,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     Returns:
         A TF Policy to be used with Impala.
     """
+
     # VTrace mixins are placed in front of more general mixins to make sure
     # their functions like optimizer() overrides all the other implementations
     # (e.g., LearningRateSchedule.optimizer())
@@ -285,10 +285,6 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
-            )
 
             # Initialize base class.
             base.__init__(

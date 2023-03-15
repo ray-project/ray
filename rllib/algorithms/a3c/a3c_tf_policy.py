@@ -1,7 +1,6 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
 from typing import Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -58,8 +57,6 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
-
             # Initialize base class.
             base.__init__(
                 self,
@@ -89,7 +86,6 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
-
             model_out, _ = model(train_batch)
             action_dist = dist_class(model_out, model)
             if self.is_recurrent():

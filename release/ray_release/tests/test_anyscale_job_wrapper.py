@@ -12,6 +12,8 @@ s3_kwargs = dict(
     results_s3_uri=None,
     metrics_s3_uri=None,
     output_s3_uri=None,
+    upload_s3_uri=None,
+    artifact_path=None,
 )
 
 
@@ -172,5 +174,4 @@ def test_end_to_end_prepare_failure(tmpdir):
 
 
 if __name__ == "__main__":
-
     sys.exit(pytest.main(["-v", __file__]))
