@@ -57,7 +57,12 @@ from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils.log import (
+    Verbosity,
+    has_verbosity,
+    set_verbosity,
+    set_execution_type,
+)
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
@@ -125,21 +130,51 @@ def _check_gpus_in_resources(
         return bool(resources.get("gpu", None))
 
 
+def _print_heartbeat(runner, reporter):
+    """Print heartbeat information for training/tuning workflow.
+
+    New console output flow.
+    Only relevant if `AIR_VERBOSITY` is set.
+    By default, on for tuning and off for training.
+    """
+    trials = runner.get_trials()
+    reporter.print_heartbeat(trials)
+
+
+def _print_final_status(experiment_analysis, reporter):
+    """Print final status before exiting.
+
+    New console output flow.
+    Only relevant if `AIR_VERBOSITY` is set.
+    """
+    pass
+
+
 def _report_progress(
-    runner: TrialRunner, reporter: ProgressReporter, done: bool = False
+    runner: TrialRunner,
+    reporter: ProgressReporter,
+    done: bool = False,
+    is_tuning: Optional[bool] = True,
 ):
     """Reports experiment progress.
+
+    Old console output flow.
 
     Args:
         runner: Trial runner to report on.
         reporter: Progress reporter.
         done: Whether this is the last progress report attempt.
+        is_tuning: Whether this is training or tuning.
     """
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
-        sched_debug_str = runner.scheduler_alg.debug_string()
+        reporter_args = []
+        if not is_tuning:
+            sched_debug_str = runner.scheduler_alg.debug_string()
+            reporter_args.append(sched_debug_str)
         executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+        reporter_args.append(executor_debug_str)
+        reporter.report(trials, done, *reporter_args)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -706,6 +741,16 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
+    # setting the right context for console logging
+    is_single_trial = search_alg.total_samples == 1
+
+    def is_rllib():
+        from ray.rllib.algorithms.algorithm import Algorithm
+
+        return issubclass(_get_trainable(run_or_experiment), Algorithm)
+
+    set_execution_type(is_rllib(), is_single_trial)
+
     # Create syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
@@ -833,14 +878,18 @@ def run(
             "saved. You can continue running this experiment by passing "
             "`resume=True` to `tune.run()`"
         )
-
-    return ExperimentAnalysis(
+    ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
     )
+    if not incomplete_trials and not experiment_interrupted_event.is_set():
+        # print final status before exiting for the happy path!
+        _print_final_status(ea, progress_reporter)
+
+    return ea
 
 
 @PublicAPI

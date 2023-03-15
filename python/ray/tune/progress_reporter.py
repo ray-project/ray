@@ -194,7 +194,7 @@ class TuneReporterBase(ProgressReporter):
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
         max_column_length: int = 20,
-        max_report_frequency: int = 5,
+        max_report_frequency: int = 30,
         infer_limit: int = 3,
         print_intermediate_tables: Optional[bool] = None,
         metric: Optional[str] = None,
@@ -440,6 +440,24 @@ class TuneReporterBase(ProgressReporter):
                 best_trial = t
         return best_trial, metric
 
+    # added for new console output
+    def print_heartbeat(self, trials):
+        # calls into `_print_heartbeat_tune` or `_print_heartbeat_train`
+        # depending on `_execution_type`.
+        # also gated by `get_air_verbosity`.
+        pass
+
+    def _print_heartbeat_tune(self, trials):
+        pass
+
+    def _print_heartbeat_train(self, trials):
+        pass
+
+    def print_final_status(self, ea):
+        # depending on `_execution_type`.
+        # also gated by `get_air_verbosity`.
+        pass
+
 
 @DeveloperAPI
 class RemoteReporterMixin:
@@ -489,7 +507,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         max_column_length: Maximum column length (in characters). Column
             headers and values longer than this will be abbreviated.
         max_report_frequency: Maximum report frequency in seconds.
-            Defaults to 5s.
+            Defaults to 30s.
         infer_limit: Maximum number of metrics to automatically infer
             from tune results.
         print_intermediate_tables: Print intermediate result
@@ -515,7 +533,9 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
         max_column_length: int = 20,
-        max_report_frequency: int = 5,
+        # this is demonstrating max_freq being an uncontroversial feature.
+        # we can also hide it as controversial feature.
+        max_report_frequency: int = 30,
         infer_limit: int = 3,
         print_intermediate_tables: Optional[bool] = None,
         metric: Optional[str] = None,
@@ -660,7 +680,7 @@ class CLIReporter(TuneReporterBase):
         max_column_length: Maximum column length (in characters). Column
             headers and values longer than this will be abbreviated.
         max_report_frequency: Maximum report frequency in seconds.
-            Defaults to 5s.
+            Defaults to 30s.
         infer_limit: Maximum number of metrics to automatically infer
             from tune results.
         print_intermediate_tables: Print intermediate result
@@ -685,14 +705,13 @@ class CLIReporter(TuneReporterBase):
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
         max_column_length: int = 20,
-        max_report_frequency: int = 5,
+        max_report_frequency: int = 30,
         infer_limit: int = 3,
         print_intermediate_tables: Optional[bool] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         sort_by_metric: bool = False,
     ):
-
         super(CLIReporter, self).__init__(
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -853,6 +872,8 @@ def _trial_progress_str(
             the parameter name is used in the message directly. If this is
             empty, all parameters are used in the message.
         total_samples: Total number of trials that will be generated.
+            If `total_samples == 1` (meaning this is a training case), we
+            will not print trial table at all.
         force_table: Force printing a table. If False, a table will
             be printed only at the end of the training for verbosity levels
             above `Verbosity.V2_TRIAL_NORM`.
@@ -886,15 +907,20 @@ def _trial_progress_str(
     if total_samples and total_samples >= sys.maxsize:
         total_samples = "infinite"
 
-    messages.append(
-        "Number of trials: {}{} ({})".format(
-            num_trials,
-            f"/{total_samples}" if total_samples else "",
-            ", ".join(num_trials_strs),
-        )
-    )
+    # demonstrating as non-controversial feature.
+    is_tuning = total_samples == "infinite" or total_samples > 1
 
-    if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
+    if is_tuning:
+        messages.append(
+            "Number of trials: {}{} ({})".format(
+                num_trials,
+                f"/{total_samples}" if total_samples else "",
+                ", ".join(num_trials_strs),
+            )
+        )
+
+    # only print the table when `total_samples > 1`.
+    if is_tuning and (force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done)):
         messages += _trial_progress_table(
             trials=trials,
             metric_columns=metric_columns,
@@ -1339,16 +1365,19 @@ class TrialProgressCallback(Callback):
         result: Dict,
         **info,
     ):
+        # TODO: update this with different `_execution_type`.
         self.log_result(trial, result, error=False)
 
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
+        # TODO: update this with different `_execution_type`.
         self.log_result(trial, trial.last_result, error=True)
 
     def on_trial_complete(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
+        # TODO: update this with different `_execution_type`.
         # Only log when we never logged that a trial was completed
         if trial not in self._completed_trials:
             self._completed_trials.add(trial)
