@@ -317,17 +317,15 @@ TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
 
-  size_t i = 0;
   // With batch size = 10, there should be 10 flush calls
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
       .Times(num_events / batch_size)
-      .WillRepeatedly(
-          [&i, &batch_size, &task_ids](std::unique_ptr<rpc::TaskEventData> actual_data,
-                                       ray::gcs::StatusCallback callback) {
-            EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
-            callback(Status::OK());
-            return Status::OK();
-          });
+      .WillRepeatedly([&batch_size](std::unique_ptr<rpc::TaskEventData> actual_data,
+                                    ray::gcs::StatusCallback callback) {
+        EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
+        callback(Status::OK());
+        return Status::OK();
+      });
 
   for (int i = 0; i * batch_size < num_events; i++) {
     task_event_buffer_->FlushEvents(true);
