@@ -44,31 +44,27 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
-            Status creation_task_status(StatusCode(reply.status().code()),
-                                        reply.status().message());
-            if (status.ok() && (creation_task_status.ok() ||
-                                creation_task_status.IsCreationTaskError())) {
+            if (status.ok() || status.IsCreationTaskError()) {
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              if (creation_task_status.IsCreationTaskError()) {
+              if (status.IsCreationTaskError()) {
                 RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
                                  "creation task, actor id = "
                               << actor_id << ", task id = " << task_id;
               } else {
                 RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
               }
-              // NOTE: When actor creation taskfailed we will not retry the creation task
-              // so just marking the task fails.
+              // NOTE: When actor creation task failed we will not retry the creation
+              // task so just marking the task fails.
               task_finisher_->CompletePendingTask(
                   task_id,
                   push_task_reply,
                   reply.actor_address(),
-                  /*is_application_error=*/creation_task_status.IsCreationTaskError());
+                  /*is_application_error=*/status.IsCreationTaskError());
             } else {
               // Either fails the rpc call or actor scheduling cancelled.
               rpc::RayErrorInfo ray_error_info;
-              if (creation_task_status.IsSchedulingCancelled()) {
-                RAY_CHECK(status.ok());
+              if (status.IsSchedulingCancelled()) {
                 RAY_LOG(INFO) << "Actor creation cancelled, actor id = " << actor_id;
                 task_finisher_->MarkTaskCanceled(task_id);
                 if (reply.has_death_cause()) {
@@ -76,7 +72,6 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                       reply.death_cause());
                 }
               } else {
-                RAY_CHECK(!status.ok());
                 RAY_LOG(INFO) << "Failed to create actor " << actor_id
                               << " with status: " << status.ToString();
               }

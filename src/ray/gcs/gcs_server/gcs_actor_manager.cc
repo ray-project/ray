@@ -286,11 +286,6 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
                                              const rpc::PushTaskReply &task_reply,
                                              const Status &creation_task_status) {
         // TODO(rickyx): We should really propagate the task execution status in
-        // PushTaskReply
-        rpc::GcsStatus status;
-        status.set_code(static_cast<int32_t>(creation_task_status.code()));
-        status.set_message(creation_task_status.message());
-
         if (creation_task_status.IsSchedulingCancelled()) {
           // Actor creation is cancelled.
           RAY_LOG(INFO) << "Actor creation was cancelled, job id = " << actor_id.JobId()
@@ -299,7 +294,6 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
               actor->GetActorTableData().death_cause());
         }
 
-        reply->mutable_status()->CopyFrom(status);
         reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
         reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
         RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
@@ -308,7 +302,7 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
         // NOTE: we are still returning Status::OK even if creation task failed because
         // we need to forward the borrowed_refs of the tasks for reference counting as if
         // the creation task succeeded.
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, creation_task_status);
       });
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Failed to create actor, job id = " << actor_id.JobId()
@@ -1200,8 +1194,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
                                              const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
   liftime_num_created_actors_++;
-  RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
-                << ", job id = " << actor_id.JobId();
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
   // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
@@ -1220,6 +1212,8 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         actor, reply, Status::CreationTaskError("Actor __init__ failed."));
   }
 
+  RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
+                << ", job id = " << actor_id.JobId();
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
   mutable_actor_table_data->set_timestamp(time);
