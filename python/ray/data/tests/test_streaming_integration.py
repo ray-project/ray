@@ -1,4 +1,6 @@
+import itertools
 import pytest
+import threading
 import time
 
 from typing import List, Any
@@ -16,6 +18,7 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
 from ray._private.test_utils import wait_for_condition
 from ray.data.tests.conftest import *  # noqa
@@ -53,6 +56,88 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]
     assert output == expected, (output, expected)
+
+
+def test_output_split_e2e(ray_start_10_cpus_shared):
+    executor = StreamingExecutor(ExecutionOptions())
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = OutputSplitter(o1, 2, equal=True)
+    it = executor.execute(o2)
+
+    class Consume(threading.Thread):
+        def __init__(self, idx):
+            self.idx = idx
+            self.out = []
+            super().__init__()
+
+        def run(self):
+            while True:
+                try:
+                    self.out.append(it.get_next(output_split_idx=self.idx))
+                except Exception as e:
+                    print(e)
+                    raise
+
+    c0 = Consume(0)
+    c1 = Consume(1)
+    c0.start()
+    c1.start()
+    c0.join()
+    c1.join()
+    assert len(c0.out) == 10, c0.out
+    assert len(c1.out) == 10, c0.out
+
+
+def test_streaming_split_e2e(ray_start_10_cpus_shared):
+    def get_lengths(*iterators, use_iter_batches=True):
+        lengths = []
+        for it in iterators:
+            x = 0
+            if use_iter_batches:
+                for batch in it.iter_batches():
+                    x += len(batch)
+            else:
+                for _ in it.iter_rows():
+                    x += 1
+            lengths.append(x)
+        lengths.sort()
+        return lengths
+
+    ds = ray.data.range(1000)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+    lengths = get_lengths(i1, i2)
+    assert lengths == [500, 500], lengths
+
+    ds = ray.data.range(1)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+    lengths = get_lengths(i1, i2)
+    assert lengths == [0, 0], lengths
+
+    ds = ray.data.range(1)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=False)
+    lengths = get_lengths(i1, i2)
+    assert lengths == [0, 1], lengths
+
+    ds = ray.data.range(1000, parallelism=10)
+    for equal_split, use_iter_batches in itertools.product(
+        [True, False], [True, False]
+    ):
+        i1, i2, i3 = ds.streaming_split(3, equal=equal_split)
+        lengths = get_lengths(i1, i2, i3, use_iter_batches=use_iter_batches)
+        if equal_split:
+            assert lengths == [333, 333, 333], lengths
+        else:
+            assert lengths == [300, 300, 400], lengths
 
 
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):

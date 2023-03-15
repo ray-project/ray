@@ -2,7 +2,7 @@ format: jb-book
 root: index
 parts:
   - caption: Ray
-    chapters: 
+    chapters:
       - file: ray-overview/index
         title: "Overview"
       - file: ray-overview/getting-started
@@ -44,15 +44,17 @@ parts:
           - file: ray-air/user-guides
             sections:
               - file: ray-air/preprocessors
-              - file: ray-air/trainer
+              - file: ray-air/trainers
               - file: ray-air/check-ingest
               - file: ray-air/tuner
               - file: ray-air/predictors
+              - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/torch_image_example
+              - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
               - file: ray-air/examples/convert_existing_tf_code_to_ray_air
               - file: ray-air/examples/tfx_tabular_train_to_serve
@@ -72,6 +74,11 @@ parts:
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
               - file: ray-air/examples/pytorch_resnet_batch_prediction
+              - file: ray-air/examples/stablediffusion_batch_prediction
+              - file: ray-air/examples/gptj_deepspeed_fine_tuning
+              - file: ray-air/examples/gptj_batch_prediction
+              - file: ray-air/examples/gptj_serving
+              - file: ray-air/examples/dreambooth_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
@@ -86,13 +93,13 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch training on the NYC taxi dataset
+                title: Batch Training with Ray Datasets
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example
                 title: Scaling OCR with Ray Datasets
-              - file: data/advanced-pipelines
-              - file: data/random-access
+              - file: data/examples/advanced-pipelines
+              - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api
           - file: data/glossary
@@ -199,12 +206,14 @@ parts:
                     title: "Huggingface Example"
               - file: tune/examples/experiment-tracking
                 sections:
-                  - file: tune/examples/tune-comet
-                    title: "Comet Example"
                   - file: tune/examples/tune-wandb
                     title: "Weights & Biases Example"
                   - file: tune/examples/tune-mlflow
                     title: "MLflow Example"
+                  - file: tune/examples/tune-aim
+                    title: "Aim Example"
+                  - file: tune/examples/tune-comet
+                    title: "Comet Example"
               - file: tune/examples/hpo-frameworks
                 sections:
                   - file: tune/examples/ax_example

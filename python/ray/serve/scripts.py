@@ -1,13 +1,15 @@
 #!/usr/bin/env python
-import asyncio
 import os
-import signal
+import pathlib
 import sys
-from typing import Optional, Union
+import time
+from typing import Optional, Union, Tuple
 
 import click
 import yaml
+import traceback
 import re
+from pydantic import ValidationError
 
 import ray
 from ray import serve
@@ -15,8 +17,6 @@ from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.job_submission import JobSubmissionClient
-from ray.serve import run_script
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import (
@@ -26,12 +26,18 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private import api as _private_api
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
+APP_DIR_HELP_STR = (
+    "Local directory to look for the IMPORT_PATH (will be inserted into "
+    "PYTHONPATH). Defaults to '.', meaning that an object in ./main.py "
+    "can be imported as 'main.object'. Not relevant if you're importing "
+    "from an installed module."
+)
 RAY_INIT_ADDRESS_HELP_STR = (
-    "Address of the Ray Cluster to run the Serve app on. If no address is specified, "
-    "a local Ray Cluster will be started. Can also be specified using the RAY_ADDRESS "
-    "environment variable."
+    "Address to use for ray.init(). Can also be specified "
+    "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "Address to use to query the Ray dashboard agent (defaults to "
@@ -169,9 +175,24 @@ def deploy(config_file_name: str, address: str):
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    # Schematize config to validate format.
-    ServeApplicationSchema.parse_obj(config)
-    ServeSubmissionClient(address).deploy_application(config)
+    try:
+        ServeDeploySchema.parse_obj(config)
+        ServeSubmissionClient(address).deploy_applications(config)
+    except ValidationError:
+        try:
+            ServeApplicationSchema.parse_obj(config)
+            ServeSubmissionClient(address).deploy_application(config)
+        except ValidationError as e:
+            # If the config is neither a valid ServeDeploySchema nor a valid
+            # ServeApplicationSchema, surface the validation error from trying
+            # to parse as a ServeApplicationSchema
+            raise e from None
+        except RuntimeError as e:
+            # Error deploying application
+            raise e from None
+    except RuntimeError:
+        # Error deploying application
+        raise
 
     cli_logger.newline()
     cli_logger.success(
@@ -185,15 +206,12 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs a Serve app (specified in config_or_import_path) on a cluster as a Ray "
-        "Job. config_or_import_path is either a filepath to a YAML config file on the "
-        "Ray Cluster, or an import path on the Ray Cluster for a deployment node of "
-        "the pattern containing_module:deployment_node.\n\n"
+        "Runs the Serve app from the specified import path (e.g. "
+        "my_script:my_bound_deployment) or YAML config.\n\n"
         "If using a YAML config, existing deployments with no code changes "
         "will not be redeployed.\n\n"
-        "Any import path, whether directly specified as the command argument or "
-        "inside a config file, must lead to a FunctionNode or ClassNode object.\n\n"
-        "By default, this command will block and periodically log status. If you "
+        "Any import path must lead to a FunctionNode or ClassNode object. "
+        "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
 )
@@ -204,7 +222,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="Path to a local YAML file containing a runtime_env definition. "
-    "This will be passed to Ray Jobs as the default for deployments.",
+    "This will be passed to ray.init() as the default for deployments.",
 )
 @click.option(
     "--runtime-env-json",
@@ -212,7 +230,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="JSON-serialized runtime_env dictionary. This will be passed to "
-    "Ray Jobs as the default for deployments.",
+    "ray.init() as the default for deployments.",
 )
 @click.option(
     "--working-dir",
@@ -223,7 +241,7 @@ def deploy(config_file_name: str, address: str):
         "Directory containing files that your job will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
         "This overrides the working_dir in --runtime-env if both are "
-        "specified. This will be passed to Ray Jobs as the default for "
+        "specified. This will be passed to ray.init() as the default for "
         "deployments."
     ),
 )
@@ -232,12 +250,7 @@ def deploy(config_file_name: str, address: str):
     "-d",
     default=".",
     type=str,
-    help=(
-        "Directory on the Ray Cluster in which to look for the IMPORT_PATH (will be "
-        "inserted into PYTHONPATH). Defaults to '.', i.e. a deployment node `app_node` "
-        "in working_directory/main.py on the Ray Cluster can be run using "
-        "`main:app_node`. Not relevant if you're importing from an installed module."
-    ),
+    help=APP_DIR_HELP_STR,
 )
 @click.option(
     "--address",
@@ -290,55 +303,94 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
-    # If no address is given and no local ray instance is running, we want to start one.
-    if address is None:
-        ray.init(namespace=SERVE_NAMESPACE)
+    sys.path.insert(0, app_dir)
 
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-    if "env_vars" not in final_runtime_env:
-        final_runtime_env["env_vars"] = {}
-    # Send interrupt signal to run_script, which triggers shutdown of Serve.
-    final_runtime_env["env_vars"]["RAY_JOB_STOP_SIGNAL"] = "SIGINT"
-    # Make sure Serve is shutdown correctly before the job is forcefully killed.
-    final_runtime_env["env_vars"]["RAY_JOB_STOP_WAIT_TIME_S"] = "30"
 
-    # The job to run on the cluster, which imports and runs the serve app.
-    with open(run_script.__file__, "r") as f:
-        script = f.read()
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f'Deploying from config file: "{config_path}".')
 
-    # Use Ray Job Submission to run serve.
-    client = JobSubmissionClient(address)
-    submission_id = client.submit_job(
-        entrypoint=(
-            f"python -c '{script}' "
-            f"--config-or-import-path={config_or_import_path} "
-            f"--app-dir={app_dir} "
-            + (f"--host={host} " if host is not None else "")
-            + (f"--port={port} " if port is not None else "")
-            + ("--blocking " if blocking else "")
-            + ("--gradio " if gradio else "")
-        ),
-        # Setting the runtime_env will set defaults for the deployments.
-        runtime_env=final_runtime_env,
-    )
+        with open(config_path, "r") as config_file:
+            config_dict = yaml.safe_load(config_file)
+            # If host or port is specified as a CLI argument, they should take priority
+            # over config values.
+            config_dict.setdefault("host", DEFAULT_HTTP_HOST)
+            if host is not None:
+                config_dict["host"] = host
 
-    async def print_logs():
-        async for lines in client.tail_job_logs(submission_id):
-            print(lines, end="")
+            config_dict.setdefault("port", DEFAULT_HTTP_PORT)
+            if port is not None:
+                config_dict["port"] = port
 
-    def interrupt_handler():
-        # Upon keyboard interrupt, stop job (which sends an interrupt signal to the job
-        # and shuts down serve). Then continue to stream logs until the job finishes.
-        client.stop_job(submission_id)
+            config = ServeApplicationSchema.parse_obj(config_dict)
+        is_config = True
+    else:
+        if host is None:
+            host = DEFAULT_HTTP_HOST
+        if port is None:
+            port = DEFAULT_HTTP_PORT
+        import_path = config_or_import_path
+        cli_logger.print(f'Deploying from import path: "{import_path}".')
+        node = import_attr(import_path)
+        is_config = False
 
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, interrupt_handler)
-    loop.run_until_complete(print_logs())
-    loop.close()
+    # Setting the runtime_env here will set defaults for the deployments.
+    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+
+    if is_config:
+        client = _private_api.serve_start(
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
+        )
+    else:
+        client = _private_api.serve_start(
+            detached=True,
+            http_options={"host": host, "port": port, "location": "EveryNode"},
+        )
+
+    try:
+        if is_config:
+            client.deploy_apps(config, _blocking=gradio)
+            cli_logger.success("Submitted deploy config successfully.")
+            if gradio:
+                handle = serve.get_deployment("DAGDriver").get_handle()
+        else:
+            handle = serve.run(node, host=host, port=port)
+            cli_logger.success("Deployed Serve app successfully.")
+
+        if gradio:
+            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
+
+            visualizer = GraphVisualizer()
+            visualizer.visualize_with_gradio(handle)
+        else:
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
+
+    except KeyboardInterrupt:
+        cli_logger.info("Got KeyboardInterrupt, shutting down...")
+        serve.shutdown()
+        sys.exit()
+
+    except Exception:
+        traceback.print_exc()
+        cli_logger.error(
+            "Received unexpected error, see console logs for more details. Shutting "
+            "down..."
+        )
+        serve.shutdown()
+        sys.exit()
 
 
 @cli.command(help="Get the current config of the running Serve app.")
@@ -423,23 +475,19 @@ def shutdown(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Serve Deployment Graph's config file.",
     help=(
-        "Imports the ClassNode or FunctionNode at IMPORT_PATH "
-        "and generates a structured config for it that can be used by "
-        "`serve deploy` or the REST API. "
+        "Imports the ClassNode or FunctionNode at IMPORT_PATH and generates a "
+        "structured config for it. If the flag --multi-app is set, accepts multiple "
+        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
-@click.argument("import_path")
+@click.argument("import_paths", nargs=-1, required=True)
 @click.option(
     "--app-dir",
     "-d",
     default=".",
     type=str,
-    help=(
-        "Local directory to look for the IMPORT_PATH (will be inserted into "
-        "PYTHONPATH). Defaults to '.', meaning that an object in ./main.py "
-        "can be imported as 'main.object'. Not relevant if you're importing "
-        "from an installed module."
-    ),
+    help=APP_DIR_HELP_STR,
 )
 @click.option(
     "--kubernetes_format",
@@ -457,39 +505,100 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
+@click.option(
+    "--multi-app",
+    "-m",
+    is_flag=True,
+    help="Generate a multi-application config from multiple targets.",
+)
 def build(
-    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+    import_paths: Tuple[str],
+    app_dir: str,
+    kubernetes_format: bool,
+    output_path: Optional[str],
+    multi_app: bool,
 ):
     sys.path.insert(0, app_dir)
 
-    node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-    if not isinstance(node, (ClassNode, FunctionNode)):
-        raise TypeError(
-            f"Expected '{import_path}' to be ClassNode or "
-            f"FunctionNode, but got {type(node)}."
+    def build_app_config(import_path: str, name: str = None):
+        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
+        if not isinstance(node, (ClassNode, FunctionNode)):
+            raise TypeError(
+                f"Expected '{import_path}' to be ClassNode or "
+                f"FunctionNode, but got {type(node)}."
+            )
+
+        app = build_app(node)
+        schema = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env={},
+            deployments=[
+                deployment_to_schema(d, not multi_app) for d in app.deployments.values()
+            ],
         )
+        # If building a multi-app config, auto-generate names for each application.
+        # Also, each ServeApplicationSchema should not have host and port set, it should
+        # be set at the top level of ServeDeploySchema.
+        if multi_app:
+            schema.name = name
+            schema.route_prefix = app.ingress.route_prefix
+        else:
+            schema.host = "0.0.0.0"
+            schema.port = 8000
 
-    app = build_app(node)
-    schema = ServeApplicationSchema(
-        import_path=import_path,
-        runtime_env={},
-        host="0.0.0.0",
-        port=8000,
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
-    )
-
-    if kubernetes_format:
-        config = schema.kubernetes_dict(exclude_unset=True)
-    else:
-        config = schema.dict(exclude_unset=True)
+        if kubernetes_format:
+            return schema.kubernetes_dict(exclude_unset=True)
+        else:
+            return schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
         f"on Ray v{ray.__version__}.\n\n"
     )
-    config_str += yaml.dump(
-        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
-    )
+
+    if not multi_app:
+        if len(import_paths) > 1:
+            raise click.ClickException(
+                "Got more than one argument. If you want to generate a multi-"
+                "application config, please rerun the command with the feature flag "
+                "`--multi-app`."
+            )
+
+        config_str += yaml.dump(
+            build_app_config(import_paths[0]),
+            Dumper=ServeApplicationSchemaDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+    else:
+        if kubernetes_format:
+            raise click.ClickException(
+                "Multi-application config is not supported in Kubernetes format yet."
+            )
+
+        app_configs = []
+        for app_index, import_path in enumerate(import_paths):
+            app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
+
+        deploy_config = {
+            "host": "0.0.0.0",
+            "port": 8000,
+            "applications": app_configs,
+        }
+
+        # Parse + validate the set of application configs
+        ServeDeploySchema.parse_obj(deploy_config)
+
+        config_str += yaml.dump(
+            deploy_config,
+            Dumper=ServeDeploySchemaDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+        cli_logger.info(
+            "The auto-generated application names default to `app1`, `app2`, ... etc. "
+            "Rename as necessary.\n",
+        )
 
     # Ensure file ends with only one newline
     config_str = config_str.rstrip("\n") + "\n"
@@ -498,8 +607,8 @@ def build(
         f.write(config_str)
 
 
-class ServeBuildDumper(yaml.SafeDumper):
-    """YAML dumper object with custom formatting for `serve build` command.
+class ServeApplicationSchemaDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for ServeApplicationSchema.
 
     Reformat config to follow this spacing:
     ---------------------------------------
@@ -521,8 +630,45 @@ class ServeBuildDumper(yaml.SafeDumper):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # Indents must be at most 2 to ensure that only the top 2 levels of
         # the config file have line breaks between them. The top 2 levels include
         # import_path, runtime_env, deployments, and all entries of deployments.
-        if len(self.indents) < 3:
+        if len(self.indents) <= 2:
+            super().write_line_break()
+
+
+class ServeDeploySchemaDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for ServeDeploySchema.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    host: 0.0.0.0
+
+    port: 8000
+
+    applications:
+
+    - name: app1
+
+      import_path: app1.path
+
+      runtime_env: {}
+
+      deployments:
+
+      - name: deployment1
+        ...
+
+      - name: deployment2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        # Indents must be at most 4 to ensure that only the top 4 levels of
+        # the config file have line breaks between them.
+        if len(self.indents) <= 4:
             super().write_line_break()

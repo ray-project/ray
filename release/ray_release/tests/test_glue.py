@@ -4,7 +4,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Type, Callable
+from typing import Type, Callable, Optional
 import unittest
 from unittest.mock import patch
 
@@ -138,7 +138,9 @@ class GlueTest(unittest.TestCase):
                 self,
                 cluster_manager: ClusterManager,
                 file_manager: FileManager,
-                working_dir: str,
+                working_dir,
+                sdk=None,
+                artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
                     cluster_manager, file_manager, this_tempdir

@@ -61,7 +61,7 @@ training.
        and :func:`ray.train.torch.prepare_data_loader` utilities below,
        and instead handle the logic directly inside your training function.
 
-    First, use the :func:~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
+    First, use the :func:`~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
     ``DistributedDataParallel``
 
     .. code-block:: diff

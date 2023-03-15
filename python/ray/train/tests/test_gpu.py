@@ -62,13 +62,14 @@ def test_torch_get_device(
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
-            # Sort the cuda visible devices to have exact match with
-            # expected result.
-            sorted_devices = ",".join(sorted(visible_devices.split(",")))
-            assert sorted_devices == "1,2"
+            assert visible_devices == "1,2"
         if num_gpus_per_worker > 1:
             session.report(
-                dict(devices=[device.index for device in train.torch.get_device()])
+                dict(
+                    devices=sorted(
+                        [device.index for device in train.torch.get_device()]
+                    )
+                )
             )
         else:
             session.report(dict(devices=train.torch.get_device().index))
@@ -103,7 +104,11 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     def train_fn():
         if num_gpus_per_worker > 1:
             session.report(
-                dict(devices=[device.index for device in train.torch.get_device()])
+                dict(
+                    devices=sorted(
+                        [device.index for device in train.torch.get_device()]
+                    )
+                )
             )
         else:
             session.report(dict(devices=train.torch.get_device().index))
