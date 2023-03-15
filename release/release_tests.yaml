@@ -628,7 +628,7 @@
     cluster_compute: ../configs/compute/gpu/aws_small.yaml
 
   run:
-    timeout: 900
+    timeout: 600
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
       --to script --output _test batch_inference.ipynb && ipython _test.py
 
@@ -645,7 +645,7 @@
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
-    timeout: 900
+    timeout: 600
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
       --to script --output _test batch_inference.ipynb && ipython _test.py
 
@@ -661,7 +661,7 @@
     cluster_compute: ../configs/compute/gpu/aws_large.yaml
 
   run:
-    timeout: 900
+    timeout: 600
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
       --to script --output _test batch_inference.ipynb && ipython _test.py
 
@@ -679,7 +679,7 @@
     cluster_compute: ../configs/compute/cpu/aws_small.yaml
 
   run:
-    timeout: 900
+    timeout: 300
     script: pip install -U -r requirements.txt
       && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
       --to script --output _test many_model_training.ipynb && ipython _test.py
