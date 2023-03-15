@@ -119,12 +119,14 @@ def launch_command(args):
     elif args.multi_gpu and not args.cpu:
         multi_gpu_launcher(args)
     elif args.tpu and not args.cpu:
-        raise NotImplementedError()
+        raise NotImplementedError("")
     elif (
         defaults is not None
         and defaults.compute_environment == ComputeEnvironment.AMAZON_SAGEMAKER
     ):
-        raise NotImplementedError()
+        raise NotImplementedError(
+            "Cannot use SageMaker compute environment with Ray Train."
+        )
     else:
         simple_launcher(args)
 

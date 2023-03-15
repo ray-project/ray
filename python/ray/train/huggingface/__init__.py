@@ -4,11 +4,9 @@ from ray.train.huggingface.huggingface_trainer import (
     HuggingFaceTrainer,
 )
 
-# from ray.train.huggingface.accelerate_trainer import AccelerateTrainer
 
 __all__ = [
     "HuggingFaceCheckpoint",
     "HuggingFacePredictor",
     "HuggingFaceTrainer",
-    # "AccelerateTrainer",
 ]
