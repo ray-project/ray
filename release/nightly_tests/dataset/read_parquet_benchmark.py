@@ -21,7 +21,7 @@ def read_parquet(
         use_threads=use_threads,
         filter=filter,
         columns=columns,
-    ).fully_executed()
+    ).cache()
 
 
 def run_read_parquet_benchmark(benchmark: Benchmark):
