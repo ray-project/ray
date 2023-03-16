@@ -109,19 +109,19 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        remote_experiment_path = None
+        remote_storage_path = None
         if sync_config and sync_config.upload_dir:
-            remote_experiment_path = sync_config.upload_dir
+            remote_storage_path = sync_config.upload_dir
 
-        self._remote_experiment_path = remote_experiment_path
+        self._remote_storage_path = remote_storage_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
-        if not self._remote_experiment_path:
+        if not self._remote_storage_path:
             return None
 
         return local_path.replace(
-            str(self._local_experiment_path), self._remote_experiment_path
+            str(Path(self._local_experiment_path).parent), self._remote_storage_path
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:

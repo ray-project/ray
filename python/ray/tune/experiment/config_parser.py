@@ -198,7 +198,7 @@ def _create_trial_from_spec(
     if resources:
         trial_kwargs["placement_group_factory"] = resources
 
-    experiment_dir_name = spec.get("experiment_dir_name")
+    experiment_dir_name = spec.get("experiment_dir_name") or output_path
 
     sync_config = spec.get("sync_config", SyncConfig())
     if (
