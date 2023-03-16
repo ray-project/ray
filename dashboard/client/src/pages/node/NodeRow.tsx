@@ -53,6 +53,7 @@ export const NodeRow = ({
     networkSpeed = [0, 0],
     raylet,
     logUrl,
+    state,
   } = node;
 
   const classes = rowStyles();
@@ -94,7 +95,9 @@ export const NodeRow = ({
         </Box>
       </TableCell>
       <TableCell>
-        <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+        {state !== "DEAD" && (
+          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+        )}
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -163,7 +166,7 @@ type WorkerRowProps = {
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { ip, mem, logUrl } = node;
+  const { ip, mem, logUrl, state } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -195,28 +198,33 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
+        {/* {state !== "DEAD" && ( */}
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link>
-        <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
-        <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-          rel="noreferrer"
-        >
-          CPU&nbsp;Flame&nbsp;Graph
-        </a>
-        <br />
+        {/* )} */}
+        <br></br>
+        {state !== "DEAD" && (
+          <React.Fragment>
+            <a
+              href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+              target="_blank"
+              title="Sample the current Python stack trace for this worker."
+              rel="noreferrer"
+            >
+              Stack&nbsp;Trace
+            </a>
+            <br></br>
+            <a
+              href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
+              target="_blank"
+              title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+              rel="noreferrer"
+            >
+              CPU&nbsp;Flame&nbsp;Graph
+            </a>
+          </React.Fragment>
+        )}
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
