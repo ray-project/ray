@@ -249,8 +249,7 @@ class ApplicationStateManager:
             self._application_states[app_name].route_prefix: app_name
             for app_name, app_state in self._application_states.items()
             if app_state.route_prefix is not None
-            and app_state.status
-            in [ApplicationStatus.DEPLOYING, ApplicationStatus.RUNNING]
+            and not app_state.status == ApplicationStatus.DELETING
         }
         for deploy_param in deployment_args:
             if "route_prefix" in deploy_param:
