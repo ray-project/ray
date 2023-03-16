@@ -29,7 +29,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
+        assert "FromPandasRefs" in ds.stats()
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
@@ -38,7 +38,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
+        assert "FromPandasRefs" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -57,7 +57,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
+        assert "FromPandasRefs" in ds.stats()
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -66,7 +66,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
+        assert "FromPandasRefs" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
