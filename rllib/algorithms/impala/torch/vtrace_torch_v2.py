@@ -70,22 +70,26 @@ def vtrace_torch(
     clip_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
 ):
-    r"""V-trace for softmax policies.
+    r"""V-trace for softmax policies written in torch.
 
     Calculates V-trace actor critic targets for softmax polices as described in
+    "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner
+    Architectures" by Espeholt, Soyer, Munos et al. (https://arxiv.org/abs/1802.01561)
 
-    "IMPALA: Scalable Distributed Deep-RL with
-    Importance Weighted Actor-Learner Architectures"
-    by Espeholt, Soyer, Munos et al.
+    This implementation of V-trace matches the one written in Google Deepmind's
+    scalable-agent repo (https://github.com/deepmind/scalable_agent).
+    It is an implementation that is optimized for reducing the number of FLOPs per
+    V-Trace calculation via dynamic programming. When reading through it, be aware
+    that the math in this implementation looks nothing like the math in the IMPALA
+    paper.
 
-    Target policy refers to the policy we are interested in improving and
-    behaviour policy refers to the policy that generated the given
-    rewards and actions.
-
-    In the notation used throughout documentation and comments, T refers to the
-    time dimension ranging from 0 to T-1. B refers to the batch size and
-    ACTION_SPACE refers to the list of numbers each representing a number of
-    actions.
+    The following terminology applies:
+        - `target policy` refers to the policy we are interested in improving.
+        - `behaviour policy` refers to the policy that generated the given
+            rewards and actions.
+        - `T` refers to the time dimension. This is usually either the length of the
+            trajectory or the length of the sequence if recurrent.
+        - `B` refers to the batch size.
 
     Args:
         target_action_log_probs: Action log probs from the target policy. A float32

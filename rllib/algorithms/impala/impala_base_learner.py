@@ -3,7 +3,7 @@ import numpy as np
 from typing import Any, List, Mapping
 import tree
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.utils.annotations import override
 from ray.rllib.core.learner.learner import Learner
@@ -12,8 +12,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
 )
-from ray.rllib.utils.typing import ResultDict, TensorType
-
+from ray.rllib.utils.typing import ResultDict
 
 
 @dataclass

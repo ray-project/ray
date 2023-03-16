@@ -30,10 +30,6 @@ def flatten_batch_and_time_dim(t):
 class TestVtraceRLModule(unittest.TestCase):
     """Tests V-trace-v2 against ground truth data calculated.
 
-    Our second implementation of V-Trace (V-trace-v2) is optimized for the least
-    amount of flops. The math in the implementation looks nothing like the math in
-    the paper.
-
     There is a ground truth implementation that we used to test our original
     implementation against. This test checks that the new implementation still
     matches the ground truth test from our first implementation of V-Trace.
