@@ -1,7 +1,7 @@
 import math
 from contextlib import contextmanager
-from functools import cached_property
-from typing import Any, Callable, Generator, List, Optional
+from functools import cache
+from typing import Any, Callable, Generator, Iterable, List, NewType, Optional
 
 import pyarrow as pa
 
@@ -51,7 +51,8 @@ class DBAPI2Reader(Reader):
         self.sql = sql
         self.connection_factory = connection_factory
 
-    @cached_property
+    @property
+    @cache
     def sample_block(self) -> Block:
         with connect(self.connection_factory) as connection:
             cursor = connection.cursor()
@@ -60,7 +61,8 @@ class DBAPI2Reader(Reader):
             )
             return cursor_to_block(cursor)
 
-    @cached_property
+    @property
+    @cache
     def num_rows(self) -> int:
         with connect(self.connection_factory) as connection:
             cursor = connection.cursor()
@@ -68,6 +70,9 @@ class DBAPI2Reader(Reader):
             return cursor.fetchone()[0]
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
+        if self.num_rows == 0:
+            return None
+
         accessor = BlockAccessor.for_block(self.sample_block)
         size_bytes_per_row = accessor.size_bytes() / accessor.num_rows()
         return math.ceil(size_bytes_per_row * self.num_rows)
@@ -94,7 +99,7 @@ class DBAPI2Reader(Reader):
                 num_rows += 1
 
             def create_read_fn(num_rows: int, offset: int):
-                def read_fn():
+                def read_fn() -> Iterable[Block]:
                     with connect(self.connection_factory) as connection:
                         cursor = connection.cursor()
                         cursor.execute(

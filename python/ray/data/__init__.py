@@ -86,6 +86,7 @@ __all__ = [
     "read_mongo",
     "read_parquet",
     "read_parquet_bulk",
+    "read_sql",
     "read_tfrecords",
     "set_progress_bars",
     "Preprocessor",

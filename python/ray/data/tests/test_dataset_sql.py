@@ -27,6 +27,6 @@ def test_read_sql(temp_database: str):
     dataset = ray.data.read_sql(
         "SELECT * FROM movie", lambda: sqlite3.connect(temp_database)
     )
-
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
+
     assert sorted(actual_values) == sorted(expected_values)

@@ -251,6 +251,9 @@ Supported Input Formats
    * - MongoDB
      - :func:`ray.data.read_mongo()`
      - ✅
+   * - SQL Databases
+     - :func:`ray.data.read_sql()`
+     - ✅
    * - Custom Datasource
      - :func:`ray.data.read_datasource()`
      - ✅

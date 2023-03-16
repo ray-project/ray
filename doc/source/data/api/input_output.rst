@@ -127,6 +127,14 @@ MongoDB
    read_mongo
    Dataset.write_mongo
 
+SQL Databases
+-------------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_sql
+   
 Dask
 ----
 

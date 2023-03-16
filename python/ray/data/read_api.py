@@ -1228,18 +1228,20 @@ def read_sql(
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
-    """Read from a database that provides a Python DB API2-compatible connector.
+    """Read from a database that provides a
+    `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
 
     Args:
         sql: The SQL query to execute.
         connection_factory: A function that takes no arguments and returns a
-            `Python DB API2 Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+            Python DB API2
+            `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
         parallelism: The requested parallelism of the read.
         ray_remote_args: Keyword arguments passed to :func:`ray.remote` in read tasks.
 
     Returns:
         A :class:`Dataset` containing the queried data.
-    """  # noqa: E501
+    """
     datasource = DBAPI2Datasource(connection_factory)
     return read_datasource(
         datasource,

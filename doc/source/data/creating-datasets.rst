@@ -304,6 +304,26 @@ are supported for each of these storage systems.
     :start-after: __read_parquet_az_begin__
     :end-before: __read_parquet_az_end__
 
+.. tabbed:: SQL Databases
+
+  Read data from databases that provide a Python DB API2-compliant connector.
+
+  .. testcode::
+
+    import sqlite3
+
+    import ray
+
+    # Create a simple database
+    connection = sqlite3.connect("example.db")
+    connection.execute("CREATE TABLE movie(title, year, score)")
+    connection.close()
+
+    def create_connection():
+        return sqlite3.connect("example.db")
+
+    dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+
 Reading from Local Storage
 ==========================
 
