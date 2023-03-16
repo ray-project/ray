@@ -9,6 +9,7 @@ from ray_release.exception import (
     ClusterNodesWaitTimeout,
     CommandError,
     CommandTimeout,
+    RemoteEnvSetupError,
     LocalEnvSetupError,
     LogsError,
     FetchResultError,
@@ -73,6 +74,12 @@ class JobRunner(CommandRunner):
 
         # Do not upload the files here. Instead, we use the job runtime environment
         # to automatically upload the local working dir.
+        try:
+            self.file_manager.upload()
+        except Exception as e:
+            raise RemoteEnvSetupError(
+                f"Error setting up remote environment: {e}"
+            ) from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Wait script should be uploaded already. Kick off command
