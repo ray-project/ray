@@ -365,6 +365,34 @@ def test_read_tfrecords(
     assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
 
 
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_read_tfrecords_ignore_missing_paths(
+    ray_start_regular_shared, tmp_path, ignore_missing_paths
+):
+    import tensorflow as tf
+
+    example = tf_records_empty()[0]
+
+    path = os.path.join(tmp_path, "data.tfrecords")
+    with tf.io.TFRecordWriter(path=path) as writer:
+        writer.write(example.SerializeToString())
+
+    paths = [
+        path,
+        "missing.tfrecords",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_tfrecords(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.input_files() == [path]
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_tfrecords(
+                paths, ignore_missing_paths=ignore_missing_paths
+            )
+            ds.fully_executed()
+
+
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
     with_tf_schema,
