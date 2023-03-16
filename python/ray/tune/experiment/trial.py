@@ -362,7 +362,7 @@ class Trial:
         if not experiment_dir_name and local_experiment_path:
             # Maybe derive experiment dir name from local storage dir
             experiment_dir_name = Path(local_experiment_path).name
-        else:
+        elif not experiment_dir_name:
             experiment_dir_name = DEFAULT_EXPERIMENT_NAME
 
         # Set default experiment dir name
