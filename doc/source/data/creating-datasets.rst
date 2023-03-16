@@ -668,4 +668,4 @@ inspection functions like :meth:`ds.schema() <ray.data.Dataset.schema>` and
 :meth:`ds.show() <ray.data.Dataset.show>` will trigger execution of only one or some
 tasks, instead of all tasks. This allows metadata to be inspected right away. Execution
 of all read tasks can be triggered manually using the
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` API.
+:meth:`ds.cache() <ray.data.Dataset.cache>` API.

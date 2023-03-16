@@ -602,15 +602,11 @@ def test_read_with_invalid_schema(
     # which should raise a `ValueError`.
     ds.write_tfrecords(tmp_path)
     with pytest.raises(ValueError) as e:
-        ray.data.read_tfrecords(
-            tmp_path, tf_schema=tf_schema_wrong_name
-        ).fully_executed()
+        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_name).cache()
     assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
-        ray.data.read_tfrecords(
-            tmp_path, tf_schema=tf_schema_wrong_type
-        ).fully_executed()
+        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type).cache()
     assert str(e.value.args[0]) == (
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"

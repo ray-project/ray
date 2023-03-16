@@ -28,7 +28,7 @@ def run_h2oai(benchmark: Benchmark):
         # Number of blocks (parallelism) should be set as number of available CPUs
         # to get best performance.
         num_blocks = int(ray.cluster_resources().get("CPU", 1))
-        input_ds = input_ds.repartition(num_blocks).fully_executed()
+        input_ds = input_ds.repartition(num_blocks).cache()
 
         q_list = [
             (h2oai_q1, "q1"),
