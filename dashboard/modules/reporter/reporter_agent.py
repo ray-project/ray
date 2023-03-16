@@ -851,7 +851,7 @@ class ReporterAgent(
                     gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
-                gpu_index = gpu.get("index")
+                gpu_index = str(gpu.get("index"))
                 gpu_name = gpu.get("name")
 
                 gram_available = gram_total - gram_used
