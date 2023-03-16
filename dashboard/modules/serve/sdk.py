@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from ray._private.utils import split_address
 
 try:
@@ -9,6 +9,7 @@ except ImportError:
     requests = None
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.serve.schema import ServeInstanceDetails
 
 
 DEPLOY_PATH = "/api/serve/deployments/"
@@ -18,6 +19,7 @@ DELETE_PATH = "/api/serve/deployments/"
 
 DEPLOY_PATH_V2 = "/api/serve/applications/"
 DELETE_PATH_V2 = "/api/serve/applications/"
+STATUS_PATH_V2 = "/api/serve/applications/"
 
 
 class ServeSubmissionClient(SubmissionClient):
@@ -77,17 +79,24 @@ class ServeSubmissionClient(SubmissionClient):
         if response.status_code != 200:
             self._raise_error(response)
 
-    def get_info(self) -> Union[Dict, None]:
+    def get_info(self) -> Dict:
         response = self._do_request("GET", INFO_PATH)
         if response.status_code == 200:
             return response.json()
         else:
             self._raise_error(response)
 
-    def get_status(self) -> Union[Dict, None]:
+    def get_status(self) -> Dict:
         response = self._do_request("GET", STATUS_PATH)
         if response.status_code == 200:
             return response.json()
+        else:
+            self._raise_error(response)
+
+    def get_serve_details(self) -> ServeInstanceDetails:
+        response = self._do_request("GET", STATUS_PATH_V2)
+        if response.status_code == 200:
+            return ServeInstanceDetails(**response.json())
         else:
             self._raise_error(response)
 
