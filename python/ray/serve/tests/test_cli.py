@@ -596,7 +596,7 @@ def test_run_application(ray_start_stop):
 def test_run_multi_app(ray_start_stop):
     """Deploys valid multi-app config file via `serve run`."""
 
-    ###### Deploy via config file ######
+    # Deploy via config file
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
     )
@@ -628,7 +628,7 @@ def test_run_multi_app(ray_start_stop):
         requests.post("http://localhost:8000/app2", json=["ADD", 0])
     print("Kill successful! Deployments are not reachable over HTTP.")
 
-    ###### Deploy via import path ######
+    # Deploy via import path
     print('Running node at import path "ray.serve.tests.test_cli.parrot_node".')
     p = subprocess.Popen(
         [
