@@ -67,7 +67,7 @@ export const ClusterUtilizationCard = ({
             frameBorder="0"
           />
           <div className={classes.links}>
-            <LinkWithArrow text="View all metrics" to="/new/metrics" />
+            <LinkWithArrow text="View all metrics" to="/metrics" />
           </div>
         </React.Fragment>
       )}

@@ -63,7 +63,7 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
         />
       )}
       <div className={classes.links}>
-        <LinkWithArrow text="View all nodes" to="/new/cluster" />
+        <LinkWithArrow text="View all nodes" to="/cluster" />
       </div>
     </OverviewCard>
   );

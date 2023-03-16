@@ -7,7 +7,6 @@ import {
   TextField,
 } from "@material-ui/core";
 import { Alert } from "@material-ui/lab";
-import classNames from "classnames";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
@@ -45,7 +44,7 @@ const useStyles = makeStyles((theme) =>
     },
     topBar: {
       position: "sticky",
-      top: 0,
+      top: MAIN_NAV_HEIGHT,
       width: "100%",
       display: "flex",
       flexDirection: "row",
@@ -55,9 +54,6 @@ const useStyles = makeStyles((theme) =>
       boxShadow: "0px 1px 0px #D2DCE6",
       zIndex: 1,
       height: 36,
-    },
-    topBarNewIA: {
-      top: MAIN_NAV_HEIGHT,
     },
     timeRangeButton: {
       marginLeft: theme.spacing(2),
@@ -193,11 +189,7 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
   },
 ];
 
-type MetricsProps = {
-  newIA?: boolean;
-};
-
-export const Metrics = ({ newIA = false }: MetricsProps) => {
+export const Metrics = () => {
   const classes = useStyles();
   const {
     grafanaHost,
@@ -228,18 +220,14 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
         pageInfo={{
           id: "metrics",
           title: "Metrics",
-          path: "/new/metrics",
+          path: "/metrics",
         }}
       />
       {grafanaHost === undefined || !prometheusHealth ? (
         <GrafanaNotRunningAlert className={classes.alert} />
       ) : (
         <div>
-          <Paper
-            className={classNames(classes.topBar, {
-              [classes.topBarNewIA]: newIA,
-            })}
-          >
+          <Paper className={classes.topBar}>
             <Button
               href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}`}
               target="_blank"

@@ -29,13 +29,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-type JobDetailChartsPageProps = {
-  newIA?: boolean;
-};
-
-export const JobDetailChartsPage = ({
-  newIA = false,
-}: JobDetailChartsPageProps) => {
+export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
@@ -218,7 +212,7 @@ export const JobDetailChartsPage = ({
               label: "Actions",
               content: (
                 <div>
-                  <JobLogsLink job={job} newIA />
+                  <JobLogsLink job={job} />
                   <br />
                   <CpuProfilingLink
                     pid={job.driver_info?.pid}
@@ -296,7 +290,6 @@ export const JobDetailChartsPage = ({
             jobId={jobId}
             filterToTaskId={taskListFilter}
             onFilterChange={handleTaskListFilterChange}
-            newIA={newIA}
           />
         </CollapsibleSection>
       </TitleCard>
@@ -311,10 +304,9 @@ export const JobDetailChartsPage = ({
         >
           <ActorList
             jobId={jobId}
-            newIA={newIA}
             filterToActorId={actorListFilter}
             onFilterChange={handleActorListFilterChange}
-            detailPathPrefix={newIA ? "actors" : "/actors"}
+            detailPathPrefix="actors"
           />
         </CollapsibleSection>
       </TitleCard>
@@ -336,27 +328,19 @@ type JobLogsLinkProps = {
     | "submission_id"
     | "type"
   >;
-  newIA?: boolean;
 };
 
 export const JobLogsLink = ({
   job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
-  newIA = false,
 }: JobLogsLinkProps) => {
   const { ipLogMap } = useContext(GlobalContext);
 
   let link: string | undefined;
 
-  const baseLink = newIA ? "/new/logs" : "/log";
-
   if (driver_agent_http_address) {
-    link = `${baseLink}/${encodeURIComponent(
-      `${driver_agent_http_address}/logs`,
-    )}`;
+    link = `/logs/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
   } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
-    link = `${baseLink}/${encodeURIComponent(
-      ipLogMap[driver_info.node_ip_address],
-    )}`;
+    link = `/logs/${encodeURIComponent(ipLogMap[driver_info.node_ip_address])}`;
   }
 
   if (link) {

@@ -48,7 +48,7 @@ export const JobDetailInfoPage = () => {
         pageInfo={{
           title: "Info",
           id: "job-info",
-          path: job.job_id ? `/new/jobs/${job.job_id}/info` : undefined,
+          path: job.job_id ? `/jobs/${job.job_id}/info` : undefined,
         }}
       />
       <TitleCard title={`JOB - ${params.id}`}>

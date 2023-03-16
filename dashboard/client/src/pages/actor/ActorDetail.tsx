@@ -57,7 +57,7 @@ const ActorDetailPage = () => {
         pageInfo={{
           title: `Actor: ${params.id}`,
           id: "actor-detail",
-          path: `/new/actors/${params.id}`,
+          path: `/actors/${params.id}`,
         }}
       />
       <TitleCard title={`ACTOR - ${params.id}`}>
