@@ -8,7 +8,7 @@ from ray.util.spark.utils import (
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
 )
-from ray.util.spark.cluster_init import _convert_ray_node_options
+from ray.util.spark.cluster_init import _convert_ray_node_options, _verify_node_options
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -95,6 +95,34 @@ def test_convert_ray_node_options():
             "include_dashboard": False,
         }
     ) == ["--cluster-name=aBc", "--disable-usage-stats", "--include-dashboard=False"]
+
+
+def test_verify_node_options():
+    _verify_node_options(
+        node_options={"permitted": "127.0.0.1"},
+        block_keys={"not_permitted": None},
+        node_type="head",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Setting option 'node_ip_address' for head nodes is not allowed.*The option is controlled by Ray on Spark",
+    ):
+        _verify_node_options(
+            node_options={"node_ip_address": "127.0.0.1"},
+            block_keys={"node_ip_address": None},
+            node_type="head",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="Setting option 'not_permitted' for worker nodes is not allowed.*You should set the 'permitted' argument instead",
+    ):
+        _verify_node_options(
+            node_options={"not_permitted": "bad"},
+            block_keys={"not_permitted": "permitted"},
+            node_type="worker",
+        )
 
 
 if __name__ == "__main__":
