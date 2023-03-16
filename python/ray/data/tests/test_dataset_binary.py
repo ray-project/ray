@@ -53,6 +53,24 @@ def test_read_binary_files(ray_start_regular_shared):
         assert "bytes" in str(ds), ds
 
 
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_read_binary_files_ignore_missing_paths(
+    ray_start_regular_shared, ignore_missing_paths
+):
+    with gen_bin_files(1) as (_, paths):
+        paths = paths + ["missing_file"]
+        if ignore_missing_paths:
+            ds = ray.data.read_binary_files(
+                paths, ignore_missing_paths=ignore_missing_paths
+            )
+            assert ds.input_files() == [paths[0]]
+        else:
+            with pytest.raises(FileNotFoundError):
+                ds = ray.data.read_binary_files(
+                    paths, ignore_missing_paths=ignore_missing_paths
+                )
+
+
 def test_read_binary_files_with_fs(ray_start_regular_shared):
     with gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
