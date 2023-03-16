@@ -3,6 +3,7 @@ from typing import Dict
 import pytest
 import threading
 import time
+import sys
 from ray._private.state_api_test_utils import verify_failed_task
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
@@ -984,3 +985,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         timeout=15,
         retry_interval_ms=500,
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

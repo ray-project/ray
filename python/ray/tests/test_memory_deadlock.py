@@ -261,3 +261,7 @@ def test_deadlock_two_sets_of_task_with_nested_task(
         ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError) as _:
         ray.get(ref2)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
