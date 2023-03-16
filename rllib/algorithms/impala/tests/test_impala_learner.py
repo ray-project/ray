@@ -37,7 +37,7 @@ FAKE_BATCH = {
 }
 
 
-class TestImpalaTorchLearner(unittest.TestCase):
+class TestImpalaLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -47,7 +47,10 @@ class TestImpalaTorchLearner(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_loss(self):
-        """Test that impala_policy_rlm loss matches the impala learner loss."""
+        """Test if we can compute the impala learner loss.
+
+        Correctness of V-Trance is tested in test_vtrace_v2.py.
+        """
         config = (
             ImpalaConfig()
             .environment("CartPole-v1")
@@ -91,8 +94,7 @@ class TestImpalaTorchLearner(unittest.TestCase):
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
-            print(results)
+            learner_group.update(train_batch.as_multi_agent())
 
 
 if __name__ == "__main__":

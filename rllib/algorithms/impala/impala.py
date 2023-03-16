@@ -10,7 +10,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
+from ray.rllib.algorithms.impala.impala_base_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
