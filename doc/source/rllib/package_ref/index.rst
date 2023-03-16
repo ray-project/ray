@@ -23,6 +23,7 @@ If you think there is anything missing, please open an issue on `Github`_.
     env.rst
     policy.rst
     models.rst
+    rl_modules.rst
     evaluation.rst
     offline.rst
     parallel_requests.rst
