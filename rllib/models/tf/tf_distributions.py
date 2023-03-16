@@ -31,7 +31,7 @@ class TfDistribution(Distribution, abc.ABC):
         self._dist = self._get_tf_distribution(*args, **kwargs)
 
     @abc.abstractmethod
-    def _get_tf_distribution(self, *args, **kwargs) -> tfp.distributions.Distribution:
+    def _get_tf_distribution(self, *args, **kwargs) -> "tfp.distributions.Distribution":
         """Returns the tfp.distributions.Distribution object to use."""
 
     @override(Distribution)
@@ -118,7 +118,7 @@ class TfCategorical(TfDistribution):
         probs: tf.Tensor = None,
         logits: tf.Tensor = None,
         temperature: float = 1.0,
-    ) -> tfp.distributions.Distribution:
+    ) -> "tfp.distributions.Distribution":
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
@@ -138,8 +138,10 @@ class TfCategorical(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TfCategorical":
-        return TfCategorical(logits=logits)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TfCategorical":
+        return TfCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
@@ -177,7 +179,7 @@ class TfDiagGaussian(TfDistribution):
         super().__init__(loc=loc, scale=scale)
 
     @override(TfDistribution)
-    def _get_tf_distribution(self, loc, scale=None) -> tfp.distributions.Distribution:
+    def _get_tf_distribution(self, loc, scale=None) -> "tfp.distributions.Distribution":
         if scale is None:
             loc, log_scale = tf.split(loc, num_or_size_splits=2, axis=-1)
             scale = tf.exp(log_scale)
@@ -210,7 +212,7 @@ class TfDiagGaussian(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TfDiagGaussian":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDiagGaussian":
         loc, log_std = tf.split(logits, num_or_size_splits=2, axis=1)
         scale = tf.math.exp(log_std)
         return TfDiagGaussian(loc=loc, scale=scale)
@@ -285,5 +287,5 @@ class TfDeterministic(Distribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TfDeterministic":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
         return TfDeterministic(loc=logits)

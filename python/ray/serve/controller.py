@@ -42,6 +42,8 @@ from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
+    ApplicationDetails,
+    ServeInstanceDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -367,10 +369,13 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union[str, bytes],
+        docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
+        if docs_path is not None:
+            assert docs_path.startswith("/")
 
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -661,6 +666,49 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def get_serve_instance_details(self) -> Dict:
+        """Gets details on all applications on the cluster and system-level info.
+
+        The information includes application and deployment statuses, config options,
+        error messages, etc.
+
+        Returns:
+            Dict that follows the format of the schema ServeInstanceDetails. Currently,
+            there is a value set for every field at all schema levels, except for the
+            route_prefix in the deployment_config for each deployment.
+        """
+
+        http_config = self.get_http_config()
+        applications = {}
+
+        for (
+            app_name,
+            app_status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            applications[app_name] = ApplicationDetails(
+                name=app_name,
+                route_prefix=self.application_state_manager.get_route_prefix(app_name),
+                docs_path=self.get_docs_path(app_name),
+                status=app_status_info.status,
+                message=app_status_info.message,
+                last_deployed_time_s=app_status_info.deployment_timestamp,
+                deployed_app_config=self.get_app_config(app_name),
+                deployments=self.application_state_manager.list_deployment_details(
+                    app_name
+                ),
+            )
+
+        # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
+        # fill in all info that should be shown to users. Currently, every field is set
+        # except for the route_prefix in the deployment_config of each deployment, since
+        # route_prefix is set instead in each application.
+        # Eventually we want to remove route_prefix from DeploymentSchema.
+        return ServeInstanceDetails(
+            host=http_config.host,
+            port=http_config.port,
+            applications=applications,
+        ).dict(exclude_unset=True)
+
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
         Args:
@@ -718,6 +766,12 @@ class ServeController:
         if not status:
             return None
         return status[0].to_proto().SerializeToString()
+
+    def get_docs_path(self, name: str):
+        """Docs path for application.
+
+        Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
+        return self.application_state_manager.get_docs_path(name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names

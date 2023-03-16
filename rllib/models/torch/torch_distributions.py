@@ -28,7 +28,7 @@ class TorchDistribution(Distribution, abc.ABC):
     @abc.abstractmethod
     def _get_torch_distribution(
         self, *args, **kwargs
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         """Returns the torch.distributions.Distribution object to use."""
 
     @override(Distribution)
@@ -108,7 +108,7 @@ class TorchCategorical(TorchDistribution):
         probs: torch.Tensor = None,
         logits: torch.Tensor = None,
         temperature: float = 1.0,
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
@@ -123,8 +123,10 @@ class TorchCategorical(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TorchCategorical":
-        return TorchCategorical(logits=logits)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
@@ -163,7 +165,7 @@ class TorchDiagGaussian(TorchDistribution):
 
     def _get_torch_distribution(
         self, loc, scale=None
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         if scale is None:
             loc, log_std = torch.chunk(self.inputs, 2, dim=1)
             scale = torch.exp(log_std)
@@ -190,7 +192,7 @@ class TorchDiagGaussian(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TorchDiagGaussian":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
         loc, log_std = logits.chunk(2, dim=-1)
         scale = log_std.exp()
         return TorchDiagGaussian(loc=loc, scale=scale)
@@ -270,5 +272,5 @@ class TorchDeterministic(Distribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(cls, logits: TensorType) -> "TorchDeterministic":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
         return TorchDeterministic(loc=logits)
