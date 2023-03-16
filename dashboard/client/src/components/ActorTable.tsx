@@ -15,13 +15,13 @@ import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { Actor } from "../type/actor";
+import { Actor, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -48,7 +48,9 @@ const ActorTable = ({
   onFilterChange,
   detailPathPrefix = "",
 }: ActorTableProps) => {
+  
   const [pageNo, setPageNo] = useState(1);
+  const [sortedActors, setSortedActors] = useState<Actor[]>([]);
   const { changeFilter, filterFunc } = useFilter<string>({
     overrideFilters:
       filterToActorId !== undefined
@@ -60,7 +62,35 @@ const ActorTable = ({
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
   const actorList = Object.values(actors || {}).filter(filterFunc);
-  const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  
+  // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
+  const sortActors = useCallback(() => {
+    type StateOrder = {
+      [key in ActorEnum]: number;
+    } & {
+      DEFAULT: number;
+    };
+    const stateOrder: StateOrder = {
+      [ActorEnum.ALIVE]: 0,
+      [ActorEnum.PENDING]: 1,
+      [ActorEnum.RECONSTRUCTING]:2,
+      "DEFAULT": 3, // For more actorEnum to come in the future, we make them appear before dead actors
+      [ActorEnum.DEAD]: 4, 
+    };
+
+    const sortedActors = [...actorList].sort((actor1, actor2) => {
+      const actor1Order = stateOrder[actor1.state as ActorEnum ]|| stateOrder.DEFAULT; // set the default status
+      const actor2Order = stateOrder[actor2.state as ActorEnum ] || stateOrder.DEFAULT;
+      return actor1Order - actor2Order;
+    });
+    setSortedActors(sortedActors);
+  }, [actorList]);
+
+  useEffect(() => {
+    sortActors();
+  }, [sortActors]);
+
+  const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
   const classes = rowStyles();
 
   const columns = [
