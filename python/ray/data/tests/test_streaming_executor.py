@@ -113,24 +113,32 @@ def test_select_operator_to_run():
 
     # Test empty.
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         is None
     )
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o2
     )
     topo[o1].outqueue.append("dummy2")
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o2
     )
     topo[o2].outqueue.append("dummy3")
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o3
     )
 
@@ -138,33 +146,43 @@ def test_select_operator_to_run():
     o3.num_active_work_refs = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o2
     )
     # Internal queue size is added to num active tasks.
     o3.num_active_work_refs = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o2
     )
     o2.num_active_work_refs = MagicMock(return_value=2)
     o2.internal_queue_size = MagicMock(return_value=0)
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o3
     )
     o2.num_active_work_refs = MagicMock(return_value=0)
     o2.internal_queue_size = MagicMock(return_value=2)
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o3
     )
 
     # Test prioritization of nothrottle ops.
     o2.throttling_disabled = MagicMock(return_value=True)
     assert (
-        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        select_operator_to_run(
+            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+        )
         == o2
     )
 
@@ -288,6 +306,8 @@ def test_resource_constrained_triggers_autoscaling():
     def run_execution(
         execution_id: str, incremental_cpu: int = 1, autoscaling_state=None
     ):
+        if autoscaling_state is None:
+            autoscaling_state = AutoscalingState()
         opt = ExecutionOptions()
         inputs = make_ref_bundles([[x] for x in range(20)])
         o1 = InputDataBuffer(inputs)
@@ -375,6 +395,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             ExecutionResources(cpu=1),
             True,
             "dummy",
+            AutoscalingState(),
         )
         is None
     )
@@ -386,6 +407,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             ExecutionResources(cpu=1),
             True,
             "dummy",
+            AutoscalingState(),
         )
         is o3
     )
@@ -396,6 +418,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             ExecutionResources(cpu=1),
             False,
             "dummy",
+            AutoscalingState(),
         )
         is None
     )

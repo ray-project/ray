@@ -307,7 +307,7 @@ def select_operator_to_run(
     limits: ExecutionResources,
     ensure_at_least_one_running: bool,
     execution_id: str,
-    autoscaling_state: Optional[AutoscalingState] = None,
+    autoscaling_state: AutoscalingState,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -336,12 +336,10 @@ def select_operator_to_run(
     if not ops and any(state.num_queued() > 0 for state in topology.values()):
         now = time.time()
         if (
-            autoscaling_state is None
-            or now
+            now
             > autoscaling_state.last_request_ts + MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS
         ):
-            if autoscaling_state:
-                autoscaling_state.last_request_ts = now
+            autoscaling_state.last_request_ts = now
             _try_to_scale_up_cluster(topology, execution_id)
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
