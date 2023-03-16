@@ -78,7 +78,7 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        _local_dir: str,
+        _local_experiment_path: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
         relative_logdir: str,
@@ -89,7 +89,7 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_dir = _local_dir
+        self.local_experiment_path = _local_experiment_path
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
         self.relative_logdir = relative_logdir
@@ -471,10 +471,10 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         if trial.was_on_driver_node:
             # Trial was run on driver
             shutil.rmtree(tmpdir)
-            shutil.copytree(trial.local_dir, tmpdir)
+            shutil.copytree(trial.local_experiment_path, tmpdir)
             print(
                 "Copied local node experiment dir",
-                trial.local_dir,
+                trial.local_experiment_path,
                 "to",
                 tmpdir,
                 "for trial",
@@ -484,7 +484,7 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         else:
             # Trial was run on remote node
             fetch_remote_directory_content(
-                trial.node_ip, remote_dir=trial.local_dir, local_dir=tmpdir
+                trial.node_ip, remote_dir=trial.local_experiment_path, local_dir=tmpdir
             )
 
         dirmap[trial] = tmpdir

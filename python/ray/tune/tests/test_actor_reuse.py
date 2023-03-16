@@ -240,15 +240,15 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
 
     # Check trial 1
     assert trial1.last_result["num_resets"] == 2
-    assert os.path.exists(os.path.join(trial1.logdir, "stdout"))
-    assert os.path.exists(os.path.join(trial1.logdir, "stderr"))
+    assert os.path.exists(os.path.join(trial1.local_path, "stdout"))
+    assert os.path.exists(os.path.join(trial1.local_path, "stderr"))
 
     # We expect that only "First" output is found in the first trial output
-    with open(os.path.join(trial1.logdir, "stdout"), "rt") as fp:
+    with open(os.path.join(trial1.local_path, "stdout"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: First" in content
         assert "PRINT_STDOUT: Second" not in content
-    with open(os.path.join(trial1.logdir, "stderr"), "rt") as fp:
+    with open(os.path.join(trial1.local_path, "stderr"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: First" in content
         assert "LOG_STDERR: First" in content
@@ -257,15 +257,15 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
 
     # Check trial 2
     assert trial2.last_result["num_resets"] == 3
-    assert os.path.exists(os.path.join(trial2.logdir, "stdout"))
-    assert os.path.exists(os.path.join(trial2.logdir, "stderr"))
+    assert os.path.exists(os.path.join(trial2.local_path, "stdout"))
+    assert os.path.exists(os.path.join(trial2.local_path, "stderr"))
 
     # We expect that only "Second" output is found in the first trial output
-    with open(os.path.join(trial2.logdir, "stdout"), "rt") as fp:
+    with open(os.path.join(trial2.local_path, "stdout"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: Second" in content
         assert "PRINT_STDOUT: First" not in content
-    with open(os.path.join(trial2.logdir, "stderr"), "rt") as fp:
+    with open(os.path.join(trial2.local_path, "stderr"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: Second" in content
         assert "LOG_STDERR: Second" in content

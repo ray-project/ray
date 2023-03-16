@@ -124,6 +124,8 @@ DEFAULT_RESULTS_DIR = (
     or os.path.expanduser("~/ray_results")
 )
 
+DEFAULT_EXPERIMENT_NAME = "default"
+
 # Meta file about status under each experiment directory, can be
 # parsed by automlboard if exists.
 JOB_META_FILE = "job_status.json"

@@ -87,8 +87,8 @@ class JsonLoggerCallback(LoggerCallback):
         self.update_config(trial, trial.config)
 
         # Make sure logdir exists
-        trial.init_logdir()
-        local_file = os.path.join(trial.logdir, EXPR_RESULT_FILE)
+        trial.init_local_path()
+        local_file = os.path.join(trial.local_path, EXPR_RESULT_FILE)
         self._trial_files[trial] = open(local_file, "at")
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
@@ -108,7 +108,7 @@ class JsonLoggerCallback(LoggerCallback):
     def update_config(self, trial: "Trial", config: Dict):
         self._trial_configs[trial] = config
 
-        config_out = os.path.join(trial.logdir, EXPR_PARAM_FILE)
+        config_out = os.path.join(trial.local_path, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(
                 self._trial_configs[trial],
@@ -118,6 +118,6 @@ class JsonLoggerCallback(LoggerCallback):
                 cls=SafeFallbackEncoder,
             )
 
-        config_pkl = os.path.join(trial.logdir, EXPR_PARAM_PICKLE_FILE)
+        config_pkl = os.path.join(trial.local_path, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self._trial_configs[trial], f)

@@ -372,7 +372,7 @@ def test_migration_checkpoint_removal(
         t1.checkpoint.dir_or_data = os.path.join(
             tmpdir,
             t1.relative_logdir,
-            os.path.relpath(t1.checkpoint.dir_or_data, t1.logdir),
+            os.path.relpath(t1.checkpoint.dir_or_data, t1.local_path),
         )
 
     while not runner.is_finished():

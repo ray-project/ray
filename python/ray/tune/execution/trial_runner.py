@@ -9,9 +9,9 @@ import traceback
 import warnings
 
 import ray
+from ray.air._internal.uri_utils import URI
 from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
-from ray.air._internal.uri_utils import URI
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.experiment_state import (
@@ -83,7 +83,7 @@ class TrialRunner:
         search_alg: SearchAlgorithm for generating
             Trial objects.
         scheduler: Defaults to FIFOScheduler.
-        local_checkpoint_dir: Path where global experiment state checkpoints
+        experiment_path: Path where global experiment state checkpoints
             are saved and restored from.
         sync_config: See :class:`~ray.tune.syncer.SyncConfig`.
             Within sync config, the `upload_dir` specifies cloud storage, and
@@ -122,7 +122,7 @@ class TrialRunner:
         search_alg: Optional[SearchAlgorithm] = None,
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
-        local_checkpoint_dir: Optional[str] = None,
+        experiment_path: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
         experiment_dir_name: Optional[str] = None,
         stopper: Optional[Stopper] = None,
@@ -134,6 +134,8 @@ class TrialRunner:
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        # Deprecated
+        local_checkpoint_dir: Optional[str] = None,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._placeholder_resolvers = placeholder_resolvers
@@ -146,6 +148,34 @@ class TrialRunner:
         self._max_pending_trials = _get_max_pending_trials(self._search_alg)
 
         self._sync_config = sync_config or SyncConfig()
+
+        self._experiment_dir_name = experiment_dir_name
+
+        if local_checkpoint_dir:
+            if experiment_path:
+                raise ValueError(
+                    "Only one of `local_checkpoint_dir` or `experiment_path` "
+                    "can be passed to `TrialRunner()`."
+                )
+
+            warnings.warn(
+                "The `local_checkpoint_dir` argument is deprecated and will be "
+                "removed in the future. Use `experiment_path` instead."
+            )
+
+            experiment_path = local_checkpoint_dir
+
+        # Rename for better code readability
+        local_experiment_path = experiment_path
+        remote_experiment_path = None
+
+        if self._sync_config.upload_dir and self._experiment_dir_name:
+            remote_experiment_path = str(
+                URI(self._sync_config.upload_dir) / self._experiment_dir_name
+            )
+
+        self._local_experiment_path = local_experiment_path
+        self._remote_experiment_path = remote_experiment_path
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,

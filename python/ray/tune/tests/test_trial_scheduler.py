@@ -1931,7 +1931,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ever_active = set()
         active = set()
         for trial in out.trials:
-            with open(os.path.join(trial.logdir, "status.txt"), "rt") as fp:
+            with open(os.path.join(trial.local_path, "status.txt"), "rt") as fp:
                 status = fp.read()
             print(f"Status for trial {trial}: {status}")
             if "Activate" in status:
