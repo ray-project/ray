@@ -859,7 +859,7 @@ def _trial_progress_str(
     num_trials = len(trials)
     trials_by_state = _get_trials_by_state(trials)
 
-    for local_dir in sorted({t.local_dir for t in trials}):
+    for local_dir in sorted({t.local_experiment_path for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
 
     num_trials_strs = [
