@@ -1031,7 +1031,7 @@ class ReporterAgent(
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:
-                logger.exception(f"Error publishing node physical stats.")
+                logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
