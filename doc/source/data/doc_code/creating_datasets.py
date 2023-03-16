@@ -452,127 +452,47 @@ ds.show(3)
 # fmt: off
 # __read_parquet_s3_begin__
 # Create a tabular Dataset by reading a Parquet file from S3.
-ds = ray.data.read_parquet("s3://ursa-labs-taxi-data/2009/01/data.parquet")
+ds = ray.data.read_parquet("s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2019/01/data.parquet")
 # -> Dataset(
 #        num_blocks=1,
-#        num_rows=14092413,
+#        num_rows=7667792,
 #        schema={
 #            vendor_id: string,
 #            pickup_at: timestamp[us],
 #            dropoff_at: timestamp[us],
 #            passenger_count: int8,
 #            trip_distance: float,
-#            pickup_longitude: float,
-#            pickup_latitude: float,
+#            rate_code_id: string,
+#            store_and_fwd_flag: string,
 #            ...,
 #        },
 #    )
 
 ds.show(2)
 # -> {
-#        'vendor_id': 'VTS',
-#        'pickup_at': datetime.datetime(2009, 1, 4, 2, 52),
-#        'dropoff_at': datetime.datetime(2009, 1, 4, 3, 2),
+#        'vendor_id': '1',
+#        'pickup_at': datetime.datetime(2019, 1, 1, 0, 46, 40),
+#        'dropoff_at': datetime.datetime(2019, 1, 1, 0, 53, 20),
 #        'passenger_count': 1,
-#        'trip_distance': 2.630000114440918,
-#        'pickup_longitude': -73.99195861816406,
-#        'pickup_latitude': 40.72156524658203,
+#        'trip_distance': 1.5,
+#        'rate_code_id': '1',
+#        'store_and_fwd_flag': 'N', 
 #        ...,
 #    }
 #    {
-#        'vendor_id': 'VTS',
-#        'pickup_at': datetime.datetime(2009, 1, 4, 3, 31),
-#        'dropoff_at': datetime.datetime(2009, 1, 4, 3, 38),
-#        'passenger_count': 3,
-#        'trip_distance': 4.550000190734863,
-#        'pickup_longitude': -73.98210144042969,
-#        'pickup_latitude': 40.736289978027344,
+#        'vendor_id': '1',
+#        'pickup_at': datetime.datetime(2019, 1, 1, 0, 59, 47)
+#        'dropoff_at': datetime.datetime(2019, 1, 1, 1, 18, 59),
+#        'passenger_count': 1,
+#        'trip_distance': 2.5999999046325684,
+#        'rate_code_id': '1',
+#        'store_and_fwd_flag': 'N', 
 #        ...,
 #    }
 # __read_parquet_s3_end__
 # fmt: on
 
 # fmt: off
-# __read_parquet_s3_with_fs_begin__
-import pyarrow as pa
-
-# Create a tabular Dataset by reading a Parquet file from a private S3 bucket.
-# NOTE: This example is not runnable as-is; add in a path to your private bucket and the
-# required S3 credentials!
-ds = ray.data.read_parquet(
-    "s3://some/private/bucket",
-    filesystem=pa.fs.S3FileSystem(
-        region="us-west-2",
-        access_key="XXXX",
-        secret_key="XXXX",
-    ),
-)
-# __read_parquet_s3_with_fs_end__
-# fmt: on
-
-# fmt: off
-# __read_parquet_hdfs_begin__
-# Create a tabular Dataset by reading a Parquet file from HDFS using HDFS connection
-# automatically constructed based on the URI.
-# NOTE: This example is not runnable as-is; you'll need to point it at your HDFS
-# cluster/data.
-ds = ray.data.read_parquet("hdfs://<host:port>/path/to/file.parquet")
-# __read_parquet_hdfs_end__
-# fmt: on
-
-# TODO(Clark): Find clean way to start local HDFS cluster in the below example (that
-# works in CI).
-
-# fmt: off
-# __read_parquet_hdfs_with_fs_begin__
-import pyarrow as pa
-
-# Create a tabular Dataset by reading a Parquet file from HDFS, manually specifying a
-# configured HDFS connection via a Pyarrow HDFSFileSystem instance.
-# NOTE: This example is not runnable as-is; you'll need to point it at your HDFS
-# cluster/data.
-ds = ray.data.read_parquet(
-    "hdfs://path/to/file.parquet",
-    filesystem=pa.fs.HDFSFileSystem(host="localhost", port=9000, user="bob"),
-)
-# __read_parquet_hdfs_with_fs_end__
-# fmt: on
-
-# TODO(Clark): Find open data for below GCS example.
-
-# fmt: off
-# __read_parquet_gcs_begin__
-import gcsfs
-
-# Create a tabular Dataset by reading a Parquet file from GCS, passing the configured
-# GCSFileSystem.
-# NOTE: This example is not runnable as-is; you'll need to point it at your GCS bucket
-# and configure your GCP project and credentials.
-ds = ray.data.read_parquet(
-    "gs://path/to/file.parquet",
-    filesystem=gcsfs.GCSFileSystem(project="my-google-project"),
-)
-# __read_parquet_gcs_end__
-# fmt: on
-
-# fmt: off
-# __read_parquet_az_begin__
-import adlfs
-
-# Create a tabular Dataset by reading a Parquet file from Azure Blob Storage, passing
-# the configured AzureBlobFileSystem.
-path = (
-    "az://nyctlc/yellow/puYear=2009/puMonth=1/"
-    "part-00019-tid-8898858832658823408-a1de80bd-eed3-4d11-b9d4-fa74bfbd47bc-426333-4"
-    ".c000.snappy.parquet"
-)
-ds = ray.data.read_parquet(
-    path,
-    filesystem=adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
-)
-# __read_parquet_az_end__
-# fmt: on
-
 # __read_tfrecords_begin__
 # Create a tabular Dataset by reading a TFRecord file.
 ds = ray.data.read_tfrecords("example://iris.tfrecords")
@@ -596,3 +516,4 @@ ds.show(1)
 #     "label": b"Setosa",
 # }
 # __read_tfrecords_end__
+# fmt: on
