@@ -1604,21 +1604,21 @@ py_test(
 py_test(
     name = "connectors/tests/test_connector",
     tags = ["team:rllib", "connector"],
-    size = "small",
+    size = "medium",
     srcs = ["connectors/tests/test_connector.py"]
 )
 
 py_test(
     name = "connectors/tests/test_action",
     tags = ["team:rllib", "connector"],
-    size = "small",
+    size = "medium",
     srcs = ["connectors/tests/test_action.py"]
 )
 
 py_test(
     name = "connectors/tests/test_agent",
     tags = ["team:rllib", "connector"],
-    size = "small",
+    size = "medium",
     srcs = ["connectors/tests/test_agent.py"]
 )
 

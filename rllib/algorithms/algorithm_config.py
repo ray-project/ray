@@ -3140,17 +3140,19 @@ class AlgorithmConfig(_Config):
             )
 
         # Serialize dataclasses.
-        if isinstance(config["_learner_hps"], LearnerHPs):
+        if isinstance(config.get("_learner_hps"), LearnerHPs):
             config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
-        if isinstance(config["multiagent"]["policies"], (set, tuple)):
-            config["multiagent"]["policies"] = list(config["multiagent"]["policies"])
-        # Do NOT serialize functions/lambdas.
-        if config["multiagent"]["policy_mapping_fn"]:
-            config["multiagent"]["policy_mapping_fn"] = "__not_serializable__"
-        if config["multiagent"]["policies_to_train"]:
-            config["multiagent"]["policies_to_train"] = "__not_serializable__"
+        ma_config = config.get("multiagent")
+        if ma_config is not None:
+            if isinstance(ma_config.get("policies"), (set, tuple)):
+                ma_config["policies"] = list(ma_config["policies"])
+            # Do NOT serialize functions/lambdas.
+            if ma_config.get("policy_mapping_fn"):
+                ma_config["policy_mapping_fn"] = "__not_serializable__"
+            if ma_config.get("policies_to_train"):
+                ma_config["policies_to_train"] = "__not_serializable__"
         return config
 
     @staticmethod
