@@ -692,7 +692,6 @@ class DeploymentReplica(VersionedReplica):
             deployment_name,
             scheduling_strategy,
         )
-        self._replica_details = None
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
