@@ -378,6 +378,9 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+        # learner hps need to be updated inside of config.validate in order to have
+        # the correct values for when a user starts an experiment from a dict. This is
+        # as oppposed to assigning the values inthe builder functions such as `training`
         self._learner_hps.rollout_frag_or_episode_len = (
             self.get_rollout_fragment_length()
         )
