@@ -8,6 +8,7 @@ import numpy as np
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.util.annotations import DeveloperAPI
@@ -69,11 +70,12 @@ class _DatasetStatsBuilder:
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
+            capped_k = capfirst(k)
             if len(stages) > 1:
                 if i == 0:
-                    stage_infos[self.stage_name + "_" + k] = v
+                    stage_infos[self.stage_name + capped_k] = v
                 else:
-                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                    stage_infos[self.stage_name.split("->")[-1] + capped_k] = v
             else:
                 stage_infos[self.stage_name] = v
         stats = DatasetStats(
@@ -262,13 +264,13 @@ class DatasetStats:
             if DatasetContext.get_current().block_splitting_enabled:
                 # Only populate stats when stats from all read tasks are ready at
                 # stats actor.
-                if len(stats_map.items()) == len(self.stages["read"]):
-                    self.stages["read"] = []
+                if len(stats_map.items()) == len(self.stages["Read"]):
+                    self.stages["Read"] = []
                     for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["read"] += blocks_metadata
+                        self.stages["Read"] += blocks_metadata
             else:
                 for i, metadata in stats_map.items():
-                    self.stages["read"][i] = metadata[0]
+                    self.stages["Read"][i] = metadata[0]
 
         stages_stats = []
         is_substage = len(self.stages) > 1

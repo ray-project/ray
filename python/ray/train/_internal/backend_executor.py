@@ -240,6 +240,7 @@ class BackendExecutor:
 
         futures = []
         for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            gpu_ids = sorted(gpu_ids)
             all_gpu_ids = ",".join(gpu_ids)
 
             def set_gpu_ids():

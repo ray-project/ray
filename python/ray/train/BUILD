@@ -401,6 +401,14 @@ py_test(
 )
 
 py_test(
+    name = "test_lightning_trainer",
+    size = "large",
+    srcs = ["tests/test_lightning_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
