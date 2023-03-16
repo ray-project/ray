@@ -274,7 +274,7 @@ def test_tensors_sort(ray_start_regular_shared):
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=10,\n"
@@ -287,7 +287,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: np.ones((3, 4, 4)), batch_size=2
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=4,\n"
@@ -300,7 +300,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).flat_map(
         lambda _: [np.ones((4, 4)), np.ones((4, 4))]
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=10,\n"
@@ -313,7 +313,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=4,\n"
@@ -326,7 +326,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=4,\n"
