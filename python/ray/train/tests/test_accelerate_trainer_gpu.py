@@ -311,6 +311,7 @@ def test_accelerate_linear(
     trainer.fit()
 
 
+# Using CPU on purpose
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_accelerate_e2e(ray_start_4_cpus, num_workers):
     def train_func():
