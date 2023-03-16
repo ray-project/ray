@@ -160,6 +160,7 @@ exclude_patterns = [
     "_build",
     "source/workflows/api/doc/ray.workflow.*",
     "source/serve/api/doc/ray.serve.*",
+    "source/templates",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
