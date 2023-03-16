@@ -14,12 +14,12 @@ import {
   Typography,
 } from "@material-ui/core";
 import { Autocomplete, Pagination } from "@material-ui/lab";
-import dayjs from "dayjs";
 import React, { ReactElement } from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
@@ -52,11 +52,11 @@ export const ServeApplicationDetailPage = () => {
 
   const {
     application,
-    deployments,
+    filteredDeployments,
     page,
     setPage,
     changeFilter,
-    unfilteredList,
+    allDeployments,
   } = useServeApplicationDetails(name);
 
   if (!application) {
@@ -133,9 +133,9 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Last deployed at",
             content: {
-              value: dayjs(
-                Number(application.last_deployed_time_s * 1000),
-              ).format("YYYY/MM/DD HH:mm:ss"),
+              value: formatDateFromTimeMs(
+                application.last_deployed_time_s * 1000,
+              ),
             },
           },
           {
@@ -153,7 +153,7 @@ export const ServeApplicationDetailPage = () => {
           <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(new Set(deployments.map((e) => e.name)))}
+              options={Array.from(new Set(allDeployments.map((e) => e.name)))}
               onInputChange={(_: any, value: string) => {
                 changeFilter("name", value.trim() !== "-" ? value.trim() : "");
               }}
@@ -163,7 +163,7 @@ export const ServeApplicationDetailPage = () => {
             />
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(new Set(unfilteredList.map((e) => e.status)))}
+              options={Array.from(new Set(allDeployments.map((e) => e.status)))}
               onInputChange={(_: any, value: string) => {
                 changeFilter("status", value.trim());
               }}
@@ -188,7 +188,7 @@ export const ServeApplicationDetailPage = () => {
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(deployments.length / page.pageSize)}
+              count={Math.ceil(filteredDeployments.length / page.pageSize)}
               page={page.pageNo}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
@@ -219,7 +219,7 @@ export const ServeApplicationDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {deployments
+              {filteredDeployments
                 .slice(
                   (page.pageNo - 1) * page.pageSize,
                   page.pageNo * page.pageSize,

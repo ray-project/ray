@@ -1,10 +1,10 @@
 import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
-import dayjs from "dayjs";
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -202,16 +202,14 @@ export const JobDetailChartsPage = ({
               label: "Started at",
               content: {
                 value: job.start_time
-                  ? dayjs(Number(job.start_time)).format("YYYY/MM/DD HH:mm:ss")
+                  ? formatDateFromTimeMs(job.start_time)
                   : "-",
               },
             },
             {
               label: "Ended at",
               content: {
-                value: job.end_time
-                  ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
-                  : "-",
+                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
               },
             },
             {

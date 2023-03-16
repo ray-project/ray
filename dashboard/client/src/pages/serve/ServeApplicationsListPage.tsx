@@ -51,9 +51,9 @@ export const ServeApplicationsListPage = () => {
   const classes = useStyles();
   const {
     serveDetails,
-    serveApplicationsList,
+    filteredServeApplications,
     error,
-    unfilteredList,
+    allServeApplications,
     page,
     setPage,
     changeFilter,
@@ -102,7 +102,9 @@ export const ServeApplicationsListPage = () => {
             <Autocomplete
               style={{ margin: 8, width: 120 }}
               options={Array.from(
-                new Set(unfilteredList.map((e) => (e.name ? e.name : "-"))),
+                new Set(
+                  allServeApplications.map((e) => (e.name ? e.name : "-")),
+                ),
               )}
               onInputChange={(_: any, value: string) => {
                 changeFilter("name", value.trim() !== "-" ? value.trim() : "");
@@ -113,7 +115,9 @@ export const ServeApplicationsListPage = () => {
             />
             <Autocomplete
               style={{ margin: 8, width: 120 }}
-              options={Array.from(new Set(unfilteredList.map((e) => e.status)))}
+              options={Array.from(
+                new Set(allServeApplications.map((e) => e.status)),
+              )}
               onInputChange={(_: any, value: string) => {
                 changeFilter("status", value.trim());
               }}
@@ -138,7 +142,9 @@ export const ServeApplicationsListPage = () => {
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(serveApplicationsList.length / page.pageSize)}
+              count={Math.ceil(
+                filteredServeApplications.length / page.pageSize,
+              )}
               page={page.pageNo}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
@@ -169,7 +175,7 @@ export const ServeApplicationsListPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {serveApplicationsList
+              {filteredServeApplications
                 .slice(
                   (page.pageNo - 1) * page.pageSize,
                   page.pageNo * page.pageSize,

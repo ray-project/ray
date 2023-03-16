@@ -1,5 +1,4 @@
 import { TableCell, TableRow } from "@material-ui/core";
-import dayjs from "dayjs";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
@@ -7,6 +6,7 @@ import {
   CodeDialogButtonWithPreview,
 } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeApplication } from "../../type/serve";
 
@@ -48,9 +48,7 @@ export const ServeApplicationRow = ({
       </TableCell>
       <TableCell align="center">{Object.values(deployments).length}</TableCell>
       <TableCell align="center">
-        {dayjs(Number(last_deployed_time_s * 1000)).format(
-          "YYYY/MM/DD HH:mm:ss",
-        )}
+        {formatDateFromTimeMs(last_deployed_time_s * 1000)}
       </TableCell>
       <TableCell align="center">
         <DurationText startTime={last_deployed_time_s * 1000} />

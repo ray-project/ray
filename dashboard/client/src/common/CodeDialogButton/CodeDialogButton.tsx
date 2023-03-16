@@ -7,6 +7,9 @@ const useStyles = makeStyles((theme) =>
   createStyles({
     configText: {
       whiteSpace: "pre",
+      fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
+      padding: theme.spacing(2),
+      borderRadius: theme.spacing(1),
     },
   }),
 );

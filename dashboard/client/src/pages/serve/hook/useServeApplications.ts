@@ -44,7 +44,7 @@ export const useServeApplications = () => {
 
   return {
     serveDetails,
-    serveApplicationsList: serveApplicationsList.filter((app) =>
+    filteredServeApplications: serveApplicationsList.filter((app) =>
       filter.every((f) =>
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
@@ -54,7 +54,7 @@ export const useServeApplications = () => {
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
     ipLogMap,
-    unfilteredList: serveApplicationsList,
+    allServeApplications: serveApplicationsList,
   };
 };
 
@@ -103,7 +103,7 @@ export const useServeApplicationDetails = (
 
   return {
     application,
-    deployments: deployments.filter((deployment) =>
+    filteredDeployments: deployments.filter((deployment) =>
       filter.every((f) =>
         f.val
           ? deployment[f.key] && (deployment[f.key] ?? "").includes(f.val)
@@ -115,6 +115,6 @@ export const useServeApplicationDetails = (
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
     ipLogMap,
-    unfilteredList: deployments,
+    allDeployments: deployments,
   };
 };

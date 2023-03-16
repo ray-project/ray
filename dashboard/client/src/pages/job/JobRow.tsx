@@ -1,9 +1,9 @@
 import { TableCell, TableRow, Tooltip } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
-import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -107,12 +107,10 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
         />
       </TableCell>
       <TableCell align="center">
-        {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}
+        {start_time ? formatDateFromTimeMs(start_time) : "-"}
       </TableCell>
       <TableCell align="center">
-        {end_time && end_time > 0
-          ? dayjs(Number(end_time)).format("YYYY/MM/DD HH:mm:ss")
-          : "-"}
+        {end_time && end_time > 0 ? formatDateFromTimeMs(end_time) : "-"}
       </TableCell>
       <TableCell align="center">{driver_info?.pid ?? "-"}</TableCell>
     </TableRow>
