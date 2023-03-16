@@ -1,29 +1,28 @@
 (serve-object-detection-tutorial)=
 
-# Serving Object Detection Model
-Build an object detection application with Ray Serve.
+# Serving an Object Detection Model
+This example runs an object detection application with Ray Serve.
 
-To run this example, you will need to install the following:
+To run this example, install the following:
 
 ```bash
 pip install "ray[serve]" requests torch
 ```
 
-This example uses the [ultralytics/yolov5](https://github.com/ultralytics/yolov5) model and FastAPI. Save the following code to a file named object_detection.py.
+This example uses the [ultralytics/yolov5](https://github.com/ultralytics/yolov5) model and [FastAPI](https://fastapi.tiangolo.com/). Save the following code to a file named object_detection.py.
 
-Serve Code:
+Use the following Serve code:
 ```{literalinclude} ../doc_code/object_detection.py
 ```
 
 Use `serve run object_detection:entrypoint` to start the serve application.
 
 :::{note}
-The autoscaling config is using min_replica = 0, replica will be spawn when the request arrives. When there is no request, Serve Application will downscale replicas to 0 for saving GPU resource.
+The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. After a period where no requests arrive, Serve downscales `ObjectDetection` back to 0 replica to save GPU resources.
 
-When `min_replica = 0` in the autoscaling configuration, the Serve application spawns a replica when a request arrives. If there are no requests, it downscales replicas to 0 to save GPU resources.
 :::
 
-These messages are expected in the output.
+You should see the following logs:
 ```text
 (ServeReplica:ObjectDection pid=4747)   warnings.warn(
 (ServeReplica:ObjectDection pid=4747) Downloading: "https://github.com/ultralytics/yolov5/zipball/master" to /home/ray/.cache/torch/hub/master.zip
@@ -35,7 +34,7 @@ These messages are expected in the output.
 2023-03-08 21:10:21,685 SUCC <string>:93 -- Deployed Serve app successfully.
 ```
 
-Use following code to send requests.
+Use the following code to send requests:
 ```python
 import requests
 
@@ -45,6 +44,6 @@ resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
 with open("output.jpeg", 'wb') as f:
     f.write(resp.content)
 ```
-The output.png file is saved locally. Check it out!!
+The output.png file is saved locally. Check it out!
 ![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/object_detection_output.jpeg)
 
