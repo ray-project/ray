@@ -711,6 +711,9 @@ class TestServeDeploySchema:
 
     @pytest.mark.parametrize("option,value", [("host", "127.0.0.1"), ("port", 8000)])
     def test_deploy_config_nested_http_options(self, option, value):
+        """
+        The application configs inside a deploy config should not have http options set.
+        """
         deploy_config_dict = {
             "host": "127.0.0.1",
             "port": 8000,
