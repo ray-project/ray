@@ -494,6 +494,7 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
+            config = config.to_deploy_schema()
             if self.deploy_mode == ServeDeployMode.MULTI_APP:
                 raise RayServeException(
                     "You are trying to deploy a single-application config, however "
@@ -506,7 +507,6 @@ class ServeController:
                     "to the single-app API endpoint `/api/serve/deployments/`."
                 )
             self.deploy_mode = ServeDeployMode.SINGLE_APP
-            applications = [config]
         else:
             if self.deploy_mode == ServeDeployMode.SINGLE_APP:
                 raise RayServeException(
@@ -520,7 +520,6 @@ class ServeController:
                     "to the the multi-app API endpoint `/api/serve/applications/`."
                 )
             self.deploy_mode = ServeDeployMode.MULTI_APP
-            applications = config.applications
 
         if not deployment_time:
             deployment_time = time.time()
@@ -534,7 +533,7 @@ class ServeController:
 
         new_config_checkpoint = {}
 
-        for app_config in applications:
+        for app_config in config.applications:
             # Prepend app name to each deployment name
             if not _internal:
                 app_config = app_config.prepend_app_name_to_deployment_names()
@@ -588,7 +587,7 @@ class ServeController:
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
-        new_applications = {app_config.name for app_config in applications}
+        new_applications = {app_config.name for app_config in config.applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
