@@ -369,6 +369,8 @@ def test_read_tfrecords(
 def test_read_tfrecords_ignore_missing_paths(
     ray_start_regular_shared, tmp_path, ignore_missing_paths
 ):
+    import tensorflow as tf
+
     example = tf_records_empty()[0]
 
     path = os.path.join(tmp_path, "data.tfrecords")

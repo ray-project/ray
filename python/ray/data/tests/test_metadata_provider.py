@@ -205,7 +205,7 @@ def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
     path2 = os.path.join(data_path, "test2.csv")
     paths = [path1, path2]
     paths_with_missing = paths + [os.path.join(data_path, "missing.csv")]
-    paths, fs = _resolve_paths_and_filesystem(paths, fs)
+    paths_with_missing, fs = _resolve_paths_and_filesystem(paths_with_missing, fs)
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df1.to_csv(path1, index=False, storage_options=storage_options)
