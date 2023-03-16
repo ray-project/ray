@@ -33,9 +33,10 @@ def _plan_from_arrow_refs_op(op: Union[FromArrowRefs, FromSpark]) -> PhysicalOpe
             op._tables = blocks
 
         ref_bundles: List[RefBundle] = []
-        for table_ref in op._tables:
+        for idx, table_ref in enumerate(op._tables):
             if not isinstance(table_ref, ObjectRef):
-                table_ref = ray.put(table_ref)
+                op._tables[idx] = ray.put(table_ref)
+                table_ref = op._tables[idx]
             stats = BlockExecStats.builder()
             block_metadata = BlockAccessor.for_block(table_ref).get_metadata(
                 input_files=None, exec_stats=stats.build()

@@ -70,9 +70,10 @@ def _plan_from_pandas_refs_op(
         ref_bundles: List[RefBundle] = []
 
         context = DatasetContext.get_current()
-        for df_ref in op._dfs:
+        for idx, df_ref in enumerate(op._dfs):
             if not isinstance(df_ref, ObjectRef):
-                df_ref = ray.put(df_ref)
+                op._dfs[idx] = ray.put(df_ref)
+                df_ref = op._dfs[idx]
 
             if context.enable_pandas_block:
                 block = df_ref

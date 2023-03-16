@@ -20,9 +20,10 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
 
     def get_input_data() -> List[RefBundle]:
         ref_bundles: List[RefBundle] = []
-        for arr_ref in op._ndarrays:
+        for idx, arr_ref in enumerate(op._ndarrays):
             if not isinstance(arr_ref, ObjectRef):
-                arr_ref = ray.put(arr_ref)
+                op._ndarrays[idx] = ray.put(arr_ref)
+                arr_ref = op._ndarrays[idx]
             stats = BlockExecStats.builder()
             block = BlockAccessor.batch_to_block(arr_ref)
             block_metadata = BlockAccessor.for_block(block).get_metadata(
