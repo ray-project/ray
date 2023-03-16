@@ -146,7 +146,7 @@ def test_transform_failure(shutdown_only):
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ds.map(mapper).fully_executed()
+        ds.map(mapper).cache()
 
 
 def test_flat_map_generator(ray_start_regular_shared):
@@ -189,7 +189,7 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         ]
         # Test dropping non-existent column
         with pytest.raises(KeyError):
-            ds.drop_columns(["dummy_col", "col1", "col2"]).fully_executed()
+            ds.drop_columns(["dummy_col", "col1", "col2"]).cache()
 
 
 def test_select_columns(ray_start_regular_shared):
@@ -220,13 +220,13 @@ def test_select_columns(ray_start_regular_shared):
         ]
         # Test selecting a column that is not in the dataset schema
         with pytest.raises(KeyError):
-            each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).fully_executed()
+            each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).cache()
 
     # Test simple
     ds3 = ray.data.range(10)
     assert ds3.dataset_format() == "simple"
     with pytest.raises(ValueError):
-        ds3.select_columns(cols=[]).fully_executed()
+        ds3.select_columns(cols=[]).cache()
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_context):
@@ -638,13 +638,13 @@ def test_map_batches_batch_zero_copy(
     ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
     # Convert to Pandas blocks.
     ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-    ds.fully_executed()
+    ds.cache()
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
     with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
         ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=True)
-        ds.fully_executed()
+        ds.cache()
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -665,11 +665,11 @@ def test_map_batches_block_bundling_auto(
     assert ds.num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
-    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
+    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).cache()
     assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
 
     # Blocks should not be bundled up when batch_size is not specified.
-    ds2 = ds.map_batches(lambda x: x).fully_executed()
+    ds2 = ds.map_batches(lambda x: x).cache()
     assert ds2.num_blocks() == num_blocks
 
 
@@ -695,7 +695,7 @@ def test_map_batches_block_bundling_skewed_manual(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).cache()
 
     # Blocks should be bundled up to the batch size.
     assert ds.num_blocks() == expected_num_blocks
@@ -721,7 +721,7 @@ def test_map_batches_block_bundling_skewed_auto(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).cache()
     curr = 0
     num_out_blocks = 0
     for block_size in block_sizes:
@@ -752,7 +752,7 @@ def test_map_with_mismatched_columns(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=1)
     error_message = "Current row has different columns compared to previous rows."
     with pytest.raises(ValueError) as e:
-        ds.map(bad_fn).fully_executed()
+        ds.map(bad_fn).cache()
     assert error_message in str(e.value)
     ds_map = ds.map(good_fn)
     assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
@@ -874,7 +874,7 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     compute_strategy = ray.data.ActorPoolStrategy()
     ray.data.range(10, parallelism=10).map_batches(
         f, batch_size=1, compute=compute_strategy
-    ).fully_executed()
+    ).cache()
 
     # The new execution backend is not using the ActorPoolStrategy under
     # the hood, so the expectation here applies only to the old backend.
@@ -901,7 +901,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     ds = (
         ray.data.range(10, parallelism=10)
         .map_batches(f, batch_size=None, compute=compute_strategy)
-        .fully_executed()
+        .cache()
     )
 
     # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
@@ -913,7 +913,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     ds = (
         ray.data.range(10, parallelism=10)
         .map_batches(f, batch_size=10, compute=compute_strategy)
-        .fully_executed()
+        .cache()
     )
 
     assert "1/1 blocks" in ds.stats()
