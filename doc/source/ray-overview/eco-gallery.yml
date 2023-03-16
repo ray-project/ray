@@ -157,6 +157,16 @@ projects:
     website: https://github.com/SeldonIO/alibi
     repo: https://github.com/SeldonIO/alibi
     image: ../images/seldon.png
+  - name: Sematic Integration
+    section_title: Sematic
+    description: Sematic is an open-source ML pipelining tool written in Python.
+      It enables users to write end-to-end pipelines that can seamlessly transition between
+      your laptop and the cloud, with rich visualizations, traceability,
+      reproducibility, and usability as first-class citizens. This integration
+      enables dynamic allocation of Ray clusters within Sematic pipelines.
+    website: https://docs.sematic.dev/integrations/ray
+    repo: https://github.com/sematic-ai/sematic
+    image: ../images/sematic.png
   - name: spaCy Integration
     section_title: spaCy
     description: spaCy is a library for advanced Natural Language Processing in Python
