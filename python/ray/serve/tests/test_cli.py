@@ -703,28 +703,6 @@ def test_run_multi_app(ray_start_stop):
         requests.post("http://localhost:8000/app2", json=["ADD", 0])
     print("Kill successful! Deployments are not reachable over HTTP.")
 
-    # Deploy via import path
-    print('Running node at import path "ray.serve.tests.test_cli.parrot_node".')
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "--multi-app",
-            "ray.serve.tests.test_cli.TestApp1Node",
-            "ray.serve.tests.test_cli.TestApp2Node",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("app1") == "wonderful world", timeout=15)
-    wait_for_condition(lambda: ping_endpoint("app2") == "wonderful world", timeout=15)
-    print("Run successful! Apps 1 and 2 are live and reachable over HTTP. Killing run.")
-
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    p.wait()
-    assert ping_endpoint("app1") == CONNECTION_ERROR_MSG
-    assert ping_endpoint("app2") == CONNECTION_ERROR_MSG
-    print("Kill successful! Applications is not reachable over HTTP.")
-
 
 @serve.deployment
 class Macaw:

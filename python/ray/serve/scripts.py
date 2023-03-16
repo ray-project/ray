@@ -208,16 +208,16 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run Serve application(s).",
     help=(
-        "Runs the Serve application(s) from the specified import path(s) (e.g. "
-        "my_script:my_bound_deployment) or YAML config.\n\n"
+        "Runs the Serve application from the specified import path (e.g. my_script:"
+        "my_bound_deployment) or application(s) from a YAML config.\n\n"
         "If using a YAML config, existing deployments with no code changes in an "
         "application will not be redeployed.\n\n"
-        "Any import path(s) must lead to a FunctionNode or ClassNode object. "
+        "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
 )
-@click.argument("config_or_import_paths", nargs=-1, required=True)
+@click.argument("config_or_import_path")
 @click.option(
     "--runtime-env",
     type=str,
@@ -285,12 +285,6 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 @click.option(
-    "--multi-app",
-    "-m",
-    is_flag=True,
-    help="Run multiple applications from multiple import paths.",
-)
-@click.option(
     "--gradio",
     is_flag=True,
     help=(
@@ -300,7 +294,7 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 def run(
-    config_or_import_paths: Tuple[str],
+    config_or_import_path: Tuple[str],
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
@@ -309,7 +303,6 @@ def run(
     host: str,
     port: int,
     blocking: bool,
-    multi_app: bool,
     gradio: bool,
 ):
     sys.path.insert(0, app_dir)
@@ -320,22 +313,8 @@ def run(
         working_dir=working_dir,
     )
 
-    if pathlib.Path(config_or_import_paths[0]).is_file():
-        if len(config_or_import_paths) > 1:
-            raise click.ClickException(
-                "Got more than one config file. `serve run` only accepts one config "
-                "file."
-            )
-        if multi_app:
-            raise click.ClickException(
-                "The feature flag `--multi-app` is only valid for specifying multiple "
-                "import paths. To run multiple applications with using configs, add "
-                "all applications into one config file with the format "
-                "`ServeDeploySchema`."
-            )
-
-
-        config_path = config_or_import_paths[0]
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
@@ -352,6 +331,11 @@ def run(
 
             try:
                 config = ServeDeploySchema.parse_obj(config_dict)
+                if gradio:
+                    raise click.ClickException(
+                        "The gradio visualization feature of `serve run` does not yet "
+                        "have support for multiple applications."
+                    )
             except ValidationError:
                 try:
                     config = ServeApplicationSchema.parse_obj(config_dict)
@@ -363,32 +347,14 @@ def run(
 
         is_config = True
     else:
-        if not multi_app and len(config_or_import_paths) > 1:
-            raise click.ClickException(
-                "Got more than one import path. If you want to run multiple deployment "
-                "nodes, please rerun the command with the feature flag `--multi-app`."
-            )
-
         if host is None:
             host = DEFAULT_HTTP_HOST
         if port is None:
             port = DEFAULT_HTTP_PORT
+        import_path = config_or_import_path
+        cli_logger.print(f'Deploying from import path: "{import_path}".')
+        node = import_attr(import_path)
         is_config = False
-
-        # application name -> ingress deployment node
-        apps = {}
-        for index, import_path in enumerate(config_or_import_paths):
-            name = f"app{index+1}" if len(config_or_import_paths) > 1 else ""
-            cli_logger.print(
-                f'Deploying application "{name}" from import path: "{import_path}".'
-            )
-            apps[name] = import_attr(import_path)
-
-    if gradio and (multi_app or isinstance(config, ServeDeploySchema)):
-        raise click.ClickException(
-            "The gradio visualization feature of `serve run` does not yet have "
-            "support for multiple applications."
-        )
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
@@ -415,13 +381,10 @@ def run(
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            for name, node in apps.items():
-                handle = serve.run(node, name=name, host=host, port=port)
-                cli_logger.success(f'Deployed Serve application "{name}" successfully.')
+            handle = serve.run(node, host=host, port=port)
+            cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
-            # NOTE(zcin): `nodes` should only have a single element, and `handle` should
-            # be the Serve handle to that single application
             from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
 
             visualizer = GraphVisualizer()
