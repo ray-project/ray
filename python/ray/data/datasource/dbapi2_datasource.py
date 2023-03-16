@@ -1,6 +1,6 @@
 import math
 from contextlib import contextmanager
-from functools import cache
+from functools import lru_cache
 from typing import Any, Callable, Generator, Iterable, List, NewType, Optional
 
 import pyarrow as pa
@@ -52,7 +52,7 @@ class DBAPI2Reader(Reader):
         self.connection_factory = connection_factory
 
     @property
-    @cache
+    @lru_cache
     def sample_block(self) -> Block:
         with connect(self.connection_factory) as connection:
             cursor = connection.cursor()
@@ -62,7 +62,7 @@ class DBAPI2Reader(Reader):
             return cursor_to_block(cursor)
 
     @property
-    @cache
+    @lru_cache
     def num_rows(self) -> int:
         with connect(self.connection_factory) as connection:
             cursor = connection.cursor()
