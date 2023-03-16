@@ -558,7 +558,7 @@ def format_memory(mem_bytes: Number) -> str:
     return f"{int(mem_bytes)}B"
 
 
-def parse_usage(usage: Usage) -> List[str]:
+def parse_usage(usage: Usage, verbose: bool) -> List[str]:
     # first collect resources used in placement groups
     placement_group_resource_usage = {}
     placement_group_resource_total = collections.defaultdict(float)
@@ -606,6 +606,10 @@ def parse_usage(usage: Usage) -> List[str]:
                     f"{formatted_pg_total} " + "reserved in placement groups)"
                 )
             usage_lines.append(line)
+        elif resource.startswith("accelerator_type:") and not verbose:
+            # We made a judgement call not to show this.
+            # https://github.com/ray-project/ray/issues/33272
+            pass
         else:
             line = f"{used}/{total} {resource}"
             if used_in_pg:
@@ -616,8 +620,8 @@ def parse_usage(usage: Usage) -> List[str]:
     return usage_lines
 
 
-def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
-    usage_lines = parse_usage(lm_summary.usage)
+def get_usage_report(lm_summary: LoadMetricsSummary, verbose: bool) -> str:
+    usage_lines = parse_usage(lm_summary.usage, verbose)
 
     sio = StringIO()
     for line in usage_lines:
@@ -693,7 +697,7 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
-def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
+def get_per_node_breakdown(lm_summary: LoadMetricsSummary, verbose: bool):
     sio = StringIO()
 
     print(file=sio)
@@ -701,7 +705,7 @@ def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
         print(file=sio)  # Print a newline.
         print(f"Node: {node_ip}", file=sio)
         print(" Usage:", file=sio)
-        for line in parse_usage(usage):
+        for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)
 
     return sio.getvalue()
@@ -780,7 +784,7 @@ def format_info_string(
     else:
         failure_report += " (no failures)"
 
-    usage_report = get_usage_report(lm_summary)
+    usage_report = get_usage_report(lm_summary, verbose)
     demand_report = get_demand_report(lm_summary)
 
     formatted_output = f"""{header}
@@ -800,7 +804,7 @@ Resources
 {demand_report}"""
 
     if verbose and lm_summary.usage_by_node:
-        formatted_output += get_per_node_breakdown(lm_summary)
+        formatted_output += get_per_node_breakdown(lm_summary, verbose)
 
     return formatted_output.strip()
 

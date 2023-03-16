@@ -48,27 +48,6 @@ soon!).
         :classes: btn-link btn-block stretched-link
 
 
-Scaling Out Datasets Workloads
-------------------------------
-
-These examples demonstrate using Ray Datasets on large-scale data over a multi-node Ray
-cluster.
-
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
-
-    ---
-    :img-top: /images/dataset-repeat-2.svg
-
-    +++
-    .. link-button:: big_data_ingestion
-        :type: ref
-        :text: Large-scale ML Ingest
-        :classes: btn-link btn-block stretched-link
-
-
 Other Examples
 --------------
 
