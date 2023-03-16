@@ -92,15 +92,29 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
 def test_streaming_split_e2e(ray_start_10_cpus_shared):
     def get_lengths(*iterators, use_iter_batches=True):
         lengths = []
-        for it in iterators:
-            x = 0
-            if use_iter_batches:
-                for batch in it.iter_batches():
-                    x += len(batch)
-            else:
-                for _ in it.iter_rows():
-                    x += 1
-            lengths.append(x)
+
+        class Runner(threading.Thread):
+            def __init__(self, it):
+                self.it = it
+                super().__init__()
+
+            def run(self):
+                it = self.it
+                x = 0
+                if use_iter_batches:
+                    for batch in it.iter_batches():
+                        x += len(batch)
+                else:
+                    for _ in it.iter_rows():
+                        x += 1
+                lengths.append(x)
+
+        runners = [Runner(it) for it in iterators]
+        for r in runners:
+            r.start()
+        for r in runners:
+            r.join()
+
         lengths.sort()
         return lengths
 
@@ -109,35 +123,91 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
         i1,
         i2,
     ) = ds.streaming_split(2, equal=True)
-    lengths = get_lengths(i1, i2)
-    assert lengths == [500, 500], lengths
+    for _ in range(2):
+        lengths = get_lengths(i1, i2)
+        assert lengths == [500, 500], lengths
 
     ds = ray.data.range(1)
     (
         i1,
         i2,
     ) = ds.streaming_split(2, equal=True)
-    lengths = get_lengths(i1, i2)
-    assert lengths == [0, 0], lengths
+    for _ in range(2):
+        lengths = get_lengths(i1, i2)
+        assert lengths == [0, 0], lengths
 
     ds = ray.data.range(1)
     (
         i1,
         i2,
     ) = ds.streaming_split(2, equal=False)
-    lengths = get_lengths(i1, i2)
-    assert lengths == [0, 1], lengths
+    for _ in range(2):
+        lengths = get_lengths(i1, i2)
+        assert lengths == [0, 1], lengths
 
     ds = ray.data.range(1000, parallelism=10)
     for equal_split, use_iter_batches in itertools.product(
         [True, False], [True, False]
     ):
         i1, i2, i3 = ds.streaming_split(3, equal=equal_split)
-        lengths = get_lengths(i1, i2, i3, use_iter_batches=use_iter_batches)
-        if equal_split:
-            assert lengths == [333, 333, 333], lengths
-        else:
-            assert lengths == [300, 300, 400], lengths
+        for _ in range(2):
+            lengths = get_lengths(i1, i2, i3, use_iter_batches=use_iter_batches)
+            if equal_split:
+                assert lengths == [333, 333, 333], lengths
+            else:
+                assert lengths == [300, 300, 400], lengths
+
+
+def test_streaming_split_barrier(ray_start_10_cpus_shared):
+    ds = ray.data.range(20, parallelism=20)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x, times):
+        i = 0
+        for _ in range(times):
+            for _ in x.iter_rows():
+                i += 1
+        return i
+
+    # Succeeds.
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+
+    # Blocks forever since one reader is stalled.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get([consume.remote(i1, 2), consume.remote(i2, 1)], timeout=3)
+
+
+def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
+    ds = ray.data.range(20, parallelism=20)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x, times):
+        i = 0
+        for _ in range(times):
+            for _ in x.iter_rows():
+                i += 1
+        return i
+
+    # InvalidIterator error from too many concurrent readers.
+    with pytest.raises(ValueError):
+        ray.get(
+            [
+                consume.remote(i1, 4),
+                consume.remote(i2, 4),
+                consume.remote(i1, 4),
+                consume.remote(i2, 4),
+            ]
+        )
 
 
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):

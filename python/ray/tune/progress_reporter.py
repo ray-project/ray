@@ -16,6 +16,7 @@ import pandas as pd
 
 import ray
 from ray._private.dict import flatten_dict
+from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
@@ -707,7 +708,7 @@ class CLIReporter(TuneReporterBase):
         )
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         self._print(self._progress_str(trials, done, *sys_info))
@@ -1313,7 +1314,7 @@ class TrialProgressCallback(Callback):
         self._display_handle = None
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def on_trial_result(
         self,

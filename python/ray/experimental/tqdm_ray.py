@@ -28,6 +28,15 @@ RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 _manager: Optional["_BarManager"] = None
 
 
+def safe_print(*args, **kwargs):
+    """Use this as an alternative to `print` that will not corrupt tqdm output."""
+    try:
+        instance().hide_bars()
+        print(*args, **kwargs)
+    finally:
+        instance().unhide_bars()
+
+
 class tqdm:
     """Experimental: Ray distributed tqdm implementation.
 
@@ -76,7 +85,9 @@ class tqdm:
     def close(self):
         """Implements tqdm.tqdm.close."""
         self._closed = True
-        self._dump_state()
+        # Don't bother if ray is shutdown (in __del__ hook).
+        if ray is not None:
+            self._dump_state()
 
     def _dump_state(self) -> None:
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:

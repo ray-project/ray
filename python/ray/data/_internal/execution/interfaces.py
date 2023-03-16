@@ -448,6 +448,9 @@ class OutputIterator(Iterator[RefBundle]):
         Args:
             output_split_idx: The output split index to get results for. This arg is
                 only allowed for iterators created by `Dataset.streaming_split()`.
+
+        Raises:
+            StopIteration if there are no more outputs to return.
         """
         if output_split_idx is not None:
             raise NotImplementedError()
