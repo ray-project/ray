@@ -5,6 +5,7 @@ import abc
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import TensorType, Union
+from ray.rllib.utils.annotations import override
 
 
 @ExperimentalAPI
@@ -101,19 +102,14 @@ class Distribution(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        """Returns the required shape of an input parameter tensor for a
-        particular space and an optional dict of distribution-specific
-        options.
-
-        Let's have this method here just as a reminder to the next developer that this
-        was part of the old distribution classes that we may or may not keep depending
-        on how the catalog gets written.
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        """Returns the required length of an input parameter tensor.
 
         Args:
             space: The space this distribution will be used for,
                 whose shape attributes will be used to determine the required shape of
                 the input parameter tensor.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             size of the required input vector (minus leading batch dimension).
@@ -157,7 +153,7 @@ class Distribution(abc.ABC):
                     ...
 
                 @staticmethod
-                def required_model_output_shape(space, model_config):
+                def required_input_dim(space):
                     ...
 
                 def rsample(self):
@@ -174,9 +170,7 @@ class Distribution(abc.ABC):
         raise NotImplementedError
 
     @classmethod
-    def get_partial_dist_cls(
-        cls: "Distribution", **from_logits_kwargs
-    ) -> "Distribution":
+    def get_partial_dist_cls(cls: "Distribution", **partial_kwargs) -> "Distribution":
         """Returns a partial child of TorchMultiActionDistribution.
 
         This is useful if inputs needed to instantiate the Distribution from logits
@@ -187,22 +181,33 @@ class Distribution(abc.ABC):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
-            @classmethod
-            def from_logits(
-                cls,
-                logits: TensorType,
-                **kwargs,
-            ) -> "DistributionPartial":
-                overlap = set(kwargs) & set(from_logits_kwargs)
+            @staticmethod
+            def _merge_kwargs(**kwargs):
+                """Checks if keys in kwargs don't clash with partial_kwargs."""
+                overlap = set(kwargs) & set(partial_kwargs)
                 if overlap:
                     raise ValueError(
                         f"Cannot override the following kwargs: {overlap}.\n"
                         f"This is because they were already set at the time this "
                         f"partial class was defined."
                     )
+                merged_kwargs = {**partial_kwargs, **kwargs}
+                return merged_kwargs
 
-                merged_kwargs = {**from_logits_kwargs, **kwargs}
-                # Check if keys in kwargs don't clash with from_logits_kwargs.
+            @classmethod
+            @override(Distribution)
+            def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
+                merged_kwargs = cls._merge_kwargs(**kwargs)
+                return cls.required_input_dim(space, **merged_kwargs)
+
+            @classmethod
+            @override(Distribution)
+            def from_logits(
+                cls,
+                logits: TensorType,
+                **kwargs,
+            ) -> "DistributionPartial":
+                merged_kwargs = cls._merge_kwargs(**kwargs)
                 return cls.from_logits(logits, **merged_kwargs)
 
         # Substitute name of this partial class to match the original class.

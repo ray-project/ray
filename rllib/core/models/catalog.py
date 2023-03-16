@@ -24,7 +24,7 @@ from ray.rllib.utils.spaces.space_utils import flatten_space
 
 
 def _multi_action_dist_partial_helper(
-    catalog_cls, action_space, framework, deterministic
+    catalog_cls: "Catalog", action_space: gym.Space, framework: str, deterministic: bool
 ) -> Distribution:
     """Helper method to get a partial of a MultiActionDistribution.
 
@@ -53,8 +53,8 @@ def _multi_action_dist_partial_helper(
     flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
 
     input_lens = [
-        int(e.required_model_output_shape(space))
-        for e, space in zip(flat_distribution_clses, flat_action_space)
+        int(dist_cls.required_input_dim(space))
+        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
     ]
 
     if framework == "torch":
@@ -78,7 +78,9 @@ def _multi_action_dist_partial_helper(
     return partial_dist_cls
 
 
-def _multi_categorical_dist_partial_helper(action_space, framework) -> Distribution:
+def _multi_categorical_dist_partial_helper(
+    action_space: gym.Space, framework: str
+) -> Distribution:
     """Helper method to get a partial of a MultiCategorical Distribution.
 
     This is useful for when we want to create MultiCategorical Distribution from
@@ -409,7 +411,7 @@ class Catalog:
         """Returns a distribution class for the given action space.
 
         You can get the required input dimension for the distribution by calling
-        `action_dict_cls.required_model_output_shape(action_space, model_config_dict)`
+        `action_dict_cls.required_input_dim(action_space)`
         on the retrieved class. This is useful, because the Catalog needs to find out
         about the required input dimension for the distribution before the model that
         outputs these inputs is configured.
@@ -472,13 +474,11 @@ class Catalog:
 
         # Only add a MultiCategorical distribution class to the dict if we can compute
         # its components (we need a MultiDiscrete space for this).
-        if isinstance(action_space, (Tuple, Dict)):
+        if isinstance(action_space, MultiDiscrete):
             partial_multi_categorical_distribution_cls = (
                 _multi_categorical_dist_partial_helper(
-                    catalog_cls=cls,
                     action_space=action_space,
                     framework=framework,
-                    deterministic=deterministic,
                 )
             )
 

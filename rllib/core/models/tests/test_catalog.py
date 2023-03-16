@@ -6,7 +6,7 @@ from collections import namedtuple
 import gymnasium as gym
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.core.models.torch.base import TorchModel
@@ -15,18 +15,26 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
-from ray.rllib.core.models.catalog import Catalog
+from ray.rllib.core.models.catalog import (
+    Catalog,
+    _multi_action_dist_partial_helper,
+    _multi_categorical_dist_partial_helper,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
     TfDeterministic,
     TfDiagGaussian,
+    TfMultiCategorical,
+    TfMultiActionDistribution,
 )
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDeterministic,
     TorchDiagGaussian,
+    TorchMultiCategorical,
+    TorchMultiActionDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -207,18 +215,104 @@ class TestCatalog(unittest.TestCase):
             "TestConfig", ("action_space", "deterministic", "expected_dist_cls_dict")
         )
         test_configs = [
+            # Box
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 False,
                 {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
             ),
+            # Box, deterministic
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
                 True,
                 {"torch": TorchDeterministic, "tf": TfDeterministic},
             ),
+            # Discrete
             TestConfig(
                 Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}
+            ),
+            # Nested Dict
+            TestConfig(
+                Dict(
+                    {
+                        "a": Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        "b": Dict({"c": Discrete(5)}),
+                    }
+                ),
+                False,
+                {
+                    "torch": TorchMultiActionDistribution,
+                    "tf": TfMultiActionDistribution,
+                },
+            ),
+            # Nested Tuple
+            TestConfig(
+                Tuple(
+                    (
+                        Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        Tuple((Discrete(5), Discrete(5))),
+                    )
+                ),
+                False,
+                {
+                    "torch": TorchMultiActionDistribution,
+                    "tf": TorchMultiActionDistribution,
+                },
+            ),
+            # Tuple nested inside Dict
+            TestConfig(
+                Dict(
+                    {
+                        "a": Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        "b": Dict(
+                            {
+                                "c": Tuple(
+                                    (
+                                        Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                                        Tuple((Discrete(5), Discrete(5))),
+                                    )
+                                )
+                            }
+                        ),
+                    }
+                ),
+                False,
+                {
+                    "torch": TorchMultiActionDistribution,
+                    "tf": TfMultiActionDistribution,
+                },
+            ),
+            # Dict nested inside Tuple
+            TestConfig(
+                Tuple(
+                    (
+                        Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        Tuple(
+                            (
+                                Discrete(5),
+                                Dict(
+                                    {
+                                        "a": Box(
+                                            -np.inf, np.inf, (7,), dtype=np.float32
+                                        ),
+                                        "b": Dict({"c": Discrete(5)}),
+                                    }
+                                ),
+                            )
+                        ),
+                    )
+                ),
+                False,
+                {
+                    "torch": TorchMultiActionDistribution,
+                    "tf": TfMultiActionDistribution,
+                },
+            ),
+            # MultiDiscrete
+            TestConfig(
+                MultiDiscrete([5, 5, 5]),
+                False,
+                {"torch": TorchMultiCategorical, "tf": TfMultiCategorical},
             ),
         ]
 
@@ -249,10 +343,33 @@ class TestCatalog(unittest.TestCase):
                 )
 
                 # Check if we can query the required input dimensions
-                input_shape = expected_cls_dict[framework].required_model_output_shape(
-                    action_space, model_config=MODEL_DEFAULTS.copy()
-                )
-                logits = np.ones((32, *input_shape), dtype=np.float32)
+                expected_cls = expected_cls_dict[framework]
+                if (
+                    expected_cls is TorchMultiActionDistribution
+                    or expected_cls is TfMultiActionDistribution
+                ):
+                    # For these special cases, we need to create partials of the
+                    # expected classes so that we can calculate the required inputs
+                    expected_cls = _multi_action_dist_partial_helper(
+                        catalog_cls=catalog,
+                        action_space=action_space,
+                        framework=framework,
+                        deterministic=deterministic,
+                    )
+                elif (
+                    expected_cls is TorchMultiCategorical
+                    or expected_cls is TfMultiCategorical
+                ):
+                    # For these special cases, we need to create partials of the
+                    # expected classes so that we can calculate the required inputs
+                    expected_cls = _multi_categorical_dist_partial_helper(
+                        action_space=action_space, framework=framework
+                    )
+
+                # Now that we have sorted out special cases, we can finally get the
+                # input_dim
+                input_dim = expected_cls.required_input_dim(action_space)
+                logits = np.ones((32, input_dim), dtype=np.float32)
                 if framework == "torch":
                     logits = torch.from_numpy(logits)
                 else:

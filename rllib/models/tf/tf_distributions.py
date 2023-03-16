@@ -129,12 +129,12 @@ class TfCategorical(TfDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        return (int(space.n),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(space.n)
 
     @override(TfDistribution)
     def _rsample(self, sample_shape=()):
-        # TODO (Kourosh) Implement Categorical sampling using grrad-passthrough trick.
+        # TODO (Kourosh) Implement Categorical sampling using grad-passthrough trick.
         raise NotImplementedError
 
     @classmethod
@@ -200,8 +200,8 @@ class TfDiagGaussian(TfDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(np.prod(space.shape, dtype=np.int32) * 2)
 
     @override(TfDistribution)
     def _rsample(self, sample_shape=()):
@@ -278,9 +278,8 @@ class TfDeterministic(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        # TODO: This was copied from previous code. Is this correct? add unit test.
-        return (int(np.prod(space.shape, dtype=np.int32)),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(np.prod(space.shape, dtype=np.int32))
 
     @classmethod
     @override(Distribution)
@@ -317,38 +316,28 @@ class TfMultiCategorical(Distribution):
         return sample_
 
     @override(Distribution)
-    def deterministic_sample(self) -> TensorType:
-        sample_ = tf.stack([cat.deterministic_sample() for cat in self.cats], axis=1)
-        return sample_
-
-    @override(Distribution)
     def logp(self, value: tf.Tensor) -> TensorType:
         actions = tf.unstack(tf.cast(value, tf.int32), axis=1)
         logps = tf.stack([cat.logp(act) for cat, act in zip(self.cats, actions)])
         return tf.reduce_sum(logps, axis=0)
 
     @override(Distribution)
-    def multi_entropy(self) -> TensorType:
-        return tf.stack([cat.entropy() for cat in self.cats], axis=1)
-
-    @override(Distribution)
     def entropy(self) -> TensorType:
-        return tf.reduce_sum(self.multi_entropy(), axis=1)
-
-    @override(Distribution)
-    def multi_kl(self, other: Distribution) -> TensorType:
-        return tf.stack(
-            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)], axis=1
+        return tf.reduce_sum(
+            tf.stack([cat.entropy() for cat in self.cats], axis=1), axis=1
         )
 
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
-        return tf.reduce_sum(self.multi_kl(other), axis=1)
+        kls = tf.stack(
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)], axis=1
+        )
+        return tf.reduce_sum(kls, axis=1)
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        return (int(np.sum(space.nvec)),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(np.sum(space.nvec))
 
     @classmethod
     @override(Distribution)
@@ -467,26 +456,10 @@ class TfMultiActionDistribution(Distribution):
         )
         return tree.map_structure(lambda s: s.sample(), child_distributions)
 
-    @override(Distribution)
-    def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions
-        )
-        return tree.map_structure(
-            lambda s: s.deterministic_sample(), child_distributions
-        )
-
-    @override(Distribution)
-    def sampled_action_logp(self):
-        p = self.flat_child_distributions[0].sampled_action_logp()
-        for c in self.flat_child_distributions[1:]:
-            p += c.sampled_action_logp()
-        return p
-
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(self, space: gym.Space) -> Tuple[int, ...]:
-        return (np.sum(self.input_lens, dtype=np.int32),)
+    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
+        return np.sum(input_lens, dtype=np.int32)
 
     @classmethod
     @override(Distribution)

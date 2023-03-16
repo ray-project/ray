@@ -119,8 +119,8 @@ class TorchCategorical(TorchDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        return (int(space.n),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(space.n)
 
     @classmethod
     @override(Distribution)
@@ -186,8 +186,8 @@ class TorchDiagGaussian(TorchDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(np.prod(space.shape, dtype=np.int32) * 2)
 
     @classmethod
     @override(Distribution)
@@ -263,9 +263,8 @@ class TorchDeterministic(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        # TODO: This was copied from previous code. Is this correct? add unit test.
-        return (int(np.prod(space.shape, dtype=np.int32)),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(np.prod(space.shape, dtype=np.int32))
 
     @classmethod
     @override(Distribution)
@@ -303,45 +302,32 @@ class TorchMultiCategorical(Distribution):
         return sample_
 
     @override(Distribution)
-    def deterministic_sample(self) -> TensorType:
-        arr = [torch.argmax(cat.probs, -1) for cat in self.cats]
-        sample_ = torch.stack(arr, dim=1)
-        if isinstance(self.action_space, gym.spaces.Box):
-            sample_ = torch.reshape(sample_, [-1] + list(self.action_space.shape))
-        return sample_
-
-    @override(Distribution)
     def logp(self, value: torch.Tensor) -> TensorType:
         value = torch.unbind(value, dim=1)
         logps = torch.stack([cat.log_prob(act) for cat, act in zip(self.cats, value)])
         return torch.sum(logps, dim=0)
 
     @override(Distribution)
-    def multi_entropy(self) -> TensorType:
-        return torch.stack([cat.entropy() for cat in self.cats], dim=1)
-
-    @override(Distribution)
     def entropy(self) -> TensorType:
-        return torch.sum(self.multi_entropy(), dim=1)
+        return torch.sum(
+            torch.stack([cat.entropy() for cat in self.cats], dim=1), dim=1
+        )
 
     @override(Distribution)
-    def multi_kl(self, other: Distribution) -> TensorType:
-        return torch.stack(
+    def kl(self, other: Distribution) -> TensorType:
+        kls = torch.stack(
             [
                 torch.distributions.kl.kl_divergence(cat, oth_cat)
                 for cat, oth_cat in zip(self.cats, other.cats)
             ],
             dim=1,
         )
-
-    @override(Distribution)
-    def kl(self, other: Distribution) -> TensorType:
-        return torch.sum(self.multi_kl(other), dim=1)
+        return torch.sum(kls, dim=1)
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
-        return (int(np.sum(space.nvec)),)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        return int(np.sum(space.nvec))
 
     @classmethod
     @override(Distribution)
@@ -454,26 +440,10 @@ class TorchMultiActionDistribution(Distribution):
         )
         return tree.map_structure(lambda s: s.sample(), child_distributions)
 
-    @override(Distribution)
-    def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(
-            self.space_struct, self.flat_child_distributions
-        )
-        return tree.map_structure(
-            lambda s: s.deterministic_sample(), child_distributions
-        )
-
-    @override(Distribution)
-    def sampled_action_logp(self):
-        p = self.flat_child_distributions[0].sampled_action_logp()
-        for c in self.flat_child_distributions[1:]:
-            p += c.sampled_action_logp()
-        return p
-
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(self, space: gym.Space) -> Tuple[int, ...]:
-        return (np.sum(self.input_lens, dtype=np.int32),)
+    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
+        return np.sum(input_lens, dtype=np.int32)
 
     @classmethod
     @override(Distribution)
