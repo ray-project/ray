@@ -38,6 +38,11 @@ sigopt==7.5.0
 timm==0.4.5
 transformers==4.18.0; python_version <= '3.6'
 transformers==4.19.1; python_version > '3.6'
+# Used by ax-platform for type checking.
+# Since we pin ax-platform at an earlier version,
+# we need to pin this as well to prevent incompatible
+# more recent versions from being used.
+typeguard==2.13.0
 wandb==0.13.4
 xgboost==1.6.2; python_version <= '3.7'
 xgboost==1.7.4; python_version > '3.7'
