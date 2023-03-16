@@ -1,54 +1,37 @@
-batch_inference_small:
-    name: Scaling batch inference of a custom model
-    url: https://github.com/ray-project/ray/blob/master/doc/source/examples/01_batch_inference
-    tags:
-      - small
-    cluster_env: anyscale_cluster_env.yaml
+# See README.md for more details.
+
+- name: Scaling Batch Inference with Ray Data
+  path: doc/source/templates/01_batch_inference
+  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  small:
     compute_config:
-      gcp: gpu/gcp_small.yaml
-      aws: gpu/aws_small.yaml
-many_model_training_small:
-    name: Many Model Training using Ray Tune
-    url: https://github.com/ray-project/ray/blob/master/doc/source/examples/02_many_model_training
-    tags:
-      - small
-    cluster_env: anyscale_cluster_env.yaml
+      gcp: doc/source/templates/configs/compute/gpu/gcp_small.yaml
+      aws: doc/source/templates/configs/compute/gpu/aws_small.yaml
+  large:
     compute_config:
-      gcp: cpu/gcp_small.yaml
-      aws: cpu/aws_small.yaml
-serving_stable_diffusion_small:
-    name: Serving a Stable Diffusion Model
-    url: https://github.com/ray-project/ray/blob/master/doc/source/examples/03_serving_stable_diffusion
-    tags:
-      - small
-    cluster_env: anyscale_cluster_env.yaml
+      gcp: doc/source/templates/configs/compute/gpu/gcp_large.yaml
+      aws: doc/source/templates/configs/compute/gpu/aws_large.yaml
+
+- name: Scaling Many Model Training with Ray Tune
+  path: doc/source/templates/02_many_model_training
+  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  small:
     compute_config:
-      gcp: gpu/gcp_small.yaml
-      aws: gpu/aws_small.yaml
-batch_inference_large:
-    name: Scaling batch inference of a custom model
-    url: https://github.com/ray-project/ray/blob/master/doc/source/examples/01_batch_inference
-    tags:
-      - large
-    cluster_env: anyscale_cluster_env.yaml
+      gcp: doc/source/templates/configs/compute/cpu/gcp_small.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_small.yaml
+  large:
     compute_config:
-      gcp: gpu/gcp_large.yaml
-      aws: gpu/aws_large.yaml
-many_model_training_large:
-    name: Many Model Training using Ray Tune
-    url: https://github.com/ray-project/ray/blob/master/doc/source/examples/02_many_model_training
-    tags:
-      - large
-    cluster_env: anyscale_cluster_env.yaml
+      gcp: doc/source/templates/configs/compute/cpu/gcp_large.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_large.yaml
+
+- name: Serving a Stable Diffusion Model with Ray Serve
+  path: doc/source/templates/03_serving_stable_diffusion
+  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  small:
     compute_config:
-      gcp: cpu/gcp_large.yaml
-      aws: cpu/aws_large.yaml
-serving_stable_diffusion_large:
-    name: Serving a Stable Diffusion Model
-    url: https://github.com/ray-project/ray/blob/master/doc/source/examples/03_serving_stable_diffusion
-    tags:
-      - large
-    cluster_env: anyscale_cluster_env.yaml
+      gcp: doc/source/templates/configs/compute/cpu/gcp_small.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_small.yaml
+  large:
     compute_config:
-      gcp: gpu/gcp_large.yaml
-      aws: gpu/aws_large.yaml
+      gcp: doc/source/templates/configs/compute/cpu/gcp_large.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_large.yaml
