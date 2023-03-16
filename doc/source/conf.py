@@ -58,17 +58,37 @@ extensions = [
     "sphinx_remove_toctrees",
 ]
 
-remove_from_toctrees = [
-    "data/api/doc/*",
-    "ray-air/api/doc/*",
-    "ray-core/api/doc/*",
-    "ray-observability/api/state/doc/*",
-    "serve/api/doc/*",
-    "train/api/doc/*",
-    "tune/api/doc/*",
-    "workflows/api/doc/*",
-    "cluster/running-applications/job-submission/doc/*",
-]
+# Prune deep toc-trees on demand for smaller html and faster builds.
+# This only effects the navigation bar, not the content.
+if os.getenv("FAST", False):
+    remove_from_toctrees = [
+        "data/api/doc/*",
+        "ray-air/api/doc/*",
+        "ray-core/api/doc/*",
+        "ray-observability/api/state/doc/*",
+        "serve/api/doc/*",
+        "train/api/doc/*",
+        "tune/api/doc/*",
+        "workflows/api/doc/*",
+        "cluster/running-applications/job-submission/doc/*",
+        "serve/production-guide/*",
+        "serve/tutorials/deployment-graph-patterns/*",
+        "rllib/package_ref/env/*",
+        "rllib/package_ref/policy/*",
+        "rllib/package_ref/evaluation/*",
+        "rllib/package_ref/utils/*",
+        "workflows/api/*",
+        "cluster/kubernetes/user-guides/*",
+        "cluster/kubernetes/examples/*",
+        "cluster/vms/user-guides/*",
+        "cluster/running-applications/job-submission/*",
+        "ray-core/actors/*",
+        "ray-core/objects/*",
+        "ray-core/scheduling/*",
+        "ray-core/tasks/*",
+        "ray-core/patterns/*",
+        "tune/examples/*",
+    ]
 
 myst_enable_extensions = [
     "dollarmath",
