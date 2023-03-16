@@ -1,4 +1,6 @@
+from typing import Optional
 import ray
+from ray.data._internal.execution.interfaces import TaskContext
 
 from ray.data.block import BlockAccessor
 from ray.data._internal.block_list import BlockList
@@ -9,7 +11,7 @@ from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
 from ray.data._internal.stats import DatasetStats
 
 
-def fast_repartition(blocks, num_blocks):
+def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
     from ray.data.dataset import Dataset
 
     wrapped_ds = Dataset(
@@ -39,7 +41,16 @@ def fast_repartition(blocks, num_blocks):
 
     # Coalesce each split into a single block.
     reduce_task = cached_remote_fn(_ShufflePartitionOp.reduce).options(num_returns=2)
-    reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+
+    should_close_bar = True
+    if ctx is not None and ctx.sub_progress_bar_dict is not None:
+        bar_name = "Repartition"
+        assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+        reduce_bar = ctx.sub_progress_bar_dict[bar_name]
+        should_close_bar = False
+    else:
+        reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+
     reduce_out = [
         reduce_task.remote(False, None, *s.get_internal_block_refs())
         for s in splits
@@ -54,7 +65,9 @@ def fast_repartition(blocks, num_blocks):
     new_blocks, new_metadata = zip(*reduce_out)
     new_blocks, new_metadata = list(new_blocks), list(new_metadata)
     new_metadata = reduce_bar.fetch_until_complete(new_metadata)
-    reduce_bar.close()
+
+    if should_close_bar:
+        reduce_bar.close()
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:

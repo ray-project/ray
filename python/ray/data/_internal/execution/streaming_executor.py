@@ -75,9 +75,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology = build_streaming_topology(dag, self._options)
+        self._topology, progress_bar_position = build_streaming_topology(
+            dag, self._options
+        )
         self._output_info = ProgressBar(
-            "Output", dag.num_outputs_total() or 1, len(self._topology)
+            "Output", dag.num_outputs_total() or 1, progress_bar_position
         )
         _validate_topology(self._topology, self._get_or_refresh_resource_limits())
 
@@ -131,8 +133,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()
-                if state.progress_bar:
-                    state.progress_bar.close()
+                state.close_progress_bars()
             if self._output_info:
                 self._output_info.close()
 
