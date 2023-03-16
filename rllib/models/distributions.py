@@ -4,7 +4,7 @@ import gymnasium as gym
 import abc
 
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.typing import TensorType, Union, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, Union
 
 
 @ExperimentalAPI
@@ -27,7 +27,7 @@ class Distribution(abc.ABC):
         *,
         sample_shape: Tuple[int, ...] = None,
         return_logp: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         """Draw a sample from the distribution.
 
@@ -47,7 +47,7 @@ class Distribution(abc.ABC):
         *,
         sample_shape: Tuple[int, ...] = None,
         return_logp: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         """Draw a re-parameterized sample from the action distribution.
 
@@ -172,3 +172,40 @@ class Distribution(abc.ABC):
             my_dist.sample()
         """
         raise NotImplementedError
+
+    @classmethod
+    def get_partial_dist_cls(
+        cls: "Distribution", **from_logits_kwargs
+    ) -> "Distribution":
+        """Returns a partial child of TorchMultiActionDistribution.
+
+        This is useful if inputs needed to instantiate the Distribution from logits
+        are available, but the logits are not.
+        """
+
+        class DistributionPartial(cls):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            @classmethod
+            def from_logits(
+                cls,
+                logits: TensorType,
+                **kwargs,
+            ) -> "DistributionPartial":
+                overlap = set(kwargs) & set(from_logits_kwargs)
+                if overlap:
+                    raise ValueError(
+                        f"Cannot override the following kwargs: {overlap}.\n"
+                        f"This is because they were already set at the time this "
+                        f"partial class was defined."
+                    )
+
+                merged_kwargs = {**from_logits_kwargs, **kwargs}
+                # Check if keys in kwargs don't clash with from_logits_kwargs.
+                return cls.from_logits(logits, **merged_kwargs)
+
+        # Substitute name of this partial class to match the original class.
+        DistributionPartial.__name__ = f"{cls}Partial"
+
+        return DistributionPartial

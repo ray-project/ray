@@ -14,9 +14,8 @@ import abc
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType, Union, Tuple, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, Union, Tuple
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.spaces.space_utils import flatten_space
 
 torch, nn = try_import_torch()
 
@@ -282,22 +281,25 @@ class TorchMultiCategorical(Distribution):
     def __init__(
         self,
         inputs: TensorType,
-        input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
+        input_lens: List[int],
+        temperatures: List[float] = None,
     ):
         super().__init__()
-        # If input_lens is np.ndarray or list, force-make it a tuple.
-        inputs_split = inputs.split(tuple(input_lens), dim=1)
+        if not temperatures:
+            # If temperatures are not provided, use 1.0 for all actions.
+            temperatures = [1.0] * len(input_lens)
+
         self.cats = [
-            torch.distributions.categorical.Categorical(logits=input_)
-            for input_ in inputs_split
+            TorchCategorical(logits=logits, temperature=temperature)
+            for logits, temperature in zip(
+                torch.split(inputs, input_lens, axis=1), temperatures
+            )
         ]
 
     @override(Distribution)
     def sample(self) -> TensorType:
         arr = [cat.sample() for cat in self.cats]
         sample_ = torch.stack(arr, dim=1)
-        if isinstance(self.action_space, gym.spaces.Box):
-            sample_ = torch.reshape(sample_, [-1] + list(self.action_space.shape))
         return sample_
 
     @override(Distribution)
@@ -349,34 +351,15 @@ class TorchMultiCategorical(Distribution):
         input_lens: List[int],
         **kwargs,
     ) -> "TorchMultiCategorical":
+        """Creates this Distribution from logits (and additional arguments).
+
+        If you wish to create this distribution from logits only, please refer to
+        `Distribution.get_partial_dist_cls()`.
+        """
         return TorchMultiCategorical(
             inputs=inputs,
             input_lens=input_lens,
         )
-
-    @staticmethod
-    def get_partial_dist_cls(input_lens: List[int]):
-        """Returns a partial child of TorchMultiCategorical.
-
-        This is useful if the input lengths are already known, but the logits are not
-        yet available.
-        """
-
-        class TorchMultiCategoricalPartial(TorchMultiCategorical):
-            def __init__(self, inputs: torch.Tensor):
-                super().__init__(
-                    inputs=inputs,
-                    input_lens=input_lens,
-                )
-
-            def from_logits(
-                cls,
-                logits: TensorType,
-                **kwargs,
-            ) -> "TorchMultiCategoricalPartial":
-                return TorchMultiCategoricalPartial(logits)
-
-        return TorchMultiCategoricalPartial
 
 
 @DeveloperAPI
@@ -423,7 +406,10 @@ class TorchMultiActionDistribution(Distribution):
         for dist in self.flat_child_distributions:
             if isinstance(dist, TorchCategorical):
                 split_indices.append(1)
-            elif isinstance(dist, MultiCategorical) and dist.action_space is not None:
+            elif (
+                isinstance(dist, TorchMultiCategorical)
+                and dist.action_space is not None
+            ):
                 split_indices.append(int(np.prod(dist.action_space.shape)))
             else:
                 sample = dist.sample()
@@ -499,39 +485,14 @@ class TorchMultiActionDistribution(Distribution):
         space: gym.Space,
         **kwargs,
     ) -> "TorchMultiActionDistribution":
+        """Creates this Distribution from logits (and additional arguments).
+
+        If you wish to create this distribution from logits only, please refer to
+        `Distribution.get_partial_dist_cls()`.
+        """
         return TorchMultiActionDistribution(
             logits=logits,
             child_distribution_cls_struct=child_distribution_cls_struct,
             input_lens=input_lens,
             space=space,
         )
-
-    @staticmethod
-    def get_partial_dist_cls(
-        space: gym.Space,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
-        input_lens: List[int],
-    ):
-        """Returns a partial child of TorchMultiActionDistribution.
-
-        This is useful if the space, child distribution classes and input lengths are
-        already known, but the logits are not yet available.
-        """
-
-        class TorchMultiActionDistributionPartial(TorchMultiActionDistribution):
-            def __init__(self, inputs: torch.Tensor):
-                super().__init__(
-                    inputs=inputs,
-                    child_distribution_cls_struct=child_distribution_cls_struct,
-                    input_lens=input_lens,
-                    space=space,
-                )
-
-            def from_logits(
-                cls,
-                logits: TensorType,
-                **kwargs,
-            ) -> "TorchMultiActionDistributionPartial":
-                return TorchMultiActionDistributionPartial(logits)
-
-        return TorchMultiActionDistributionPartial

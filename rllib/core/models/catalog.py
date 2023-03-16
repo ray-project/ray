@@ -1,6 +1,4 @@
-from functools import partial
-
-from typing import Optional, Mapping, Any
+from typing import Optional
 import functools
 
 import gymnasium as gym
@@ -18,34 +16,20 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.models.tf.tf_distributions import (
-    TfCategorical,
-    TfDeterministic,
-    TfDiagGaussian,
-    TfMultiActionDistribution,
-    TfMultiCategorical,
-)
-from ray.rllib.models.torch.torch_distributions import (
-    TorchCategorical,
-    TorchDeterministic,
-    TorchDiagGaussian,
-    TorchMultiActionDistribution,
-    TorchMultiCategorical,
-)
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
-from ray.rllib.utils.typing import ModelConfigDict
 
 
 def _multi_action_dist_partial_helper(
     catalog_cls, action_space, framework, deterministic
-) -> TorchMultiActionDistribution:
-    """Helper method to get a partial TorchMultiActionDistribution.
+) -> Distribution:
+    """Helper method to get a partial of a MultiActionDistribution.
 
     This is useful for when we want to create MultiActionDistributions from
-    logits later, but know the action space now.
+    logits only (!) later, but know the action space now already.
 
     Args:
         catalog_cls: The ModelCatalog class to use.
@@ -54,7 +38,7 @@ def _multi_action_dist_partial_helper(
         deterministic: Whether to use the deterministic child distributions.
 
     Returns:
-        A partial TorchMultiActionDistribution class.
+        A partial of the TorchMultiActionDistribution class.
     """
     action_space_struct = get_base_struct_from_space(action_space)
     flat_action_space = flatten_space(action_space)
@@ -74,20 +58,56 @@ def _multi_action_dist_partial_helper(
     ]
 
     if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import (
+            TorchMultiActionDistribution,
+        )
+
         multi_action_dist_cls = TorchMultiActionDistribution
     elif framework == "tf":
+        from ray.rllib.models.tf.tf_distributions import TfMultiActionDistribution
+
         multi_action_dist_cls = TfMultiActionDistribution
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 
-    partial_torch_multi_action_distribution_cls = (
-        multi_action_dist_cls.get_partial_dist_cls(
-            space=action_space,
-            child_distribution_cls_struct=child_distribution_cls_struct,
-            input_lens=input_lens,
-        )
+    partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
+        space=action_space,
+        child_distribution_cls_struct=child_distribution_cls_struct,
+        input_lens=input_lens,
     )
-    return partial_torch_multi_action_distribution_cls
+    return partial_dist_cls
+
+
+def _multi_categorical_dist_partial_helper(action_space, framework) -> Distribution:
+    """Helper method to get a partial of a MultiCategorical Distribution.
+
+    This is useful for when we want to create MultiCategorical Distribution from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the MultiCategorical class.
+    """
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
+
+        multi_categorical_dist_cls = TorchMultiCategorical
+    elif framework == "tf":
+        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
+
+        multi_categorical_dist_cls = TfMultiCategorical
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
+        space=action_space, input_lens=action_space.nvec
+    )
+
+    return partial_dist_cls
 
 
 class Catalog:
@@ -385,7 +405,7 @@ class Catalog:
         *,
         framework: Optional[str] = None,
         deterministic: Optional[bool] = False,
-    ) -> Mapping[str, Any]:
+    ) -> Distribution:
         """Returns a distribution class for the given action space.
 
         You can get the required input dimension for the distribution by calling
@@ -413,8 +433,6 @@ class Catalog:
                 TorchCategorical,
                 TorchDeterministic,
                 TorchDiagGaussian,
-                TorchMultiActionDistribution,
-                TorchMultiCategorical,
             )
 
             distribution_dicts = {
@@ -427,8 +445,6 @@ class Catalog:
                 TfCategorical,
                 TfDeterministic,
                 TfDiagGaussian,
-                TfMultiActionDistribution,
-                TfMultiCategorical,
             )
 
             distribution_dicts = {
@@ -445,8 +461,20 @@ class Catalog:
         # Only add a MultiAction distribution class to the dict if we can compute its
         # components (we need a Tuple/Dict space for this).
         if isinstance(action_space, (Tuple, Dict)):
-            partial_torch_multi_action_distribution_cls = (
-                _multi_action_dist_partial_helper(
+            partial_multi_action_distribution_cls = _multi_action_dist_partial_helper(
+                catalog_cls=cls,
+                action_space=action_space,
+                framework=framework,
+                deterministic=deterministic,
+            )
+
+            distribution_dicts["multidist"] = partial_multi_action_distribution_cls
+
+        # Only add a MultiCategorical distribution class to the dict if we can compute
+        # its components (we need a MultiDiscrete space for this).
+        if isinstance(action_space, (Tuple, Dict)):
+            partial_multi_categorical_distribution_cls = (
+                _multi_categorical_dist_partial_helper(
                     catalog_cls=cls,
                     action_space=action_space,
                     framework=framework,
@@ -454,7 +482,9 @@ class Catalog:
                 )
             )
 
-            distribution_dicts["multi"] = partial_torch_multi_action_distribution_cls
+            distribution_dicts[
+                "multicategorical"
+            ] = partial_multi_categorical_distribution_cls
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
@@ -483,8 +513,7 @@ class Catalog:
 
         # Tuple/Dict Spaces -> MultiAction.
         elif isinstance(action_space, (Tuple, Dict)):
-            # TODO(Artur): Supported Tuple/Dict.
-            raise NotImplementedError("Tuple/Dict spaces not yet supported.")
+            return distribution_dicts["multidist"]
 
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
@@ -493,12 +522,7 @@ class Catalog:
 
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
-            # TODO(Artur): Implement this!!
-            # TODO(Artur): Implement this!!
-            # TODO(Artur): Implement this!!
-            # TODO(Artur): Implement this!!
-            partial(TorchMultiCategorical, input_lens=action_space.nvec)
-            partial(TfMultiCategorical, input_lens=action_space.nvec)
+            return distribution_dicts["multicategorical"]
 
         # Unknown type -> Error.
         else:

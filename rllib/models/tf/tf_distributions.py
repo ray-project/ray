@@ -4,15 +4,18 @@ the code. This matches the design pattern of torch distribution which developers
 already be familiar with.
 """
 import gymnasium as gym
+import functools
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+import tree
 import numpy as np
-from typing import Optional
+from typing import Optional, List, Mapping, Iterable
 import abc
 
 
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import TensorType, Union, Tuple, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, Union, Tuple
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
@@ -283,3 +286,227 @@ class TfDeterministic(Distribution):
     @override(Distribution)
     def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
         return TfDeterministic(loc=logits)
+
+
+@DeveloperAPI
+class TfMultiCategorical(Distribution):
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
+
+    def __init__(
+        self,
+        inputs: TensorType,
+        input_lens: List[int],
+        temperatures: List[float] = None,
+    ):
+        super().__init__()
+        if not temperatures:
+            # If temperatures are not provided, use 1.0 for all actions.
+            temperatures = [1.0] * len(input_lens)
+
+        self.cats = [
+            TfCategorical(logits=logits, temperature=temperature)
+            for logits, temperature in zip(
+                tf.split(inputs, input_lens, axis=1), temperatures
+            )
+        ]
+
+    @override(Distribution)
+    def sample(self) -> TensorType:
+        arr = [cat.sample() for cat in self.cats]
+        sample_ = tf.stack(arr, dim=1)
+        return sample_
+
+    @override(Distribution)
+    def deterministic_sample(self) -> TensorType:
+        sample_ = tf.stack([cat.deterministic_sample() for cat in self.cats], axis=1)
+        return sample_
+
+    @override(Distribution)
+    def logp(self, value: tf.Tensor) -> TensorType:
+        actions = tf.unstack(tf.cast(value, tf.int32), axis=1)
+        logps = tf.stack([cat.logp(act) for cat, act in zip(self.cats, actions)])
+        return tf.reduce_sum(logps, axis=0)
+
+    @override(Distribution)
+    def multi_entropy(self) -> TensorType:
+        return tf.stack([cat.entropy() for cat in self.cats], axis=1)
+
+    @override(Distribution)
+    def entropy(self) -> TensorType:
+        return tf.reduce_sum(self.multi_entropy(), axis=1)
+
+    @override(Distribution)
+    def multi_kl(self, other: Distribution) -> TensorType:
+        return tf.stack(
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)], axis=1
+        )
+
+    @override(Distribution)
+    def kl(self, other: Distribution) -> TensorType:
+        return tf.reduce_sum(self.multi_kl(other), axis=1)
+
+    @staticmethod
+    @override(Distribution)
+    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
+        return (int(np.sum(space.nvec)),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls,
+        inputs: TensorType,
+        input_lens: List[int],
+        **kwargs,
+    ) -> "TfMultiCategorical":
+        """Creates this Distribution from logits (and additional arguments).
+
+        If you wish to create this distribution from logits only, please refer to
+        `Distribution.get_partial_dist_cls()`.
+        """
+        return TfMultiCategorical(
+            inputs=inputs,
+            input_lens=input_lens,
+        )
+
+
+@DeveloperAPI
+class TfMultiActionDistribution(Distribution):
+    """Action distribution that operates on multiple, possibly nested actions."""
+
+    def __init__(
+        self,
+        inputs: tf.Tensor,
+        child_distribution_cls_struct: Union[Mapping, Iterable],
+        input_lens: List[int],
+        space: gym.Space,
+    ):
+        """Initializes a TfMultiActionDistribution object.
+
+        Args:
+            inputs: A single tensor of shape [BATCH, size].
+            child_distribution_cls_struct: Any struct
+                that contains the child distribution classes to use to
+                instantiate the child distributions from `inputs`. This could
+                be an already flattened list or a struct according to
+                `action_space`.
+            input_lens (any[int]): A flat list or a nested struct of input
+                split lengths used to split `inputs`.
+            space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
+                and possibly nested output space.
+        """
+        super().__init__()
+        self.space_struct = get_base_struct_from_space(space)
+
+        self.input_lens = tree.flatten(input_lens)
+        child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
+        split_inputs = tf.split(inputs, self.input_lens, axis=1)
+        self.child_distribution_list = tree.map_structure(
+            lambda dist, input_: dist.from_logits(input_),
+            child_distribution_cls_list,
+            list(split_inputs),
+        )
+
+    @override(Distribution)
+    def logp(self, x):
+        # Single tensor input (all merged).
+        if isinstance(x, (tf.Tensor, np.ndarray)):
+            split_indices = []
+            for dist in self.flat_child_distributions:
+                if isinstance(dist, TfCategorical):
+                    split_indices.append(1)
+                elif (
+                    isinstance(dist, TfMultiCategorical)
+                    and dist.action_space is not None
+                ):
+                    split_indices.append(np.prod(dist.action_space.shape))
+                else:
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(tf.shape(sample)[1])
+            split_x = tf.split(x, split_indices, axis=1)
+        # Structured or flattened (by single action component) input.
+        else:
+            split_x = tree.flatten(x)
+
+        def map_(val, dist):
+            # Remove extra categorical dimension.
+            if isinstance(dist, TfCategorical):
+                val = tf.cast(
+                    tf.squeeze(val, axis=-1) if len(val.shape) > 1 else val, tf.int32
+                )
+            return dist.logp(val)
+
+        # Remove extra categorical dimension and take the logp of each
+        # component.
+        flat_logps = tree.map_structure(map_, split_x, self.flat_child_distributions)
+
+        return functools.reduce(lambda a, b: a + b, flat_logps)
+
+    @override(Distribution)
+    def kl(self, other):
+        kl_list = [
+            d.kl(o)
+            for d, o in zip(
+                self.flat_child_distributions, other.flat_child_distributions
+            )
+        ]
+        return functools.reduce(lambda a, b: a + b, kl_list)
+
+    @override(Distribution)
+    def entropy(self):
+        entropy_list = [d.entropy() for d in self.flat_child_distributions]
+        return functools.reduce(lambda a, b: a + b, entropy_list)
+
+    @override(Distribution)
+    def sample(self):
+        child_distributions = tree.unflatten_as(
+            self.action_space_struct, self.flat_child_distributions
+        )
+        return tree.map_structure(lambda s: s.sample(), child_distributions)
+
+    @override(Distribution)
+    def deterministic_sample(self):
+        child_distributions = tree.unflatten_as(
+            self.action_space_struct, self.flat_child_distributions
+        )
+        return tree.map_structure(
+            lambda s: s.deterministic_sample(), child_distributions
+        )
+
+    @override(Distribution)
+    def sampled_action_logp(self):
+        p = self.flat_child_distributions[0].sampled_action_logp()
+        for c in self.flat_child_distributions[1:]:
+            p += c.sampled_action_logp()
+        return p
+
+    @staticmethod
+    @override(Distribution)
+    def required_model_output_shape(self, space: gym.Space) -> Tuple[int, ...]:
+        return (np.sum(self.input_lens, dtype=np.int32),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls,
+        logits: TensorType,
+        child_distribution_cls_struct: Union[Mapping, Iterable],
+        input_lens: List[int],
+        space: gym.Space,
+        **kwargs,
+    ) -> "TfMultiActionDistribution":
+        """Creates this Distribution from logits (and additional arguments).
+
+        If you wish to create this distribution from logits only, please refer to
+        `Distribution.get_partial_dist_cls()`.
+        """
+
+        return TfMultiActionDistribution(
+            logits=logits,
+            child_distribution_cls_struct=child_distribution_cls_struct,
+            input_lens=input_lens,
+            space=space,
+        )
