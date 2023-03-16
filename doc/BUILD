@@ -205,7 +205,10 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/*.py"],
-    exclude = ["source/ray-air/doc_code/predictors.py"],
+    exclude = [
+        "source/ray-air/doc_code/predictors.py",
+        "source/data/doc_code/creating_datasets_spark.py"
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )

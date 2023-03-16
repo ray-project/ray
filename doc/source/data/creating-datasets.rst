@@ -460,7 +460,7 @@ futures.
   will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
   which Datasets will then interpret as its blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_spark.py
     :language: python
     :start-after: __from_spark_begin__
     :end-before: __from_spark_end__
