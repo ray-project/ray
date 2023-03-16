@@ -68,7 +68,6 @@ class TrialRunner:
         runner.add_trial(Trial(...))
         while not runner.is_finished():
             runner.step()
-            print(runner.debug_string())
 
     The main job of TrialRunner is scheduling trials to efficiently use cluster
     resources, without overloading the cluster.
@@ -748,18 +747,6 @@ class TrialRunner:
                 TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}), trial
             )
         self.trial_executor.mark_trial_to_checkpoint(trial)
-
-    def debug_string(self, delim="\n"):
-        from ray.tune.progress_reporter import _trial_progress_str
-
-        result_keys = [list(t.last_result) for t in self.get_trials() if t.last_result]
-        metrics = set().union(*result_keys)
-        messages = [
-            self._scheduler_alg.debug_string(),
-            self.trial_executor.debug_string(),
-            _trial_progress_str(self.get_trials(), metrics, force_table=True),
-        ]
-        return delim.join(messages)
 
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
