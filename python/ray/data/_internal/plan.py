@@ -1048,12 +1048,14 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf: Optional[BlockTransform] = None,
         remote_args: Optional[Dict[str, Any]] = None,
+        sub_stage_names: Optional[List[str]] = None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
+        self.sub_stage_names = sub_stage_names
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -1100,7 +1102,13 @@ class AllToAllStage(Stage):
                 yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
-            name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
+            name,
+            self.num_blocks,
+            self.fn,
+            True,
+            block_udf,
+            prev.ray_remote_args,
+            self.sub_stage_names,
         )
 
     def __call__(

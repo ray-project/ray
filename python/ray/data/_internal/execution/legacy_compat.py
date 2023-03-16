@@ -309,6 +309,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             input_op,
             name=stage.name,
             num_outputs=stage.num_blocks,
+            sub_progress_bar_names=stage.sub_stage_names,
         )
     else:
         raise NotImplementedError
