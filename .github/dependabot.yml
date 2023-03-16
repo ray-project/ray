@@ -23,11 +23,21 @@ updates:
       - "ray-project/ray-tune"
   # compat requirements should not be updated
   - package-ecosystem: "pip"
+    schedule:
+      # Automatic upgrade checks Saturday at 12 AM.
+      # Dependabot updates can still be manually triggered via Github at any time.
+      interval: "weekly"
+      day: "saturday"
+      # 12 AM
+      time: "00:00"
+      # Use Pacific Standard Time.
+      timezone: "America/Los_Angeles"
     directory: "/python/requirements/compat"
     commit-message:
       prefix: "[air/do-not-merge]"
       include: "scope"
-    ignore: *
+    ignore:
+      - dependency-name: "*"
     open-pull-requests-limit: 0
     reviewers:
       - "ray-project/ray-tune"
