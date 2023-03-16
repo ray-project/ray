@@ -17,6 +17,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor_state import (
+    AutoscalingState,
     Topology,
     TopologyResourceUsage,
     OpState,
@@ -50,6 +51,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
+        self._autoscaling_state = AutoscalingState()
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -207,6 +209,7 @@ class StreamingExecutor(Executor, threading.Thread):
             limits,
             ensure_at_least_one_running=self._consumer_idling(),
             execution_id=self._execution_id,
+            autoscaling_state=self._autoscaling_state,
         )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
@@ -219,6 +222,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 limits,
                 ensure_at_least_one_running=self._consumer_idling(),
                 execution_id=self._execution_id,
+                autoscaling_state=self._autoscaling_state,
             )
 
         # Update the progress bar to reflect scheduling decisions.

@@ -14,6 +14,7 @@ from ray.data._internal.execution.streaming_executor import (
     _validate_topology,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    AutoscalingState,
     OpState,
     TopologyResourceUsage,
     DownstreamMemoryInfo,
@@ -277,7 +278,9 @@ def test_resource_constrained_triggers_autoscaling():
         get_or_create_autoscaling_requester_actor,
     )
 
-    def run_execution(execution_id: str):
+    def run_execution(
+        execution_id: str, incremental_cpu: int = 1, autoscaling_state=None
+    ):
         opt = ExecutionOptions()
         inputs = make_ref_bundles([[x] for x in range(20)])
         o1 = InputDataBuffer(inputs)
@@ -295,7 +298,7 @@ def test_resource_constrained_triggers_autoscaling():
             make_transform(lambda block: [b * 3 for b in block]),
             o3,
             compute_strategy=ray.data.ActorPoolStrategy(1, 2),
-            ray_remote_args={"num_gpus": 1},
+            ray_remote_args={"num_gpus": incremental_cpu},
         )
         o4.num_active_work_refs = MagicMock(return_value=1)
         o4.incremental_resource_usage = MagicMock(
@@ -314,6 +317,7 @@ def test_resource_constrained_triggers_autoscaling():
             ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
             True,
             execution_id,
+            autoscaling_state,
         )
         assert selected_op is None
 
@@ -330,8 +334,15 @@ def test_resource_constrained_triggers_autoscaling():
     run_execution("1")
     assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
 
+    # Test stale requests got purged.
     time.sleep(test_timeout + 1)
     run_execution("1")
+    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+
+    # Test throttling by sending 100 requests.
+    autoscaling_state = AutoscalingState()
+    for i in range(100):
+        run_execution("1", i + 1, autoscaling_state)
     assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
 
 

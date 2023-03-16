@@ -34,6 +34,18 @@ MaybeRefBundle = Union[RefBundle, Exception, None]
 # store memory limit for the streaming executor.
 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
 
+# Min number of seconds between two autoscaling requests.
+MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 5
+
+
+@dataclass
+class AutoscalingState:
+    """State of the interaction between an executor and Ray autoscaler."""
+
+    # The timestamp of the latest resource request made to Ray autoscaler
+    # by an executor.
+    last_request_ts: int = 0
+
 
 @dataclass
 class TopologyResourceUsage:
@@ -295,6 +307,7 @@ def select_operator_to_run(
     limits: ExecutionResources,
     ensure_at_least_one_running: bool,
     execution_id: str,
+    autoscaling_state: Optional[AutoscalingState] = None,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -321,7 +334,15 @@ def select_operator_to_run(
     # If no ops are allowed to execute due to resource constraints, try to trigger
     # cluster scale-up.
     if not ops and any(state.num_queued() > 0 for state in topology.values()):
-        _try_to_scale_up_cluster(topology, execution_id)
+        now = time.time()
+        if (
+            autoscaling_state is None
+            or now
+            > autoscaling_state.last_request_ts + MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS
+        ):
+            if autoscaling_state:
+                autoscaling_state.last_request_ts = now
+            _try_to_scale_up_cluster(topology, execution_id)
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
