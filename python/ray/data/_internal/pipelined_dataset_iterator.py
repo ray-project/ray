@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
 import warnings
 
-from ray.data.block import DataBatch, T
-from ray.data.row import TableRow
+from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
@@ -48,12 +47,6 @@ class PipelinedDatasetIterator(DatasetIterator):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
-        )
-
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
-        ds = self._get_next_dataset()
-        return ds.iter_rows(
-            prefetch_blocks=prefetch_blocks,
         )
 
     def stats(self) -> str:

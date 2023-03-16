@@ -9,7 +9,7 @@ from ray_release.wheels import DEFAULT_BRANCH, get_buildkite_repo_branch
 
 
 class Frequency(enum.Enum):
-    DISABLED = enum.auto()
+    MANUAL = enum.auto()
     ANY = enum.auto()
     MULTI = enum.auto()
     NIGHTLY = enum.auto()
@@ -18,7 +18,7 @@ class Frequency(enum.Enum):
 
 
 frequency_str_to_enum = {
-    "disabled": Frequency.DISABLED,
+    "manual": Frequency.MANUAL,
     "any": Frequency.ANY,
     "any-smoke": Frequency.ANY,
     "multi": Frequency.MULTI,
