@@ -261,7 +261,10 @@ class RayServeHandle:
         # and get closed correctly!
         # If you're reviewing this PR, and this TODO is still here, please
         # leave a comment. This should be addressed before merging.
-        assignment_task, _ = self._internal_remote(*args, **kwargs)
+        assignment_task, replica_tag_coro = self._internal_remote(*args, **kwargs)
+
+        replica_tag_coro.close()
+
         return assignment_task
 
     def embargo_replica(self, replica_tag):
