@@ -285,7 +285,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert (
-            "Stage 1 ReadRange->randomize_block_order->"
+            "Stage 1 ReadRange->RandomizeBlockOrder->"
             "BatchMapper: 1/1 blocks executed " in stats
         ), stats
 
@@ -325,7 +325,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "randomize_block_order->random_shuffle" in stats, stats
+        assert "RandomizeBlockOrder->RandomShuffle" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
@@ -339,7 +339,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "Stage 1 ReadRange->random_shuffle" in stats, stats
+        assert "Stage 1 ReadRange->RandomShuffle" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestBatch(
@@ -355,7 +355,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+        assert "RandomizeBlockOrder: 5/5 blocks executed in 0s" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
@@ -366,7 +366,7 @@ def test_randomize_block_order(ray_start_4_cpus):
 
     def checker(shard, results):
         stats = shard.stats()
-        assert "randomize_block_order" not in stats, stats
+        assert "RandomizeBlockOrder" not in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
@@ -382,7 +382,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         # beginning, not once per epoch.
         assert results[0] == results[1], results
         stats = shard.stats()
-        assert "randomize_block_order: 5/5 blocks executed" in stats, stats
+        assert "RandomizeBlockOrder: 5/5 blocks executed" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestBatch(
@@ -397,7 +397,7 @@ def test_make_local_dataset_iterator(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+        assert "RandomizeBlockOrder: 5/5 blocks executed in 0s" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(

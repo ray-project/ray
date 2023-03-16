@@ -133,7 +133,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"from_items": metadata}, parent=None),
+            DatasetStats(stages={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1334,7 +1334,7 @@ def from_pandas_refs(
         return Dataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1349,7 +1349,7 @@ def from_pandas_refs(
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1408,7 +1408,7 @@ def from_numpy_refs(
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"from_numpy_refs": metadata}, parent=None),
+            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1460,7 +1460,7 @@ def from_arrow_refs(
     return Dataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,

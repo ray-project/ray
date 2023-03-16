@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
@@ -46,30 +47,6 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
 logger = DatasetLogger(__name__)
-
-
-def capfirst(s: str):
-    """Capitalize the first letter of a string
-
-    Args:
-        s: String to capitalize
-
-    Returns:
-       Capitalized string
-    """
-    return s[0].upper() + s[1:]
-
-
-def capitalize(s: str):
-    """Capitalize a string, removing '_' and keeping camelcase.
-
-    Args:
-        s: String to capitalize
-
-    Returns:
-        Capitalized string with no underscores.
-    """
-    return "".join(capfirst(x) for x in s.split("_"))
 
 
 class Stage:
@@ -182,7 +159,7 @@ class ExecutionPlan:
         if self._stages_after_snapshot:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
-                # Get name of each stage in camel case.
+                # Get name of each stage in pascal case.
                 # The stage representation should be in "<stage-name>(...)" format,
                 # e.g. "MapBatches(my_udf)".
                 #
@@ -1213,7 +1190,7 @@ def _rewrite_read_stage(
         if stages and isinstance(stages[0], RandomizeBlocksStage):
             block_list, _ = stages[0].do_randomize(block_list)
             stages = stages[1:]
-        name += "->randomize_block_order"
+        name += "->RandomizeBlockOrder"
 
     stage = OneToOneStage(
         name,
@@ -1248,7 +1225,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
             reorder_buf.append(s)
         else:
             # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage) or s.name == "write":
+            if isinstance(s, AllToAllStage) or s.name == "Write":
                 output.extend(reorder_buf)
                 reorder_buf = []
             output.append(s)
