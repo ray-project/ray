@@ -30,6 +30,8 @@ from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
+from ray.serve._private.request_context import _serve_request_context
+
 _global_async_loop = None
 
 
@@ -130,7 +132,7 @@ class RayServeHandle:
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment"),
+            tag_keys=("handle", "deployment", "route"),
         )
         self.request_counter.set_default_tags(
             {"handle": self.handle_tag, "deployment": self.deployment_name}
@@ -213,12 +215,15 @@ class RayServeHandle:
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+        _request_context = _serve_request_context.get()
         request_metadata = RequestMetadata(
-            get_random_letters(10),  # Used for debugging.
+            _request_context.request_id,
             deployment_name,
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
+            route=_request_context.route,
         )
+        self.request_counter.inc(tags={"route": _request_context.route})
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
@@ -238,7 +243,6 @@ class RayServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
-        self.request_counter.inc()
         return await self._remote(
             self.deployment_name, self.handle_options, args, kwargs
         )
@@ -300,7 +304,6 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        self.request_counter.inc()
         coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._event_loop
