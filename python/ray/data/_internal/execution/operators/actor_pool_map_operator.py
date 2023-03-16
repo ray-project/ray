@@ -449,7 +449,7 @@ class _ActorPool:
         max_tasks_rampup_threshold: int = 1,
     ):
         # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
-        # after the `max_tasks_rampup_threshold` have been created.
+        # after the `max_tasks_rampup_threshold` actors have been created.
         self._max_tasks_in_flight_final = max_tasks_in_flight
         self._max_tasks_in_flight = 1
         self._max_tasks_rampup_threshold = max_tasks_rampup_threshold
