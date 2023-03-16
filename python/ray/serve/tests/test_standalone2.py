@@ -31,7 +31,11 @@ from ray.serve._private.constants import (
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
 )
 from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -1198,6 +1202,73 @@ class TestDeployApp:
             == ApplicationStatus.RUNNING
             and client.get_serve_status("app2").app_status.status
             == ApplicationStatus.DEPLOY_FAILED
+        )
+
+    def test_deploy_with_route_prefix_conflict(self, client: ServeControllerClient):
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": world_import_path,
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": pizza_import_path,
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**test_config))
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Buffer time
+        time.sleep(1)
+
+        test_config["applications"][1] = {
+            "name": "app3",
+            "route_prefix": "/app2",
+            "import_path": world_import_path,
+        }
+
+        client.deploy_apps(ServeDeploySchema(**test_config))
+
+        # TODO: Check serve instance details
+        def check():
+            serve_details = ServeInstanceDetails(
+                **ray.get(client._controller.get_serve_instance_details.remote())
+            )
+            app1_running = (
+                "app1" in serve_details.application_details
+                and serve_details.application_details["app1"].app_status == "RUNNING"
+            )
+            app3_running = (
+                "app3" in serve_details.application_details
+                and serve_details.application_details["app3"].app_status == "RUNNING"
+            )
+            app2_gone = "app2" not in serve_details.application_details
+            return app1_running and app3_running and app2_gone
+
+        wait_for_condition(check)
+
+        # app1 and app3 should be up and running
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
         )
 
 

@@ -245,21 +245,24 @@ class ApplicationStateManager:
         """
 
         # Make sure route_prefix is not being used by other application.
-        all_route_prefixes: Dict[str, str] = {
+        live_route_prefixes: Dict[str, str] = {
             self._application_states[app_name].route_prefix: app_name
-            for app_name in self._application_states
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and app_state.status
+            in [ApplicationStatus.DEPLOYING, ApplicationStatus.RUNNING]
         }
         for deploy_param in deployment_args:
             if "route_prefix" in deploy_param:
                 deploy_app_prefix = deploy_param["route_prefix"]
                 if (
                     deploy_app_prefix
-                    and deploy_app_prefix in all_route_prefixes
-                    and name != all_route_prefixes[deploy_app_prefix]
+                    and deploy_app_prefix in live_route_prefixes
+                    and name != live_route_prefixes[deploy_app_prefix]
                 ):
                     raise RayServeException(
                         f"Prefix {deploy_app_prefix} is being used by application "
-                        f'"{all_route_prefixes[deploy_app_prefix]}".'
+                        f'"{live_route_prefixes[deploy_app_prefix]}".'
                         f' Failed to deploy application "{name}".'
                     )
 
