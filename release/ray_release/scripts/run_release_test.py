@@ -118,6 +118,8 @@ def main(
     if smoke_test:
         test = as_smoke_test(test)
 
+    # Several core tests have perf regression from V2 Job submission Runner.
+    # So we stick to the original implementation for now.
     team = test.get("team")
     if team == "core":
         test["run"]["type"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
