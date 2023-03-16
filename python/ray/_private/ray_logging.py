@@ -273,13 +273,16 @@ def canonicalise_log_line(line):
 
 class LogDeduplicator:
     def __init__(self):
-        # Map of dedup_key -> (timestamp, count, instance, metadata).
-        self.recent: Dict[str, Tuple[int, int, str, dict]] = {}
+        # TODO: make dataclass
+        # Map of dedup_key -> (timestamp, count, instance, metadata, sources).
+        self.recent: Dict[str, Tuple[int, int, str, dict, set]] = {}
 
     def deduplicate(self, lines: List[str], metadata: dict) -> List[str]:
         global _log_dedup_warned
         if not RAY_DEDUP_LOGS:
             return lines
+
+        source = (metadata.get("ip"), metadata.get("pid"))
         now = time.time()
         output = []
         for line in lines:
@@ -288,22 +291,33 @@ class LogDeduplicator:
                 continue
             dedup_key = canonicalise_log_line(line)
             if dedup_key in self.recent:
-                if log_once("log_dedup_warning"):
-                    output.append(
-                        "Warning: Ray is deduplicating repetitive log messages "
-                        "across the cluster. This may delay log output by up to "
-                        f"{AGGREGATION_WINDOW_S} seconds. "
-                        "Set RAY_DEDUP_LOGS=0 to disable."
+                sources = self.recent[dedup_key][4]
+                sources.add(source)
+                if len(sources) > 1:
+                    if log_once("log_dedup_warning"):
+                        output.append(
+                            "Warning: Ray is deduplicating repetitive log messages "
+                            "across the cluster. This may delay log output by "
+                            "a few seconds. Set RAY_DEDUP_LOGS=0 to disable."
+                        )
+                    timestamp, count, _, _, _ = self.recent[dedup_key]
+                    self.recent[dedup_key] = (
+                        timestamp,
+                        count + 1,
+                        line,
+                        metadata,
+                        sources,
                     )
-                timestamp, count, _, _ = self.recent[dedup_key]
-                self.recent[dedup_key] = (timestamp, count + 1, line, metadata)
+                else:
+                    # Don't dedup messages from the same source, just print.
+                    output.append(line)
             else:
-                self.recent[dedup_key] = (now, 0, line, metadata)
+                self.recent[dedup_key] = (now, 0, line, metadata, {source})
                 output.append(line)
         while self.recent:
             if now - next(iter(self.recent.values()))[0] > AGGREGATION_WINDOW_S:
                 dedup_key = next(iter(self.recent))
-                _, count, line, metadata = self.recent.pop(dedup_key)
+                _, count, line, metadata, sources = self.recent.pop(dedup_key)
                 # we already logged an instance of this line immediately when received,
                 # so don't log for count == 0
                 if count > 1:
@@ -312,7 +326,7 @@ class LogDeduplicator:
                         line + self._color(f" [repeated {count}x across cluster] ")
                     )
                     # Continue aggregating for this key but reset timestamp and count.
-                    self.recent[dedup_key] = (now, 0, line, metadata)
+                    self.recent[dedup_key] = (now, 0, line, metadata, sources)
                 elif count > 0:
                     # Aggregation wasn't fruitful, print the line and stop aggregating.
                     output.append(line)
@@ -322,7 +336,7 @@ class LogDeduplicator:
 
     def flush(self) -> List[dict]:
         output = []
-        for _, count, line, metadata in self.recent.values():
+        for _, count, line, metadata, _ in self.recent.values():
             if count > 1:
                 output.append(
                     dict(
