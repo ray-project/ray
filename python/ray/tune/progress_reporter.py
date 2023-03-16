@@ -356,7 +356,6 @@ class TuneReporterBase(ProgressReporter):
         messages = [
             "== Status ==",
             _time_passed_str(self._start_time, time.time()),
-            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -692,7 +691,6 @@ class CLIReporter(TuneReporterBase):
         mode: Optional[str] = None,
         sort_by_metric: bool = False,
     ):
-
         super(CLIReporter, self).__init__(
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -749,20 +747,6 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
             np.nan,
             "Unknown memory usage. Please run `pip install psutil` to resolve",
         )
-
-
-def _memory_debug_str() -> str:
-    """Generate a message to be shown to the user showing memory consumption.
-
-    Returns:
-        String to be shown to the user with formatted memory consumption
-            stats.
-    """
-    used_gb, total_gb, message = _get_memory_usage()
-    if np.isnan(used_gb):
-        return message
-    else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:

@@ -247,7 +247,7 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._occupied_resources().get("CPU"), 1)
+        self.assertEqual(runner.trial_executor._allocated_resources().get("CPU"), 1)
         self.assertRaises(
             ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0))
         )
@@ -257,7 +257,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.PAUSED)
         # extra step for tune loop to stage the resource requests.
         runner.step()
-        self.assertEqual(runner.trial_executor._occupied_resources().get("CPU"), 2)
+        self.assertEqual(runner.trial_executor._allocated_resources().get("CPU"), 2)
 
     def testQueueFilling(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
