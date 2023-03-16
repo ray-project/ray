@@ -52,7 +52,7 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig, SyncerCallback
+from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
