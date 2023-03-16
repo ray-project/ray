@@ -354,7 +354,7 @@ class Dataset(Generic[T]):
 
         plan = self._plan.with_stage(
             OneToOneStage(
-                "map",
+                "Map",
                 transform_fn,
                 compute,
                 ray_remote_args,
@@ -892,7 +892,7 @@ class Dataset(Generic[T]):
         transform_fn = generate_flat_map_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("flat_map", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
         )
 
         logical_plan = self._logical_plan
@@ -958,7 +958,7 @@ class Dataset(Generic[T]):
         transform_fn = generate_filter_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("filter", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
         )
 
         logical_plan = self._logical_plan
@@ -1436,7 +1436,7 @@ class Dataset(Generic[T]):
         parent_stats = self._plan.stats()
         splits = []
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"split": ms}, parent=parent_stats)
+            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
                 Dataset(
@@ -1658,7 +1658,7 @@ class Dataset(Generic[T]):
                     "be shown again.".format(set(epochs), max_epoch)
                 )
         dataset_stats = DatasetStats(
-            stages={"union": []},
+            stages={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
@@ -2191,7 +2191,7 @@ class Dataset(Generic[T]):
             for m in metadata
         ]
         dataset_stats = DatasetStats(
-            stages={"limit": meta_for_stats},
+            stages={"Limit": meta_for_stats},
             parent=self._plan.stats(),
         )
         dataset_stats.time_total_s = split_duration
@@ -2793,7 +2793,7 @@ class Dataset(Generic[T]):
 
             plan = self._plan.with_stage(
                 OneToOneStage(
-                    "write",
+                    "Write",
                     write_fn_wrapper,
                     "tasks",
                     ray_remote_args,
