@@ -770,8 +770,7 @@ def _verify_node_options(node_options, block_keys, node_type):
 
         if key in block_keys:
             common_err_msg = (
-                f"Setting option {_convert_ray_node_options(key)} for {node_type} "
-                "is not allowed."
+                f"Setting option {key} for {node_type} is not allowed."
             )
             replacement_arg = block_keys[key]
             if replacement_arg:
