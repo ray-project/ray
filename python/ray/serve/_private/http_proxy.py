@@ -302,7 +302,7 @@ class HTTPProxy:
                 "(measured from the Serve HTTP proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("route_prefix",),
+            tag_keys=("route",),
         )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -383,9 +383,7 @@ class HTTPProxy:
         start_time = time.time()
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
-        self.processing_latency_tracker.observe(
-            latency_ms, tags={"route_prefix": route_prefix}
-        )
+        self.processing_latency_tracker.observe(latency_ms, tags={"route": route_path})
         logger.info(
             access_log_msg(
                 method=scope["method"],
