@@ -163,7 +163,10 @@ def test_select_operator_to_run():
 
     # Test prioritization of nothrottle ops.
     o2.throttling_disabled = MagicMock(return_value=True)
-    assert select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy") == o2
+    assert (
+        select_operator_to_run(topo, NO_USAGE, ExecutionResources(), True, "dummy")
+        == o2
+    )
 
 
 def test_dispatch_next_task():
