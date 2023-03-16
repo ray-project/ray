@@ -368,6 +368,7 @@ class Trial:
         # Set default experiment dir name
         if not local_experiment_path:
             local_experiment_path = str(Path(DEFAULT_RESULTS_DIR) / experiment_dir_name)
+            os.makedirs(local_experiment_path, exist_ok=True)
 
         # Set remote experiment path if upload_dir is set
         if self.sync_config.upload_dir:
