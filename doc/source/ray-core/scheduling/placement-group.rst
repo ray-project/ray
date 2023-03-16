@@ -5,36 +5,46 @@ Placement Groups
 
 Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
 
-Java demo code in this documentation can be found here `<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/PlacementGroupDemo.java>`__.
-
-Here are some use cases:
-
-- **Gang Scheduling**: Your application requires all tasks/actors to be scheduled and start at the same time.
-- **Maximizing data locality**: You'd like to place or schedule your actors close to your data to avoid object transfer overheads.
+Here are some real-world use cases:
+- **Machine Learning Training**: Placement group enables gang scheduling by reserving a group of resources across Ray cluster. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
+- **Hyperparameter Tuning**: Hyperparameter tuning involves training multiple versions of a model (trial) with different hyperparameters, 
+such as learning rates, batch sizes, and regularization parameters. Each version of the model is trained on a separate 
+compute node or GPU, and the results are compared to determine the optimal set of hyperparameters.
+When hyperparemeter tuning the deep learning models, each trial should ensure to schedule every worker involved in training.
+Placement groups reserve a group of resources for each trial, which mitigates the risk of deadlock
+(In a given machine learning training task, each trial only has a partial schedule of training workers allocated to it. As a result, none of the trials can fully schedule all of the available workers for training).
 
 Key Concepts
 ------------
 
-A **bundle** is a collection of "resources", i.e. `{"GPU": 4}`.
-
-- A bundle must be able to fit on a single node on the Ray cluster.
-- Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
-
+A **bundle** is a collection of "resources", It could be a single resource (``{"CPU": 1}``) or a group of resources ``{"CPU": 1, "GPU": 4}``. 
+A bundle is a unit of reservation for placement groups. A bundle must be able to fit on a single node on the Ray cluster. For example, if you only have 8 CPU nodes, and if you have a bundle that requires ``{"CPU": 9}``, there's no node that can reserve this bundle.
 
 A **placement group** is a collection of bundles.
 
-- Each bundle is given an "index" within the placement group
+Placement groups are represented by a list of bundles. For example, ``{"CPU": 1} * 4`` means you'd like to reserve 4 bundles of 1 CPU 
+(i.e., it reserves 4 CPUs). 
+
+- Each bundle is given an "index" within the placement group. e.g., A placement group of 2 bundles ``[{"CPU": 1}, {"GPU": 1}]`` will have index 0 bundle ``{"CPU": 1}`` and index 1 bundle ``{"GPU": 1}``.
 - Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
 - After the placement group is created, tasks or actors can be then scheduled according to the placement group and even on individual bundles.
 
+A **placement group strategy** is an algorithm for selecting nodes for bundle placement. See :ref:`placement strategies <pgroup-strategy>` for more details.
 
-A **placement group strategy** is an algorithm for selecting nodes for bundle placement. Read more about :ref:`placement strategies <pgroup-strategy>`.
 
-
-Starting a placement group
+Schedule a Placement Group
 --------------------------
 
-Ray placement group can be created via the ``ray.util.placement_group`` (Python) or ``PlacementGroups.createPlacementGroup`` (Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
+Ray placement group can be created via the ``ray.util.placement_group`` (Python). Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`.
+Note that each bundle must be able to fit on a single node on the Ray cluster.
+For example, if you only have 8 CPU nodes, and if you have a bundle that requires ``{"CPU": 9}``,
+there's no node that can reserve this bundle.
+
+When specifying bundles (as a dictionary, e.g., ``{"CPU": 1}``),
+
+- ``CPU`` will correspond with ``num_cpus`` as used in ``ray.remote``
+- ``GPU`` will correspond with ``num_gpus`` as used in ``ray.remote``
+- Other resources will correspond with ``resources`` as used in ``ray.remote``. E.g., ``ray.init(resources={"disk": 1})`` can have a bundle of ``{"disk": 1}``.
 
 .. tabbed:: Python
 
@@ -49,12 +59,11 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       # Initialize Ray.
       import ray
-      ray.init(num_gpus=2, resources={"extra_resource": 2})
+      # 2 CPUs and 2 GPUs bundles.
+      ray.init(num_cpus=1, num_gpus=1)
 
-      bundle1 = {"GPU": 2}
-      bundle2 = {"extra_resource": 2}
-
-      pg = placement_group([bundle1, bundle2], strategy="STRICT_PACK")
+      # Reserve a placement group of 1 bundle that reserves 1 CPU and 1 GPU.
+      pg = placement_group([{"CPU": 1, "GPU": 1}], strategy="STRICT_PACK")
 
 .. tabbed:: Java
 
@@ -92,19 +101,20 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
 
-.. important:: Each bundle must be able to fit on a single node on the Ray cluster.
-
-Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
+Placement group scheduling is asynchronous. The `ray.util.placement_group` returns immediately. You can block your program until
+the placement group is ready using the `ready` (compatible with ``ray.get``) or `wait` (block the program until the placement group is ready) API. 
+**It is recommended to verify that their placement groups are ready** before using it. 
+Ray assumes that the placement group will be properly created and does *not* print a warning about infeasible tasks.
 
 .. tabbed:: Python
 
     .. code-block:: python
 
       # Wait until placement group is created.
-      ray.get(pg.ready())
+      ray.get(pg.ready(), timeout=10)
 
       # You can also use ray.wait.
-      ready, unready = ray.wait([pg.ready()], timeout=0)
+      ready, unready = ray.wait([pg.ready()], timeout=10)
 
       # You can look at placement group states using this API.
       print(placement_group_table(pg))
@@ -137,37 +147,35 @@ Placement groups are atomically created - meaning that if there exists a bundle 
         std::cout << group.GetName() << std::endl;
       }
 
-Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
+Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
 
-.. _pgroup-strategy:
+.. tabbed:: Python
 
-Strategy types
---------------
+    .. code-block:: python
+      import ray
+      # 2 CPUs and 2 GPUs bundles.
+      ray.init(num_cpus=1, num_gpus=1)
 
-Ray currently supports the following placement group strategies:
+      # The second bundle {GPU: 2} cannot be satisfied. Since the placement group
+      # scheduling is atomic this won't be ready until there will be other 
+      # node that has more than 2 GPUs.
+      pg = placement_group([{"CPU": 1}, {"GPU": 2}], strategy="STRICT_PACK")
+      # This will hang!
+      ray.get(pg.ready(), timeout=5)
 
-**STRICT_PACK**
+When the placement group cannot be scheduled in any way, it is called "infeasible". 
+Infeasible placement groups will be pending until resources are available. 
+The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed. 
+If Ray Autoscaler cannot provide resources to schedule a placement group, 
 
-All bundles must be placed into a single node on the cluster.
 
-**PACK**
+SANG-TODO 
 
-All provided bundles are packed onto a single node on a best-effort basis.
-If strict packing is not feasible (i.e., some bundles do not fit on the node), bundles can be placed onto other nodes nodes.
+Schedule Tasks and Actors to Placement Groups
+---------------------------------------------
 
-**STRICT_SPREAD**
-
-Each bundle must be scheduled in a separate node.
-
-**SPREAD**
-
-Each bundle will be spread onto separate nodes on a best effort basis.
-If strict spreading is not feasible, bundles can be placed overlapping nodes.
-
-Quick Start
------------
-
-Let's see an example of using placement group. Note that this example is done within a single node.
+tasks and actors can use the placement groups (reserved resources) when they are scheduled with ``PlacementGroupSchedulingStrategy``.
+To demonstrate it, let's initialize a new Ray instance.
 
 .. code-block:: python
 
@@ -182,181 +190,7 @@ Let's see an example of using placement group. Note that this example is done wi
   )
   from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-  ray.init(num_cpus=4, num_gpus=2, resources={"extra_resource": 2})
-
-Let's create a placement group. Recall that each bundle is a collection of resources, and tasks or actors can be scheduled on each bundle.
-
-.. note::
-
-  When specifying bundles,
-
-  - "CPU" will correspond with `num_cpus` as used in `ray.remote`
-  - "GPU" will correspond with `num_gpus` as used in `ray.remote`
-  - Other resources will correspond with `resources` as used in `ray.remote`.
-
-  Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
-
-  .. tabbed:: Python
-
-      .. literalinclude:: ../doc_code/original_resource_unavailable_example.py
-        :language: python
-
-  .. tabbed:: Java
-
-      .. code-block:: java
-
-        System.setProperty("ray.head-args.0", "--num-cpus=2");
-        Ray.init();
-
-        public static class Counter {
-          public static String ping() {
-            return "pong";
-          }
-        }
-
-        // Construct a list of bundles.
-        Map<String, Double> bundle = ImmutableMap.of("CPU", 2.0);
-        List<Map<String, Double>> bundles = ImmutableList.of(bundle);
-
-        // Create a placement group and make sure its creation is successful.
-        PlacementGroupCreationOptions options =
-          new PlacementGroupCreationOptions.Builder()
-            .setBundles(bundles)
-            .setStrategy(PlacementStrategy.STRICT_SPREAD)
-            .build();
-
-        PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
-        boolean isCreated = pg.wait(60);
-        Assert.assertTrue(isCreated);
-
-        // Won't be scheduled because there are no 2 cpus now.
-        ObjectRef<String> obj = Ray.task(Counter::ping)
-          .setResource("CPU", 2.0)
-          .remote();
-
-        List<ObjectRef<String>> waitList = ImmutableList.of(obj);
-        WaitResult<String> waitResult = Ray.wait(waitList, 1, 5 * 1000);
-        Assert.assertEquals(1, waitResult.getUnready().size());
-
-        // Will be scheduled because 2 cpus are reserved by the placement group.
-        obj = Ray.task(Counter::ping)
-          .setPlacementGroup(pg, 0)
-          .setResource("CPU", 2.0)
-          .remote();
-        Assert.assertEquals(obj.get(), "pong");
-
-  .. tabbed:: C++
-
-      .. code-block:: c++
-
-        RayConfig config;
-        config.num_cpus = 2;
-        ray::Init(config);
-
-        class Counter {
-        public:
-          std::string Ping() {
-            return "pong";
-          }
-        };
-
-        // Factory function of Counter class.
-        static Counter *CreateCounter() {
-          return new Counter();
-        };
-
-        RAY_REMOTE(&Counter::Ping, CreateCounter);
-
-        // Construct a list of bundles.
-        std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 2.0}}};
-
-        // Create a placement group and make sure its creation is successful.
-        ray::PlacementGroupCreationOptions options{
-            false, name, bundles, ray::PlacementStrategy::STRICT_SPREAD};
-
-
-        ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
-        bool is_created = pg.Wait(60);
-        assert(is_created);
-
-        // Won't be scheduled because there are no 2 cpus now.
-        ray::ObjectRef<std::string> obj = ray::Task(&Counter::Ping)
-          .SetResource("CPU", 2.0)
-          .Remote();
-
-        std::vector<ray::ObjectRef<std::string>> wait_list = {obj};
-        auto wait_result = ray::Wait(wait_list, 1, 5 * 1000);
-        assert(wait_result.unready.size() == 1);
-
-        // Will be scheduled because 2 cpus are reserved by the placement group.
-        obj = ray::Task(&Counter::Ping)
-          .SetPlacementGroup(pg, 0)
-          .SetResource("CPU", 2.0)
-          .Remote();
-        assert(*obj.get() == "pong");
-
-.. note::
-
-  When using placement groups, it is recommended to verify that their placement groups are ready (by calling ``ray.get(pg.ready())``)
-  and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
-  print a warning about infeasible tasks.
-
-  .. tabbed:: Python
-
-      .. code-block:: python
-
-        gpu_bundle = {"GPU": 2}
-        extra_resource_bundle = {"extra_resource": 2}
-
-        # Reserve bundles with strict pack strategy.
-        # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-        # Using this placement group for scheduling actors or tasks will guarantee that they will
-        # be colocated on the same node.
-        pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
-
-        # Wait until placement group is created.
-        ray.get(pg.ready())
-
-  .. tabbed:: Java
-
-      .. code-block:: java
-
-        Map<String, Double> bundle1 = ImmutableMap.of("GPU", 2.0);
-        Map<String, Double> bundle2 = ImmutableMap.of("extra_resource", 2.0);
-        List<Map<String, Double>> bundles = ImmutableList.of(bundle1, bundle2);
-
-        /**
-         * Reserve bundles with strict pack strategy.
-         * It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-         * Using this placement group for scheduling actors or tasks will guarantee that they will
-         * be colocated on the same node.
-         */
-        PlacementGroupCreationOptions options =
-          new PlacementGroupCreationOptions.Builder()
-            .setBundles(bundles)
-            .setStrategy(PlacementStrategy.STRICT_PACK)
-            .build();
-
-        PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
-        boolean isCreated = pg.wait(60);
-        Assert.assertTrue(isCreated);
-
-  .. tabbed:: C++
-
-      .. code-block:: c++
-
-        std::vector<std::unordered_map<std::string, double>> bundles{{{"GPU", 2.0}, {"extra_resource", 2.0}}};
-
-        // Reserve bundles with strict pack strategy.
-        // It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-        // Using this placement group for scheduling actors or tasks will guarantee that they will
-        // be colocated on the same node.
-        ray::PlacementGroupCreationOptions options{
-            false, "my_pg", bundles, ray::PlacementStrategy::STRICT_PACK};
-
-        ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
-        bool is_created = pg.Wait(60);
-        assert(is_created);
+  ray.init(num_cpus=2, num_gpus=2)
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 You can schedule actors/tasks on the placement group using
@@ -562,8 +396,78 @@ You can remove a placement group at any time to free its allocated resources.
       ray::PlacementGroup removed_placement_group = ray::GetPlacementGroup(placement_group.GetID());
       assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
 
-Named Placement Groups
-----------------------
+Remove Placement Groups
+-----------------------
+
+Observe Placement Groups
+------------------------
+
+[Advanced] Nested Placement Groups
+----------------------------------
+
+.. _pgroup-strategy:
+
+Strategy types
+--------------
+
+Often, you'd like to reserve bundles with placement constraints. 
+
+Ray currently supports the following placement group strategies:
+
+**STRICT_PACK**
+
+All bundles must be placed into a single node on the cluster.
+
+**PACK**
+
+All provided bundles are packed onto a single node on a best-effort basis.
+If strict packing is not feasible (i.e., some bundles do not fit on the node), bundles can be placed onto other nodes nodes.
+
+**STRICT_SPREAD**
+
+Each bundle must be scheduled in a separate node.
+
+**SPREAD**
+
+Each bundle will be spread onto separate nodes on a best effort basis.
+If strict spreading is not feasible, bundles can be placed overlapping nodes.
+
+.. _placement-group-lifetimes:
+
+Change the Placement Group Lifetimes
+------------------------------------
+
+.. tabbed:: Python
+
+    By default, the lifetimes of placement groups are not detached and will be destroyed
+    when the driver is terminated (but, if it is created from a detached actor, it is
+    killed when the detached actor is killed). If you'd like to keep the placement group
+    alive regardless of its job or detached actor, you should specify
+    `lifetime="detached"`. For example:
+
+    .. code-block:: python
+
+      # first_driver.py
+      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
+      ray.get(pg.ready())
+
+    The placement group's lifetime will be independent of the driver now. This means it
+    is possible to retrieve the placement group from other drivers regardless of when
+    the current driver exits. Let's see an example:
+
+    .. code-block:: python
+
+      # second_driver.py
+      table = ray.util.placement_group_table()
+      print(len(table))
+
+    Note that the lifetime option is decoupled from the name. If we only specified
+    the name without specifying ``lifetime="detached"``, then the placement group can
+    only be retrieved as long as the original driver is still running.
+
+.. tabbed:: Java
+
+    The lifetime argument is not implemented for Java APIs yet.
 
 A placement group can be given a globally unique name.
 This allows you to retrieve the placement group from any job in the Ray cluster.
@@ -571,7 +475,6 @@ This can be useful if you cannot directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
 access a placement group launched by another driver.
 Note that the placement group will still be destroyed if it's lifetime isn't `detached`.
-See :ref:`placement-group-lifetimes` for more details.
 
 .. tabbed:: Python
 
@@ -651,49 +554,6 @@ See :ref:`placement-group-lifetimes` for more details.
       // Retrieve the placement group later somewhere in the same job.
       ray::PlacementGroup group = ray::GetPlacementGroup("non_global_name");
       assert(!group.Empty());
-
-.. _placement-group-lifetimes:
-
-Placement Group Lifetimes
--------------------------
-
-.. tabbed:: Python
-
-    By default, the lifetimes of placement groups are not detached and will be destroyed
-    when the driver is terminated (but, if it is created from a detached actor, it is
-    killed when the detached actor is killed). If you'd like to keep the placement group
-    alive regardless of its job or detached actor, you should specify
-    `lifetime="detached"`. For example:
-
-    .. code-block:: python
-
-      # first_driver.py
-      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
-      ray.get(pg.ready())
-
-    The placement group's lifetime will be independent of the driver now. This means it
-    is possible to retrieve the placement group from other drivers regardless of when
-    the current driver exits. Let's see an example:
-
-    .. code-block:: python
-
-      # second_driver.py
-      table = ray.util.placement_group_table()
-      print(len(table))
-
-    Note that the lifetime option is decoupled from the name. If we only specified
-    the name without specifying ``lifetime="detached"``, then the placement group can
-    only be retrieved as long as the original driver is still running.
-
-.. tabbed:: Java
-
-    The lifetime argument is not implemented for Java APIs yet.
-
-Tips for Using Placement Groups
--------------------------------
-- Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
-- Learn the :ref:`fault tolerance <ray-placement-group-ft-ref>` of placement groups.
-
 
 Lifecycle
 ---------
