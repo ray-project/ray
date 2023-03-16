@@ -134,7 +134,11 @@ def run_release_test(
 
     start_time = time.monotonic()
 
-    run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
+    team = test.get("team")
+    if team == "core":
+        run_type = test["run"].get("type", "job")
+    else:
+        run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
     # Workaround while Anyscale Jobs don't support leaving cluster alive
     # after the job has finished.

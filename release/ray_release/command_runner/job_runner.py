@@ -117,7 +117,7 @@ class JobRunner(CommandRunner):
         )
 
         status_code, time_taken = self.job_manager.run_and_wait(
-            full_command, full_env, working_dir=".", timeout=int(timeout)
+            full_command, full_env, timeout=int(timeout)
         )
 
         if status_code != 0:
