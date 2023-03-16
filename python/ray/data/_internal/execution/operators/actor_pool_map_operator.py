@@ -66,7 +66,9 @@ class ActorPoolMapOperator(MapOperator):
             ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
+        # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
+        # after the `min_workers` have been created.
+        self._actor_pool = _ActorPool(max_tasks_in_flight=1)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -178,6 +180,16 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
+            # After the minimum number of workers have been created, then ramp up to the
+            # default `max_tasks_in_flight`.
+            if (
+                self._actor_pool.num_running_actors()
+                + self._actor_pool.num_idle_actors()
+                >= self._autoscaling_policy.min_workers
+            ):
+                self._actor_pool._max_tasks_in_flight = (
+                    self._autoscaling_policy._config.max_tasks_in_flight
+                )
         # For either a completed task or ready worker, we try to dispatch queued tasks.
         self._dispatch_tasks()
 
