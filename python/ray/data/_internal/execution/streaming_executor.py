@@ -133,7 +133,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()
-                state.close_progress_bar()
+                state.close_progress_bars()
             if self._output_info:
                 self._output_info.close()
 

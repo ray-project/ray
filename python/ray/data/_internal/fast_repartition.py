@@ -43,8 +43,10 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
     reduce_task = cached_remote_fn(_ShufflePartitionOp.reduce).options(num_returns=2)
 
     should_close_bar = True
-    if ctx is not None and ctx.sub_progress_bar_iter is not None:
-        reduce_bar = next(ctx.sub_progress_bar_iter)
+    if ctx is not None and ctx.sub_progress_bar_dict is not None:
+        bar_name = "Repartition"
+        assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+        reduce_bar = ctx.sub_progress_bar_dict[bar_name]
         should_close_bar = False
     else:
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))

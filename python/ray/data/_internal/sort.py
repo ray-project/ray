@@ -99,8 +99,10 @@ def sample_boundaries(
     sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
 
     should_close_bar = True
-    if ctx is not None and ctx.sub_progress_bar_iter is not None:
-        sample_bar = next(ctx.sub_progress_bar_iter)
+    if ctx is not None and ctx.sub_progress_bar_dict is not None:
+        bar_name = "SortSample"
+        assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+        sample_bar = ctx.sub_progress_bar_dict[bar_name]
         should_close_bar = False
     else:
         sample_bar = ProgressBar("Sort Sample", len(sample_results))

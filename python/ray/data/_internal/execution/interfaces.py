@@ -217,8 +217,10 @@ class TaskContext:
     # operator.
     task_idx: int
 
-    # The iterator of sub progress bar that task is responsible to update.
-    sub_progress_bar_iter: Optional[Iterator[ProgressBar]] = None
+    # The dictionary of sub progress bar to update. The key is name of sub progress
+    # bar. Note this is only used on driver side.
+    # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
+    sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
 
 # Block transform function applied by task and actor pools in MapOperator.

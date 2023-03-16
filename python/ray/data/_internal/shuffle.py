@@ -79,8 +79,10 @@ class SimpleShufflePlan(ShuffleOp):
         shuffle_reduce = cached_remote_fn(self.reduce)
 
         should_close_bar = True
-        if ctx is not None and ctx.sub_progress_bar_iter is not None:
-            map_bar = next(ctx.sub_progress_bar_iter)
+        if ctx is not None and ctx.sub_progress_bar_dict is not None:
+            bar_name = "ShuffleMap"
+            assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+            map_bar = ctx.sub_progress_bar_dict[bar_name]
             should_close_bar = False
         else:
             map_bar = ProgressBar("Shuffle Map", total=input_num_blocks)
@@ -111,8 +113,10 @@ class SimpleShufflePlan(ShuffleOp):
             map_bar.close()
 
         should_close_bar = True
-        if ctx is not None and ctx.sub_progress_bar_iter is not None:
-            reduce_bar = next(ctx.sub_progress_bar_iter)
+        if ctx is not None and ctx.sub_progress_bar_dict is not None:
+            bar_name = "ShuffleReduce"
+            assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+            reduce_bar = ctx.sub_progress_bar_dict[bar_name]
             should_close_bar = False
         else:
             reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
