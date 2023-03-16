@@ -218,7 +218,7 @@ class GroupedDataset(Generic[T]):
                 clear_input_blocks,
             )
 
-        plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
+        plan = self._dataset._plan.with_stage(AllToAllStage("Aggregate", None, do_agg))
 
         logical_plan = self._dataset._logical_plan
         if logical_plan is not None:
