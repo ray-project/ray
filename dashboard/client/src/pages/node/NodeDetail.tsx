@@ -36,7 +36,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
+const NodeDetailPage = () => {
   const classes = useStyle();
   const {
     params,
@@ -55,7 +55,7 @@ const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
         pageInfo={{
           title: `Node: ${params.id}`,
           id: "node-detail",
-          path: `/new/cluster/nodes/${params.id}`,
+          path: `/cluster/nodes/${params.id}`,
         }}
       />
       <Loading loading={msg.startsWith("Loading")} />
@@ -182,13 +182,7 @@ const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link
-                  to={
-                    newIA
-                      ? `/new/logs/${encodeURIComponent(nodeDetail.logUrl)}`
-                      : `/log/${encodeURIComponent(nodeDetail.logUrl)}`
-                  }
-                >
+                <Link to={`/logs/${encodeURIComponent(nodeDetail.logUrl)}`}>
                   log
                 </Link>
               </Grid>
@@ -229,7 +223,6 @@ const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
               <RayletWorkerTable
                 workers={nodeDetail?.workers}
                 actorMap={nodeDetail?.actors}
-                newIA={newIA}
               />
             </TableContainer>
           </React.Fragment>
@@ -240,8 +233,7 @@ const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
-                newIA={newIA}
-                detailPathPrefix="/new/actors"
+                detailPathPrefix="/actors"
               />
             </TableContainer>
           </React.Fragment>

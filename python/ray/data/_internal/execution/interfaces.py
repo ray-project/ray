@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Un
 import ray
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
@@ -215,6 +216,11 @@ class TaskContext:
     # The index of task. Each task has a unique task index within the same
     # operator.
     task_idx: int
+
+    # The dictionary of sub progress bar to update. The key is name of sub progress
+    # bar. Note this is only used on driver side.
+    # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
+    sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
 
 # Block transform function applied by task and actor pools in MapOperator.

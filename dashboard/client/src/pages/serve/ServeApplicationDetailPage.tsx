@@ -81,7 +81,7 @@ export const ServeApplicationDetailPage = () => {
         pageInfo={{
           id: "serveApplicationDetail",
           title: appName,
-          path: `/new/serve/applications/${appName}`,
+          path: `/serve/applications/${appName}`,
         }}
       />
       <MetadataSection

@@ -23,7 +23,7 @@ export const ServeLayout = () => {
         pageInfo={{
           id: "serve",
           title: "Serve",
-          path: "/new/serve",
+          path: "/serve",
         }}
       />
       <Outlet />
