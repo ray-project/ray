@@ -118,6 +118,9 @@ and override one or more of its methods. Those are in particular:
 
 .. _rllib-algorithm-api:
 
+Algorithm API
+-------------
+
 .. currentmodule:: ray.rllib.algorithms.algorithm
 
 Constructor
