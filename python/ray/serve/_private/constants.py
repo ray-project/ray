@@ -46,6 +46,9 @@ CONTROL_LOOP_PERIOD_S = 0.1
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
+#: Time that must pass before retrying an embargoed replica
+EMBARGO_TIMEOUT_S = 60
+
 #: Max retry count for allowing failures in replica constructor.
 #: If no replicas at target version is running by the time we're at
 #: max construtor retry count, deploy() is considered failed.

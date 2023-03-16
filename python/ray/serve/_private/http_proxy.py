@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    EMBARGO_TIMEOUT_S,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
@@ -77,7 +78,7 @@ async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) 
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        (assignment_task, replica_tag): Tuple[asyncio.Task, str] = handle._internal_remote(request)
+        assignment_task, replica_tag_coro = handle._internal_remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,
@@ -96,6 +97,7 @@ async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) 
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
+            replica_tag = await replica_tag_coro
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),
@@ -116,6 +118,12 @@ async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) 
                     'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 backoff = True
+                logger.info(
+                    f"Embargoing replica {replica_tag}. This HTTP proxy "
+                    "will continue sending requests to replica after "
+                    f"{EMBARGO_TIMEOUT_S} seconds."
+                )
+                handle.embargo_replica(replica_tag)
             else:
                 result = await object_ref
                 client_disconnection_task.cancel()

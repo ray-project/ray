@@ -14,7 +14,7 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
 from ray.serve._private.common import RunningReplicaInfo, ReplicaTag
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, EMBARGO_TIMEOUT_S
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
@@ -90,7 +90,7 @@ class ReplicaSet:
         else:
             self.config_updated_event = asyncio.Event(loop=event_loop)
 
-        self.deny_set = ExpiringSet(60)
+        self.deny_set = ExpiringSet(EMBARGO_TIMEOUT_S)
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -246,10 +246,10 @@ class ReplicaSet:
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
         await query.resolve_async_tasks()
-        assigned_ref = self._try_assign_replica(query)
+        assigned_ref, assigned_replica_tag = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
-                "Failed to assign a replica for " f"query {query.metadata.request_id}"
+                f"Failed to assign a replica for query {query.metadata.request_id}"
             )
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
@@ -271,7 +271,8 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
-        return assigned_ref, assigned_replica_tag
+        yield assigned_ref
+        yield assigned_replica_tag
 
     def embargo_replica(self, replica_tag: str):
         """Temporarily embargoes a replica.
@@ -331,14 +332,20 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> ray.ObjectRef:
+    ) -> Tuple[ray.ObjectRef, ReplicaTag]:
         """Assigns a query and returns an object ref representing the result."""
 
         self.num_router_requests.inc()
-        return await self._replica_set.assign_replica(
+        replica_assignment_iterator = self._replica_set.assign_replica(
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
         )
+
+        result_ref: ray.ObjectRef = await replica_assignment_iterator.__anext__()
+        yield result_ref
+
+        replica_tag: ReplicaTag = await replica_assignment_iterator.__anext__()
+        yield replica_tag
