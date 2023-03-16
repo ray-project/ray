@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.data.block import BlockMetadata
 from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
@@ -481,7 +482,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
+    ) -> Tuple[Iterator[Tuple[ObjectRef[Block], BlockMetadata]], DatasetStats, Optional["Executor"]]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming

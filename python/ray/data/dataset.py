@@ -2905,6 +2905,7 @@ class Dataset(Generic[T]):
     def iter_batches(
         self,
         *,
+        prefetch_batches: int = 0,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
@@ -2923,6 +2924,14 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to process. If set to greater than 0, a separate thread will be used
+                to fetch the specified amount of formatted batches from blocks. This
+                improves performance for non-CPU bound UDFs, allowing batch fetching
+                compute and formatting to be overlapped with the UDF. Defaults to 0 (no
+                prefetching enabled.) Increasing the number of batches to prefetch can
+                result in higher throughput, at the expense of requiring more heap
+                memory to buffer the batches.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: The number of rows in each batch, or None to use entire blocks

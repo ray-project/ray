@@ -9,6 +9,7 @@ from typing import (
     Iterator,
     Callable,
     Any,
+    Tuple,
     Union,
     TYPE_CHECKING,
 )
@@ -17,7 +18,7 @@ import ray
 from ray.data._internal.util import _default_batch_format
 
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data.block import Block, DataBatch
+from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DatasetContext
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.legacy_compat import (
@@ -92,12 +93,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
     ) -> Iterator[DataBatch]:
         """Implements DatasetIterator."""
 
-        def gen_blocks() -> Iterator[ObjectRef[Block]]:
+        def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             future: ObjectRef[
-                Optional[ObjectRef[Block]]
+                Optional[Tuple[ObjectRef[Block], BlockMetadata]]
             ] = self._coord_actor.get.remote(self._output_split_idx)
             while True:
-                block_ref: Optional[ObjectRef[Block]] = ray.get(future)
+                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(future)
                 if not block_ref:
                     break
                 else:
@@ -172,7 +173,7 @@ class SplitCoordinator:
             dag_rewrite=add_split_op,
         )
 
-    def get(self, output_split_idx: int) -> Optional[ObjectRef[Block]]:
+    def get(self, output_split_idx: int) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -190,7 +191,7 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
-            block = next_bundle.blocks.pop()[0]
+            bundle = next_bundle.blocks.pop()
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
@@ -198,6 +199,6 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return block
+            return bundle
         except StopIteration:
             return None

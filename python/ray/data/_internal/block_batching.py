@@ -3,10 +3,11 @@ import itertools
 import queue
 import sys
 import threading
-from typing import Any, Callable, Iterator, Optional, TypeVar, Union
+from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.data.block import BlockMetadata
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -31,10 +32,9 @@ PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_block_refs(
-    block_refs: Iterator[ObjectRef[Block]],
+    block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     *,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-    prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
@@ -55,8 +55,6 @@ def batch_block_refs(
 
     Args:
         block_refs: An iterator over block object references.
-        prefetch_blocks: The number of blocks to prefetch ahead of the
-            current block during the scan.
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
@@ -91,7 +89,7 @@ def batch_block_refs(
     context = DatasetContext.get_current()
 
     if (
-        prefetch_blocks > 0
+        prefetch_batches > 0
         and context.actor_prefetcher_enabled
         and not ray.util.client.ray.is_connected()
     ):
@@ -99,14 +97,15 @@ def batch_block_refs(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    block_iter = _resolve_blocks(
-        _prefetch_blocks(
-            block_ref_iter=block_refs,
-            prefetcher=prefetcher,
-            stats=stats,
-            num_blocks_to_prefetch=prefetch_blocks,
-            clear_block_after_read=clear_block_after_read,
-        ),
+    if prefetch_batches > 0:
+        block_ref_iter = _prefetch_batch(block_ref_iter=block_refs, prefetcher=prefetcher, stats=stats, batch_size=batch_size)
+    else:
+        def block_ref_iter() -> Iterator[ObjectRef[Block]]:
+            for block_ref in block_refs:
+                yield block_ref[0]        
+
+    block_iter = _resolve_blocks(block_ref_iter,
+        clear_block_after_read=clear_block_after_read,
         stats=stats,
     )
 
@@ -224,6 +223,7 @@ def _make_async_gen(
 
 def _resolve_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
+    clear_block_after_read: bool = False, 
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Given an iterator of unresolved blocks (as Ray object references), returns an
@@ -234,11 +234,17 @@ def _resolve_blocks(
 
     Args:
         block_ref_iter: An iterator over block object references.
+        clear_block_after_read: Whether to clear the block from object store
+            manually (i.e. without waiting for Python's automatic GC) after it
+            is read. Doing so will reclaim memory faster and hence reduce the
+            memory footprint. However, the caller has to ensure the safety, i.e.
+            the block will never be accessed again.
         stats: Dataset stats object used to store block fetching time.
 
     Returns:
         An iterator over resolved blocks.
     """
+    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
 
     hit = 0
     miss = 0
@@ -261,6 +267,9 @@ def _resolve_blocks(
                 unknown += 1
             with stats_timer:
                 block = ray.get(block_ref)
+                trace_deallocation(
+                    block_ref, "block_batching._prefetch_blocks", free=eager_free
+                )
             yield block
 
     if stats:
@@ -269,58 +278,58 @@ def _resolve_blocks(
         stats.iter_unknown_location = unknown
 
 
-def _prefetch_blocks(
-    block_ref_iter: Iterator[ObjectRef[Block]],
+def _prefetch_batch(
+    block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     prefetcher: "BlockPrefetcher",
-    num_blocks_to_prefetch: int,
-    clear_block_after_read: bool = False,
+    batch_size: int,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
-    """Given an iterable of Block Object References, returns an iterator
-    over these object reference while prefetching `num_block_to_prefetch`
-    blocks in advance.
+    """Given an iterable of Block Object References and their corresponding metadata, returns an iterator over these object reference while prefetching a batch in advance.
+
+    The batch is determined by the provided `batch_size`, which may differ from the block sizes.
 
     Args:
         block_ref_iter: An iterator over block object references.
         num_blocks_to_prefetch: The number of blocks to prefetch ahead of the
             current block during the scan.
-        clear_block_after_read: Whether to clear the block from object store
-            manually (i.e. without waiting for Python's automatic GC) after it
-            is read. Doing so will reclaim memory faster and hence reduce the
-            memory footprint. However, the caller has to ensure the safety, i.e.
-            the block will never be accessed again.
         stats: Dataset stats object used to store block wait time.
     """
-    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
 
-    if num_blocks_to_prefetch == 0:
-        for block_ref in block_ref_iter:
-            yield block_ref
-            trace_deallocation(
-                block_ref, "block_batching._prefetch_blocks", free=eager_free
-            )
+    def bundle_batch() -> List[ObjectRef[Block]]:
+        """Returns the block refs comprising the next batch of the dataset."""
+        blocks_for_batch = collections.deque()
+        num_rows_counter = 0
+        while num_rows_counter < batch_size:
+            try:
+                next_block_ref, next_metadata = next(block_ref_iter)
+                blocks_for_batch.append(next_block_ref)
+                if next_metadata.num_rows is None:
+                    # If the number of rows for this block is not known, then
+                    # assume 1 block ==  1 batch.
+                    break
+                else:
+                    num_rows_counter += next_metadata.num_rows
+            except StopIteration:
+                break
+        return blocks_for_batch
 
-    window_size = num_blocks_to_prefetch
     # Create the initial set of blocks to prefetch.
-    sliding_window = collections.deque(
-        itertools.islice(block_ref_iter, window_size), maxlen=window_size
-    )
+    sliding_window = bundle_batch()
     with stats.iter_wait_s.timer() if stats else nullcontext():
         prefetcher.prefetch_blocks(list(sliding_window))
+
+    fetched_next_batch = False
 
     while sliding_window:
         block_ref = sliding_window.popleft()
         try:
-            sliding_window.append(next(block_ref_iter))
-            with stats.iter_wait_s.timer() if stats else nullcontext():
-                prefetcher.prefetch_blocks(list(sliding_window))
+            if not fetched_next_batch:
+                next_sliding_window = bundle_batch()
+                with stats.iter_wait_s.timer() if stats else nullcontext():
+                    prefetcher.prefetch_blocks(list(next_sliding_window))
         except StopIteration:
             pass
         yield block_ref
-        trace_deallocation(
-            block_ref, "block_batching._prefetch_blocks", free=eager_free
-        )
-
 
 def _blocks_to_batches(
     block_iter: Iterator[Block],
