@@ -26,13 +26,26 @@ class TestRE3(unittest.TestCase):
         Both the on-policy and off-policy setups are validated.
         """
         if rl_algorithm == "PPO":
-            config = ppo.PPOConfig().to_dict()
+            # We need to disable the RLModule / Learner API here, since this test is
+            # overfitted to the ModelV2 API stack. The random encoder is based on
+            # ModelV2 stack.
+            config = (
+                ppo.PPOConfig()
+                .rl_module(_enable_rl_module_api=False)
+                .training(_enable_learner_api=False)
+            )
             algo_cls = ppo.PPO
             beta_schedule = "constant"
         elif rl_algorithm == "SAC":
-            config = sac.SACConfig().to_dict()
+            config = (
+                sac.SACConfig()
+                .rl_module(_enable_rl_module_api=False)
+                .training(_enable_learner_api=False)
+            )
             algo_cls = sac.SAC
             beta_schedule = "linear_decay"
+
+        config = config.to_dict()
 
         class RE3Callbacks(RE3UpdateCallbacks, config["callbacks"]):
             pass

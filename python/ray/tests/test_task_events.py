@@ -3,7 +3,9 @@ from typing import Dict
 import pytest
 import threading
 import time
-
+from ray._private.state_api_test_utils import verify_failed_task
+from ray.exceptions import RuntimeEnvSetupError
+from ray.runtime_env import RuntimeEnv
 import ray
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
@@ -12,7 +14,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import StateApiClient, list_tasks
+from ray.experimental.state.api import StateApiClient, list_actors, list_tasks
 
 from ray._private.worker import RayContext
 
@@ -79,6 +81,172 @@ def test_status_task_events_metrics(shutdown_only):
         verify,
         timeout=20,
         retry_interval_ms=100,
+    )
+
+
+def test_failed_task_error(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    # Test failed task with TASK_EXECUTION_EXCEPTION
+    @ray.remote
+    def fail(x=None):
+        if x is not None:
+            time.sleep(x)
+        raise ValueError("fail is expected to failed")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(fail.options(name="fail").remote())
+
+    wait_for_condition(
+        verify_failed_task, name="fail", error_type="TASK_EXECUTION_EXCEPTION"
+    )
+
+    # Test canceled tasks with TASK_CANCELLED
+    @ray.remote
+    def sleep():
+        time.sleep(999)
+
+    with pytest.raises(ray.exceptions.TaskCancelledError):
+        t = sleep.options(name="sleep-cancel").remote()
+        ray.cancel(t)
+        ray.get(t)
+
+    wait_for_condition(
+        verify_failed_task, name="sleep-cancel", error_type="TASK_CANCELLED"
+    )
+
+    # Test task failed when worker killed :WORKER_DIED
+    @ray.remote(max_retries=0)
+    def die():
+        exit(1)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(die.options(name="die-worker").remote())
+
+    wait_for_condition(verify_failed_task, name="die-worker", error_type="WORKER_DIED")
+
+    # Test actor task failed with actor dead: ACTOR_DIED
+    @ray.remote
+    class Actor:
+        def f(self):
+            time.sleep(999)
+
+    a = Actor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.kill(a)
+        ray.get(a.f.options(name="actor-killed").remote())
+
+    wait_for_condition(verify_failed_task, name="actor-killed", error_type="ACTOR_DIED")
+
+
+def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    node = cluster.add_node(num_cpus=2)
+
+    driver_script = """
+import ray
+ray.init("auto")
+
+@ray.remote(num_cpus=2, max_retries=0)
+def sleep():
+    import time
+    time.sleep(999)
+
+x = sleep.options(name="node-killed").remote()
+ray.get(x)
+    """
+
+    run_string_as_driver_nonblocking(driver_script)
+
+    def driver_running():
+        t = list_tasks(filters=[("name", "=", "node-killed")])
+        return len(t) > 0
+
+    wait_for_condition(driver_running)
+
+    # Kill the node
+    cluster.remove_node(node)
+
+    wait_for_condition(verify_failed_task, name="node-killed", error_type="NODE_DIED")
+
+
+def test_failed_task_unschedulable(shutdown_only):
+    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+
+    node_id = ray.get_runtime_context().get_node_id()
+    policy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=node_id,
+        soft=False,
+    )
+
+    @ray.remote
+    def task():
+        pass
+
+    task.options(
+        scheduling_strategy=policy,
+        name="task-unschedulable",
+        num_cpus=2,
+    ).remote()
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-unschedulable",
+        error_type="TASK_UNSCHEDULABLE_ERROR",
+    )
+
+
+def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
+    ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
+    from ray.util.placement_group import placement_group, remove_placement_group
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    pg = placement_group([{"CPU": 2}])
+    ray.get(pg.ready())
+
+    @ray.remote(num_cpus=2)
+    def sleep():
+        time.sleep(999)
+
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.RequestWorkerLease=3000000:3000000",
+        )
+
+        sleep.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+            name="task-pg-removed",
+            max_retries=0,
+        ).remote()
+
+    remove_placement_group(pg)
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-pg-removed",
+        error_type="TASK_PLACEMENT_GROUP_REMOVED",
+    )
+
+
+def test_failed_task_runtime_env_setup(shutdown_only):
+    @ray.remote
+    def f():
+        pass
+
+    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        match="ResolvePackageNotFound",
+    ):
+        ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-runtime-env-failed",
+        error_type="RUNTIME_ENV_SETUP_FAILED",
     )
 
 
@@ -329,6 +497,127 @@ tune_function()
                 continue
             assert task_id_map.get(task["parent_task_id"], None) is not None, task
 
+        return True
+
+    wait_for_condition(verify)
+
+
+@ray.remote
+class ActorOk:
+    def ready(self):
+        pass
+
+
+@ray.remote
+class ActorInitFailed:
+    def __init__(self):
+        raise ValueError("Actor init is expected to fail")
+
+    def ready(self):
+        pass
+
+
+def test_actor_creation_task_ok(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+    a = ActorOk.remote()
+    ray.get(a.ready.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "ActorOk.__init__")])
+        actors = list_actors(filters=[("class_name", "=", "ActorOk")])
+
+        assert len(tasks) == 1
+        assert len(actors) == 1
+        actor = actors[0]
+        task = tasks[0]
+        assert task["state"] == "FINISHED"
+        assert task["actor_id"] == actor["actor_id"]
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_actor_creation_task_failed(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+    a = ActorInitFailed.remote()
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "ActorInitFailed.__init__")])
+        actors = list_actors(filters=[("class_name", "=", "ActorInitFailed")])
+
+        assert len(tasks) == 1
+        assert len(actors) == 1
+        actor = actors[0]
+        task = tasks[0]
+        assert task["state"] == "FAILED"
+        assert task["actor_id"] == actor["actor_id"]
+        assert actor["state"] == "DEAD"
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_actor_creation_nested_failure_from_actor(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class NestedActor:
+        def ready(self):
+            a = ActorInitFailed.remote()
+            ray.get(a.ready.remote())
+
+    a = NestedActor.remote()
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(a.ready.remote())
+
+    def verify():
+        creation_tasks = list_tasks(filters=[("type", "=", "ACTOR_CREATION_TASK")])
+        actors = list_actors()
+
+        assert len(creation_tasks) == 2
+        assert len(actors) == 2
+        for actor in actors:
+            if "NestedActor" in actor["class_name"]:
+                assert actor["state"] == "ALIVE"
+            else:
+                assert "ActorInitFailed" in actor["class_name"]
+                assert actor["state"] == "DEAD"
+
+        for task in creation_tasks:
+            if "ActorInitFailed" in task["name"]:
+                assert task["state"] == "FAILED"
+            else:
+                assert task["name"] == "NestedActor.__init__"
+                assert task["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_actor_creation_canceled(shutdown_only):
+    ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
+
+    # An actor not gonna be scheduled
+    a = ActorOk.options(num_cpus=10).remote()
+
+    # Kill it before it could be scheduled.
+    ray.kill(a)
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "ActorOk.__init__")])
+        actors = list_actors(filters=[("class_name", "=", "ActorOk")])
+
+        assert len(tasks) == 1
+        assert len(actors) == 1
+        actor = actors[0]
+        task = tasks[0]
+        assert task["state"] == "FAILED"
+        assert task["actor_id"] == actor["actor_id"]
+        assert actor["state"] == "DEAD"
         return True
 
     wait_for_condition(verify)

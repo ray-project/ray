@@ -23,8 +23,11 @@ def test_tensors_basic(ray_start_regular_shared):
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=6,\n\tnum_rows=6,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=6,\n"
+        "   num_rows=6,\n"
+        "   schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)}\n"
+        ")"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -271,50 +274,65 @@ def test_tensors_sort(ray_start_regular_shared):
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=10,\n\tnum_rows=10,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n)"
+        "Dataset(\n"
+        "   num_blocks=10,\n"
+        "   num_rows=10,\n"
+        "   schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n"
+        ")"
     )
 
     # Test map_batches.
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: np.ones((3, 4, 4)), batch_size=2
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=4,\n\tnum_rows=24,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n)"
+        "Dataset(\n"
+        "   num_blocks=4,\n"
+        "   num_rows=24,\n"
+        "   schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n"
+        ")"
     )
 
     # Test flat_map.
     ds = ray.data.range(10, parallelism=10).flat_map(
         lambda _: [np.ones((4, 4)), np.ones((4, 4))]
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=10,\n\tnum_rows=20,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n)"
+        "Dataset(\n"
+        "   num_blocks=10,\n"
+        "   num_rows=20,\n"
+        "   schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n"
+        ")"
     )
 
     # Test map_batches ndarray column.
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=4,\n\tnum_rows=24,"
-        "\n\tschema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=4,\n"
+        "   num_rows=24,\n"
+        "   schema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n"
+        ")"
     )
 
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=4,\n\tnum_rows=16,"
-        "\n\tschema={a: TensorDtype(shape=(None, None), dtype=float64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=4,\n"
+        "   num_rows=16,\n"
+        "   schema={a: TensorDtype(shape=(None, None), dtype=float64)}\n"
+        ")"
     )
 
 

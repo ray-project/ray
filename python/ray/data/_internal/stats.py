@@ -8,6 +8,7 @@ import numpy as np
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.util.annotations import DeveloperAPI
@@ -69,11 +70,12 @@ class _DatasetStatsBuilder:
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
+            capped_k = capfirst(k)
             if len(stages) > 1:
                 if i == 0:
-                    stage_infos[self.stage_name + "_" + k] = v
+                    stage_infos[self.stage_name + capped_k] = v
                 else:
-                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                    stage_infos[self.stage_name.split("->")[-1] + capped_k] = v
             else:
                 stage_infos[self.stage_name] = v
         stats = DatasetStats(
@@ -223,6 +225,16 @@ class DatasetStats:
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
 
+        # Block fetch stats during iteration.
+        # These are stats about locations of blocks when the iterator is trying to
+        # consume them. The iteration performance will be affected depending on
+        # whether the block is in the local object store of the node where the
+        # iterator is running.
+        # This serves as an indicator of block prefetching effectiveness.
+        self.iter_blocks_local: int = 0
+        self.iter_blocks_remote: int = 0
+        self.iter_unknown_location: int = 0
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -252,13 +264,13 @@ class DatasetStats:
             if DatasetContext.get_current().block_splitting_enabled:
                 # Only populate stats when stats from all read tasks are ready at
                 # stats actor.
-                if len(stats_map.items()) == len(self.stages["read"]):
-                    self.stages["read"] = []
+                if len(stats_map.items()) == len(self.stages["Read"]):
+                    self.stages["Read"] = []
                     for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["read"] += blocks_metadata
+                        self.stages["Read"] += blocks_metadata
             else:
                 for i, metadata in stats_map.items():
-                    self.stages["read"][i] = metadata[0]
+                    self.stages["Read"][i] = metadata[0]
 
         stages_stats = []
         is_substage = len(self.stages) > 1
@@ -279,6 +291,9 @@ class DatasetStats:
             self.iter_format_batch_s,
             self.iter_user_s,
             self.iter_total_s,
+            self.iter_blocks_local,
+            self.iter_blocks_remote,
+            self.iter_unknown_location,
         )
         stats_summary_parents = []
         if self.parents is not None:
@@ -616,6 +631,12 @@ class IterStatsSummary:
     user_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+    # Num of blocks that are in local object store
+    iter_blocks_local: int
+    # Num of blocks that are in remote node and have to fetch locally
+    iter_blocks_remote: int
+    # Num of blocks with unknown locations
+    iter_unknown_location: int
 
     def __str__(self) -> str:
         out = ""
@@ -629,6 +650,11 @@ class IterStatsSummary:
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "* Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
+            )
             out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
             out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
             out += "* In user code: {}\n".format(fmt(self.user_time.get()))
