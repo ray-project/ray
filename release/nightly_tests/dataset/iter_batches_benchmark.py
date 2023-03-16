@@ -53,7 +53,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
             "s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2018/01"
         )
         .repartition(12)
-        .fully_executed()
+        .cache()
     )
 
     batch_formats = ["pandas", "numpy"]
@@ -72,7 +72,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     for current_format in ["pyarrow", "pandas"]:
         new_ds = ds.map_batches(
             lambda ds: ds, batch_format=current_format, batch_size=None
-        ).fully_executed()
+        ).cache()
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"iter-batches-conversion-{current_format}-to-{new_format}-{batch_size}"  # noqa: E501
@@ -104,7 +104,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     new_ds = ds.repartition(512)
     new_ds = new_ds.map_batches(
         lambda ds: ds, batch_format="pandas", batch_size=None
-    ).fully_executed()
+    ).cache()
     for batch_size in [32 * 1024, 64 * 1024, 256 * 1024]:
         test_name = f"iter-batches-block-concat-to-batch-{batch_size}"
         benchmark.run(

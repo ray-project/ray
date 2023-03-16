@@ -158,7 +158,7 @@ class TestReadImages:
 
         data_size = ds.size_bytes()
         assert data_size >= 0, "estimated data size is out of expected bound"
-        data_size = ds.fully_executed().size_bytes()
+        data_size = ds.cache().size_bytes()
         assert data_size >= 0, "actual data size is out of expected bound"
 
         reader = _ImageDatasourceReader(
@@ -189,12 +189,12 @@ class TestReadImages:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
-            ds.fully_executed()
+            ds.cache()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 
             # Test union of same datasets
-            union_ds = ds.union(ds, ds, ds).fully_executed()
+            union_ds = ds.union(ds, ds, ds).cache()
             assert union_ds.num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size

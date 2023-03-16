@@ -125,7 +125,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
@@ -2814,7 +2814,7 @@ class Dataset(Generic[T]):
             try:
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
-                ).fully_executed()
+                ).cache()
                 datasource.on_write_complete(
                     ray.get(self._write_ds._plan.execute().get_blocks())
                 )
@@ -3929,8 +3929,33 @@ class Dataset(Generic[T]):
             )
         return pipe
 
+    @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "Dataset[T]":
-        """Force full evaluation of the blocks of this dataset.
+        warnings.warn(
+            "The 'fully_executed' call has been renamed to 'cache'.",
+            DeprecationWarning,
+        )
+        return self.cache()
+
+    @Deprecated(message="Use `Dataset.is_cached()` instead.")
+    def is_fully_executed(self) -> bool:
+        warnings.warn(
+            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
+            DeprecationWarning,
+        )
+        return self.is_cached()
+
+    def is_cached(self) -> bool:
+        """Returns whether this Dataset has been cached in memory.
+
+        This will return False if the output of its final stage hasn't been computed
+        yet.
+        """
+        return self._plan.has_computed_output()
+
+    @ConsumptionAPI(pattern="store memory.", insert_after=True)
+    def cache(self) -> "Dataset[T]":
+        """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
@@ -3941,17 +3966,13 @@ class Dataset(Generic[T]):
         self._plan.execute(force_read=True)
         return self
 
-    def is_fully_executed(self) -> bool:
-        """Returns whether this Dataset has been fully executed.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
-        return self._plan.has_computed_output()
-
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
-        """Returns a string containing execution timing information."""
+        """Returns a string containing execution timing information.
+
+        Note that this does not trigger execution, so if the Dataset has not yet
+        executed, an empty string will be returned.
+        """
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
@@ -3983,7 +4004,7 @@ class Dataset(Generic[T]):
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
-        manually triggered via ``.fully_executed()``.
+        manually triggered via ``.cache()``.
         """
         ds = Dataset(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan

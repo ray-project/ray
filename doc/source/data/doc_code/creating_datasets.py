@@ -335,7 +335,7 @@ ds = ray.data.read_parquet(
     "example://iris.parquet",
     columns=["sepal.length", "variety"],
     filter=pa.dataset.field("sepal.length") > 5.0,
-).fully_executed()  # Force a full read of the file.
+).cache()  # Force a full read of the file.
 # -> Dataset(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
 
 ds.show(2)

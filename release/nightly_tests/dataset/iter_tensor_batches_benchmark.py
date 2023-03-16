@@ -58,7 +58,7 @@ def to_tf(
 def run_iter_tensor_batches_benchmark(benchmark: Benchmark):
     ds = ray.data.read_images(
         "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
-    ).fully_executed()
+    ).cache()
 
     # Repartition both to align the block sizes so we can zip them.
     ds = ds.repartition(ds.num_blocks())

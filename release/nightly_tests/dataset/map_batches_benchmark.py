@@ -24,7 +24,7 @@ def map_batches(
 
     ds = input_ds
     if is_eager_executed:
-        ds.fully_executed()
+        ds.cache()
 
     for _ in range(num_calls):
         ds = ds.map_batches(
@@ -34,7 +34,7 @@ def map_batches(
             compute=compute,
         )
         if is_eager_executed:
-            ds.fully_executed()
+            ds.cache()
     return ds
 
 
@@ -43,7 +43,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018/01"
     )
     lazy_input_ds = input_ds.lazy()
-    input_ds.fully_executed()
+    input_ds.cache()
 
     batch_formats = ["pandas", "numpy"]
     batch_sizes = [1024, 2048, 4096, None]
@@ -124,7 +124,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     for current_format in ["pyarrow", "pandas"]:
         new_input_ds = input_ds.map_batches(
             lambda ds: ds, batch_format=current_format, batch_size=None
-        ).fully_executed()
+        ).cache()
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"map-batches-{current_format}-to-{new_format}-{batch_size}"
@@ -140,7 +140,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # Test reading multiple files.
     input_ds = ray.data.read_parquet(
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018"
-    ).fully_executed()
+    ).cache()
 
     for batch_format in batch_formats:
         for compute in ["tasks", "actors"]:
