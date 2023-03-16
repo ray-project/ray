@@ -2,10 +2,12 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-environments-doc:
+
 Environments
 ============
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.dev/>`__, user-defined, multi-agent, and also batched environments.
+RLlib works with several different types of environments, including `Farama-Foundation Gymnasium <https://gymnasium.farama.org/>`__, user-defined, multi-agent, and also batched environments.
 
 .. tip::
 
@@ -86,10 +88,10 @@ This can be useful if you want to train over an ensemble of different environmen
 
    When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
 
-OpenAI Gym
+Gymnasium
 ----------
 
-RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
+RLlib uses Gymnasium as its environment interface for single-agent training. For more information on how to implement a custom Gymnasium environment, see the `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
 
 Performance
 ~~~~~~~~~~~
@@ -488,7 +490,7 @@ RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/
 Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.
 
-Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
+Take a look at the examples here for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
 and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
 scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
 and connect several clients to this server to learn the env.

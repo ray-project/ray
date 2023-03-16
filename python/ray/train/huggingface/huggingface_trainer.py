@@ -1,11 +1,8 @@
 import importlib.util
 import inspect
 import os
-import shutil
 import sys
-import tempfile
 import warnings
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 try:
@@ -23,31 +20,21 @@ from transformers.utils import is_datasets_available
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
-from ray.air._internal.checkpointing import (
-    save_preprocessor_to_dir,
-)
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
-    PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
-    TUNE_CHECKPOINT_ID,
 )
-from ray.train.data_parallel_trainer import _DataParallelCheckpointManager
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.huggingface._huggingface_utils import (
-    CHECKPOINT_PATH_ON_NODE_KEY,
-    NODE_IP_KEY,
     TrainReportCallback,
     process_datasets,
     wrap_transformers_trainer,
 )
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
-from ray.tune.trainable import Trainable
-from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
-from ray.util import PublicAPI, get_node_ip_address
+from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -76,73 +63,8 @@ if "datasets_modules" not in sys.modules and is_datasets_available():
     sys.modules[spec.name] = datasets_modules
     spec.loader.exec_module(datasets_modules)
 
-# This trainer uses a special checkpoint syncing logic.
-# Because HF checkpoints are very large dirs (at least several GBs),
-# we use directory checkpoints that are synced between nodes when
-# required instead of serializing the checkpoints and sending
-# bytes over nodes. This is a much more performant solution for
-# large directory checkpoints. The current implementation
-# is special for HuggingFaceTrainer, but can and should be
-# made generic.
-# TODO(ml-team): Make dir syncing checkpoint logic generic.
 
-
-# The checkpoint is turned into a dict with node ip & path
-# in HuggingFaceTrainer.as_trainable
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
-    def commit(self, path: Optional[Path] = None) -> None:
-        if (
-            self.storage_mode == CheckpointStorage.MEMORY
-            or not path
-            or not isinstance(self.dir_or_data, dict)
-        ):
-            return
-
-        source_ip = self.dir_or_data[NODE_IP_KEY]
-        source_path = self.dir_or_data[CHECKPOINT_PATH_ON_NODE_KEY]
-        target_ip = get_node_ip_address()
-
-        if source_ip == target_ip:
-            source_path = Path(source_path)
-            for inner in source_path.iterdir():
-                try:
-                    shutil.move(str(inner.absolute()), str(path.absolute()))
-                except OSError:
-                    # This file may have already been moved by another rank worker.
-                    # Disregard, as the files are identical across all ranks.
-                    pass
-            # No need to file lock here as each rank worker has its own folder.
-            shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
-        else:
-            sync_dir_between_nodes(
-                source_ip=source_ip,
-                source_path=source_path,
-                target_ip=target_ip,
-                target_path=str(path),
-                return_futures=False,
-                max_size_bytes=None,
-            )
-            delete_on_node(node_ip=source_ip, path=source_path)
-        save_preprocessor_to_dir(self.dir_or_data.pop(PREPROCESSOR_KEY, None), path)
-        # add tune checkpoint id
-        with open(path.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
-            f.write(str(self.id))
-
-
-class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        sync_checkpoint = _SyncedTrackedCheckpoint(
-            dir_or_data=checkpoint.dir_or_data,
-            storage_mode=checkpoint.storage_mode,
-            checkpoint_id=checkpoint.id,
-            metrics=checkpoint.metrics,
-            node_ip=checkpoint.node_ip,
-        )
-
-        super(
-            _DataParallelSyncingCheckpointManager, self
-        )._process_persistent_checkpoint(checkpoint=sync_checkpoint)
+TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
 
 @PublicAPI(stability="alpha")
@@ -195,6 +117,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             import ray
             from ray.train.huggingface import HuggingFaceTrainer
             from ray.air.config import ScalingConfig
+
+            # If using GPUs, set this to True.
+            use_gpu = False
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -252,6 +177,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
+                    no_cuda=(not use_gpu),
                 )
                 return transformers.Trainer(
                     model=model,
@@ -260,9 +186,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = ScalingConfig(num_workers=3)
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
@@ -297,8 +221,6 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
-
-    _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
         # training dataset should be split by us
@@ -338,16 +260,11 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
-            raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
-            )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
-
         super().__init__(
             train_loop_per_worker=_huggingface_train_loop_per_worker,
-            train_loop_config=trainer_init_config,
+            train_loop_config=self._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            ),
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -355,6 +272,67 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+    @classmethod
+    def _create_trainer_init_config(
+        cls,
+        trainer_init_per_worker: Callable[
+            [TorchDataset, Optional[TorchDataset], Any],
+            transformers.trainer.Trainer,
+        ],
+        trainer_init_config: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if TRAINER_INIT_FN_KEY in trainer_init_config:
+            raise ValueError(
+                f"'{TRAINER_INIT_FN_KEY}' is a reserved key in `trainer_init_config`."
+            )
+        if trainer_init_per_worker:
+            trainer_init_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
+        return trainer_init_config
+
+    @classmethod
+    def restore(
+        cls: Type["HuggingFaceTrainer"],
+        path: str,
+        trainer_init_per_worker: Optional[
+            Callable[
+                [TorchDataset, Optional[TorchDataset], Any],
+                transformers.trainer.Trainer,
+            ]
+        ] = None,
+        trainer_init_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "HuggingFaceTrainer":
+        """Restores a HuggingFaceTrainer from a previously interrupted/failed run.
+
+        Args:
+            trainer_init_per_worker: Optionally re-specified trainer init function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g., it holds onto outdated
+                object references). This should be the same trainer init
+                that was passed to the original trainer constructor.
+            trainer_init_config: Optionally re-specified trainer init config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            HuggingFaceTrainer: A restored instance of `HuggingFaceTrainer`
+        """
+        return super(DataParallelTrainer, cls).restore(
+            path=path,
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
         )
 
     def _validate_trainer_init_per_worker(
@@ -389,75 +367,10 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
         super()._validate_attributes()
 
-    def _convert_directory_checkpoint_to_sync_if_needed(
-        self, checkpoint: Checkpoint
-    ) -> Checkpoint:
-        """Replace the directory checkpoint with a node ip & path dict checkpoint.
-
-        This dict checkpoint will be used to sync the directory.
-        If we were to use a directory checkpoint directly, it would get deepcopied &
-        serialized unnecessarily."""
-        with checkpoint.as_directory() as checkpoint_path:
-            # Load checkpoint from path.
-            checkpoint_path = Path(checkpoint_path).expanduser().absolute()
-            if not checkpoint_path.joinpath(TUNE_CHECKPOINT_ID).exists():
-                # If the ID file is missing, we assume that this is already
-                # a sync checkpoint
-                dict_checkpoint = checkpoint.to_dict()
-                if (
-                    NODE_IP_KEY not in dict_checkpoint
-                    or CHECKPOINT_PATH_ON_NODE_KEY not in dict_checkpoint
-                ):
-                    raise ValueError(
-                        "Wrong checkpoint format. Ensure the checkpoint is a "
-                        "result of `HuggingFaceTrainer`."
-                    )
-                return checkpoint
-            with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
-                tune_checkpoint_id = int(f.read())
-
-            return Checkpoint.from_dict(
-                {
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                    TUNE_CHECKPOINT_ID: tune_checkpoint_id,
-                }
-            )
-
-    def setup(self) -> None:
-        if self.resume_from_checkpoint:
-            self.resume_from_checkpoint = (
-                self._convert_directory_checkpoint_to_sync_if_needed(
-                    self.resume_from_checkpoint
-                )
-            )
-
-    def _generate_trainable_cls(self) -> Type["Trainable"]:
-        original_param_dict = self._param_dict.copy()
-        resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(
-            "resume_from_checkpoint", None
-        )
-        if resume_from_checkpoint:
-            self._param_dict[
-                "resume_from_checkpoint"
-            ] = self._convert_directory_checkpoint_to_sync_if_needed(
-                resume_from_checkpoint
-            )
-        try:
-            ret = super()._generate_trainable_cls()
-        finally:
-            self._param_dict = original_param_dict
-        return ret
-
 
 def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
-
-    # Env vars necessary for HF to setup DDP
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
@@ -542,29 +455,8 @@ def _huggingface_train_loop_per_worker(config):
     trainer.add_callback(TrainReportCallback)
 
     checkpoint = session.get_checkpoint()
-    checkpoint_path = None
-    remove_checkpoint_path = False
     if checkpoint:
-        assert isinstance(checkpoint, Checkpoint)
-        checkpoint_dict = checkpoint.to_dict()
-        source_ip = checkpoint_dict[NODE_IP_KEY]
-        source_path = checkpoint_dict[CHECKPOINT_PATH_ON_NODE_KEY]
-        target_ip = get_node_ip_address()
-        if source_ip == target_ip:
-            checkpoint_path = source_path
-        else:
-            checkpoint_path = tempfile.mkdtemp(
-                suffix=Path(trainer.args.output_dir).name
-            )
-            remove_checkpoint_path = True
-            sync_dir_between_nodes(
-                source_ip=source_ip,
-                source_path=source_path,
-                target_ip=target_ip,
-                target_path=checkpoint_path,
-                return_futures=False,
-                max_size_bytes=None,
-            )
-    trainer.train(resume_from_checkpoint=checkpoint_path)
-    if remove_checkpoint_path:
-        shutil.rmtree(checkpoint_path, ignore_errors=True)
+        with checkpoint.as_directory() as checkpoint_path:
+            trainer.train(resume_from_checkpoint=checkpoint_path)
+    else:
+        trainer.train()

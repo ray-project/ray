@@ -7,15 +7,16 @@ a single training method).
 
 For a simpler example, see also: multiagent_cartpole.py
 """
-
+# TODO (Kourosh): Migrate this example to the RLModule API.
 import argparse
-import gym
+
+import gymnasium as gym
 import os
 
 import ray
-from ray.rllib.algorithms.dqn import DQN, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.algorithms.dqn import DQNConfig, DQNTFPolicy, DQNTorchPolicy
 from ray.rllib.algorithms.ppo import (
-    PPO,
+    PPOConfig,
     PPOTF1Policy,
     PPOTF2Policy,
     PPOTorchPolicy,
@@ -28,7 +29,7 @@ parser = argparse.ArgumentParser()
 # Use torch for both policies.
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -57,11 +58,11 @@ if __name__ == "__main__":
     register_env(
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
-    single_dummy_env = gym.make("CartPole-v0")
+    single_dummy_env = gym.make("CartPole-v1")
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 
-    def seelct_policy(algorithm, framework):
+    def select_policy(algorithm, framework):
         if algorithm == "PPO":
             if framework == "torch":
                 return PPOTorchPolicy
@@ -77,20 +78,58 @@ if __name__ == "__main__":
         else:
             raise ValueError("Unknown algorithm: ", algorithm)
 
+    # Construct two independent Algorithm configs
+    ppo_config = (
+        PPOConfig()
+        .environment("multi_agent_cartpole")
+        .framework(args.framework)
+        # disable filters, otherwise we would need to synchronize those
+        # as well to the DQN agent
+        .rollouts(observation_filter="MeanStdFilter")
+        .training(
+            model={"vf_share_layers": True},
+            vf_loss_coeff=0.01,
+            num_sgd_iter=6,
+            _enable_learner_api=False,
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
+    )
+
+    dqn_config = (
+        DQNConfig()
+        .environment("multi_agent_cartpole")
+        .framework(args.framework)
+        # disable filters, otherwise we would need to synchronize those
+        # as well to the DQN agent
+        .rollouts(observation_filter="MeanStdFilter")
+        .training(
+            model={"vf_share_layers": True},
+            n_step=3,
+            gamma=0.95,
+            _enable_learner_api=False,
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
+    )
+
+    # Specify two policies, each with their own config created above
     # You can also have multiple policies per algorithm, but here we just
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (
-            seelct_policy("PPO", args.framework),
+            select_policy("PPO", args.framework),
             obs_space,
             act_space,
-            {},
+            ppo_config,
         ),
         "dqn_policy": (
-            seelct_policy("DQN", args.framework),
+            select_policy("DQN", args.framework),
             obs_space,
             act_space,
-            {},
+            dqn_config,
         ),
     }
 
@@ -100,46 +139,20 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo = PPO(
-        env="multi_agent_cartpole",
-        config={
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_mapping_fn,
-                "policies_to_train": ["ppo_policy"],
-            },
-            "model": {
-                "vf_share_layers": True,
-            },
-            "num_sgd_iter": 6,
-            "vf_loss_coeff": 0.01,
-            # disable filters, otherwise we would need to synchronize those
-            # as well to the DQN agent
-            "observation_filter": "MeanStdFilter",
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        },
+    # Add multi-agent configuration options to both configs and build them.
+    ppo_config.multi_agent(
+        policies=policies,
+        policy_mapping_fn=policy_mapping_fn,
+        policies_to_train=["ppo_policy"],
     )
+    ppo = ppo_config.build()
 
-    dqn = DQN(
-        env="multi_agent_cartpole",
-        config={
-            "multiagent": {
-                "policies": policies,
-                "policy_mapping_fn": policy_mapping_fn,
-                "policies_to_train": ["dqn_policy"],
-            },
-            "model": {
-                "vf_share_layers": True,
-            },
-            "gamma": 0.95,
-            "n_step": 3,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        },
+    dqn_config.multi_agent(
+        policies=policies,
+        policy_mapping_fn=policy_mapping_fn,
+        policies_to_train=["dqn_policy"],
     )
+    dqn = dqn_config.build()
 
     # You should see both the printed X and Y approach 200 as this trains:
     # info:

@@ -241,15 +241,19 @@ class SubmissionClient:
         try:
             r = self._do_request("GET", url)
             if r.status_code == 404:
-                raise RuntimeError(version_error_message)
+                raise RuntimeError(
+                    "Version check returned 404. " + version_error_message
+                )
             r.raise_for_status()
 
             running_ray_version = r.json()["ray_version"]
             if packaging.version.parse(running_ray_version) < packaging.version.parse(
                 min_version
             ):
-                raise RuntimeError(version_error_message)
-            # TODO(edoakes): check the version if/when we break compatibility.
+                raise RuntimeError(
+                    f"Ray version {running_ray_version} is running on the cluster. "
+                    + version_error_message
+                )
         except requests.exceptions.ConnectionError:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}."

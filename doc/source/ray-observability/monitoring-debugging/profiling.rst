@@ -11,7 +11,7 @@ in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
 timeline`` from the command line or ``ray.timeline`` from the Python API.
 
 To use the timeline, Ray profiling must be enabled by setting the
-``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine.
+``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine, and ``RAY_task_events_report_interval_ms`` must be larger than 0 (default 1000).
 
 .. code-block:: python
 
@@ -21,6 +21,47 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 ``timeline.json``.
 
 .. _`chrome://tracing`: chrome://tracing
+
+.. _dashboard-profiling:
+
+Python CPU Profiling in the Dashboard
+-------------------------------------
+
+The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
+actions for active workers and actors.
+
+.. image:: /images/profile.png
+   :align: center
+   :width: 80%
+
+Clicking "Stack Trace" will return the current stack trace sample using ``py-spy``. By default, only the Python stack
+trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
+
+.. image:: /images/stack.png
+   :align: center
+   :width: 60%
+
+Clicking "CPU Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
+This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
+of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
+parameter to enable native profiling.
+
+.. image:: /images/flamegraph.png
+   :align: center
+   :width: 80%
+
+The profiling feature requires ``py-spy`` to be installed. If it is not installed, or if the ``py-spy`` binary does
+not have root permissions, the dashboard will prompt with instructions on how to setup ``py-spy`` correctly:
+
+.. code-block::
+
+    This command requires `py-spy` to be installed with root permissions. You
+    can install `py-spy` and give it root permissions as follows:
+      $ pip install py-spy
+      $ sudo chown root:root `which py-spy`
+      $ sudo chmod u+s `which py-spy`
+
+    Alternatively, you can start Ray with passwordless sudo / root permissions.
 
 Profiling Using Python's CProfile
 ---------------------------------

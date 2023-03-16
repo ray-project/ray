@@ -6,6 +6,10 @@ import { TaskProgress } from "../../type/job";
 
 export type TaskProgressBarProps = TaskProgress & {
   showAsComplete?: boolean;
+  showTooltip?: boolean;
+  expanded?: boolean;
+  onClick?: () => void;
+  total?: number;
 };
 
 export const TaskProgressBar = ({
@@ -17,68 +21,54 @@ export const TaskProgressBar = ({
   numFailed = 0,
   numUnknown = 0,
   showAsComplete = false,
+  showTooltip = true,
+  expanded,
+  onClick,
+  total,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
-  if (showAsComplete) {
-    const total =
-      numFinished +
-      numRunning +
-      numPendingArgsAvail +
-      numPendingNodeAssignment +
-      numSubmittedToWorker +
-      numFailed +
-      numUnknown;
-    return (
-      <ProgressBar
-        progress={[
-          {
-            label: "Finished",
-            value: total - numFailed,
-            color: theme.palette.success.main,
-          },
-          {
-            label: "Failed",
-            value: numFailed,
-            color: theme.palette.error.main,
-          },
-        ]}
-      />
-    );
-  } else {
-    const progress: ProgressBarSegment[] = [
-      {
-        label: "Finished",
-        value: numFinished,
-        color: theme.palette.success.main,
-      },
-      {
-        label: "Failed",
-        value: numFailed,
-        color: theme.palette.error.main,
-      },
-      {
-        label: "Running",
-        value: numRunning,
-        color: theme.palette.primary.main,
-      },
-      {
-        label: "Waiting for scheduling",
-        value: numPendingNodeAssignment + numSubmittedToWorker,
-        color: "#cfcf08",
-      },
-      {
-        label: "Waiting for dependencies",
-        value: numPendingArgsAvail,
-        color: "#f79e02",
-      },
-      {
-        label: "Unknown",
-        value: numUnknown,
-        color: "#5f6469",
-      },
-    ];
-    return <ProgressBar progress={progress} />;
-  }
+  const progress: ProgressBarSegment[] = [
+    {
+      label: "Finished",
+      value: numFinished,
+      color: theme.palette.success.main,
+    },
+    {
+      label: "Failed",
+      value: numFailed,
+      color: theme.palette.error.main,
+    },
+    {
+      label: "Running",
+      value: numRunning,
+      color: theme.palette.primary.main,
+    },
+    {
+      label: "Waiting for scheduling",
+      value: numPendingNodeAssignment + numSubmittedToWorker,
+      color: "#cfcf08",
+    },
+    {
+      label: "Waiting for dependencies",
+      value: numPendingArgsAvail,
+      color: "#f79e02",
+    },
+    {
+      label: "Unknown",
+      value: numUnknown,
+      color: "#5f6469",
+    },
+  ];
+  return (
+    <ProgressBar
+      progress={progress}
+      expanded={expanded}
+      showTooltip={showTooltip}
+      onClick={onClick}
+      showTotalProgress={numFinished}
+      total={total}
+    />
+  );
 };
 
 export type MiniTaskProgressBarProps = TaskProgress & {
@@ -91,6 +81,10 @@ export type MiniTaskProgressBarProps = TaskProgress & {
    * Whether to show tooltip.
    */
   showTooltip?: boolean;
+  /**
+   * Whether to show the total finished to the right of the progress bar.
+   */
+  showTotal?: boolean;
 };
 
 export const MiniTaskProgressBar = ({
@@ -103,6 +97,7 @@ export const MiniTaskProgressBar = ({
   numFailed = 0,
   showAsComplete = false,
   showTooltip = true,
+  showTotal = false,
 }: MiniTaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   if (showAsComplete) {
@@ -170,6 +165,7 @@ export const MiniTaskProgressBar = ({
         progress={progress}
         showLegend={false}
         showTooltip={showTooltip}
+        showTotalProgress={showTotal ? numFinished : undefined}
       />
     );
   }

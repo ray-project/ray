@@ -6,7 +6,7 @@ In this guide, we will show you how to scale up your [Gradio](https://gradio.app
 To follow this tutorial, you will need Ray Serve and Gradio. If you haven't already, install them by running:
 ```console
 $ pip install "ray[serve]"
-$ pip install gradio
+$ pip install gradio==3.11
 ```
 For this tutorial, we will use Gradio apps that run text summarization and generation models and use [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models. **Note that you can substitute this Gradio app for any Gradio app of your own!**
 
@@ -18,16 +18,16 @@ $ pip install transformers
 ## Quickstart: Deploy your Gradio app with Ray Serve
 
 This section shows you an easy way to deploy your app onto Ray Serve. First, create a new Python file named `demo.py`. Second, import `GradioServer` from Ray Serve to deploy your Gradio app later, `gradio`, and `transformers.pipeline` to load text summarization models.
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
+```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
-Then, we construct the (optional) Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
+Then, we write a builder function that constructs the Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
 :::{note} 
 Remember you can substitute this with your own Gradio app if you want to try scaling up your own Gradio app!
 :::
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
+```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_gradio_app_begin__
 :end-before: __doc_gradio_app_end__
 ```
@@ -41,9 +41,9 @@ Replicas in a deployment are copies of your program running on Ray Serve, where 
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
 :::
 
-Using either the example app `io` we created above or an existing Gradio app (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server.
+Using either Gradio app `io` constructed by the builder function above or providing your own application (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server. Pass the builder function as input to your Gradio Server. It will be used to construct your Gradio app on the Ray cluster.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
+```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_app_begin__
 :end-before: __doc_app_end__
 ```
@@ -69,11 +69,15 @@ Suppose you want to run the following program.
 2. Run the two models on the same input text, such that the generated text has a minimum length of 20 and maximum length of 100.
 3. Display the outputs of both models using Gradio.
 
-This is how you would do it normally:
+This is how you would build it normally:
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-original.py
+```{literalinclude} ../doc_code/gradio-original.py
 :start-after: __doc_code_begin__
 :end-before: __doc_code_end__
+```
+And launch the Gradio app:
+```
+demo.launch()
 ```
 
 ### Parallelize using Ray Serve
@@ -82,26 +86,26 @@ With Ray Serve, we can parallelize the two text generation models by wrapping ea
 
 Let's walk through a few steps to achieve parallelism. First, let's import our dependencies. Note that we need to import `GradioIngress` instead of `GradioServer` like before since we're now building a customized `MyGradioServer` that can run models in parallel.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration-parallel.py
+```{literalinclude} ../doc_code/gradio-integration-parallel.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
 Then, let's wrap our `gpt2` and `EleutherAI/gpt-neo-125M` models in Serve deployments, named `TextGenerationModel`.
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration-parallel.py
+```{literalinclude} ../doc_code/gradio-integration-parallel.py
 :start-after: __doc_models_begin__
 :end-before: __doc_models_end__
 ```
 
-Next, instead of simply wrapping our Gradio app in a `GradioServer` deployment, we can build our own `MyGradioServer` that reroutes the Gradio app so that it runs the `TextGenerationModel` deployments:
+Next, instead of simply wrapping our Gradio app in a `GradioServer` deployment, we can build our own `MyGradioServer` that reroutes the Gradio app so that it runs the `TextGenerationModel` deployments. Note that calling `remote()` on the downstream models submits an asynchronous request to the Serve handle, so it returns an `asyncio.Task`. Thus, we need to await it to get the reference to the result, and finally use `ray.get()` to resolve the object reference.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration-parallel.py
+```{literalinclude} ../doc_code/gradio-integration-parallel.py
 :start-after: __doc_gradio_server_begin__
 :end-before: __doc_gradio_server_end__
 ```
 
 Lastly, we link everything together:
-```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration-parallel.py
+```{literalinclude} ../doc_code/gradio-integration-parallel.py
 :start-after: __doc_app_begin__
 :end-before: __doc_app_end__
 ```

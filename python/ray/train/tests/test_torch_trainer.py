@@ -1,21 +1,24 @@
 import contextlib
 import pytest
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+import time
 import torch
+import os
 
 import ray
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.tune import TuneError
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchConfig
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
+from ray.air import session
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 
 @pytest.fixture
@@ -59,51 +62,94 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     trainer.fit()
 
 
-def test_torch_e2e(ray_start_4_cpus):
+@pytest.mark.parametrize("prepare_model", (True, False))
+def test_torch_e2e(ray_start_4_cpus, prepare_model):
     def train_func():
         model = torch.nn.Linear(3, 1)
-        session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
+        if prepare_model:
+            model = train.torch.prepare_model(model)
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
-        train_loop_per_worker=train_func, scaling_config=scaling_config
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
+    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     predict_dataset = ray.data.range(9)
-
-    class TorchScorer:
-        def __init__(self):
-            self.pred = TorchPredictor.from_checkpoint(result.checkpoint)
-
-        def __call__(self, x):
-            return self.pred.predict(x, dtype=torch.float)
-
-    predictions = predict_dataset.map_batches(
-        TorchScorer, batch_size=3, batch_format="pandas", compute="actors"
+    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
+    predictions = batch_predictor.predict(
+        predict_dataset, batch_size=3, dtype=torch.float
     )
     assert predictions.count() == 3
 
 
-def test_torch_e2e_state_dict(ray_start_4_cpus):
+@pytest.mark.parametrize("prepare_model", (True, False))
+def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
     def train_func():
-        model = torch.nn.Linear(3, 1).state_dict()
-        session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
+        model = torch.nn.Linear(3, 1)
+        if prepare_model:
+            model = train.torch.prepare_model(model)
+        session.report(
+            {}, checkpoint=TorchCheckpoint.from_state_dict(model.state_dict())
+        )
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
-        train_loop_per_worker=train_func, scaling_config=scaling_config
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
+    isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     # If loading from a state dict, a model definition must be passed in.
     with pytest.raises(ValueError):
         TorchPredictor.from_checkpoint(result.checkpoint)
 
+    predict_dataset = ray.data.range(9)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TorchPredictor, model=torch.nn.Linear(3, 1)
+    )
+    predictions = batch_predictor.predict(
+        predict_dataset, batch_size=3, dtype=torch.float
+    )
+    assert predictions.count() == 3
+
+
+# We can't really test for prepare_model here as we can't detect what the user
+# has saved without loading (and thus triggering the exception anyway)
+@pytest.mark.parametrize("lazy_checkpointing", (True, False))
+def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
+    def train_func():
+        model = torch.nn.Linear(3, 1)
+        torch.save(model, os.path.join(tmpdir, "model"))
+        session.report({}, checkpoint=TorchCheckpoint.from_directory(tmpdir))
+
+    scaling_config = ScalingConfig(num_workers=2)
+    with patch.dict(
+        os.environ, {DISABLE_LAZY_CHECKPOINTING_ENV: str(int(not lazy_checkpointing))}
+    ):
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_func,
+            scaling_config=scaling_config,
+            preprocessor=DummyPreprocessor(),
+        )
+        result = trainer.fit()
+    isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
+
+    # TODO(ml-team): Add a way for TorchCheckpoint to natively support
+    # models from files
     class TorchScorer:
         def __init__(self):
+            with result.checkpoint.as_directory() as checkpoint_path:
+                model = torch.load(os.path.join(checkpoint_path, "model"))
+            preprocessor = result.checkpoint.get_preprocessor()
             self.pred = TorchPredictor.from_checkpoint(
-                result.checkpoint, model=torch.nn.Linear(3, 1)
+                TorchCheckpoint.from_model(model, preprocessor=preprocessor)
             )
 
         def __call__(self, x):
@@ -127,14 +173,82 @@ def test_checkpoint_freq(ray_start_4_cpus):
             ),
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(ValueError):
         trainer.fit()
 
 
-@pytest.mark.parametrize(
-    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
-)
-def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
+def test_torch_session_errors(ray_start_4_cpus):
+    """Test fail-fast behavior when reporting dicts with Torch tensors"""
+
+    def train_func():
+        model = torch.nn.Linear(1, 1).state_dict()
+        with pytest.raises(ValueError):
+            session.report(model)
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    trainer.fit()
+
+
+def test_single_worker_failure(ray_start_4_cpus):
+    """Tests if training fails upon any worker failure."""
+
+    def single_worker_fail():
+        if session.get_world_rank() == 0:
+            raise ValueError
+        else:
+            time.sleep(1000000)
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = TorchTrainer(
+        train_loop_per_worker=single_worker_fail,
+        scaling_config=scaling_config,
+    )
+    with pytest.raises(ValueError):
+        trainer.fit()
+
+
+# See comment in backend.py::_warn_about_bad_checkpoint_type
+# for why test_torch_bad_checkpoint_warning is commented out
+
+# def test_torch_bad_checkpoint_warning(ray_start_4_cpus):
+#     """Test that a warning is printed if bad checkpoint type is used."""
+
+#     def train_func():
+#         model = torch.nn.Linear(1, 1).state_dict()
+#         session.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
+
+#     scaling_config = ScalingConfig(num_workers=2)
+#     trainer = TorchTrainer(
+#         train_loop_per_worker=train_func,
+#         scaling_config=scaling_config,
+#     )
+#     output = io.StringIO()
+#     with redirect_stdout(output), redirect_stderr(output):
+#         trainer.fit()
+#     output = output.getvalue()
+#     assert "You have reported a checkpoint" not in output
+
+#     def train_func():
+#         model = torch.nn.Linear(1, 1).state_dict()
+#         session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
+
+#     trainer = TorchTrainer(
+#         train_loop_per_worker=train_func,
+#         scaling_config=scaling_config,
+#     )
+#     output = io.StringIO()
+#     with redirect_stdout(output), redirect_stderr(output):
+#         trainer.fit()
+#     output = output.getvalue()
+#     assert "You have reported a checkpoint" in output
+
+
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
@@ -162,7 +276,11 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
             # the other is taken by the other sample) so device index should be 0.
             # For the multiple GPU case, each worker has 2 visible devices so device
             # index should be either 0 or 1. It doesn't matter which.
-            assert train.torch.get_device().index in expected_devices
+            devices = train.torch.get_device()
+            if isinstance(devices, list):
+                assert sorted([device.index for device in devices]) == [0, 1]
+            else:
+                assert train.torch.get_device().index == 0
 
         @ray.remote(num_cpus=0)
         class TrialActor:
@@ -204,7 +322,7 @@ def test_torch_auto_unwrap(ray_start_4_cpus):
         model = train.torch.prepare_model(model)
 
         # Save DDP wrapped model.
-        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn,
@@ -216,11 +334,6 @@ def test_torch_auto_unwrap(ray_start_4_cpus):
     model = last_checkpoint.get_model()
     assert isinstance(model, torch.nn.Module) and not isinstance(
         model, torch.nn.parallel.DistributedDataParallel
-    )
-
-    model_report = results.metrics["model"]
-    assert isinstance(model_report, torch.nn.Module) and not isinstance(
-        model_report, torch.nn.parallel.DistributedDataParallel
     )
 
 
@@ -265,6 +378,27 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     )
     results = trainer.fit()
     assert results.checkpoint
+
+
+def test_torch_env_vars(ray_start_4_cpus):
+    """Check that env vars are set as expected."""
+
+    def train_func(config):
+        assert os.environ["LOCAL_RANK"] == str(session.get_local_rank())
+        assert os.environ["RANK"] == str(session.get_world_rank())
+        assert os.environ["LOCAL_WORLD_SIZE"] == str(session.get_local_world_size())
+        assert os.environ["WORLD_SIZE"] == str(session.get_world_size())
+        assert os.environ["NODE_RANK"] == str(session.get_node_rank())
+
+        assert os.environ["ACCELERATE_TORCH_DEVICE"] == str(train.torch.get_device())
+
+    num_workers = 1
+    scaling_config = ScalingConfig(num_workers=num_workers)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

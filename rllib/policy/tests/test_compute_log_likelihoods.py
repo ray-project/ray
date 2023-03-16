@@ -1,6 +1,6 @@
 import unittest
 
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
 from scipy.stats import norm
@@ -20,6 +20,52 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 tf1, tf, tfv = try_import_tf()
 
 
+def _get_expected_logp(fw, vars, obs_batch, a, layer_key, logp_func=None):
+    """Get the expected logp for the given obs_batch and action.
+
+    Args:
+        fw: Framework ("tf" or "torch").
+        vars: The ModelV2 weights.
+        obs_batch: The observation batch.
+        a: The action batch.
+        layer_key: The layer key to use for the fc layers.
+        logp_func: Optional custom logp function to use.
+
+    Returns:
+        The expected logp.
+    """
+    if fw != "torch":
+        if isinstance(vars, list):
+            expected_mean_logstd = fc(
+                fc(obs_batch, vars[layer_key[1][0]]), vars[layer_key[1][1]]
+            )
+        else:
+            expected_mean_logstd = fc(
+                fc(
+                    obs_batch,
+                    vars["default_policy/{}_1/kernel".format(layer_key[0])],
+                ),
+                vars["default_policy/{}_out/kernel".format(layer_key[0])],
+            )
+    else:
+        expected_mean_logstd = fc(
+            fc(
+                obs_batch,
+                vars["{}_model.0.weight".format(layer_key[2][0])],
+                framework=fw,
+            ),
+            vars["{}_model.0.weight".format(layer_key[2][1])],
+            framework=fw,
+        )
+    mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
+    if logp_func is None:
+        expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
+    else:
+        expected_logp = logp_func(mean, log_std, a)
+
+    return expected_logp
+
+
 def do_test_log_likelihood(
     run,
     config,
@@ -28,16 +74,16 @@ def do_test_log_likelihood(
     layer_key=("fc", (0, 4), ("_hidden_layers.0.", "_logits.")),
     logp_func=None,
 ):
-    config = config.copy()
+    config = config.copy(copy_frozen=False)
     # Run locally.
-    config["num_workers"] = 0
+    config.num_rollout_workers = 0
     # Env setup.
     if continuous:
-        env = "Pendulum-v1"
+        config.env = "Pendulum-v1"
         obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
     else:
-        env = "FrozenLake-v1"
-        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        config.env = "FrozenLake-v1"
+        config.env_config = {"is_slippery": False, "map_name": "4x4"}
         obs_batch = np.array([0])
         # PG does not preprocess anymore by default.
         preprocessed_obs_batch = (
@@ -48,7 +94,7 @@ def do_test_log_likelihood(
 
     # Test against all frameworks.
     for fw in framework_iterator(config):
-        algo = run(config=config, env=env)
+        algo = config.build()
 
         policy = algo.get_policy()
         vars = policy.get_weights()
@@ -74,34 +120,7 @@ def do_test_log_likelihood(
         if continuous:
             for idx in range(num_actions):
                 a = actions[idx]
-                if fw != "torch":
-                    if isinstance(vars, list):
-                        expected_mean_logstd = fc(
-                            fc(obs_batch, vars[layer_key[1][0]]), vars[layer_key[1][1]]
-                        )
-                    else:
-                        expected_mean_logstd = fc(
-                            fc(
-                                obs_batch,
-                                vars["default_policy/{}_1/kernel".format(layer_key[0])],
-                            ),
-                            vars["default_policy/{}_out/kernel".format(layer_key[0])],
-                        )
-                else:
-                    expected_mean_logstd = fc(
-                        fc(
-                            obs_batch,
-                            vars["{}_model.0.weight".format(layer_key[2][0])],
-                            framework=fw,
-                        ),
-                        vars["{}_model.0.weight".format(layer_key[2][1])],
-                        framework=fw,
-                    )
-                mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
-                if logp_func is None:
-                    expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
-                else:
-                    expected_logp = logp_func(mean, log_std, a)
+
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
                     preprocessed_obs_batch,
@@ -109,7 +128,14 @@ def do_test_log_likelihood(
                     prev_reward_batch=np.array([prev_r]) if prev_r else None,
                     actions_normalized=True,
                 )
-                check(logp, expected_logp[0], rtol=0.2)
+
+                # The expected logp computation logic is overfitted to the ModelV2
+                # stack and does not generalize to RLModule API.
+                if not config._enable_rl_module_api:
+                    expected_logp = _get_expected_logp(
+                        fw, vars, obs_batch, a, layer_key, logp_func
+                    )
+                    check(logp, expected_logp[0], rtol=0.2)
         # Test all available actions for their logp values.
         else:
             for a in [0, 1, 2, 3]:
@@ -121,7 +147,9 @@ def do_test_log_likelihood(
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
                     prev_reward_batch=np.array([prev_r]) if prev_r else None,
                 )
-                check(np.exp(logp), expected_prob, atol=0.2)
+
+                if not config._enable_rl_module_api:
+                    check(np.exp(logp), expected_prob, atol=0.2)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):
@@ -135,18 +163,22 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_dqn(self):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
-        config = dqn.DEFAULT_CONFIG.copy()
+        config = dqn.DQNConfig()
         # Soft-Q for DQN.
-        config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
-        config["seed"] = 42
+        config.exploration(exploration_config={"type": "SoftQ", "temperature": 0.5})
+        config.debugging(seed=42)
         do_test_log_likelihood(dqn.DQN, config)
 
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
+        config = pg.PGConfig()
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(
             pg.PG,
@@ -158,33 +190,41 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
+        config = pg.PGConfig()
+        config.debugging(seed=42)
         prev_a = np.array(0)
         do_test_log_likelihood(pg.PG, config, prev_a)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
+        config = ppo.PPOConfig()
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
+        config = ppo.PPOConfig()
+        config.debugging(seed=42)
         prev_a = np.array(0)
         do_test_log_likelihood(ppo.PPO, config, prev_a)
 
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
-        config = sac.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["policy_model_config"]["fcnet_hiddens"] = [10]
-        config["policy_model_config"]["fcnet_activation"] = "linear"
+        config = sac.SACConfig()
+        config.training(
+            policy_model_config={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
@@ -214,10 +254,14 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
-        config = sac.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["policy_model_config"]["fcnet_hiddens"] = [10]
-        config["policy_model_config"]["fcnet_activation"] = "linear"
+        config = sac.SACConfig()
+        config.training(
+            policy_model_config={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
+        config.debugging(seed=42)
         prev_a = np.array(0)
 
         do_test_log_likelihood(sac.SAC, config, prev_a)

@@ -1,21 +1,20 @@
 from dataclasses import dataclass
-import io
 import logging
 import os
 from datetime import timedelta
-from typing import Dict, Optional
+from typing import Optional
 
 import ray
-import ray.cloudpickle
-from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.air.checkpoint import Checkpoint
+from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.util import PublicAPI
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
 
 try:
     from torch.profiler import profile
@@ -53,7 +52,7 @@ class TorchConfig(BackendConfig):
         return _TorchBackend
 
 
-def _set_nccl_network_interface() -> str:
+def _set_nccl_network_interface():
     """Set the appropriate NCCL network interface to use."""
 
     if "NCCL_SOCKET_IFNAME" not in os.environ:
@@ -95,12 +94,21 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
-    if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+    # See the `timeout` arg in https://pytorch.org/docs/master/
+    # distributed.html#torch.distributed.init_process_group for description of
+    # NCCL_ASYNC_ERROR_HANDLING. We do not use NCCL_BLOCKING_WAIT due to performance
+    # overhead.
+    if (
+        backend == "nccl"
+        and "NCCL_ASYNC_ERROR_HANDLING" not in os.environ
+        and "NCCL_BLOCKING_WAIT" not in os.environ
+    ):
         logger.debug(
-            "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+            "Setting NCCL_ASYNC_ERROR_HANDLING to fail if NCCL collective "
+            "communication operations are timing out. "
+            "To override this behavior, you can set NCCL_ASYNC_ERROR_HANDLING=0."
         )
-        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
 
     dist.init_process_group(
         backend=backend,
@@ -116,6 +124,22 @@ def _shutdown_torch(destroy_process_group=False):
         dist.destroy_process_group()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+
+def _set_torch_distributed_env_vars():
+    # Same env vars as in
+    # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
+    from ray.air import session
+    from ray.train.torch.train_loop_utils import get_device
+
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["NODE_RANK"] = str(session.get_node_rank())
+
+    # Makes sure Hugging Face Accelerate uses the correct device
+    os.environ["ACCELERATE_TORCH_DEVICE"] = str(get_device())
 
 
 class _TorchBackend(Backend):
@@ -173,37 +197,20 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-
         worker_group.execute(
-            _shutdown_torch, destroy_process_group=len(worker_group) > 1
+            _shutdown_torch,
+            destroy_process_group=len(worker_group) > 1,
         )
 
-    @staticmethod
-    def encode_data(data_dict: Dict) -> EncodedData:
-        """Special handling for moving model from worker to driver."""
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: BackendConfig
+    ):
+        worker_group.execute(_set_torch_distributed_env_vars)
 
-        # If model is being checkpointed and is wrapped in DDP, then extract
-        # out the underlying module. If not, then deserialization will fail
-        # since the torch process group is not initialized on the driver.
-
-        for k, v in data_dict.items():
-            if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
-                data_dict[k] = v.module
-
-        # Convert the checkpoint dict to bytes, so that any GPU tensors that
-        # are in the checkpoint dict can be properly deserialized on the
-        # driver side, even if the driver does not have access to a GPU device.
-        _buffer = io.BytesIO()
-        # If a custom torch model contains a function that cannot be pickled normally,
-        # we need to use ray.cloudpickle. This is also consistent with how Ray
-        # serialization works in general and has no downsides
-        # (this can still be unpickled without ray using normal pickle).
-        torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle)
-        return _buffer.getvalue()
-
-    @staticmethod
-    def decode_data(encoded_data: EncodedData) -> Dict:
-        # When decoding the bytes on the driver side, always map to CPU.
-        _buffer = io.BytesIO(encoded_data)
-        checkpoint_dict = torch.load(_buffer, map_location="cpu")
-        return checkpoint_dict
+    @classmethod
+    def _encode_data(cls, checkpoint: Checkpoint):
+        checkpoint = super()._encode_data(checkpoint)
+        if type(checkpoint) is Checkpoint:
+            _warn_about_bad_checkpoint_type(TorchCheckpoint)
+            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint

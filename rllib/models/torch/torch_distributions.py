@@ -3,7 +3,7 @@ has more explicit input args. So that the input format does not have to be guess
 the code. This matches the design pattern of torch distribution which developers may
 already be familiar with.
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional
 import abc
@@ -23,31 +23,31 @@ class TorchDistribution(Distribution, abc.ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.dist = self._get_torch_distribution(*args, **kwargs)
+        self._dist = self._get_torch_distribution(*args, **kwargs)
 
     @abc.abstractmethod
     def _get_torch_distribution(
         self, *args, **kwargs
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         """Returns the torch.distributions.Distribution object to use."""
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        return self.dist.log_prob(value, **kwargs)
+        return self._dist.log_prob(value, **kwargs)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
-        return self.dist.entropy()
+        return self._dist.entropy()
 
     @override(Distribution)
     def kl(self, other: "Distribution") -> TensorType:
-        return torch.distributions.kl.kl_divergence(self.dist, other.dist)
+        return torch.distributions.kl.kl_divergence(self._dist, other._dist)
 
     @override(Distribution)
     def sample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        sample = self.dist.sample(sample_shape)
+        sample = self._dist.sample(sample_shape)
         if return_logp:
             return sample, self.logp(sample)
         return sample
@@ -56,7 +56,7 @@ class TorchDistribution(Distribution, abc.ABC):
     def rsample(
         self, *, sample_shape=torch.Size(), return_logp: bool = False
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        rsample = self.dist.rsample(sample_shape)
+        rsample = self._dist.rsample(sample_shape)
         if return_logp:
             return rsample, self.logp(rsample)
         return rsample
@@ -93,6 +93,7 @@ class TorchCategorical(TorchDistribution):
             larger value will result in uniform sampling.
     """
 
+    @override(TorchDistribution)
     def __init__(
         self,
         probs: torch.Tensor = None,
@@ -107,7 +108,7 @@ class TorchCategorical(TorchDistribution):
         probs: torch.Tensor = None,
         logits: torch.Tensor = None,
         temperature: float = 1.0,
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
@@ -118,7 +119,14 @@ class TorchCategorical(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return (space.n,)
+        return (int(space.n),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
@@ -129,13 +137,13 @@ class TorchDiagGaussian(TorchDistribution):
     case of multi-dimensional distribution, the variance is assumed to be diagonal.
 
     Example::
-
-        >>> m = Normal(loc=torch.tensor([0.0, 0.0]), scale=torch.tensor([1.0, 1.0]))
+        >>> loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
+        >>> m = TorchDiagGaussian(loc=loc, scale=scale)
         >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
         >>> # scale is None
-        >>> m = Normal(loc=torch.tensor([0.0, 1.0]))
+        >>> m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
         >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
         tensor([0.1046, 0.6120])
 
@@ -147,7 +155,7 @@ class TorchDiagGaussian(TorchDistribution):
             Has to be positive.
     """
 
-    @override(Distribution)
+    @override(TorchDistribution)
     def __init__(
         self,
         loc: Union[float, torch.Tensor],
@@ -157,7 +165,7 @@ class TorchDiagGaussian(TorchDistribution):
 
     def _get_torch_distribution(
         self, loc, scale=None
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         if scale is None:
             loc, log_std = torch.chunk(self.inputs, 2, dim=1)
             scale = torch.exp(log_std)
@@ -180,7 +188,14 @@ class TorchDiagGaussian(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        scale = log_std.exp()
+        return TorchDiagGaussian(loc=loc, scale=scale)
 
 
 @DeveloperAPI
@@ -202,6 +217,7 @@ class TorchDeterministic(Distribution):
         loc: the determinsitic value to return
     """
 
+    @override(Distribution)
     def __init__(self, loc: torch.Tensor) -> None:
         super().__init__()
         self.loc = loc
@@ -252,4 +268,9 @@ class TorchDeterministic(Distribution):
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
-        return tuple(np.prod(space.shape, dtype=np.int32))
+        return (int(np.prod(space.shape, dtype=np.int32)),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
+        return TorchDeterministic(loc=logits)

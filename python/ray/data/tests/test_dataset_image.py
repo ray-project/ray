@@ -1,12 +1,13 @@
-import time
+import os
+from typing import Dict
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.datasource import Partitioning
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
@@ -20,15 +21,12 @@ from ray.tests.conftest import *  # noqa
 
 class TestReadImages:
     def test_basic(self, ray_start_regular_shared):
-        """Test basic `read_images` functionality.
-        The folder "simple" contains three 32x32 RGB images.
-        """
         # "simple" contains three 32x32 RGB images.
         ds = ray.data.read_images("example://image-datasets/simple")
-        assert ds.schema().names == [TENSOR_COLUMN_NAME]
+        assert ds.schema().names == ["image"]
         column_type = ds.schema().types[0]
         assert isinstance(column_type, ArrowTensorType)
-        assert all(array.shape == (32, 32, 3) for array in ds.take())
+        assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     def test_multiple_paths(self, ray_start_regular_shared):
         ds = ray.data.read_images(
@@ -38,6 +36,27 @@ class TestReadImages:
             ]
         )
         assert ds.count() == 2
+
+    @pytest.mark.parametrize("ignore_missing_paths", [True, False])
+    def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
+        paths = [
+            "example://image-datasets/simple/image1.jpg",
+            "example://missing.jpg",
+            "example://image-datasets/missing/",
+        ]
+
+        if ignore_missing_paths:
+            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
+            # example:// directive redirects to /ray/python/ray/data/examples/data
+            assert ds.input_files() == [
+                "/ray/python/ray/data/examples/data/image-datasets/simple/image1.jpg"
+            ]
+        else:
+            with pytest.raises(FileNotFoundError):
+                ds = ray.data.read_images(
+                    paths, ignore_missing_paths=ignore_missing_paths
+                )
+                ds.fully_executed()
 
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
@@ -49,11 +68,11 @@ class TestReadImages:
         ds = ray.data.read_images(
             "example://image-datasets/different-sizes", size=(32, 32)
         )
-        assert all(array.shape == (32, 32, 3) for array in ds.take())
+        assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     def test_different_sizes(self, ray_start_regular_shared):
         ds = ray.data.read_images("example://image-datasets/different-sizes")
-        assert sorted(array.shape for array in ds.take()) == [
+        assert sorted(record["image"].shape for record in ds.take()) == [
             (16, 16, 3),
             (32, 32, 3),
             (64, 64, 3),
@@ -75,7 +94,7 @@ class TestReadImages:
     ):
         # "different-modes" contains 32x32 images with modes "CMYK", "L", and "RGB"
         ds = ray.data.read_images("example://image-datasets/different-modes", mode=mode)
-        assert all([array.shape == expected_shape for array in ds.take()])
+        assert all([record["image"].shape == expected_shape for record in ds.take()])
 
     def test_partitioning(
         self, ray_start_regular_shared, enable_automatic_tensor_extension_cast
@@ -98,22 +117,48 @@ class TestReadImages:
         else:
             assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
 
-    def test_e2e_prediction(self, ray_start_regular_shared):
+    def test_include_paths(self, ray_start_regular_shared):
+        root = "example://image-datasets/simple"
+
+        ds = ray.data.read_images(root, include_paths=True)
+
+        def get_relative_path(path: str) -> str:
+            parts = os.path.normpath(path).split(os.sep)
+            # `parts[-3:]` corresponds to 'image-datasets', 'simple', and the filename.
+            return os.sep.join(parts[-3:])
+
+        relative_paths = [get_relative_path(record["path"]) for record in ds.take()]
+        assert sorted(relative_paths) == [
+            "image-datasets/simple/image1.jpg",
+            "image-datasets/simple/image2.jpg",
+            "image-datasets/simple/image3.jpg",
+        ]
+
+    def test_e2e_prediction(self, shutdown_only):
         from ray.train.torch import TorchCheckpoint, TorchPredictor
         from ray.train.batch_predictor import BatchPredictor
 
         from torchvision import transforms
         from torchvision.models import resnet18
 
-        dataset = ray.data.read_images("example://image-datasets/simple")
+        ray.shutdown()
+        ray.init(num_cpus=2)
 
+        dataset = ray.data.read_images("example://image-datasets/simple")
         transform = transforms.ToTensor()
-        dataset = dataset.map(transform)
+
+        def preprocess(batch: Dict[str, np.ndarray]):
+            return np.stack([transform(image) for image in batch["image"]])
+
+        dataset = dataset.map_batches(preprocess, batch_format="numpy")
 
         model = resnet18(pretrained=True)
         checkpoint = TorchCheckpoint.from_model(model=model)
         predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictor.predict(dataset)
+        predictions = predictor.predict(dataset)
+
+        for _ in predictions.iter_batches():
+            pass
 
     @pytest.mark.parametrize(
         "image_size,image_mode,expected_size,expected_ratio",
@@ -134,7 +179,7 @@ class TestReadImages:
 
         data_size = ds.size_bytes()
         assert data_size >= 0, "estimated data size is out of expected bound"
-        data_size = ds.fully_executed().size_bytes()
+        data_size = ds.cache().size_bytes()
         assert data_size >= 0, "actual data size is out of expected bound"
 
         reader = _ImageDatasourceReader(
@@ -165,20 +210,13 @@ class TestReadImages:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
-            ds.fully_executed()
+            ds.cache()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 
-            # NOTE: Need to wait for 1 second before checking stats, because we report
-            # stats to stats actors asynchronously when returning the blocks metadata.
-            # TODO(chengsu): clean it up after refactoring lazy block list.
-            time.sleep(1)
-            assert "3 blocks executed" in ds.stats()
-
             # Test union of same datasets
-            union_ds = ds.union(ds, ds, ds).fully_executed()
+            union_ds = ds.union(ds, ds, ds).cache()
             assert union_ds.num_blocks() == 12
-            assert "3 blocks executed" in union_ds.stats()
         finally:
             ctx.target_max_block_size = target_max_block_size
             ctx.block_splitting_enabled = block_splitting_enabled

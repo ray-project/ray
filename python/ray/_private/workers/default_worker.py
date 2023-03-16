@@ -1,8 +1,6 @@
 import argparse
 import base64
 import json
-import os
-import sys
 import time
 
 import ray
@@ -140,6 +138,13 @@ parser.add_argument(
     action="store_true",
     help="True if Ray debugger is made available externally.",
 )
+parser.add_argument("--session-name", required=False, help="The current session name")
+parser.add_argument(
+    "--webui",
+    required=False,
+    help="The address of web ui",
+)
+
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -161,7 +166,6 @@ if __name__ == "__main__":
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
-
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
         raylet_ip_address=raylet_ip_address,
@@ -174,14 +178,16 @@ if __name__ == "__main__":
         storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,
         gcs_address=args.gcs_address,
+        session_name=args.session_name,
+        webui=args.webui,
     )
-
     node = ray._private.node.Node(
         ray_params,
         head=False,
         shutdown_at_exit=False,
         spawn_reaper=False,
         connect_only=True,
+        default_worker=True,
     )
 
     # NOTE(suquark): We must initialize the external storage before we
@@ -203,23 +209,12 @@ if __name__ == "__main__":
     ray._private.worker._global_node = node
     ray._private.worker.connect(
         node,
+        node.session_name,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
     )
-
-    # Add code search path to sys.path, set load_code_from_local.
-    core_worker = ray._private.worker.global_worker.core_worker
-    code_search_path = core_worker.get_job_config().code_search_path
-    load_code_from_local = False
-    if code_search_path:
-        load_code_from_local = True
-        for p in code_search_path:
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.insert(0, p)
-    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(

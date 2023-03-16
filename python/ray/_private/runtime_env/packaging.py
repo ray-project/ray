@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import os
@@ -14,6 +15,7 @@ from filelock import FileLock
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
@@ -47,8 +49,26 @@ MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 
 
 def _mib_string(num_bytes: float) -> str:
-    size_mib = float(num_bytes / 1024 ** 2)
+    size_mib = float(num_bytes / 1024**2)
     return f"{size_mib:.2f}MiB"
+
+
+class _AsyncFileLock:
+    """Asyncio version used to prevent blocking event loop."""
+
+    def __init__(self, lock_file: str):
+        self.file = FileLock(lock_file)
+
+    async def __aenter__(self):
+        while True:
+            try:
+                self.file.acquire(timeout=0)
+                return
+            except TimeoutError:
+                await asyncio.sleep(0.1)
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.file.release()
 
 
 class Protocol(Enum):
@@ -157,57 +177,12 @@ def _hash_directory(
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
-    Parse resource uri into protocol and package name based on its format.
+    Parse package uri into protocol and package name based on its format.
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
-    For GCS URIs, netloc is the package name.
-        urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-            -> ParseResult(
-                scheme='gcs',
-                netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
-            )
-            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For HTTPS URIs, the netloc will have '.', ':', and '@' swapped with '_',
-    and the path will have '/' replaced with '_'. The package name will be the
-    adjusted path with 'https_' prepended.
-        urlparse(
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-        )
-            -> ParseResult(
-                scheme='https',
-                netloc='github.com',
-                path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
-            )
-            -> ("https",
-            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
-    package name will be the adjusted path with 's3_' prepended.
-        urlparse("s3://bucket/dir/file.zip")
-            -> ParseResult(
-                scheme='s3',
-                netloc='bucket',
-                path='/dir/file.zip'
-            )
-            -> ("s3", "bucket_dir_file.zip")
-    For GS URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'gs_' prepended.
-        urlparse("gs://public-runtime-env-test/test_module.zip")
-            -> ParseResult(
-                scheme='gs',
-                netloc='public-runtime-env-test',
-                path='/test_module.zip'
-            )
-            -> ("gs",
-            "gs_public-runtime-env-test_test_module.zip")
-    For FILE URIs, the path will have '/' replaced with '_'. The package name
-    will be the adjusted path with 'file_' prepended.
-        urlparse("file:///path/to/test_module.zip")
-            -> ParseResult(
-                scheme='file',
-                netloc='path',
-                path='/path/to/test_module.zip'
-            )
-            -> ("file", "file__path_to_test_module.zip")
+
+    >>> parse_uri("https://test.com/file.zip")
+    (Protocol.HTTPS, "https_test_com_file.zip")
     """
     uri = urlparse(pkg_uri)
     try:
@@ -217,21 +192,20 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Invalid protocol for runtime_env URI {pkg_uri}. "
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
-    if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
-    elif protocol == Protocol.HTTPS:
-        parsed_netloc = uri.netloc.replace(".", "_").replace(":", "_").replace("@", "_")
-        return (
-            protocol,
-            f"https_{parsed_netloc}{uri.path.replace('/', '_')}",
-        )
-    elif protocol == Protocol.FILE:
-        return (
-            protocol,
-            f"file_{uri.path.replace('/', '_')}",
-        )
+
+    if protocol in Protocol.remote_protocols():
+        package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+
+        disallowed_chars = ["/", ":", "@", "+"]
+        for disallowed_char in disallowed_chars:
+            package_name = package_name.replace(disallowed_char, "_")
+
+        # Remove all periods except the last, which is part of the file extension
+        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
-        return (protocol, uri.netloc)
+        package_name = uri.netloc
+
+    return (protocol, package_name)
 
 
 def is_zip_uri(uri: str) -> bool:
@@ -273,6 +247,21 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
 
 def _get_gitignore(path: Path) -> Optional[Callable]:
+    """Returns a function that returns True if the path should be excluded.
+
+    Returns None if there is no .gitignore file in the path, or if the
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
+
+    Args:
+        path: The path to the directory to check for a .gitignore file.
+
+    Returns:
+        A function that returns True if the path should be excluded.
+    """
+    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
+    if ignore_gitignore:
+        return None
+
     path = path.absolute()
     ignore_file = path / ".gitignore"
     if ignore_file.is_file():
@@ -348,7 +337,10 @@ def _store_package_in_gcs(
         raise ValueError(
             f"Package size ({size_str}) exceeds the maximum size of "
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
-            "files using the 'excludes' option to the runtime_env."
+            "files using the 'excludes' option to the runtime_env or provide "
+            "a remote URI of a zip file using protocols such as 's3://', "
+            "'https://' and so on, refer to "
+            "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#api-reference."  # noqa
         )
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
@@ -624,11 +616,8 @@ async def download_and_unpack_package(
         NotImplementedError: If the protocol of the URI is not supported.
 
     """
-    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
-        raise IOError("Failed to download package. (Simulated failure for testing)")
-
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(pkg_file) + ".lock"):
+    async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger
 
@@ -645,6 +634,8 @@ async def download_and_unpack_package(
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
+                if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+                    code = None
                 if code is None:
                     raise IOError(
                         f"Failed to download runtime_env file package {pkg_uri} "
@@ -654,7 +645,9 @@ async def download_and_unpack_package(
                         "environment variable "
                         f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
                         " to a value larger than the upload time in seconds "
-                        "(the default is 30). If this fails, try re-running "
+                        "(the default is "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}). "
+                        "If this fails, try re-running "
                         "after making any change to a file in the file package."
                     )
                 code = code or b""
@@ -673,6 +666,11 @@ async def download_and_unpack_package(
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None
+                install_warning = (
+                    "Note that these must be preinstalled "
+                    "on all nodes in the Ray cluster; it is not "
+                    "sufficient to install them in the runtime_env."
+                )
 
                 if protocol == Protocol.S3:
                     try:
@@ -682,7 +680,7 @@ async def download_and_unpack_package(
                         raise ImportError(
                             "You must `pip install smart_open` and "
                             "`pip install boto3` to fetch URIs in s3 "
-                            "bucket."
+                            "bucket. " + install_warning
                         )
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
@@ -694,6 +692,7 @@ async def download_and_unpack_package(
                             "You must `pip install smart_open` and "
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
+                            + install_warning
                         )
                 elif protocol == Protocol.FILE:
                     pkg_uri = pkg_uri[len("file://") :]
@@ -707,7 +706,8 @@ async def download_and_unpack_package(
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs."
+                            f"to fetch {protocol.value.upper()} URIs. "
+                            + install_warning
                         )
 
                 with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:

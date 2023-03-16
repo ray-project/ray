@@ -1,24 +1,24 @@
 import os
-from typing import Any, Dict, List, Union
+from typing import List, Union
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import torchvision
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 
 from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.arrow_block import ArrowRow
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import (
     Datasource,
     DummyOutputDatasource,
-    SimpleTensorFlowDatasource,
-    SimpleTorchDatasource,
     WriteResult,
 )
 
@@ -26,6 +26,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
+from typing import Iterable
 
 
 def maybe_pipeline(ds, enabled):
@@ -47,7 +48,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
@@ -55,7 +56,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -68,7 +69,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -76,7 +77,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -130,7 +131,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -181,10 +182,10 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
-    ray.get(output.data_sink.set_enabled.remote(False))
-    ds = maybe_pipeline(ds0, pipelined)
+    output.enabled = False
+    ds = maybe_pipeline(ray.data.range(10, parallelism=2), pipelined)
     with pytest.raises(ValueError):
-        ds.write_datasource(output)
+        ds.write_datasource(output, ray_remote_args={"max_retries": 0})
     if pipelined:
         assert output.num_ok == 2
     else:
@@ -193,23 +194,18 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
-def test_tensorflow_datasource(ray_start_regular_shared):
+def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
 
     tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
 
-    def dataset_factory():
-        return tfds.load("mnist", split=["train"], as_supervised=True)[0]
-
-    ray_dataset = ray.data.read_datasource(
-        SimpleTensorFlowDatasource(), parallelism=1, dataset_factory=dataset_factory
-    ).fully_executed()
-
-    assert ray_dataset.num_blocks() == 1
+    ray_dataset = ray.data.from_tf(tf_dataset)
 
     actual_data = ray_dataset.take_all()
     expected_data = list(tf_dataset)
+    assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
         expected_data, actual_data
     ):
@@ -217,39 +213,14 @@ def test_tensorflow_datasource(ray_start_regular_shared):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
-def test_torch_datasource(ray_start_regular_shared, local_path):
-    import torchvision
-
-    # Download datasets to separate folders to prevent interference.
-    torch_dataset_root = os.path.join(local_path, "torch")
-    ray_dataset_root = os.path.join(local_path, "ray")
-
-    torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
+def test_from_torch(shutdown_only, tmp_path):
+    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    def dataset_factory():
-        return torchvision.datasets.MNIST(ray_dataset_root, download=True)
+    ray_dataset = ray.data.from_torch(torch_dataset)
 
-    ray_dataset = ray.data.read_datasource(
-        SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
-    )
-    actual_data = list(next(ray_dataset.iter_batches(batch_size=None)))
-
+    actual_data = list(ray_dataset.take_all())
     assert actual_data == expected_data
-
-
-def test_torch_datasource_value_error(shutdown_only, local_path):
-    import torchvision
-
-    dataset = torchvision.datasets.MNIST(local_path, download=True)
-
-    with pytest.raises(ValueError):
-        # `dataset_factory` should be a function, not a Torch dataset.
-        ray.data.read_datasource(
-            SimpleTorchDatasource(),
-            parallelism=1,
-            dataset_factory=dataset,
-        )
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
@@ -260,13 +231,10 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
         class DataSink:
             def __init__(self):
                 self.rows_written = 0
-                self.enabled = True
                 self.node_ids = set()
 
             def write(self, node_id: str, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
-                if not self.enabled:
-                    raise ValueError("disabled")
                 self.rows_written += block.num_rows()
                 self.node_ids.add(node_id)
                 return "ok"
@@ -277,34 +245,30 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
             def get_node_ids(self):
                 return self.node_ids
 
-            def set_enabled(self, enabled):
-                self.enabled = enabled
-
         self.data_sink = DataSink.remote()
         self.num_ok = 0
         self.num_failed = 0
 
-    def do_write(
+    def write(
         self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
+        blocks: Iterable[Block],
+        ctx: TaskContext,
         **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
+    ) -> WriteResult:
         data_sink = self.data_sink
 
-        @ray.remote
         def write(b):
-            node_id = ray.get_runtime_context().node_id.hex()
-            return ray.get(data_sink.write.remote(node_id, b))
+            node_id = ray.get_runtime_context().get_node_id()
+            return data_sink.write.remote(node_id, b)
 
         tasks = []
         for b in blocks:
-            tasks.append(write.options(**ray_remote_args).remote(b))
-        return tasks
+            tasks.append(write(b))
+        ray.get(tasks)
+        return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+        assert all(w == ["ok"] for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
@@ -314,6 +278,7 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
 
 def test_write_datasource_ray_remote_args(ray_start_cluster):
+    ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"foo": 100},
@@ -325,13 +290,13 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
     output = NodeLoggerOutputDatasource()
     ds = ray.data.range(100, parallelism=10)
-    # Pin write tasks to
+    # Pin write tasks to node with "bar" resource.
     ds.write_datasource(output, ray_remote_args={"resources": {"bar": 1}})
     assert output.num_ok == 1
     assert output.num_failed == 0
@@ -341,72 +306,56 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
     assert node_ids == {bar_node_id}
 
 
-def test_read_s3_file_error(ray_start_regular_shared, s3_path):
+def test_read_s3_file_error(shutdown_only, s3_path):
     dummy_path = s3_path + "_dummy"
     error_message = "Please check that file exists and has properly configured access."
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_parquet(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_binary_files(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_csv(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         ray.data.read_json(dummy_path)
-    assert error_message in str(e.value)
-    with pytest.raises(OSError) as e:
+    with pytest.raises(OSError, match=error_message):
         error = OSError(
             f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
             "Error [code 15]: No response body.. Is this a 'parquet' file?"
         )
         _handle_read_os_error(error, dummy_path)
-    assert error_message in str(e.value)
 
 
-def test_read_tfrecords(ray_start_regular_shared, tmp_path):
-    import tensorflow as tf
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
 
-    features = tf.train.Features(
-        feature={
-            "int64": tf.train.Feature(int64_list=tf.train.Int64List(value=[1])),
-            "int64_list": tf.train.Feature(
-                int64_list=tf.train.Int64List(value=[1, 2, 3, 4])
-            ),
-            "float": tf.train.Feature(float_list=tf.train.FloatList(value=[1.0])),
-            "float_list": tf.train.Feature(
-                float_list=tf.train.FloatList(value=[1.0, 2.0, 3.0, 4.0])
-            ),
-            "bytes": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"abc"])),
-            "bytes_list": tf.train.Feature(
-                bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
-            ),
-        }
-    )
-    example = tf.train.Example(features=features)
-    path = os.path.join(tmp_path, "data.tfrecords")
-    with tf.io.TFRecordWriter(path=path) as writer:
-        writer.write(example.SerializeToString())
 
-    ds = ray.data.read_tfrecords(path)
+def test_get_read_tasks(ray_start_cluster):
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(cluster.address)
 
-    df = ds.to_pandas()
-    # Protobuf serializes features in a non-deterministic order.
-    assert dict(df.dtypes) == {
-        "int64": np.int64,
-        "int64_list": object,
-        "float": np.float,
-        "float_list": object,
-        "bytes": object,
-        "bytes_list": object,
-    }
-    assert list(df["int64"]) == [1]
-    assert list(df["int64_list"]) == [[1, 2, 3, 4]]
-    assert list(df["float"]) == [1.0]
-    assert list(df["float_list"]) == [[1.0, 2.0, 3.0, 4.0]]
-    assert list(df["bytes"]) == [b"abc"]
-    assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
+    head_node_id = ray.get_runtime_context().get_node_id()
+
+    # Issue read so `_get_read_tasks` being executed.
+    ray.data.range(10).cache()
+
+    # Verify `_get_read_tasks` being executed on same node (head node).
+    def verify_get_read_tasks():
+        from ray.experimental.state.api import list_tasks
+
+        task_states = list_tasks(
+            address=cluster.address, filters=[("name", "=", "_get_read_tasks")]
+        )
+        # Verify only one task being executed on same node.
+        assert len(task_states) == 1
+        assert task_states[0]["name"] == "_get_read_tasks"
+        assert task_states[0]["node_id"] == head_node_id
+        return True
+
+    wait_for_condition(verify_get_read_tasks, timeout=20)
 
 
 if __name__ == "__main__":

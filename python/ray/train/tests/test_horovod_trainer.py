@@ -6,8 +6,8 @@ from torchvision import datasets
 from torchvision.transforms import transforms
 
 import ray
-from ray.air.examples.horovod.horovod_pytorch_example import Net
-from ray.air.examples.horovod.horovod_pytorch_example import (
+from ray.train.examples.horovod.horovod_pytorch_example import Net
+from ray.train.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
 )
 from ray.air.config import ScalingConfig

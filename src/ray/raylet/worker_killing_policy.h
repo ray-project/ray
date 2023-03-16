@@ -26,17 +26,21 @@ namespace ray {
 
 namespace raylet {
 
+constexpr char kLifoPolicy[] = "retriable_lifo";
+constexpr char kGroupByOwner[] = "group_by_owner";
+
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {
  public:
   /// Selects a worker to be killed.
   ///
   /// \param workers the list of candidate workers.
+  /// \param system_memory snapshot of memory usage.
   ///
-  /// \return the worker to kill, or nullptr if the worker list is empty.
-  virtual const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+  /// \return the worker to kill and whether the task on the worker should be retried.
+  virtual const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemoryMonitor &memory_monitor) const = 0;
+      const MemorySnapshot &system_memory) const = 0;
 
   virtual ~WorkerKillingPolicy() {}
 
@@ -46,22 +50,26 @@ class WorkerKillingPolicy {
   /// \param workers The workers to be printed.
   /// \param num_workers The number of workers to print starting from the beginning of the
   /// worker list.
+  /// \param system_memory snapshot of memory usage.
   ///
   /// \return the debug string.
   static std::string WorkersDebugString(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       int32_t num_workers,
-      const MemoryMonitor &memory_monitor);
+      const MemorySnapshot &system_memory);
 };
 
 /// Prefers killing retriable workers over non-retriable ones, in LIFO order.
 class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   RetriableLIFOWorkerKillingPolicy();
-  const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemoryMonitor &memory_monitor) const;
+      const MemorySnapshot &system_memory) const;
 };
+
+std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
+    std::string killing_policy_str);
 
 }  // namespace raylet
 

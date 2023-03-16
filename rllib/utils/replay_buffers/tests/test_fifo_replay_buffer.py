@@ -22,7 +22,8 @@ class TestFifoReplayBuffer(unittest.TestCase):
                     SampleBatch.REWARDS: [np.random.rand()],
                     SampleBatch.OBS: [np.random.random((4,))],
                     SampleBatch.NEXT_OBS: [np.random.random((4,))],
-                    SampleBatch.DONES: [np.random.choice([False, True])],
+                    SampleBatch.TERMINATEDS: [np.random.choice([False, True])],
+                    SampleBatch.TRUNCATEDS: [np.random.choice([False, False])],
                 }
             )
         )
@@ -34,7 +35,8 @@ class TestFifoReplayBuffer(unittest.TestCase):
                     SampleBatch.REWARDS: [np.random.rand()],
                     SampleBatch.OBS: [np.random.random((4,))],
                     SampleBatch.NEXT_OBS: [np.random.random((4,))],
-                    SampleBatch.DONES: [np.random.choice([False, True])],
+                    SampleBatch.TERMINATEDS: [np.random.choice([False, False])],
+                    SampleBatch.TRUNCATEDS: [np.random.choice([False, True])],
                 }
             )
         )

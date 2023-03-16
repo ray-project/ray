@@ -13,6 +13,8 @@
 // limitations under the License.
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -27,6 +29,9 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+
+class GcsMonitorServerTest;
+
 using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
@@ -83,11 +88,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle get gcs scheduling stats rpc request.
-  void HandleGetGcsSchedulingStats(rpc::GetGcsSchedulingStatsRequest request,
-                                   rpc::GetGcsSchedulingStatsReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a node registration.
   ///
   /// \param node The specified node to add.
@@ -138,6 +138,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
+  /// Returns the mapping from node id to latest resource report.
+  ///
+  /// \returns The mapping from node id to latest resource report.
+  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
+
  private:
   /// Aggregate nodes' pending task info.
   ///
@@ -172,6 +177,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+
+  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs

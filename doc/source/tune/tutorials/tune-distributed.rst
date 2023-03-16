@@ -1,7 +1,7 @@
 .. _tune-distributed-ref:
 
-Tune Distributed Experiments
-============================
+Running Distributed Experiments with Ray Tune
+==============================================
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview how to setup and launch a distributed experiment along with :ref:`commonly used commands <tune-distributed-common>` for Tune when running distributed experiments.
 
@@ -15,12 +15,12 @@ Summary
 To run a distributed experiment with Tune, you need to:
 
 1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
-2. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>` (in beta starting with Ray 1.12).
+2. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>`.
 
 .. tune-distributed-cloud:
 
-Example: Tune on AWS VMs
-------------------------
+Example: Distributed Tune on AWS VMs
+------------------------------------
 
 Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-index>`. Save the below cluster configuration (``tune-default.yaml``):
 
@@ -55,10 +55,11 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 Note that you can customize the directory of results by specifying: ``air.RunConfig(local_dir=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 
-Running a distributed experiment
---------------------------------
+Running a Distributed Tune Experiment
+-------------------------------------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
+Running a distributed (multi-node) experiment requires Ray to be started already.
+You can do this on local machines or on the cloud.
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
@@ -96,38 +97,42 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 
-Syncing
--------
+Storage Options in a Distributed Tune Run
+-----------------------------------------
 
 In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
 reduce synchronization overhead. For this, you just have to specify an ``upload_dir`` in the
-:class:`tune.SyncConfig <ray.tune.SyncConfig>`:
+:class:`tune.SyncConfig <ray.tune.SyncConfig>`.
+
+`my_trainable` is a user-defined :ref:`Tune Trainable <tune_60_seconds_trainables>` in the following example:
 
 .. code-block:: python
 
     from ray import air, tune
+    from my_module import my_trainable
 
     tuner = tune.Tuner(
-        trainable,
-        run_config=air.RunConfig(name="experiment_name"
+        my_trainable,
+        run_config=air.RunConfig(
+            name="experiment_name"
             sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/"
-        ))
+                upload_dir="s3://bucket-name/sub-path/"
+            )
+        )
     )
     tuner.fit()
 
-
 For more details or customization, see our
-:ref:`guide on checkpointing <tune-checkpoint-syncing>`.
-
+:ref:`guide on configuring storage in a distributed Tune experiment <tune-storage-options>`.
 
 
 .. _tune-distributed-spot:
 
-Pre-emptible Instances (Cloud)
-------------------------------
+Tune Runs on preemptible instances
+-----------------------------------
 
-Running on spot instances (or pre-emptible instances) can reduce the cost of your experiment. You can enable spot instances in AWS via the following configuration modification:
+Running on spot instances (or preemptible instances) can reduce the cost of your experiment.
+You can enable spot instances in AWS via the following configuration modification:
 
 .. code-block:: yaml
 
@@ -169,8 +174,8 @@ Spot instances may be removed suddenly while trials are still running. Often tim
     :end-before: __trainable_run_end__
 
 
-Example for using spot instances (AWS)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example for Using Tune with Spot instances (AWS)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here is an example for running Tune on spot instances. This assumes your AWS credentials have already been setup (``aws configure``):
 
@@ -211,13 +216,13 @@ You can also specify ``sync_config=tune.SyncConfig(upload_dir=...)``, as part of
 
 .. _tune-fault-tol:
 
-Fault Tolerance
----------------
+Fault Tolerance of Tune Runs
+----------------------------
 
 Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
 Tune will restore trials from the latest checkpoint, where available. In the distributed setting, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
-See :ref:`our checkpointing guide <tune-checkpoint-syncing>`.
+See :ref:`here for information on checkpointing <tune-function-checkpointing>`.
 
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
@@ -225,14 +230,12 @@ If the trial/actor is placed on a different node, Tune will automatically push t
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through ``Tuner.restore()``.
-There are a few options for restoring an experiment:
-"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
+Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>`.
 
 .. _tune-distributed-common:
 
-Common Commands
----------------
+Common Tune Commands
+--------------------
 
 Below are some commonly used commands for submitting experiments. Please see the :ref:`Clusters page <cluster-index>` to see find more comprehensive documentation of commands.
 
@@ -277,7 +280,8 @@ Below are some commonly used commands for submitting experiments. Please see the
 Troubleshooting
 ---------------
 
-Sometimes, your program may freeze. Run this to restart the Ray cluster without running any of the installation commands.
+Sometimes, your program may freeze.
+Run this to restart the Ray cluster without running any of the installation commands.
 
 .. code-block:: bash
 

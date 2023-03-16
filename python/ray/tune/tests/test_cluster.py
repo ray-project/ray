@@ -37,7 +37,11 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 1000,
+                "health_check_failure_threshold": 10,
+            },
         },
     )
     return cluster
@@ -62,7 +66,11 @@ def start_connected_emptyhead_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 0,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 1000,
+                "health_check_failure_threshold": 10,
+            },
         },
     )
     os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
@@ -78,7 +86,7 @@ def test_counting_resources(start_connected_cluster):
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(search_alg=BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
@@ -119,7 +127,7 @@ def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(search_alg=BasicVariantGenerator())
     mock_process_failure = MagicMock(side_effect=runner._process_trial_failure)
     runner._process_trial_failure = mock_process_failure
 
@@ -141,7 +149,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(search_alg=BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
@@ -200,7 +208,9 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
         upload_dir = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
+    runner = TrialRunner(
+        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+    )
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
@@ -232,7 +242,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     while not runner.is_finished():
         runner.step()
 
-    assert t.status == Trial.TERMINATED, runner.debug_string()
+    assert t.status == Trial.TERMINATED
 
     # Test recovery of trial that has been checkpointed
     t2 = Trial("__fake", **kwargs)
@@ -245,7 +255,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
     while not runner.is_finished():
         runner.step()
-    assert t2.status == Trial.TERMINATED, runner.debug_string()
+    assert t2.status == Trial.TERMINATED
 
     # Test recovery of trial that won't be checkpointed
     kwargs = {
@@ -263,7 +273,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
     while not runner.is_finished():
         runner.step()
-    assert t3.status == Trial.ERROR, runner.debug_string()
+    assert t3.status == Trial.ERROR
 
     with pytest.raises(TuneError):
         runner.step()
@@ -285,7 +295,9 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
         upload_dir = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
+    runner = TrialRunner(
+        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+    )  # noqa
     kwargs = {
         "stopping_criterion": {"training_iteration": 5},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
@@ -310,7 +322,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
     time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
-    assert all(t.status == Trial.PENDING for t in trials), runner.debug_string()
+    assert all(t.status == Trial.PENDING for t in trials)
 
 
 @pytest.mark.parametrize("durable", [False, True])
@@ -329,7 +341,9 @@ def test_migration_checkpoint_removal(
         upload_dir = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
+    runner = TrialRunner(
+        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+    )
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
@@ -363,7 +377,7 @@ def test_migration_checkpoint_removal(
 
     while not runner.is_finished():
         runner.step()
-    assert t1.status == Trial.TERMINATED, runner.debug_string()
+    assert t1.status == Trial.TERMINATED
 
 
 @pytest.mark.parametrize("durable", [False, True])

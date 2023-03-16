@@ -5,12 +5,13 @@ import functools
 import glob
 import itertools
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
 from collections import defaultdict
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import docker
 
@@ -18,6 +19,7 @@ print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp3"
+ADDITIONAL_PLATFORMS = ["aarch64"]
 
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": (
@@ -38,17 +40,20 @@ PY_MATRIX = {
 }
 
 BASE_IMAGES = {
+    "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
     "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
     "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
     "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
     "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
     "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu20.04",
+    # there is no ubuntu20.04 image for cuda 10.2 and 10.1
+    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
     "cpu": "ubuntu:focal",
 }
 
 CUDA_FULL = {
+    "cu118": "CUDA 11.8",
     "cu116": "CUDA 11.6",
     "cu113": "CUDA 11.3",
     "cu112": "CUDA 11.2",
@@ -60,13 +65,19 @@ CUDA_FULL = {
 
 # The CUDA version to use for the ML Docker image.
 # If changing the CUDA version in the below line, you should also change the base Docker
-# image being used in ~/.buildkite/Dockerfile.gpu to match the same image being used
+# image being used in ~/ci/docker/Dockerfile.base.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu112"
+ML_CUDA_VERSION = "cu116"
 
 DEFAULT_PYTHON_VERSION = "py37"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
+
+
+def _with_suffix(tag: str, suffix: Optional[str] = None):
+    if suffix:
+        return tag + "-" + suffix
+    return tag
 
 
 def _get_branch():
@@ -158,7 +169,11 @@ def _check_if_docker_files_modified():
 
 
 def _build_docker_image(
-    image_name: str, py_version: str, image_type: str, no_cache=True
+    image_name: str,
+    py_version: str,
+    image_type: str,
+    suffix: Optional[str] = None,
+    no_cache=True,
 ):
     """Builds Docker image with the provided info.
 
@@ -168,6 +183,7 @@ def _build_docker_image(
         Must be one of PY_MATRIX.keys()
     image_type: The image type to build. Must be one of
         BASE_IMAGES.keys()
+    suffix: Suffix to add to the tags (e.g. "aarch64" for "ray:sha256-aarch64")
     no_cache: If True, don't use caching when building the image.
     """
 
@@ -191,16 +207,13 @@ def _build_docker_image(
             f" {BASE_IMAGES.keys()}"
         )
 
-    # TODO(https://github.com/ray-project/ray/issues/16599):
-    # remove below after supporting ray-ml images with Python 3.9/3.10
-    if image_name == "ray-ml" and py_version in {"py39", "py310"}:
-        print(f"{image_name} image is currently unsupported with " "Python 3.9/3.10")
-        return
-
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
     build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
+
+    if platform.processor() in ADDITIONAL_PLATFORMS:
+        build_args["HOSTTYPE"] = platform.processor()
 
     device_tag = f"{image_type}"
 
@@ -208,6 +221,8 @@ def _build_docker_image(
         base_image = BASE_IMAGES[image_type]
     else:
         base_image = f"-{py_version}-{device_tag}"
+
+        base_image = _with_suffix(base_image, suffix=suffix)
 
     if image_name != "ray-worker-container":
         build_args["BASE_IMAGE"] = base_image
@@ -220,6 +235,8 @@ def _build_docker_image(
         build_args["FIND_LINKS_PATH"] = ".whl"
 
     tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
+
+    tagged_name = _with_suffix(tagged_name, suffix=suffix)
 
     for i in range(2):
         cleanup = DOCKER_CLIENT.containers.prune().get("SpaceReclaimed")
@@ -310,22 +327,33 @@ def check_staleness(repository, tag):
     return is_stale
 
 
-def build_for_all_versions(image_name, py_versions, image_types, **kwargs):
+def build_for_all_versions(image_name, py_versions, image_types, suffix, **kwargs):
     """Builds the given Docker image for all Python & CUDA versions"""
     for py_version in py_versions:
         for image_type in image_types:
             _build_docker_image(
-                image_name, py_version=py_version, image_type=image_type, **kwargs
+                image_name,
+                py_version=py_version,
+                image_type=image_type,
+                suffix=suffix,
+                **kwargs,
             )
 
 
-def build_base_images(py_versions, image_types):
-    build_for_all_versions("base-deps", py_versions, image_types, no_cache=False)
-    build_for_all_versions("ray-deps", py_versions, image_types, no_cache=False)
+def build_base_images(py_versions, image_types, suffix):
+    build_for_all_versions(
+        "base-deps", py_versions, image_types, suffix=suffix, no_cache=False
+    )
+    build_for_all_versions(
+        "ray-deps", py_versions, image_types, suffix=suffix, no_cache=False
+    )
 
 
 def build_or_pull_base_images(
-    py_versions: List[str], image_types: List[str], rebuild_base_images: bool = True
+    py_versions: List[str],
+    image_types: List[str],
+    rebuild_base_images: bool = True,
+    suffix: Optional[str] = None,
 ) -> bool:
     """Returns images to tag and build."""
     repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
@@ -347,7 +375,7 @@ def build_or_pull_base_images(
         is_stale = True
 
     if rebuild_base_images or _release_build() or is_stale:
-        build_base_images(py_versions, image_types)
+        build_base_images(py_versions, image_types, suffix=suffix)
         return True
     else:
         print("Just pulling images!")
@@ -361,11 +389,15 @@ def prep_ray_ml():
     ml_requirements_files = [
         "python/requirements/ml/requirements_ml_docker.txt",
         "python/requirements/ml/requirements_dl.txt",
-        "python/requirements/ml/requirements_py36_compat.txt",
         "python/requirements/ml/requirements_tune.txt",
         "python/requirements/ml/requirements_rllib.txt",
         "python/requirements/ml/requirements_train.txt",
         "python/requirements/ml/requirements_upstream.txt",
+    ]
+    # We don't need these in the ml docker image
+    ignore_requirements = [
+        "python/requirements/compat/requirements_legacy_compat.txt",
+        "python/requirements/compat/requirements_py36_compat.txt",
     ]
 
     files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
@@ -374,7 +406,7 @@ def prep_ray_ml():
         print(rel)
         if not rel.startswith("python/requirements/ml"):
             continue
-        elif rel not in ml_requirements_files:
+        elif rel not in ml_requirements_files and rel not in ignore_requirements:
             raise RuntimeError(
                 f"A new requirements file was found in the repository, but it has "
                 f"not been added to `build-docker-images.py` "
@@ -442,8 +474,9 @@ def _create_new_tags(all_tags, old_str, new_str):
 def push_and_tag_images(
     py_versions: List[str],
     image_types: List[str],
-    push_base_images: bool,
     merge_build: bool = False,
+    image_list: Optional[List[str]] = None,
+    suffix: Optional[str] = None,
 ):
 
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -452,10 +485,6 @@ def push_and_tag_images(
         release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*", _get_branch()).group(0)
         date_tag = release_name
         sha_tag = release_name
-
-    image_list = ["ray", "ray-ml"]
-    if push_base_images:
-        image_list.extend(["base-deps", "ray-deps"])
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
@@ -477,19 +506,8 @@ def push_and_tag_images(
                     )
                     continue
 
-                # TODO(https://github.com/ray-project/ray/issues/16599):
-                # remove below after supporting ray-ml images with Python 3.9/3.10
-                if image_name in ["ray-ml"] and (
-                    PY_MATRIX[py_name].startswith("3.9")
-                    or PY_MATRIX[py_name].startswith("3.10")
-                ):
-                    print(
-                        f"{image_name} image is currently "
-                        f"unsupported with Python 3.9/3.10"
-                    )
-                    continue
+                tag = _with_suffix(f"nightly-{py_name}-{image_type}", suffix=suffix)
 
-                tag = f"nightly-{py_name}-{image_type}"
                 tag_mapping[tag].append(tag)
 
         # If no device is specified, it should map to CPU image.
@@ -532,40 +550,82 @@ def push_and_tag_images(
             )
             tag_mapping[old_tag].extend(new_tags)
 
+        print(f"These tags will be created for {image_name}: ", tag_mapping)
+
         # Sanity checking.
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
                 if "-cpu" in old_tag:
-                    assert "nightly-cpu" in tag_mapping[old_tag]
+                    assert (
+                        _with_suffix("nightly-cpu", suffix=suffix)
+                        in tag_mapping[old_tag]
+                    )
                     if "-deps" in image_name:
-                        assert "nightly" in tag_mapping[old_tag]
-                        assert f"{date_tag}-cpu" in tag_mapping[old_tag]
-                        assert f"{date_tag}" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix("nightly", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{date_tag}-cpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{date_tag}", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     elif image_name == "ray":
-                        assert "nightly" in tag_mapping[old_tag]
-                        assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
-                        assert f"{sha_tag}" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix("nightly", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}-cpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     # For ray-ml, nightly should refer to the GPU image.
                     elif image_name == "ray-ml":
-                        assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix(f"{sha_tag}-cpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     else:
                         raise RuntimeError(f"Invalid image name: {image_name}")
 
                 elif ML_CUDA_VERSION in old_tag:
-                    assert "nightly-gpu" in tag_mapping[old_tag]
+                    assert (
+                        _with_suffix("nightly-gpu", suffix=suffix)
+                        in tag_mapping[old_tag]
+                    )
                     if "-deps" in image_name:
-                        assert f"{date_tag}-gpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix(f"{date_tag}-gpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     elif image_name == "ray":
-                        assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix(f"{sha_tag}-gpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     # For ray-ml, nightly should refer to the GPU image.
                     elif image_name == "ray-ml":
-                        assert "nightly" in tag_mapping[old_tag]
-                        assert f"{sha_tag}" in tag_mapping[old_tag]
-                        assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix("nightly", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}-gpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     else:
                         raise RuntimeError(f"Invalid image name: {image_name}")
-
-        print(f"These tags will be created for {image_name}: ", tag_mapping)
 
         # Tag and push all images.
         for old_tag in tag_mapping.keys():
@@ -633,7 +693,7 @@ if __name__ == "__main__":
         default="py37",
         nargs="*",
         help="Which python versions to build. "
-        "Must be in (py36, py37, py38, py39, py310)",
+        "Must be in (py36, py37, py38, py39, py310, py311)",
     )
     parser.add_argument(
         "--device-types",
@@ -648,6 +708,12 @@ if __name__ == "__main__":
         choices=BUILD_TYPES,
         required=True,
         help="Whether to bypass checking if docker is affected",
+    )
+    parser.add_argument(
+        "--suffix",
+        required=False,
+        choices=ADDITIONAL_PLATFORMS,
+        help="Suffix to append to the build tags",
     )
     parser.add_argument(
         "--build-base",
@@ -731,28 +797,47 @@ if __name__ == "__main__":
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         is_base_images_built = build_or_pull_base_images(
-            py_versions, image_types, args.base
+            py_versions, image_types, args.base, suffix=args.suffix
         )
 
         if args.only_build_worker_container:
-            build_for_all_versions("ray-worker-container", py_versions, image_types)
+            build_for_all_versions(
+                "ray-worker-container", py_versions, image_types, suffix=args.suffix
+            )
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
-            build_for_all_versions("ray", py_versions, image_types)
+            build_for_all_versions("ray", py_versions, image_types, suffix=args.suffix)
+
+            # List of images to tag and push to docker hub
+            images_to_tag_and_push = []
+
+            if is_base_images_built:
+                images_to_tag_and_push += ["base-deps", "ray-deps"]
+
+            # Always tag/push ray
+            images_to_tag_and_push += ["ray"]
 
             # Only build ML Docker images for ML_CUDA_VERSION or cpu.
-            ml_image_types = [
-                image_type
-                for image_type in image_types
-                if image_type in [ML_CUDA_VERSION, "cpu"]
-            ]
+            if platform.processor() not in ADDITIONAL_PLATFORMS:
+                ml_image_types = [
+                    image_type
+                    for image_type in image_types
+                    if image_type in [ML_CUDA_VERSION, "cpu"]
+                ]
+            else:
+                # Do not build ray-ml e.g. for arm64
+                ml_image_types = []
 
             if len(ml_image_types) > 0:
                 prep_ray_ml()
                 build_for_all_versions(
-                    "ray-ml", py_versions, image_types=ml_image_types
+                    "ray-ml",
+                    py_versions,
+                    image_types=ml_image_types,
+                    suffix=args.suffix,
                 )
+                images_to_tag_and_push += ["ray-ml"]
 
             if build_type in {MERGE, PR}:
                 valid_branch = _valid_branch()
@@ -761,8 +846,9 @@ if __name__ == "__main__":
                 push_and_tag_images(
                     py_versions,
                     image_types,
-                    is_base_images_built,
-                    valid_branch and is_merge,
+                    merge_build=valid_branch and is_merge,
+                    image_list=images_to_tag_and_push,
+                    suffix=args.suffix,
                 )
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password

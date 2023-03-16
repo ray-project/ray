@@ -25,13 +25,15 @@ DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
-    "cld_4F7k8814aZzGG8TNUGPKnc",
+    "cld_kvedZWag2qA8i5BjxUevf5i7",  # anyscale_v2_default_cloud
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_FKRmeV5pA6X72aVscFALNC32",
 )
-DEFAULT_PYTHON_VERSION = (3, 7)
+DEFAULT_PYTHON_VERSION = tuple(
+    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
+)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -40,12 +42,14 @@ RELEASE_TEST_SCHEMA_FILE = os.path.join(
 )
 
 
-def read_and_validate_release_test_collection(config_file: str) -> List[Test]:
+def read_and_validate_release_test_collection(
+    config_file: str, schema_file: Optional[str] = None
+) -> List[Test]:
     """Read and validate test collection from config file"""
     with open(config_file, "rt") as fp:
         test_config = yaml.safe_load(fp)
 
-    validate_release_test_collection(test_config)
+    validate_release_test_collection(test_config, schema_file=schema_file)
     return test_config
 
 
@@ -55,9 +59,11 @@ def load_schema_file(path: Optional[str] = None) -> Dict:
         return json.load(fp)
 
 
-def validate_release_test_collection(test_collection: List[Test]):
+def validate_release_test_collection(
+    test_collection: List[Test], schema_file: Optional[str] = None
+):
     try:
-        schema = load_schema_file()
+        schema = load_schema_file(schema_file)
     except Exception as e:
         raise ReleaseTestConfigError(
             f"Could not load release test validation schema: {e}"

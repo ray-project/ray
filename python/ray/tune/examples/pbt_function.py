@@ -94,7 +94,7 @@ def pbt_function(config):
         step += 1
 
 
-def run_tune_pbt():
+def run_tune_pbt(smoke_test=False):
     perturbation_interval = 5
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
@@ -113,9 +113,10 @@ def run_tune_pbt():
             name="pbt_function_api_example",
             verbose=False,
             stop={
-                # Stop when done = True or at 1000 train steps (whichever comes first)
+                # Stop when done = True or at some # of train steps
+                # (whichever comes first)
                 "done": True,
-                "training_iteration": 1000,
+                "training_iteration": 10 if smoke_test else 1000,
             },
             failure_config=air.FailureConfig(
                 fail_fast=True,
@@ -158,22 +159,13 @@ def run_tune_pbt():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing"
-    )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing",
     )
     args, _ = parser.parse_known_args()
     if args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test
-    else:
-        if args.server_address is not None:
-            ray.init(f"ray://{args.server_address}")
-        else:
-            ray.init()
 
-    run_tune_pbt()
+    run_tune_pbt(smoke_test=args.smoke_test)

@@ -322,22 +322,23 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 
 def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(num_cpus=0, _system_config=config, object_store_memory=10 ** 8)
+    cluster.add_node(num_cpus=0, _system_config=config, object_store_memory=10**8)
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
     @ray.remote
     def put():
-        return np.zeros(10 ** 5, dtype=np.uint8)
+        return np.zeros(10**5, dtype=np.uint8)
 
     @ray.remote
     def check(x):
@@ -347,14 +348,14 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
     for _ in range(4):
         ray.get(check.remote(ref))
         cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
     # All reconstruction attempts used up. The object's value should now be an
     # error in the local store.
     # Force object spilling and check that it can complete.
     xs = []
     for _ in range(20):
-        xs.append(ray.put(np.zeros(10 ** 7, dtype=np.uint8)))
+        xs.append(ray.put(np.zeros(10**7, dtype=np.uint8)))
     for x in xs:
         ray.get(x, timeout=10)
 

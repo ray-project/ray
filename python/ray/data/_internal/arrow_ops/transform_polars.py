@@ -7,7 +7,7 @@ except ImportError:
 
 
 if TYPE_CHECKING:
-    from ray.data.impl.sort import SortKeyT
+    from ray.data._internal.sort import SortKeyT
 
 pl = None
 

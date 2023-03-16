@@ -19,109 +19,18 @@ from ray.train._internal.session import TrainingResultType
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train._internal.utils import ActorWrapper
-from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.base_trainer import (  # noqa: F401
     BaseTrainer,
     GenDataset,
     TrainingFailedError,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
 S = TypeVar("S")
 
 logger = logging.getLogger(__name__)
-
-
-@Deprecated
-class Trainer:
-    """A class for enabling seamless distributed deep learning.
-
-    Directory structure:
-    - A logdir is created during instantiation. This will hold all the
-    results/checkpoints for the lifetime of the Trainer. By default, it will be
-    of the form ``~/ray_results/train_<datestring>``.
-    - A run_dir is created for each ``run`` call. This will
-    hold the checkpoints and results for a single ``trainer.run()`` or
-    ``trainer.run_iterator()`` call. It will be of the form ``run_<run_id>``.
-
-    Args:
-        backend (Union[str, BackendConfig]): The backend used for
-            distributed communication. If configurations are needed,
-            a subclass of ``BackendConfig`` can be passed in.
-            Supported ``str`` values: {"torch", "tensorflow", "horovod"}.
-        num_workers: The number of workers (Ray actors) to launch.
-            Each worker will reserve 1 CPU by default. The number of CPUs
-            reserved by each worker can be overridden with the
-            ``resources_per_worker`` argument.
-        use_gpu: If True, training will be done on GPUs (1 per
-            worker). Defaults to False. The number of GPUs reserved by each
-            worker can be overridden with the ``resources_per_worker``
-            argument.
-        resources_per_worker (Optional[Dict]): If specified, the resources
-            defined in this Dict will be reserved for each worker. The
-            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-            override the number of CPU/GPUs used by each worker.
-        logdir (Optional[str]): Path to the file directory where logs
-            should be persisted. If this is not specified, one will be
-            generated.
-         max_retries: Number of retries when Ray actors fail.
-            Defaults to 3. Set to -1 for unlimited retries.
-    """
-
-    def __init__(
-        self,
-        backend: Union[str, BackendConfig],
-        num_workers: int,
-        use_gpu: bool = False,
-        resources_per_worker: Optional[Dict[str, float]] = None,
-        logdir: Optional[str] = None,
-        max_retries: int = 3,
-    ):
-        raise DeprecationWarning(
-            "The `ray.train.Trainer` API is deprecated in Ray "
-            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
-            "https://docs.ray.io/en/latest/ray-air/getting-started.html) "
-            "provides greater functionality than `ray.train.Trainer`, "
-            "and with a more flexible and easy-to-use API. To port over old Ray "
-            "Train code to AIR APIs, you can follow this guide: "
-            "https://docs.google.com/document/d/"
-            "1kLA4n18CbvIo3i2JQNeh2E48sMbFWAeopYwnuyoFGS8/edit?usp=sharing",
-        )
-
-
-@Deprecated
-class TrainWorkerGroup:
-    """A container for a group of Ray actors.
-
-    You should not instantiate this directly and only use this as the output
-    of ``Trainer.to_worker_group``. You can index or iterate this object like
-    you would a List.
-
-    .. code-block:: python
-
-        class Trainer:
-            def __init__(self, config):
-                self.config = config
-
-            def train_epoch(self):
-                ...
-                return 1
-
-        config = {"lr": 0.1}
-        trainer = Trainer(num_workers=2, backend="torch")
-        workers = trainer.to_worker_group(train_cls=Trainer, config=config)
-        futures = [w.train_epoch.remote() for w in workers]
-        assert ray.get(futures) == [1, 1]
-        assert ray.get(workers[0].train_epoch.remote()) == 1
-        workers.shutdown()`
-    """
-
-    def __init__(self, worker_group: WorkerGroup):
-        raise DeprecationWarning(
-            "The `ray.train.trainer.WorkerGroup` API is deprecated in Ray 2.1."
-        )
 
 
 @DeveloperAPI
@@ -235,19 +144,21 @@ class TrainingIterator:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
             try:
-                self._backend_executor.shutdown()
+                # Exception raised in at least one training worker. Immediately raise
+                # this error to the user and do not attempt to terminate gracefully.
+                self._backend_executor.shutdown(graceful_termination=False)
                 self._finished_training = True
             except Exception:
                 pass
             raise
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
-        """Fetch next results produced by ``train.report()`` from each worker.
+        """Fetch next results produced by ``session.report()`` from each worker.
 
         Assumes ``start_training`` has already been called.
 
         Returns:
-            A list of dictionaries of values passed to ``train.report()`` from
+            A list of dictionaries of values passed to ``session.report()`` from
                 each worker. Each item corresponds to an intermediate result
                 a single worker. If there are no more items to fetch,
                 returns None.
@@ -260,11 +171,11 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                result_data = [self._backend.decode_data(r.data) for r in results]
+                result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
                 # Iterate until next REPORT call or training has finished.
             else:
@@ -284,7 +195,7 @@ class TrainingIterator:
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
 
     def _finish_training(self):

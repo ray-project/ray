@@ -22,7 +22,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Configure our PPO trainer
-    config = ppo.PPOConfig().rollouts(num_rollout_workers=1).framework(args.framework)
+    config = (
+        ppo.PPOConfig()
+        .rollouts(num_rollout_workers=1)
+        .framework(args.framework)
+        # ONNX is not supported by RLModule API yet.
+        .training(_enable_learner_api=False)
+        .rl_module(_enable_rl_module_api=False)
+    )
 
     outdir = "export_tf"
     if os.path.exists(outdir):
@@ -37,7 +44,7 @@ if __name__ == "__main__":
 
     # Start Ray and initialize a PPO Algorithm
     ray.init()
-    algo = config.build(env="CartPole-v0")
+    algo = config.build(env="CartPole-v1")
 
     # You could train the model here via:
     # algo.train()

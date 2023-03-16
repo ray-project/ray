@@ -4,13 +4,19 @@
 ##########
 
 import copy
-from collections import Iterable
 
-import gym
+try:
+    # This works in Python<3.9
+    from collections import Iterable
+except ImportError:
+    # This works in Python>=3.9
+    from collections.abc import Iterable
+
+import gymnasium as gym
 import logging
 import numpy as np
-from gym.spaces import Discrete
-from gym.utils import seeding
+from gymnasium.spaces import Discrete
+from gymnasium.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import override
 from typing import Dict, Optional
@@ -28,8 +34,8 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     NAME = "CoinGame"
     NUM_AGENTS = 2
     NUM_ACTIONS = 4
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = None
+    action_space = Discrete(NUM_ACTIONS)
+    observation_space = None
     MOVES = [
         np.array([0, 1]),
         np.array([0, -1]),
@@ -45,15 +51,14 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
         self._load_config(config)
         self.player_red_id, self.player_blue_id = self.players_ids
-        self.n_features = self.grid_size ** 2 * (2 * self.NUM_AGENTS)
-        self.OBSERVATION_SPACE = gym.spaces.Box(
+        self.n_features = self.grid_size**2 * (2 * self.NUM_AGENTS)
+        self.observation_space = gym.spaces.Box(
             low=0, high=1, shape=(self.grid_size, self.grid_size, 4), dtype="uint8"
         )
 
         self.step_count_in_current_episode = None
         if self.output_additional_info:
             self._init_info()
-        self.seed(seed=config.get("seed", None))
 
     def _validate_config(self, config):
         if "players_ids" in config:
@@ -71,13 +76,9 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         )
 
     @override(gym.Env)
-    def seed(self, seed=None):
-        """Seed the PRNG of this space."""
+    def reset(self, *, seed=None, options=None):
         self.np_random, seed = seeding.np_random(seed)
-        return [seed]
 
-    @override(gym.Env)
-    def reset(self):
         self.step_count_in_current_episode = 0
 
         if self.output_additional_info:
@@ -87,20 +88,20 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self._generate_coin()
         obs = self._generate_observation()
 
-        return {self.player_red_id: obs[0], self.player_blue_id: obs[1]}
+        return {self.player_red_id: obs[0], self.player_blue_id: obs[1]}, {}
 
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
-        self.red_coin = self.np_random.randint(low=0, high=2)
-        self.red_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        self.blue_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
+        self.red_coin = self.np_random.integers(low=0, high=2)
+        self.red_pos = self.np_random.integers(low=0, high=self.grid_size, size=(2,))
+        self.blue_pos = self.np_random.integers(low=0, high=self.grid_size, size=(2,))
         self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
 
         self._players_do_not_overlap_at_start()
 
     def _players_do_not_overlap_at_start(self):
         while self._same_pos(self.red_pos, self.blue_pos):
-            self.blue_pos = self.np_random.randint(self.grid_size, size=2)
+            self.blue_pos = self.np_random.integers(self.grid_size, size=2)
 
     def _generate_coin(self):
         self._switch_between_coin_color_at_each_generation()
@@ -112,7 +113,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     def _coin_position_different_from_players_positions(self):
         success = 0
         while success < self.NUM_AGENTS:
-            self.coin_pos = self.np_random.randint(self.grid_size, size=2)
+            self.coin_pos = self.np_random.integers(self.grid_size, size=2)
             success = 1 - self._same_pos(self.red_pos, self.coin_pos)
             success += 1 - self._same_pos(self.blue_pos, self.coin_pos)
 
@@ -170,7 +171,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             if self._same_pos(self.red_pos, self.coin_pos) and self._same_pos(
                 self.blue_pos, self.coin_pos
             ):
-                red_first_if_both = bool(self.np_random.randint(low=0, high=2))
+                red_first_if_both = bool(self.np_random.integers(low=0, high=2))
 
         if self.red_coin:
             if self._same_pos(self.red_pos, self.coin_pos) and (
@@ -277,7 +278,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         else:
             info = {}
 
-        return state, rewards, done, info
+        return state, rewards, done, done, info
 
     @override(InfoAccumulationInterface)
     def _get_episode_info(self):

@@ -3,10 +3,12 @@ Unit tests for the router class. Please don't add any test that will involve
 controller or the actual replica wrapper, use mock if necessary.
 """
 import asyncio
+import copy
 
 import pytest
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import RunningReplicaInfo
 from ray.serve._private.router import Query, ReplicaSet, RequestMetadata
 from ray._private.test_utils import SignalActor
@@ -79,7 +81,7 @@ async def test_replica_set(ray_instance):
     # We will test a scenario with two replicas in the replica set.
     rs = ReplicaSet(
         "my_deployment",
-        asyncio.get_event_loop(),
+        get_or_create_event_loop(),
     )
     replicas = [
         RunningReplicaInfo(
@@ -109,13 +111,30 @@ async def test_replica_set(ray_instance):
             await asyncio.sleep(1)
 
     # Let's try to send another query.
-    third_ref_pending_task = asyncio.get_event_loop().create_task(
+    third_ref_pending_task = get_or_create_event_loop().create_task(
         rs.assign_replica(query)
     )
     # We should fail to assign a replica, so this coroutine should still be
     # pending after some time.
     await asyncio.sleep(0.2)
     assert not third_ref_pending_task.done()
+
+    # Let's make sure in flight queries is 1 for each replica.
+    assert len(rs.in_flight_queries[replicas[0]]) == 1
+    assert len(rs.in_flight_queries[replicas[1]]) == 1
+
+    # Let's copy a new RunningReplicaInfo object and update the router
+    cur_replicas_info = list(rs.in_flight_queries.keys())
+    replicas = copy.deepcopy(cur_replicas_info)
+    assert id(replicas[0].actor_handle) != id(cur_replicas_info[0].actor_handle)
+    assert replicas[0].replica_tag == cur_replicas_info[0].replica_tag
+    assert id(replicas[1].actor_handle) != id(cur_replicas_info[1].actor_handle)
+    assert replicas[1].replica_tag == cur_replicas_info[1].replica_tag
+    rs.update_running_replicas(replicas)
+
+    # Let's make sure in flight queries is 1 for each replica even if replicas update
+    assert len(rs.in_flight_queries[replicas[0]]) == 1
+    assert len(rs.in_flight_queries[replicas[1]]) == 1
 
     # Let's unblock the two replicas
     await signal.send.remote()

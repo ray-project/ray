@@ -4,6 +4,7 @@ import warnings
 import pytest
 
 import ray
+from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
@@ -511,6 +512,7 @@ def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client
             ray.util.placement_group([])
 
 
+@pytest.mark.filterwarnings("default:placement_group parameter is deprecated")
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -533,7 +535,10 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
         "placement_group parameter is deprecated" in str(warning.message)
         for warning in w
     )
-    assert any("docs.ray.io/en/master" in str(warning.message) for warning in w)
+    assert any(
+        f"docs.ray.io/en/{get_ray_doc_version()}" in str(warning.message)
+        for warning in w
+    )
 
     # Pointing to the same doc version as ray.__version__.
     ray.__version__ = "1.13.0"
@@ -553,6 +558,12 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     assert not w
 
 
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for actors is deprecated"
+)
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for bundles is deprecated"
+)
 def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
     with warnings.catch_warnings(record=True) as w:
 

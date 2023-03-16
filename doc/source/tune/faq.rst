@@ -280,22 +280,22 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also allocate specific resources to a trial based on a custom rule via lambda functions.
-For instance, if you want to allocate GPU resources to trials based on a setting in your config:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __resources_lambda_start__
-    :end-before: __resources_lambda_end__
-
-You can also use the :ref:`ScalingConfig <train-config>` to specify your lambda function:
+You can also use the :ref:`ScalingConfig <train-config>` to achieve the same results:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
     :language: python
     :start-after: __resources_scalingconfig_start__
     :end-before: __resources_scalingconfig_end__
+
+You can also allocate specific resources to a trial based on a custom rule via lambda functions.
+For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_lambda_start__
+    :end-before: __resources_lambda_end__
 
 
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
@@ -341,7 +341,7 @@ are efficiently stored and retrieved on your cluster machines.
 
 :func:`tune.with_parameters() <ray.tune.with_parameters>`
 also works with class trainables. Please see
-:ref:`here for further details <tune-with-parameters>` and examples.
+:func:`tune.with_parameters() <ray.tune.with_parameters>` for more details and examples.
 
 
 How can I reproduce experiments?
@@ -587,6 +587,8 @@ be automatically fetched and passed to your trainable as a parameter.
     :end-before: __large_data_end__
 
 
+.. _tune-cloud-syncing:
+
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -610,16 +612,23 @@ You can customize synchronization behavior by implementing your own Syncer:
     :start-after: __log_2_start__
     :end-before: __log_2_end__
 
-By default, syncing occurs every 300 seconds.
+By default, syncing occurs whenever one of the following conditions are met:
+
+* if you have used a :py:class:`~ray.air.config.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
+* a ``sync_period`` of seconds (default 300) has passed since last sync.
+
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is
-determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+determined by the experiment checkpoint period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
 For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 Please :ref:`see here for more tips <aws-cluster-s3>`.
+
+
+.. _tune-cloud-syncing-command-line-example:
 
 How can I use the awscli or gsutil command line commands for syncing?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -765,3 +774,34 @@ API should be used to get the path for saving trial-specific outputs.
     accessing paths relative to the original working directory. This environment
     variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
     used instead.
+
+
+.. _tune-multi-tenancy:
+
+How can I run multiple Ray Tune jobs on the same cluster at the same time (multi-tenancy)?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Running multiple Ray Tune runs on the same cluster at the same
+time is not officially supported. We do not test this workflow and we recommend
+using a separate cluster for each tuning job.
+
+The reasons for this are:
+
+1. When multiple Ray Tune jobs run at the same time, they compete for resources.
+   One job could run all its trials at the same time, while the other job waits
+   for a long time until it gets resources to run the first trial.
+2. If it is easy to start a new Ray cluster on your infrastructure, there is often
+   no cost benefit to running one large cluster instead of multiple smaller
+   clusters. For instance, running one cluster of 32 instances incurs almost the same
+   cost as running 4 clusters with 8 instances each.
+3. Concurrent jobs are harder to debug. If a trial of job A fills the disk,
+   trials from job B on the same node are impacted. In practice, it's hard
+   to reason about these conditions from the logs if something goes wrong.
+
+Previously, some internal implementations in Ray Tune assumed that you only have one job
+running at a time. A symptom was when trials from job A used parameters specified in job B,
+leading to unexpected results.
+
+Please refer to
+[this github issue](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976)
+for more context and a workaround if you run into this issue.

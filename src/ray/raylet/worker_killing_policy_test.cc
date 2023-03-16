@@ -14,8 +14,6 @@
 
 #include "ray/raylet/worker_killing_policy.h"
 
-#include <sys/sysinfo.h>
-
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"
@@ -27,14 +25,6 @@ namespace raylet {
 class WorkerKillerTest : public ::testing::Test {
  protected:
   instrumented_io_context io_context_;
-  MemoryMonitor memory_monitor_ = {
-      io_context_,
-      0 /*usage_threshold*/,
-      -1 /*min_memory_free_bytes*/,
-      0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold,
-         MemorySnapshot system_memory,
-         float usage_threshold) { FAIL() << "Monitor should not be running"; }};
   int32_t port_ = 2389;
   RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
 
@@ -74,8 +64,9 @@ class WorkerKillerTest : public ::testing::Test {
 
 TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::shared_ptr<WorkerInterface> worker_to_kill =
-      worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+  auto worker_to_kill_and_should_retry =
+      worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+  auto worker_to_kill = worker_to_kill_and_should_retry.first;
   ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
@@ -107,8 +98,9 @@ TEST_F(WorkerKillerTest,
   expected_order.push_back(first_submitted);
 
   for (const auto &expected : expected_order) {
-    std::shared_ptr<WorkerInterface> worker_to_kill =
-        worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+    auto worker_to_kill_and_should_retry =
+        worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+    auto worker_to_kill = worker_to_kill_and_should_retry.first;
     ASSERT_EQ(worker_to_kill->WorkerId(), expected->WorkerId());
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());

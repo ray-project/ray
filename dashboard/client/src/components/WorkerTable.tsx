@@ -86,9 +86,11 @@ export const ExpandableTableRow = ({
 const WorkerDetailTable = ({
   actorMap,
   coreWorkerStats,
+  newIA = false,
 }: {
   actorMap: { [actorId: string]: Actor };
   coreWorkerStats: CoreWorkerStats[];
+  newIA?: boolean;
 }) => {
   const actors = {} as { [actorId: string]: Actor };
   (coreWorkerStats || [])
@@ -101,7 +103,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} />
+      <ActorTable actors={actors} newIA={newIA} />
     </TableContainer>
   );
 };
@@ -110,10 +112,12 @@ const RayletWorkerTable = ({
   workers = [],
   actorMap,
   mini,
+  newIA = false,
 }: {
   workers: Worker[];
   actorMap: { [actorId: string]: Actor };
   mini?: boolean;
+  newIA?: boolean;
 }) => {
   const { changeFilter, filterFunc } = useFilter();
   const [key, setKey] = useState("");
@@ -186,6 +190,7 @@ const RayletWorkerTable = ({
                     <WorkerDetailTable
                       actorMap={actorMap}
                       coreWorkerStats={coreWorkerStats}
+                      newIA={newIA}
                     />
                   }
                   length={
@@ -231,11 +236,19 @@ const RayletWorkerTable = ({
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={`/log/${encodeURIComponent(
-                              ipLogMap[coreWorkerStats[0]?.ipAddress],
-                            )}?fileName=${
-                              coreWorkerStats[0].jobId || ""
-                            }-${pid}`}
+                            to={
+                              newIA
+                                ? `/new/logs/${encodeURIComponent(
+                                    ipLogMap[coreWorkerStats[0]?.ipAddress],
+                                  )}?fileName=${
+                                    coreWorkerStats[0].jobId || ""
+                                  }-${pid}`
+                                : `/log/${encodeURIComponent(
+                                    ipLogMap[coreWorkerStats[0]?.ipAddress],
+                                  )}?fileName=${
+                                    coreWorkerStats[0].jobId || ""
+                                  }-${pid}`
+                            }
                           >
                             Log
                           </Link>

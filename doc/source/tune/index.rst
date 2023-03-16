@@ -2,8 +2,8 @@
 
 .. _tune-main:
 
-Tune: Scalable Hyperparameter Tuning
-====================================
+Ray Tune: Hyperparameter Tuning
+===============================
 
 .. image:: images/tune_overview.png
     :scale: 50%
@@ -23,10 +23,20 @@ Tune further integrates with a wide range of additional hyperparameter optimizat
     The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
     We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
 
-    .. literalinclude:: ../../../python/ray/tune/tests/example.py
-       :language: python
-       :start-after: __quick_start_begin__
-       :end-before: __quick_start_end__
+    .. callout::
+
+        .. literalinclude:: ../../../python/ray/tune/tests/example.py
+           :language: python
+           :start-after: __quick_start_begin__
+           :end-before: __quick_start_end__
+
+        .. annotations::
+            <1> Define an objective function.
+
+            <2> Define a search space.
+
+            <3> Start a Tune run and print the best result.
+
 
 .. tabbed:: Keras+Hyperopt
 
@@ -37,10 +47,19 @@ Tune further integrates with a wide range of additional hyperparameter optimizat
     After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
     It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
 
-    .. literalinclude:: doc_code/keras_hyperopt.py
-        :language: python
-        :start-after: __keras_hyperopt_start__
-        :end-before: __keras_hyperopt_end__
+    .. callout::
+
+        .. literalinclude:: doc_code/keras_hyperopt.py
+            :language: python
+            :start-after: __keras_hyperopt_start__
+            :end-before: __keras_hyperopt_end__
+
+        .. annotations::
+            <1> Wrap a Keras model in an objective function.
+
+            <2> Define a search space and initialize the search algorithm.
+
+            <3> Start a Tune run that maximizes accuracy.
 
 .. tabbed:: PyTorch+Optuna
 
@@ -52,15 +71,23 @@ Tune further integrates with a wide range of additional hyperparameter optimizat
     It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
     We stop tuning this training run after ``5`` iterations, but you can easily define other stopping rules as well.
 
-    .. literalinclude:: doc_code/pytorch_optuna.py
-        :language: python
-        :start-after: __pytorch_optuna_start__
-        :end-before: __pytorch_optuna_end__
 
+    .. callout::
+
+        .. literalinclude:: doc_code/pytorch_optuna.py
+            :language: python
+            :start-after: __pytorch_optuna_start__
+            :end-before: __pytorch_optuna_end__
+
+        .. annotations::
+            <1> Wrap a PyTorch model in an objective function.
+
+            <2> Define a search space and initialize the search algorithm.
+
+            <3> Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
 
 With Tune you can also launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>`
 in less than 10 lines of code.
-It automatically manages :ref:`checkpoints <tune-checkpoint-syncing>` and logging to :ref:`TensorBoard <tune-logging>`.
 And you can move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
 .. _`Ray Serve`: ../serve/index.html
@@ -174,7 +201,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     With Tune, you can optimize your model just by :ref:`adding a few code snippets <tune-tutorial>`.
 
     Also, Tune removes boilerplate from your code training workflow,
-    automatically :ref:`manages checkpoints <tune-checkpoint-syncing>` and
+    supporting :ref:`multiple storage options for experiment results (NFS, cloud storage) <tune-storage-options>` and
     :ref:`logs results to tools <tune-logging>` such as MLflow and TensorBoard, while also being highly customizable.
 
 .. dropdown:: Multi-GPU & Distributed Training Out Of The Box
@@ -214,8 +241,8 @@ Feel free to submit a pull-request adding (or requesting a removal!) of a listed
 
 
 
-Learn More
-----------
+Learn More About Ray Tune
+-------------------------
 
 Below you can find blog posts and talks about Ray Tune:
 

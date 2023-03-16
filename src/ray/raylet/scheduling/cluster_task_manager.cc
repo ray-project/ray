@@ -77,6 +77,56 @@ void ReplyCancelled(const internal::Work &work,
 }
 }  // namespace
 
+bool ClusterTaskManager::CancelAllTaskOwnedBy(
+    const WorkerID &worker_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  // Only tasks and regular actors are canceled because their lifetime is
+  // the same as the owner.
+  auto shapes_it = tasks_to_schedule_.begin();
+  while (shapes_it != tasks_to_schedule_.end()) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+        work_it = work_queue.erase(work_it);
+      } else {
+        ++work_it;
+      }
+    }
+    if (work_queue.empty()) {
+      tasks_to_schedule_.erase(shapes_it++);
+    } else {
+      ++shapes_it;
+    }
+  }
+
+  shapes_it = infeasible_tasks_.begin();
+  while (shapes_it != infeasible_tasks_.end()) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+        work_it = work_queue.erase(work_it);
+      } else {
+        ++work_it;
+      }
+    }
+    if (work_queue.empty()) {
+      infeasible_tasks_.erase(shapes_it++);
+    } else {
+      ++shapes_it;
+    }
+  }
+  return true;
+}
+
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
@@ -97,7 +147,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
                      << task.GetTaskSpecification().TaskId();
       auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
           task.GetTaskSpecification(),
-          work->PrioritizeLocalNode(),
+          /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                            : task.GetPreferredNodeID(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
           &is_infeasible);
@@ -191,7 +242,8 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     bool is_infeasible;
     cluster_resource_scheduler_->GetBestSchedulableNode(
         task.GetTaskSpecification(),
-        work->PrioritizeLocalNode(),
+        /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                          : task.GetPreferredNodeID(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false,
         &is_infeasible);
@@ -256,8 +308,42 @@ bool ClusterTaskManager::CancelTask(
       task_id, failure_type, scheduling_failure_message);
 }
 
-void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(reply);
+void ClusterTaskManager::CancelTaskForOwner(
+    const TaskID &owner_task_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  std::function<bool(std::shared_ptr<internal::Work>)> filter(
+      [owner_task_id, failure_type, scheduling_failure_message](
+          std::shared_ptr<internal::Work> work) {
+        auto task = work->task;
+        if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
+          if (!task.GetTaskSpecification().IsDetachedActor()) {
+            RAY_LOG(DEBUG) << "Canceling task from owner " << owner_task_id
+                           << " for task " << task.GetTaskSpecification().DebugString();
+            ReplyCancelled(*work, failure_type, scheduling_failure_message);
+            return true;
+          }
+        }
+        return false;
+      });
+
+  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    remove_elements(filter, work_queue);
+    if (work_queue.empty()) {
+      tasks_to_schedule_.erase(shapes_it);
+    }
+  }
+
+  for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    remove_elements(filter, work_queue);
+    if (work_queue.empty()) {
+      infeasible_tasks_.erase(shapes_it);
+    }
+  }
 }
 
 void ClusterTaskManager::FillResourceUsage(

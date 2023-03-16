@@ -4,13 +4,12 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
-  Theme,
 } from "@material-ui/core";
 import React from "react";
 import { StyledTableCell } from "./TableCell";
 import { Order } from "./tableUtils";
 
-const useSortableTableHeadStyles = makeStyles((theme: Theme) =>
+const useSortableTableHeadStyles = makeStyles(() =>
   createStyles({
     visuallyHidden: {
       border: 0,

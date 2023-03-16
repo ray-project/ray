@@ -6,61 +6,19 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
-CONFIGS = {
-    "A3C": {
-        "explore": False,
-        "num_workers": 1,
-    },
-    "APEX_DDPG": {
-        "explore": False,
-        "observation_filter": "MeanStdFilter",
-        "num_workers": 2,
-        "min_time_s_per_iteration": 1,
-        "optimizer": {
-            "num_replay_buffer_shards": 1,
-        },
-    },
-    "ARS": {
-        "explore": False,
-        "num_rollouts": 10,
-        "num_workers": 2,
-        "noise_size": 2500000,
-        "observation_filter": "MeanStdFilter",
-    },
-    "DDPG": {
-        "explore": False,
-        "min_sample_timesteps_per_iteration": 100,
-    },
-    "DQN": {
-        "explore": False,
-    },
-    "ES": {
-        "explore": False,
-        "episodes_per_batch": 10,
-        "train_batch_size": 100,
-        "num_workers": 2,
-        "noise_size": 2500000,
-        "observation_filter": "MeanStdFilter",
-    },
-    "PPO": {
-        "explore": False,
-        "num_sgd_iter": 5,
-        "train_batch_size": 1000,
-        "num_workers": 2,
-    },
-    "SAC": {
-        "explore": False,
-    },
-}
+# Keep a set of all RLlib algos that support the RLModule API.
+# For these algos we need to disable the RLModule API in the config for the purpose of
+# this test. This test is made for the ModelV2 API which is not the same as RLModule.
+RLMODULE_SUPPORTED_ALGOS = {"PPO"}
 
 
 def export_test(
@@ -69,7 +27,13 @@ def export_test(
     multi_agent=False,
     tf_expected_to_work=True,
 ):
-    cls, config = get_algorithm_class(alg_name, return_config=True)
+    cls = get_trainable_cls(alg_name)
+    config = cls.get_default_config()
+    if alg_name in RLMODULE_SUPPORTED_ALGOS:
+        config = config.rl_module(_enable_rl_module_api=False).training(
+            _enable_learner_api=False
+        )
+    config = config.to_dict()
     config["framework"] = framework
     # Switch on saving native DL-framework (tf, torch) model files.
     config["export_native_model_files"] = True
@@ -91,7 +55,7 @@ def export_test(
                 "num_agents": 2,
             }
         else:
-            config["env"] = "CartPole-v0"
+            config["env"] = "CartPole-v1"
         algo = cls(config=config)
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
@@ -192,7 +156,7 @@ def export_test(
 class TestExportCheckpointAndModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:

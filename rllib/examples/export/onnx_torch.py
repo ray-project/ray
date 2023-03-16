@@ -13,7 +13,14 @@ import torch
 
 if __name__ == "__main__":
     # Configure our PPO trainer
-    config = ppo.PPOConfig().rollouts(num_rollout_workers=1).framework("torch")
+    config = (
+        ppo.PPOConfig()
+        .rollouts(num_rollout_workers=1)
+        .framework("torch")
+        # ONNX is not supported by RLModule API yet.
+        .training(_enable_learner_api=False)
+        .rl_module(_enable_rl_module_api=False)
+    )
 
     outdir = "export_torch"
     if os.path.exists(outdir):
@@ -29,7 +36,7 @@ if __name__ == "__main__":
 
     # Start Ray and initialize a PPO Algorithm.
     ray.init()
-    algo = config.build(env="CartPole-v0")
+    algo = config.build(env="CartPole-v1")
 
     # You could train the model here
     # algo.train()

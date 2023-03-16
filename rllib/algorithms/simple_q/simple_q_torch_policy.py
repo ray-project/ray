@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Dict, List, Tuple, Type, Union
 
-import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -35,9 +34,6 @@ class SimpleQTorchPolicy(
     """PyTorch policy class used with SimpleQTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(), **config
-        )
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -135,7 +131,7 @@ class SimpleQTorchPolicy(
         q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
         # compute estimate of best possible value starting from state at t + 1
-        dones = train_batch[SampleBatch.DONES].float()
+        dones = train_batch[SampleBatch.TERMINATEDS].float()
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), self.action_space.n
         )

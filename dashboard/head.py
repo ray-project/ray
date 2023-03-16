@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 import threading
 from concurrent.futures import Future
 from queue import Queue
@@ -10,12 +11,14 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray.dashboard.utils import DashboardHeadModule
-from ray._private.gcs_pubsub import GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 from typing import Optional, Set
 
@@ -23,6 +26,11 @@ try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
+
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +78,7 @@ class DashboardHead:
         temp_dir: str,
         session_dir: str,
         minimal: bool,
+        serve_frontend: bool,
         modules_to_load: Optional[Set[str]] = None,
     ):
         """
@@ -82,12 +91,18 @@ class DashboardHead:
             temp_dir: The temp directory. E.g., /tmp.
             session_dir: The session directory. E.g., tmp/session_latest.
             minimal: Whether or not it will load the minimal modules.
+            serve_frontend: If configured, frontend HTML is
+                served from the dashboard.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
                 minimal flags.
         """
         self.minimal = minimal
+        self.serve_frontend = serve_frontend
+        # If it is the minimal mode, we shouldn't serve frontend.
+        if self.minimal:
+            self.serve_frontend = False
         self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
@@ -103,6 +118,7 @@ class DashboardHead:
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
+        self.session_name = Path(session_dir).name
         self.aiogrpc_gcs_channel = None
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
@@ -131,6 +147,8 @@ class DashboardHead:
             self.http_port_retries,
             self.gcs_address,
             self.gcs_client,
+            self.session_name,
+            self.metrics,
         )
         await http_server.run(modules)
         return http_server
@@ -206,6 +224,40 @@ class DashboardHead:
         logger.info("Loaded %d modules. %s", len(modules), modules)
         return modules
 
+    async def _setup_metrics(self, gcs_aio_client: GcsAioClient):
+        metrics = DashboardPrometheusMetrics()
+
+        # Setup prometheus metrics export server
+        assert internal_kv._internal_kv_initialized()
+        assert gcs_aio_client is not None
+        address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
+        await gcs_aio_client.internal_kv_put(
+            "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
+        )
+        if prometheus_client:
+            try:
+                logger.info(
+                    "Starting dashboard metrics server on port {}".format(
+                        DASHBOARD_METRIC_PORT
+                    )
+                )
+                kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
+                prometheus_client.start_http_server(
+                    port=DASHBOARD_METRIC_PORT,
+                    registry=metrics.registry,
+                    **kwargs,
+                )
+            except Exception:
+                logger.exception(
+                    "An exception occurred while starting the metrics server."
+                )
+        elif not prometheus_client:
+            logger.warning(
+                "`prometheus_client` not found, so metrics will not be exported."
+            )
+
+        return metrics
+
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -214,11 +266,18 @@ class DashboardHead:
         internal_kv._initialize_internal_kv(self.gcs_client)
         self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
         self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
-
-        self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
-        self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
-        await self.gcs_error_subscriber.subscribe()
-        await self.gcs_log_subscriber.subscribe()
+        self.metrics = await self._setup_metrics(self.gcs_aio_client)
+        try:
+            assert internal_kv._internal_kv_initialized()
+            # Note: We always record the usage, but it is not reported
+            # if the usage stats is disabled.
+            record_extra_usage_tag(TagKey.DASHBOARD_USED, "False")
+        except Exception as e:
+            logger.warning(
+                "Failed to record the dashboard usage. "
+                "This error message is harmless and can be ignored. "
+                f"Error: {e}"
+            )
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
@@ -238,21 +297,25 @@ class DashboardHead:
         modules = self._load_modules(self._modules_to_load)
 
         http_host, http_port = self.http_host, self.http_port
-        if not self.minimal:
+        if self.serve_frontend:
+            logger.info("Initialize the http server.")
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
-        internal_kv._internal_kv_put(
-            ray_constants.DASHBOARD_ADDRESS,
-            f"{http_host}:{http_port}",
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-
-        # TODO: Use async version if performance is an issue
-        # Write the dashboard head port to gcs kv.
-        internal_kv._internal_kv_put(
-            dashboard_consts.DASHBOARD_RPC_ADDRESS,
-            f"{self.ip}:{self.grpc_port}",
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        else:
+            logger.info("http server disabled.")
+        await asyncio.gather(
+            self.gcs_aio_client.internal_kv_put(
+                ray_constants.DASHBOARD_ADDRESS.encode(),
+                f"{http_host}:{http_port}".encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            ),
+            self.gcs_aio_client.internal_kv_put(
+                dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
+                f"{self.ip}:{self.grpc_port}".encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            ),
         )
 
         # Freeze signal after all modules loaded.

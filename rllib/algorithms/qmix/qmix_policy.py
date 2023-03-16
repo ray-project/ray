@@ -1,10 +1,9 @@
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
-import ray
 from ray.rllib.algorithms.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.algorithms.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
@@ -22,7 +21,7 @@ from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 
 # Torch must be installed.
-torch, nn = try_import_torch(error=True)
+torch, nn = try_import_torch(error=False)
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,7 @@ class QMixLoss(nn.Module):
         masked_td_error = td_error * mask
 
         # Normal L2 loss, take mean over actual data
-        loss = (masked_td_error ** 2).sum() / mask.sum()
+        loss = (masked_td_error**2).sum() / mask.sum()
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
@@ -167,8 +166,13 @@ class QMixTorchPolicy(TorchPolicy):
     """
 
     def __init__(self, obs_space, action_space, config):
+        # We want to error out on instantiation and not on import, because tune
+        # imports all RLlib algorithms when registering them
+        # TODO (Artur): Find a way to only import algorithms when needed
+        if not torch:
+            raise ImportError("Could not import PyTorch, which QMix requires.")
+
         _validate(obs_space, action_space)
-        config = dict(ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
 
         self.n_agents = len(obs_space.original_space.spaces)
@@ -356,7 +360,7 @@ class QMixTorchPolicy(TorchPolicy):
             action_mask,
             next_action_mask,
             samples[SampleBatch.ACTIONS],
-            samples[SampleBatch.DONES],
+            samples[SampleBatch.TERMINATEDS],
             obs_batch,
             next_obs_batch,
         ]
@@ -379,7 +383,7 @@ class QMixTorchPolicy(TorchPolicy):
                 action_mask,
                 next_action_mask,
                 act,
-                dones,
+                terminateds,
                 obs,
                 next_obs,
                 env_global_state,
@@ -391,7 +395,7 @@ class QMixTorchPolicy(TorchPolicy):
                 action_mask,
                 next_action_mask,
                 act,
-                dones,
+                terminateds,
                 obs,
                 next_obs,
             ) = output_list
@@ -417,7 +421,9 @@ class QMixTorchPolicy(TorchPolicy):
 
         # TODO(ekl) this treats group termination as individual termination
         terminated = (
-            to_batches(dones, torch.float).unsqueeze(2).expand(B, T, self.n_agents)
+            to_batches(terminateds, torch.float)
+            .unsqueeze(2)
+            .expand(B, T, self.n_agents)
         )
 
         # Create mask for where index is < unpadded sequence length

@@ -9,18 +9,18 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Dict, Discrete, Tuple, MultiDiscrete
 import logging
 import os
 
 import ray
 from ray import air, tune
 from ray.tune import register_env
-from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -68,13 +68,6 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    if args.run == "contrib/MADDPG":
-        logger.warning(
-            "`contrib/MADDPG` is not longer a valid algorithm descriptor! "
-            "Use `MADDPG` instead."
-        )
-        args.run = "MADDPG"
-
     grouping = {
         "group_1": [0, 1],
     }
@@ -107,37 +100,43 @@ if __name__ == "__main__":
         ),
     )
 
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment(TwoStepGame)
+        .framework(args.framework)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     if args.run == "MADDPG":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
-        config = {
-            "env": TwoStepGame,
-            "env_config": {
-                "actions_are_logits": True,
-            },
-            "num_steps_sampled_before_learning_starts": 100,
-            "multiagent": {
-                "policies": {
+        (
+            config.framework("tf")
+            .environment(env_config={"actions_are_logits": True})
+            .training(num_steps_sampled_before_learning_starts=100)
+            .multi_agent(
+                policies={
                     "pol1": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
-                        config={"agent_id": 0},
+                        config=config.overrides(agent_id=0),
                     ),
                     "pol2": PolicySpec(
                         observation_space=obs_space,
                         action_space=act_space,
-                        config={"agent_id": 1},
+                        config=config.overrides(agent_id=1),
                     ),
                 },
-                "policy_mapping_fn": (lambda aid, **kwargs: "pol2" if aid else "pol1"),
-            },
-            "framework": args.framework,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        }
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol2"
+                if agent_id
+                else "pol1",
+            )
+        )
     elif args.run == "QMIX":
-        config = (
-            QMixConfig()
+        (
+            config.framework("torch")
             .training(mixer=args.mixer, train_batch_size=32)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=4)
             .exploration(
@@ -152,16 +151,7 @@ if __name__ == "__main__":
                     "one_hot_state_encoding": True,
                 },
             )
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         )
-        config = config.to_dict()
-    else:
-        config = {
-            "env": TwoStepGame,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        }
 
     stop = {
         "episode_reward_mean": args.stop_reward,

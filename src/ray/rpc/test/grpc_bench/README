@@ -1,0 +1,27 @@
+This package is used to benchmark gRPC's performance and overhead.
+
+To run the test, the instruction need to be followed in this:
+    https://github.com/Tradias/grpc_bench
+
+To run the test, a docker image need to be built and follow the instruction in grpc_bench to add new tests.
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+| name                        |   req/s |   avg. latency |        90 % in |        95 % in |        99 % in | avg. cpu |   avg. memory |
+-----------------------------------------------------------------------------------------------------------------------------------------
+| cpp_asio_grpc_callback      |   48457 |       29.15 ms |       85.87 ms |      102.29 ms |      191.88 ms |  103.25% |     33.65 MiB |
+| cpp_asio_grpc_coroutine     |   48444 |       29.36 ms |       85.30 ms |      101.51 ms |      189.95 ms |  108.58% |     32.94 MiB |
+| cpp_asio_grpc_unifex        |   48313 |       29.22 ms |       84.43 ms |       98.52 ms |      185.01 ms |  100.04% |     32.45 MiB |
+| cpp_asio_grpc_io_context_coro |   47965 |       30.20 ms |       85.61 ms |      101.98 ms |      193.66 ms |   86.79% |     31.84 MiB |
+| cpp_ray_grpc                 |   45345 |       36.19 ms |       86.13 ms |       96.02 ms |      117.74 ms |  165.24% |     82.62 MiB |
+-----------------------------------------------------------------------------------------------------------------------------------------
+Benchmark Execution Parameters:
+2a9be17 Tue, 18 Oct 2022 21:36:12 +0200 Dennis Hezel cpp: Update to grpc 1.50.0
+- GRPC_BENCHMARK_DURATION=20s
+- GRPC_BENCHMARK_WARMUP=5s
+- GRPC_SERVER_CPUS=4
+- GRPC_SERVER_RAM=512m
+- GRPC_CLIENT_CONNECTIONS=50
+- GRPC_CLIENT_CONCURRENCY=2000
+- GRPC_CLIENT_QPS=0
+- GRPC_CLIENT_CPUS=4
+- GRPC_REQUEST_SCENARIO=complex_proto

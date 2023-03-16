@@ -4,6 +4,7 @@ from typing import Callable, Iterable, List, Optional, Union
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
@@ -36,8 +37,9 @@ class _ShufflePartitionOp(ShuffleOp):
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
         if block_udf:
+            ctx = TaskContext(task_idx=idx)
             # TODO(ekl) note that this effectively disables block splitting.
-            blocks = list(block_udf([block]))
+            blocks = list(block_udf([block], ctx))
             if len(blocks) > 1:
                 builder = BlockAccessor.for_block(blocks[0]).builder()
                 for b in blocks:
@@ -56,7 +58,7 @@ class _ShufflePartitionOp(ShuffleOp):
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
+            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
 
         # Randomize the distribution order of the blocks (this prevents empty
         # outputs when input blocks are very small).

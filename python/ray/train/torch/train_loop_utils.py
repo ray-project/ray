@@ -2,14 +2,11 @@ import logging
 import os
 import random
 import types
-import warnings
 import collections
 from distutils.version import LooseVersion
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Callable, Union
 
-import ray
-from ray import train
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
@@ -43,21 +40,43 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
-def get_device() -> torch.device:
-    """Gets the correct torch device to use for training."""
-    return get_accelerator(_TorchAccelerator).get_device()
+def get_device() -> Union[torch.device, List[torch.device]]:
+    """Gets the correct torch device configured for this process.
+
+    Returns a list of devices if more than 1 GPU per worker
+    is requested.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+    Example:
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+        >>> # ray.get_gpu_ids() == [3]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_device() == torch.device("cuda:0")
+
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
+        >>> # ray.get_gpu_ids() == [4]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_device() == torch.device("cuda:4")
+
+        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+        >>> # ray.get_gpu_ids() == [4,5]
+        >>> # torch.cuda.is_available() == True
+        >>> # get_device() == torch.device("cuda:4")
+    """
+    from ray.air._internal import torch_utils
+
+    return torch_utils.get_device()
 
 
 # TODO: Deprecation: Hard-deprecate args in Ray 2.2.
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
-    move_to_device: bool = True,
+    move_to_device: Union[bool, torch.device] = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
-    # Deprecated args.
-    wrap_ddp: bool = True,
-    ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -66,9 +85,10 @@ def prepare_model(
 
     Args:
         model (torch.nn.Module): A torch model to prepare.
-        move_to_device: Whether to move the model to the correct
-            device. If set to False, the model needs to manually be moved
-            to the correct device.
+        move_to_device: Either a boolean indiciating whether to move
+            the model to the correct device or an actual device to
+            move the model to. If set to False, the model needs
+            to manually be moved to the correct device.
         parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
             in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
             or neither.
@@ -77,39 +97,6 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-    if not wrap_ddp and parallel_strategy != "ddp":
-        raise ValueError(
-            "`parallel_strategy` and `wrap_ddp` cannot both be set. "
-            "`wrap_ddp` argument is deprecated as of Ray 2.1. To "
-            "disable DDP wrapping, set `parallel_strategy=None`."
-        )
-
-    if parallel_strategy_kwargs and ddp_kwargs:
-        raise ValueError(
-            "`parallel_strategy_kwargs` and `ddp_kwargs` cannot both be "
-            "set. The `ddp_kwargs` argument is deprecated as of Ray 2.1. "
-            "To provide DDP kwargs, use the "
-            "`parallel_strategy_kwargs` argument."
-        )
-
-    if not wrap_ddp:
-        warnings.warn(
-            "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy` argument instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # If wrap_ddp is False, then set parallel_strategy to None.
-        parallel_strategy = None
-
-    if ddp_kwargs:
-        warnings.warn(
-            "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy_kwargs` arg instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        parallel_strategy_kwargs = ddp_kwargs
 
     if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
         raise ImportError(
@@ -282,13 +269,14 @@ class _TorchAccelerator(Accelerator):
         """
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
-        # Backwards compatibility
-        try:
-            rank = session.get_local_rank()
-        except Exception:
-            rank = train.local_rank()
+        rank = session.get_local_rank()
 
-        device = self.get_device()
+        if isinstance(move_to_device, torch.device):
+            device = move_to_device
+        else:
+            device = get_device()
+            if isinstance(device, list):
+                device = device[0]
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
@@ -334,11 +322,7 @@ class _TorchAccelerator(Accelerator):
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
             model.__getstate__ = types.MethodType(model_get_state, model)
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-        except Exception:
-            world_size = train.world_size()
+        world_size = session.get_world_size()
 
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
@@ -393,13 +377,8 @@ class _TorchAccelerator(Accelerator):
                 if ``move_to_device`` is False.
         """
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-            world_rank = session.get_world_rank()
-        except Exception:
-            world_size = train.world_size()
-            world_rank = train.world_rank()
+        world_size = session.get_world_size()
+        world_rank = session.get_world_rank()
 
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
@@ -430,19 +409,22 @@ class _TorchAccelerator(Accelerator):
                 # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
-                def seeded_worker_init_fn(worker_init_fn):
-                    def wrapper(worker_id):
-                        worker_seed = torch.initial_seed() % 2 ** 32
+                def seeded_worker_init_fn(
+                    worker_init_fn: Optional[Callable[[int], None]]
+                ):
+                    def wrapper(worker_id: int):
+                        worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
-                        worker_init_fn(worker_id)
+                        if worker_init_fn:
+                            worker_init_fn(worker_id)
 
                     return wrapper
 
-                worker_init_fn = loader.worker_init_fn
-                generator = loader.generator
+                worker_init_fn: Optional[Callable[[int], None]] = loader.worker_init_fn
+                generator: Optional[torch.Generator] = loader.generator
                 if self._seed is not None:
-                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    worker_init_fn = seeded_worker_init_fn(worker_init_fn)
                     generator = torch.Generator()
                     generator.manual_seed(self._seed)
 
@@ -474,66 +456,10 @@ class _TorchAccelerator(Accelerator):
             data_loader = with_sampler(data_loader)
 
         if move_to_device:
-            device = self.get_device()
+            device = get_device()
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
-
-    def get_device(self) -> torch.device:
-        """Gets the correct torch device to use for training.
-
-        Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-        superset of the `ray.get_gpu_ids()`.
-
-        Example:
-            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
-            >>> # ray.get_gpu_ids() == [3]
-            >>> # torch.cuda.is_available() == True
-            >>> # get_device() == torch.device("cuda:0")
-
-            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
-            >>> # ray.get_gpu_ids() == [4]
-            >>> # torch.cuda.is_available() == True
-            >>> # get_device() == torch.device("cuda:4")
-
-            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-            >>> # ray.get_gpu_ids() == [4,5]
-            >>> # torch.cuda.is_available() == True
-            >>> # get_device() == torch.device("cuda:4")
-        """
-        if torch.cuda.is_available():
-            # GPU IDs are assigned by Ray after you specify "use_gpu"
-            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
-            # We should always convert to strings.
-            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
-
-            if len(gpu_ids) > 0:
-                # By default, there should only be one GPU ID if `use_gpu=True`.
-                # If there are multiple GPUs, use the first one.
-                # If using fractional GPUs, these IDs are not guaranteed
-                # to be unique across different processes.
-                gpu_id = gpu_ids[0]
-
-                cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-                if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                    cuda_visible_list = cuda_visible_str.split(",")
-                    device_id = cuda_visible_list.index(gpu_id)
-                else:
-                    raise RuntimeError(
-                        "CUDA_VISIBLE_DEVICES set incorrectly. "
-                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                        " variable? If not, please help file an issue on Github."
-                    )
-            else:
-                # If called on the driver or outside of Ray Train, return the
-                # 0th device.
-                device_id = 0
-            device = torch.device(f"cuda:{device_id}")
-        else:
-            device = torch.device("cpu")
-
-        return device
 
     def prepare_optimizer(self, optimizer: Optimizer) -> Optimizer:
         """Wraps optimizer to support automatic mixed precision.

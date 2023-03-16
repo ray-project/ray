@@ -36,7 +36,10 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {}
+message GetAllJobInfoRequest {
+  // The number of jobs to return. If not specified, return all jobs.
+  optional int32 limit = 1;
+}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -177,14 +180,6 @@ message GetAllNodeInfoReply {
   repeated GcsNodeInfo node_info_list = 2;
 }
 
-message ReportHeartbeatRequest {
-  HeartbeatTableData heartbeat = 1;
-}
-
-message ReportHeartbeatReply {
-  GcsStatus status = 1;
-}
-
 message CheckAliveRequest {
   repeated string raylet_address = 1;
 }
@@ -228,43 +223,6 @@ message ReportResourceUsageRequest {
 
 message ReportResourceUsageReply {
   GcsStatus status = 1;
-}
-
-message GetGcsSchedulingStatsRequest {}
-
-message GetGcsSchedulingStatsReply {
-  GcsStatus status = 1;
-  repeated TaskSpec infeasible_tasks = 2;
-  repeated TaskSpec ready_tasks = 3;
-}
-
-// Service for heartbeat info access.
-service HeartbeatInfoGcsService {
-  // Report heartbeat of a node to GCS Service.
-  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-}
-
-message AddProfileDataRequest {
-  ProfileTableData profile_data = 1;
-}
-
-message AddProfileDataReply {
-  GcsStatus status = 1;
-}
-
-message GetAllProfileInfoRequest {}
-
-message GetAllProfileInfoReply {
-  GcsStatus status = 1;
-  repeated ProfileTableData profile_info_list = 2;
-}
-
-// Service for stats access.
-service StatsGcsService {
-  // Add profile data to GCS Service.
-  rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
-  // Get information of all profiles from GCS Service.
-  rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
 }
 
 message ReportWorkerFailureRequest {
@@ -468,6 +426,24 @@ message InternalKVGetReply {
   bytes value = 2;
 }
 
+message InternalKVMultiGetRequest {
+  repeated bytes keys = 1;
+  bytes namespace = 2;
+}
+
+message MapFieldEntry {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message InternalKVMultiGetReply {
+  GcsStatus status = 1;
+  // The key-value pairs that are found. Bytes cannot be used as a key in a map, so
+  // we use a repeated field of key-value pairs instead. See
+  // https://protobuf.dev/programming-guides/proto3/#backwards-compatibility
+  repeated MapFieldEntry results = 2;
+}
+
 message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
@@ -514,6 +490,7 @@ message InternalKVKeysReply {
 // Service for KV storage
 service InternalKVGcsService {
   rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVMultiGet(InternalKVMultiGetRequest) returns (InternalKVMultiGetReply);
   rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
@@ -606,9 +583,6 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
-  // Get current scheduling stats (e.g., pending tasks) of gcs server.
-  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
-      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
@@ -633,4 +607,52 @@ service NodeInfoGcsService {
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
+
+message AddTaskEventDataRequest {
+  // Task event data from core worker.
+  TaskEventData data = 1;
+}
+
+message AddTaskEventDataReply {
+  GcsStatus status = 1;
+}
+
+message GetTaskEventsRequest {
+  message TaskIDs {
+    repeated string vals = 1;
+  }
+  oneof select_by {
+    // Get task events from a job.
+    string job_id = 1;
+    // Get task events from a set of tasks.
+    TaskIDs task_ids = 2;
+  }
+
+  // Maximum number of TaskEvents to return.
+  // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
+  // guarantee.
+  optional int64 limit = 3;
+  // True if task events from driver (only profiling events) should be excluded.
+  bool exclude_driver = 4;
+}
+
+message GetTaskEventsReply {
+  GcsStatus status = 1;
+  // Task events returned.
+  repeated TaskEvents events_by_task = 2;
+  // Number of profile events dropped at GCS and worker for the queried events.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of status events dropped at GCS and worker for the queried events.
+  int32 num_status_task_events_dropped = 4;
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add task event data to GCS.
+  rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+
+  // Get task events.
+  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////

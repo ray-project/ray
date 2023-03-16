@@ -33,11 +33,22 @@ is already supported.
 Data Loading and Preprocessing for ML Training
 ----------------------------------------------
 
-Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
-Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
+Use Ray Datasets to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality per-epoch global shuffles) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
-Ray Datasets are not intended as a replacement for more general data processing systems.
-:ref:`Learn more about how Ray Datasets work with other ETL systems <datasets-ml-preprocessing>`.
+Use Datasets as a last-mile bridge from storage or ETL pipeline outputs to distributed 
+applications and libraries in Ray. Don't use it as a replacement for more general data 
+processing systems.
+
+.. image:: images/dataset-loading-1.png
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
+
+To learn more about the features Datasets supports, read the 
+:ref:`Datasets User Guide <data_user_guide>`.
 
 -----------------------------
 Datasets for Parallel Compute
@@ -86,8 +97,8 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     ^^^
 
     Understand the key concepts behind Ray Datasets.
-    Learn what :ref:`Datasets <dataset_concept>` and :ref:`Dataset Pipelines <dataset_pipeline_concept>` are
-    and how they get executed in Ray Datasets.
+    Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray
+    Datasets.
 
     +++
     .. link-button:: data_key_concepts
@@ -102,8 +113,8 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     Learn how to :ref:`create datasets <creating_datasets>`, :ref:`save
     datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
     :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
-    transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
-    :ref:`work with tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
+    transformations <pipelining_datasets>`, or 
+    :ref:`work with tensor data <datasets_tensor_support>`.
 
     +++
     .. link-button:: data_user_guide
@@ -201,9 +212,9 @@ Supported Input Formats
    * - Text Files
      - :func:`ray.data.read_text()`
      - ✅
-   * - Image Files (experimental)
+   * - Image Files
      - :func:`ray.data.read_images()`
-     - 🚧
+     - ✅
    * - Binary Files
      - :func:`ray.data.read_binary_files()`
      - ✅
@@ -237,6 +248,9 @@ Supported Input Formats
    * - 🤗 (Hugging Face) Dataset
      - :func:`ray.data.from_huggingface()`
      - ✅
+   * - MongoDB
+     - :func:`ray.data.read_mongo()`
+     - ✅
    * - Custom Datasource
      - :func:`ray.data.read_datasource()`
      - ✅
@@ -262,6 +276,12 @@ Supported Output Formats
      - ✅
    * - Numpy File Format
      - :meth:`ds.write_numpy() <ray.data.Dataset.write_numpy>`
+     - ✅
+   * - TFRecords File Format
+     - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
+     - ✅
+   * - MongoDB
+     - :meth:`ds.write_mongo() <ray.data.Dataset.write_mongo>`
      - ✅
    * - Spark Dataframe
      - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
@@ -296,8 +316,8 @@ Supported Output Formats
    * - PyTorch Tensor Iterator
      - :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
      - ✅
-   * - TensorFlow Tensor Iterator
-     - :meth:`ds.iter_tf_batches() <ray.data.Dataset.iter_tf_batches>`
+   * - TensorFlow Dataset
+     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
    * - Random Access Dataset
      - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`

@@ -3,28 +3,26 @@ import ray
 
 ray.init(
     _system_config={
-        "memory_monitor_interval_ms": 100,
-        "memory_usage_threshold_fraction": 0.4,
-        "min_memory_free_bytes": -1,
+        "memory_usage_threshold": 0.4,
     },
 )
 # fmt: off
-# __oom_start__
+# __last_task_start__
 import ray
 
-@ray.remote
-def allocate_memory():
+@ray.remote(max_retries=-1)
+def leaks_memory():
     chunks = []
-    bits_to_allocate = 8 * 100 * 1024 * 1024  # ~0.1 GiB
+    bits_to_allocate = 8 * 100 * 1024 * 1024  # ~100 MiB
     while True:
         chunks.append([0] * bits_to_allocate)
 
 
 try:
-    ray.get(allocate_memory.remote())
+    ray.get(leaks_memory.remote())
 except ray.exceptions.OutOfMemoryError as ex:
     print("task failed with OutOfMemoryError, which is expected")
-# __oom_end__
+# __last_task_end__
 # fmt: on
 
 
@@ -78,12 +76,12 @@ second_actor_task = second_actor.allocate.remote(allocate_bytes)
 error_thrown = False
 try:
     ray.get(first_actor_task)
-except ray.exceptions.RayActorError as ex:
+except ray.exceptions.OutOfMemoryError as ex:
     error_thrown = True
-    print("first actor was killed by memory monitor")
+    print("First started actor, which is retriable, was killed by the memory monitor.")
 assert error_thrown
 
 ray.get(second_actor_task)
-print("finished second actor")
+print("Second started actor, which is not-retriable, finished.")
 # __two_actors_end__
 # fmt: on

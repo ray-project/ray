@@ -1,17 +1,18 @@
-import gym
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
+import tree  # pip install dm_tree
 import unittest
-from gym.spaces import Box
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
@@ -31,7 +32,7 @@ class TestAgentConnector(unittest.TestCase):
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
 
@@ -49,7 +50,7 @@ class TestAgentConnector(unittest.TestCase):
         c = ObsPreprocessorConnector(ctx)
         name, params = c.to_state()
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
 
         obs = obs_space.sample()
@@ -80,7 +81,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipRewardAgentConnector))
 
         d = AgentConnectorDataType(
@@ -101,7 +102,7 @@ class TestAgentConnector(unittest.TestCase):
         c = FlattenDataAgentConnector(ctx)
 
         name, params = c.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
         sample_batch = {
@@ -320,9 +321,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])  # env.reset() for t == -1 else env.step()
             sample_batch = processed[0].data.sample_batch
             # add cur obs to the list
@@ -357,9 +356,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(
-                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-            )
+            data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs})
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
 
@@ -398,14 +395,23 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         # without reward-to-go.
         view_rq_dict = {
             # obs[t-context_len+1:t]
-            "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
+            "context_obs": ViewRequirement(
+                "obs",
+                shift=f"-{context_len-1}:0",
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
+            ),
             # next_obs[t-context_len+1:t]
             "context_next_obs": ViewRequirement(
-                "obs", shift=f"-{context_len}:1", used_for_compute_actions=False
+                "obs",
+                shift=f"-{context_len}:1",
+                used_for_compute_actions=False,
+                space=Box(-np.inf, np.inf, shape=(1,), dtype=np.float64),
             ),
             # act[t-context_len+1:t]
             "context_act": ViewRequirement(
-                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+                SampleBatch.ACTIONS,
+                shift=f"-{context_len-1}:-1",
+                space=Box(-np.inf, np.inf, shape=(1,)),
             ),
         }
 
@@ -424,11 +430,9 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             # next state and action at time t-1 are the following
             timestep_data = {
                 SampleBatch.NEXT_OBS: obs_arrs[t],
-                SampleBatch.ACTIONS: (
-                    np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t - 1]
-                ),
-                SampleBatch.T: t - 1,
             }
+            if t > 0:
+                timestep_data[SampleBatch.ACTIONS] = act_arrs[t - 1]
             data = AgentConnectorDataType(0, 1, timestep_data)
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
@@ -445,8 +449,13 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 act_list.append(act_arrs[t - 1])
 
             self.assertTrue("context_next_obs" not in sample_batch)
+            # We should have the 5 (context_len) most recent observations here
             check(sample_batch["context_obs"], np.stack(obs_list)[None])
-            check(sample_batch["context_act"], np.stack(act_list[:-1])[None])
+            # The context for actions is [t-context_len+1:t]. Since we build sample
+            # batch for inference in ViewRequirementAgentConnector, it always
+            # includes everything up until the last action (at t-1), but not the
+            # action current action (at t).
+            check(sample_batch["context_act"], np.stack(act_list[1:])[None])
 
     def test_connector_pipline_with_view_requirement(self):
         """A very minimal test that checks wheter pipeline connectors work in a
@@ -455,16 +464,25 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment(env="CartPole-v0")
+            .environment(env="CartPole-v1")
             .rollouts(create_env_on_local_worker=True)
         )
 
-        env = gym.make("CartPole-v0")
-        policy = PPOTorchPolicy(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            config=config.to_dict(),
-        )
+        env = gym.make("CartPole-v1")
+        policy = config.build().get_policy()
+
+        REQUIRED_KEYS = {
+            SampleBatch.OBS,
+            SampleBatch.NEXT_OBS,
+            SampleBatch.REWARDS,
+            SampleBatch.TERMINATEDS,
+            SampleBatch.TRUNCATEDS,
+            SampleBatch.INFOS,
+            SampleBatch.ACTIONS,
+        }
+        policy.view_requirements = {
+            k: v for k, v in policy.view_requirements.items() if k in REQUIRED_KEYS
+        }
 
         # create a connector context
         ctx = ConnectorContext(
@@ -485,14 +503,14 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
         name, params = agent_connector.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
             check(restored.connectors[cidx].to_state(), c.to_state())
 
         # simulate a rollout
         n_steps = 10
-        obs = env.reset()
+        obs, info = env.reset()
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
@@ -503,19 +521,22 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             policy_output = policy.compute_actions_from_input_dict(
                 agent_obs.data.sample_batch
             )
+            # Removes batch dimension
+            policy_output = tree.map_structure(lambda x: x[0], policy_output)
+
             agent_connector.on_policy_output(
                 ActionConnectorDataType(0, 1, {}, policy_output)
             )
-            action = policy_output[0][0]
+            action = policy_output[0]
 
-            next_obs, rewards, dones, info = env.step(action)
+            next_obs, rewards, terminateds, truncateds, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.DONES: dones,
+                SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
-                SampleBatch.T: t,
                 # state_out
             }
             env_out = AgentConnectorDataType(0, 1, env_out_dict)

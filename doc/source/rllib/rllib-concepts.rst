@@ -161,7 +161,7 @@ We can create an `Algorithm <#algorithms>`__ and try running this policy on a to
             return MyTFPolicy
 
     ray.init()
-    tune.Tuner(MyAlgo, param_space={"env": "CartPole-v0", "num_workers": 2}).fit()
+    tune.Tuner(MyAlgo, param_space={"env": "CartPole-v1", "num_workers": 2}).fit()
 
 
 If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:

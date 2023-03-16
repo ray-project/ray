@@ -37,7 +37,6 @@ using ray::TaskID;
 using ray::WorkerID;
 
 using ray::Language;
-using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -258,10 +257,10 @@ class RayletClient : public RayletClientInterface {
   /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param serialized_job_config If this is a driver connection, the job config
-  /// provided by driver will be passed to Raylet. If this is a worker connection,
-  /// this will be populated with the current job config.
+  /// provided by driver will be passed to Raylet.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
+  /// \param entrypoint The entrypoint of the job.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
@@ -274,8 +273,9 @@ class RayletClient : public RayletClientInterface {
                Status *status,
                NodeID *raylet_id,
                int *port,
-               std::string *serialized_job_config,
-               StartupToken startup_token);
+               const std::string &serialized_job_config,
+               StartupToken startup_token,
+               const std::string &entrypoint);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -489,8 +489,6 @@ class RayletClient : public RayletClientInterface {
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
-  JobID GetJobID() const { return job_id_; }
-
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
   int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
@@ -500,7 +498,6 @@ class RayletClient : public RayletClientInterface {
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
-  const JobID job_id_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

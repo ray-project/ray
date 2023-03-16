@@ -1,9 +1,14 @@
-from typing import List, Optional
+import logging
+
+from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -110,34 +115,36 @@ class Concatenator(Preprocessor):
         self,
         output_column_name: str = "concat_out",
         include: Optional[List[str]] = None,
-        exclude: Optional[List[str]] = None,
+        exclude: Optional[Union[str, List[str]]] = None,
         dtype: Optional[np.dtype] = None,
         raise_if_missing: bool = False,
     ):
+        if isinstance(include, str):
+            include = [include]
+        if isinstance(exclude, str):
+            exclude = [exclude]
+
         self.output_column_name = output_column_name
         self.include = include
         self.exclude = exclude or []
         self.dtype = dtype
         self.raise_if_missing = raise_if_missing
 
-    def _validate(self, df: pd.DataFrame):
-        total_columns = set(df)
-        if self.exclude and self.raise_if_missing:
-            missing_columns = set(self.exclude) - total_columns.intersection(
-                set(self.exclude)
-            )
-            if missing_columns:
-                raise ValueError(
-                    f"Missing columns specified in 'exclude': {missing_columns}"
-                )
-        if self.include and self.raise_if_missing:
-            missing_columns = set(self.include) - total_columns.intersection(
-                set(self.include)
-            )
-            if missing_columns:
-                raise ValueError(
-                    f"Missing columns specified in 'include': {missing_columns}"
-                )
+    def _validate(self, df: pd.DataFrame) -> None:
+        for parameter in "include", "exclude":
+            columns = getattr(self, parameter)
+            if columns is None:
+                continue
+
+            missing_columns = set(columns) - set(df)
+            if not missing_columns:
+                continue
+
+            message = f"Missing columns specified in '{parameter}': {missing_columns}"
+            if self.raise_if_missing:
+                raise ValueError(message)
+            else:
+                logger.warning(message)
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)

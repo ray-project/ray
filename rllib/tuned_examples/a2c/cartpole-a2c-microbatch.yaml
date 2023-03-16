@@ -1,5 +1,5 @@
 cartpole-a2c-microbatch:
-    env: CartPole-v0
+    env: CartPole-v1
     run: A2C
     stop:
         episode_reward_mean: 150
@@ -12,3 +12,5 @@ cartpole-a2c-microbatch:
         rollout_fragment_length: 20
         microbatch_size: 40
         train_batch_size: 120
+        # When using tf>=2.8, eager tracing can not be used
+        eager_tracing: False

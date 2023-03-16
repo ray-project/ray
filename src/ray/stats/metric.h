@@ -20,6 +20,7 @@
 #include <memory>
 #include <tuple>
 #include <unordered_map>
+#include <utility>  // std::pair
 
 #include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
@@ -111,6 +112,11 @@ class Metric {
         tag_keys_(tag_keys),
         measure_(nullptr) {}
 
+  Metric(const std::string &name,
+         const std::string &description,
+         const std::string &unit,
+         const std::vector<std::string> &tag_keys);
+
   virtual ~Metric();
 
   Metric &operator()() { return *this; }
@@ -156,6 +162,12 @@ class Gauge : public Metric {
         const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
+  Gauge(const std::string &name,
+        const std::string &description,
+        const std::string &unit,
+        const std::vector<std::string> &tag_keys)
+      : Metric(name, description, unit, tag_keys) {}
+
  private:
   void RegisterView() override;
 
@@ -168,6 +180,13 @@ class Histogram : public Metric {
             const std::string &unit,
             const std::vector<double> boundaries,
             const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
+
+  Histogram(const std::string &name,
+            const std::string &description,
+            const std::string &unit,
+            const std::vector<double> boundaries,
+            const std::vector<std::string> &tag_keys)
       : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
 
  private:
@@ -186,6 +205,12 @@ class Count : public Metric {
         const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
+  Count(const std::string &name,
+        const std::string &description,
+        const std::string &unit,
+        const std::vector<std::string> &tag_keys)
+      : Metric(name, description, unit, tag_keys) {}
+
  private:
   void RegisterView() override;
 
@@ -197,6 +222,12 @@ class Sum : public Metric {
       const std::string &description,
       const std::string &unit,
       const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+      : Metric(name, description, unit, tag_keys) {}
+
+  Sum(const std::string &name,
+      const std::string &description,
+      const std::string &unit,
+      const std::vector<std::string> &tag_keys)
       : Metric(name, description, unit, tag_keys) {}
 
  private:
@@ -362,6 +393,22 @@ class Stats {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
     }
+    opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
+  }
+
+  /// Record a value
+  /// \param val The value to record
+  /// \param tags Registered tags and corresponding tag values for this value
+  void Record(double val,
+              const std::vector<std::pair<opencensus::tags::TagKey, std::string>> &tags) {
+    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
+      return;
+    }
+    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    for (auto const &[tag_key, tag_val] : tags) {
+      CheckPrintableChar(tag_val);
+    }
+    combined_tags.insert(combined_tags.end(), tags.begin(), tags.end());
     opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
   }
 

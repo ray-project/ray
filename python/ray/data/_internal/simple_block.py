@@ -5,6 +5,8 @@ from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_C
 
 import numpy as np
 
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
@@ -44,11 +46,13 @@ class SimpleBlockBuilder(BlockBuilder[T]):
                 f"{block}"
             )
         self._items.extend(block)
-        for item in block:
-            self._size_estimator.add(item)
+        self._size_estimator.add_block(block)
 
     def num_rows(self) -> int:
         return len(self._items)
+
+    def will_build_yield_copy(self) -> bool:
+        return True
 
     def build(self) -> Block:
         return list(self._items)
@@ -67,7 +71,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> List[T]:
+    def slice(self, start: int, end: int, copy: bool = False) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
@@ -96,10 +100,14 @@ class SimpleBlockAccessor(BlockAccessor):
 
         return pandas.DataFrame({"value": self._items})
 
-    def to_numpy(self, columns: Optional[Union[str, List[str]]] = None) -> np.ndarray:
-        if columns:
-            raise ValueError("`columns` arg is not supported for list block.")
-        return np.array(self._items)
+    def to_numpy(
+        self, columns: Optional[Union[KeyFn, List[KeyFn]]] = None
+    ) -> np.ndarray:
+        if columns is not None:
+            if not isinstance(columns, list):
+                columns = [columns]
+            return BlockAccessor.for_block(self.select(columns)).to_numpy()
+        return _create_possibly_ragged_ndarray(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
@@ -333,7 +341,7 @@ class SimpleBlockAccessor(BlockAccessor):
                             has_next_row = False
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    yield next_key, self.slice(start, end)
                     start = end
                 except StopIteration:
                     break

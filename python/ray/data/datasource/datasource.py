@@ -6,12 +6,12 @@ import numpy as np
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
-    BlockPartitionMetadata,
     T,
 )
 from ray.data.context import DatasetContext
@@ -32,7 +32,7 @@ class Datasource(Generic[T]):
     of how to implement readable and writable datasources.
 
     Datasource instances must be serializable, since ``create_reader()`` and
-    ``do_write()`` are called in remote tasks.
+    ``write()`` are called in remote tasks.
     """
 
     def create_reader(self, **read_args) -> "Reader[T]":
@@ -51,6 +51,25 @@ class Datasource(Generic[T]):
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    def write(
+        self,
+        blocks: Iterable[Block],
+        **write_args,
+    ) -> WriteResult:
+        """Write blocks out to the datasource. This is used by a single write task.
+
+        Args:
+            blocks: List of data blocks.
+            write_args: Additional kwargs to pass to the datasource impl.
+
+        Returns:
+            The output of the write task.
+        """
+        raise NotImplementedError
+
+    @Deprecated(
+        message="do_write() is deprecated in Ray 2.4. Use write() instead", warning=True
+    )
     def do_write(
         self,
         blocks: List[ObjectRef[Block]],
@@ -98,6 +117,16 @@ class Datasource(Generic[T]):
             kwargs: Forward-compatibility placeholder.
         """
         pass
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        """
+        name = type(self).__name__
+        datasource_suffix = "Datasource"
+        if name.endswith(datasource_suffix):
+            name = name[: -len(datasource_suffix)]
+        return name
 
 
 @PublicAPI
@@ -165,13 +194,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(
-        self, read_fn: Callable[[], Iterable[Block]], metadata: BlockPartitionMetadata
-    ):
+    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
 
-    def get_metadata(self) -> BlockPartitionMetadata:
+    def get_metadata(self) -> BlockMetadata:
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:
@@ -322,35 +349,33 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
             def write(self, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
-                if not self.enabled:
-                    raise ValueError("disabled")
                 self.rows_written += block.num_rows()
                 return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
 
-            def set_enabled(self, enabled):
-                self.enabled = enabled
-
         self.data_sink = DataSink.remote()
         self.num_ok = 0
         self.num_failed = 0
+        self.enabled = True
 
-    def do_write(
+    def write(
         self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
+        blocks: Iterable[Block],
+        ctx: TaskContext,
         **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
+    ) -> WriteResult:
         tasks = []
+        if not self.enabled:
+            raise ValueError("disabled")
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
-        return tasks
+        ray.get(tasks)
+        return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+        assert all(w == ["ok"] for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
@@ -372,6 +397,13 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `Datasource` method.
+        """
+        return "RandomInt"
 
     def create_reader(
         self,

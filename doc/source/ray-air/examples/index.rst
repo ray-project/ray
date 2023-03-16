@@ -8,26 +8,35 @@ Examples
 Framework-specific Examples
 ---------------------------
 
+- :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`: Get started with Ray AIR from an existing PyTorch codebase
+- :doc:`/ray-air/examples/convert_existing_tf_code_to_ray_air`: Get started with Ray AIR from an existing Tensorflow/Keras codebase.
 - :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
 - :doc:`/ray-air/examples/analyze_tuning_results`: Distributed tuning with XGBoost
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
-- :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`: How to get started with Ray AIR from your code base
 
-
-Tabular Data
-------------
-- :doc:`/ray-air/examples/tfx_tabular_train_to_serve`: How to use Ray AIR to train a Keras model on tabular data and serve it.
+Simple Machine Learning
+-----------------------
+- :doc:`/ray-air/examples/automl_with_ray_air`: Build an AutoML system for time-series forecasting with Ray AIR
+- :doc:`/ray-air/examples/batch_tuning`: Perform batch tuning on NYC Taxi Dataset with Ray AIR
+- :doc:`/ray-air/examples/batch_forecasting`: Perform batch forecasting on NYC Taxi Dataset with Prophet, ARIMA and Ray AIR
 
 Text/NLP
 --------
 
 - :doc:`/ray-air/examples/huggingface_text_classification`: How to use Ray AIR to run Hugging Face Transformers fine-tuning on a text classification task.
+- :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`: How to use Ray AIR to run Hugging Face Transformers with DeepSpeed for fine-tuning a large model.
+- :doc:`/ray-air/examples/gptj_batch_prediction`: How to use Ray AIR to do batch prediction with the Hugging Face Transformers GPT-J model.
+- :doc:`/ray-air/examples/gptj_serving`: How to use Ray AIR to do online serving with the Hugging Face Transformers GPT-J model.
+- :doc:`/ray-air/examples/dreambooth_finetuning`: How to fine-tune a DreamBooth text-to-image model with your own images.
 
 Image/CV
 --------
 
 - :doc:`/ray-air/examples/torch_image_example`
+- :doc:`/ray-air/examples/torch_detection`
+- :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
+- :doc:`/ray-air/examples/stablediffusion_batch_prediction`: How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model.
 
 Logging & Observability
 -----------------------

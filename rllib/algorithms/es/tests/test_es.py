@@ -7,8 +7,13 @@ from ray.rllib.utils.test_utils import check_compute_single_action, framework_it
 
 
 class TestES(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_es_compilation(self):
         """Test whether an ESAlgorithm can be built on all frameworks."""
@@ -31,7 +36,7 @@ class TestES(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config):
-            for env in ["CartPole-v0", "Pendulum-v1"]:
+            for env in ["CartPole-v1", "Pendulum-v1"]:
                 algo = config.build(env=env)
                 for i in range(num_iterations):
                     results = algo.train()
@@ -57,7 +62,7 @@ class TestES(unittest.TestCase):
         config.rollouts(num_rollout_workers=1)
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             weights = np.zeros_like(algo.get_weights())
             algo.set_weights(weights=weights)

@@ -69,7 +69,7 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         # Configure.
         from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
         # Build.
         algo = config.build()
@@ -87,19 +87,17 @@ which implements the proximal policy optimization algorithm in RLlib.
 
         # Configure.
         from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
+        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
         # Train via Ray Tune.
-        # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
-        # we need to convert back to old-style config dicts.
-        tune.run("PPO", config=config.to_dict())
+        tune.run("PPO", config=config)
 
 
 .. tabbed:: RLlib Command Line
 
     .. code-block:: bash
 
-        rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
+        rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
@@ -121,7 +119,7 @@ Policies
 `Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are
 Python classes that define how an agent acts in an environment.
 `Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions.
-In a `gym <rllib-env.html#openai-gym>`__ environment, there is a single agent and policy.
+In a `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ environment, there is a single agent and policy.
 In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once,
 and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies,
 each controlling one or more agents:
@@ -162,11 +160,11 @@ Here is an example of creating a set of rollout workers and using them gather ex
 .. code-block:: python
 
     # Setup policy and rollout workers.
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
         policy_class=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v0"),
+        env_creator=lambda c: gym.make("CartPole-v1"),
         num_workers=10)
 
     while True:
@@ -304,13 +302,13 @@ In the first step, we collect trajectory data from the environment(s):
 Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
 This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page <workerset-reference-docs>`.
-The utilify function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
-fashion across multiple rollout workers (returns once all rollout workers are sone sampling).
-It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches
+The utility function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
+fashion across multiple rollout workers (returns once all rollout workers are done sampling).
+It returns one final MultiAgentBatch resulting from concatenating n smaller MultiAgentBatches
 (exactly one from each remote rollout worker).
 
 RLlib includes other utilities, such as the ``AsyncRequestsManager``,
-for facilitating the dataflow between various components in parallel, asyncronous fashion.
+for facilitating the dataflow between various components in a parallel, asyncronous fashion.
 These utilities are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
 
 The ``train_batch`` is then passed to another utility function: ``train_one_step``.
@@ -326,8 +324,8 @@ The training updates on the policy are only applied to its version inside ``self
 Note that each WorkerSet has n remote workers and exactly one "local worker" and that each worker (remote and local ones)
 holds a copy of the policy.
 
-Now that we updated the local policy (the copy in self.workers.local_worker), we need to make sure
-that the copies in all remote workers (self.workers.remote_workers) have their weights synchronized
+Now that we updated the local policy (the copy in ``self.workers.local_worker``), we need to make sure
+that the copies in all remote workers (``self.workers.remote_workers``) have their weights synchronized
 (from the local one):
 
 .. code-block:: python

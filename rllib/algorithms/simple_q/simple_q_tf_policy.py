@@ -3,7 +3,6 @@
 import logging
 from typing import Dict, List, Tuple, Type, Union
 
-import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -54,12 +53,6 @@ def get_simple_q_tf_policy(
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(),
-                **config,
-            )
-
             # Initialize base class.
             base.__init__(
                 self,
@@ -160,7 +153,7 @@ def get_simple_q_tf_policy(
             q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
 
             # compute estimate of best possible value starting from state at t + 1
-            dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            dones = tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 tf.argmax(q_tp1, 1), self.action_space.n
             )

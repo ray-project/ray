@@ -1,22 +1,38 @@
 import importlib
 import logging
-from typing import Union, Optional, TYPE_CHECKING
+import os
+from typing import Any, List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
 import numpy as np
 
 import ray
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.context import DatasetContext
+from ray._private.utils import _get_pyarrow_version
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
-MIN_PYARROW_VERSION = (6, 0, 1)
+# NOTE: Make sure that these lower and upper bounds stay in sync with version
+# constraints given in python/setup.py.
+# Inclusive minimum pyarrow version.
+MIN_PYARROW_VERSION = "6.0.1"
+RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
+_LOCAL_SCHEME = "local"
+_EXAMPLE_SCHEME = "example"
 
 
 LazyModule = Union[None, bool, ModuleType]
@@ -36,32 +52,36 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
+    """Check that pyarrow's version is within the supported bounds."""
     global _VERSION_VALIDATED
-    if not _VERSION_VALIDATED:
-        import pkg_resources
 
-        try:
-            version_info = pkg_resources.require("pyarrow")
-            version_str = version_info[0].version
-            version = tuple(int(n) for n in version_str.split(".") if "dev" not in n)
-            if version < MIN_PYARROW_VERSION:
-                raise ImportError(
-                    "Datasets requires pyarrow >= "
-                    f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)}, "
-                    f"but {version_str} is installed. Upgrade with "
-                    "`pip install -U pyarrow`."
-                )
-        except pkg_resources.DistributionNotFound:
-            logger.warning(
-                "You are using the 'pyarrow' module, but "
-                "the exact version is unknown (possibly carried as "
-                "an internal component by another module). Please "
-                "make sure you are using pyarrow >= "
-                f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)} "
-                "to ensure compatibility with Ray Datasets."
-            )
-        else:
+    if not _VERSION_VALIDATED:
+        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
             _VERSION_VALIDATED = True
+            return
+
+        version = _get_pyarrow_version()
+        if version is not None:
+            from pkg_resources._vendor.packaging.version import parse as parse_version
+
+            if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
+                raise ImportError(
+                    f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"{version} is installed. Reinstall with "
+                    f'`pip install -U "pyarrow"`. '
+                    "If you want to disable this pyarrow version check, set the "
+                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
+                )
+        else:
+            logger.warning(
+                "You are using the 'pyarrow' module, but the exact version is unknown "
+                "(possibly carried as an internal component by another module). Please "
+                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
+                "compatibility with Ray Datasets. "
+                "If you want to disable this pyarrow version check, set the "
+                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
+            )
+        _VERSION_VALIDATED = True
 
 
 def _autodetect_parallelism(
@@ -183,3 +203,253 @@ def _check_import(obj, *, module: str, package: str) -> None:
             f"couldn't be imported. You can install '{package}' by running `pip "
             f"install {package}`."
         )
+
+
+def _resolve_custom_scheme(path: str) -> str:
+    """Returns the resolved path if the given path follows a Ray-specific custom
+    scheme. Othewise, returns the path unchanged.
+
+    The supported custom schemes are: "local", "example".
+    """
+    import pathlib
+    import urllib.parse
+
+    parsed_uri = urllib.parse.urlparse(path)
+    if parsed_uri.scheme == _LOCAL_SCHEME:
+        path = parsed_uri.netloc + parsed_uri.path
+    elif parsed_uri.scheme == _EXAMPLE_SCHEME:
+        example_data_path = pathlib.Path(__file__).parent.parent / "examples" / "data"
+        path = example_data_path / (parsed_uri.netloc + parsed_uri.path)
+        path = str(path.resolve())
+    return path
+
+
+def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
+    """Returns True if the given paths are in local scheme.
+    Note: The paths must be in same scheme, i.e. it's invalid and
+    will raise error if paths are mixed with different schemes.
+    """
+    import pathlib
+    import urllib.parse
+
+    if isinstance(paths, str):
+        paths = [paths]
+    if isinstance(paths, pathlib.Path):
+        paths = [str(paths)]
+    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
+        raise ValueError("paths must be a path string or a list of path strings.")
+    elif len(paths) == 0:
+        raise ValueError("Must provide at least one path.")
+    num = sum(urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME for path in paths)
+    if num > 0 and num < len(paths):
+        raise ValueError(
+            "The paths must all be local-scheme or not local-scheme, "
+            f"but found mixed {paths}"
+        )
+    return num == len(paths)
+
+
+def _is_tensor_schema(column_names: List[str]):
+    return column_names == [TENSOR_COLUMN_NAME]
+
+
+def _insert_doc_at_pattern(
+    obj,
+    *,
+    message: str,
+    pattern: str,
+    insert_after: bool = True,
+    directive: Optional[str] = None,
+    skip_matches: int = 0,
+) -> str:
+    if "\n" in message:
+        raise ValueError(
+            "message shouldn't contain any newlines, since this function will insert "
+            f"its own linebreaks when text wrapping: {message}"
+        )
+
+    doc = obj.__doc__.strip()
+    if not doc:
+        doc = ""
+
+    if pattern == "" and insert_after:
+        # Empty pattern + insert_after means that we want to append the message to the
+        # end of the docstring.
+        head = doc
+        tail = ""
+    else:
+        tail = doc
+        i = tail.find(pattern)
+        skip_matches_left = skip_matches
+        while i != -1:
+            if insert_after:
+                # Set offset to the first character after the pattern.
+                offset = i + len(pattern)
+            else:
+                # Set offset to the first character in the matched line.
+                offset = tail[:i].rfind("\n") + 1
+            head = tail[:offset]
+            tail = tail[offset:]
+            skip_matches_left -= 1
+            if skip_matches_left <= 0:
+                break
+            elif not insert_after:
+                # Move past the found pattern, since we're skipping it.
+                tail = tail[i - offset + len(pattern) :]
+            i = tail.find(pattern)
+        else:
+            raise ValueError(
+                f"Pattern {pattern} not found after {skip_matches} skips in docstring "
+                f"{doc}"
+            )
+    # Get indentation of the to-be-inserted text.
+    after_lines = list(filter(bool, tail.splitlines()))
+    if len(after_lines) > 0:
+        lines = after_lines
+    else:
+        lines = list(filter(bool, reversed(head.splitlines())))
+    # Should always have at least one non-empty line in the docstring.
+    assert len(lines) > 0
+    indent = " " * (len(lines[0]) - len(lines[0].lstrip()))
+    # Handle directive.
+    message = message.strip("\n")
+    if directive is not None:
+        base = f"{indent}.. {directive}::\n"
+        message = message.replace("\n", "\n" + indent + " " * 4)
+        message = base + indent + " " * 4 + message
+    else:
+        message = indent + message.replace("\n", "\n" + indent)
+    # Add two blank lines before/after message, if necessary.
+    if insert_after ^ (pattern == "\n\n"):
+        # Only two blank lines before message if:
+        # 1. Inserting message after pattern and pattern is not two blank lines.
+        # 2. Inserting message before pattern and pattern is two blank lines.
+        message = "\n\n" + message
+    if (not insert_after) ^ (pattern == "\n\n"):
+        # Only two blank lines after message if:
+        # 1. Inserting message before pattern and pattern is not two blank lines.
+        # 2. Inserting message after pattern and pattern is two blank lines.
+        message = message + "\n\n"
+
+    # Insert message before/after pattern.
+    parts = [head, message, tail]
+    # Build new docstring.
+    obj.__doc__ = "".join(parts)
+
+
+def _consumption_api(
+    if_more_than_read: bool = False,
+    datasource_metadata: Optional[str] = None,
+    extra_condition: Optional[str] = None,
+    delegate: Optional[str] = None,
+    pattern="Examples:",
+    insert_after=False,
+):
+    """Annotate the function with an indication that it's a consumption API, and that it
+    will trigger Datasets execution.
+    """
+    base = (
+        " will trigger execution of the lazy transformations performed on "
+        "this dataset."
+    )
+    if delegate:
+        message = delegate + base
+    elif not if_more_than_read:
+        message = "This operation" + base
+    else:
+        condition = "If this dataset consists of more than a read, "
+        if datasource_metadata is not None:
+            condition += (
+                f"or if the {datasource_metadata} can't be determined from the "
+                "metadata provided by the datasource, "
+            )
+        if extra_condition is not None:
+            condition += extra_condition + ", "
+        message = condition + "then this operation" + base
+
+    def wrap(obj):
+        _insert_doc_at_pattern(
+            obj,
+            message=message,
+            pattern=pattern,
+            insert_after=insert_after,
+            directive="note",
+        )
+        return obj
+
+    return wrap
+
+
+def ConsumptionAPI(*args, **kwargs):
+    """Annotate the function with an indication that it's a consumption API, and that it
+    will trigger Datasets execution.
+    """
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return _consumption_api()(args[0])
+    return _consumption_api(*args, **kwargs)
+
+
+def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
+    """Split the list into `num_splits` lists.
+
+    The splits will be even if the `num_splits` divides the length of list, otherwise
+    the remainder (suppose it's R) will be allocated to the first R splits (one for
+    each).
+    This is the same as numpy.array_split(). The reason we make this a separate
+    implementation is to allow the heterogeneity in the elements in the list.
+    """
+    assert num_splits > 0
+    q, r = divmod(len(arr), num_splits)
+    splits = [
+        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+    ]
+    return splits
+
+
+def _default_batch_format(
+    ds: "Dataset",
+) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+    """Get the best batch format that lines up with the dataset format."""
+    ctx = DatasetContext.get_current()
+    if ctx.use_streaming_executor:
+        # TODO: calling dataset_format() triggers bulk execution.
+        batch_format = "default"
+    else:
+        try:
+            dataset_format = ds.dataset_format()
+        except ValueError:
+            # Dataset is empty or cleared, so fall back to "default".
+            batch_format = "default"
+        else:
+            batch_format = (
+                "pyarrow"
+                if dataset_format == BlockFormat.ARROW
+                else "pandas"
+                if dataset_format == BlockFormat.PANDAS
+                else "default"
+            )
+    return batch_format
+
+
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))

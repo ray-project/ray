@@ -19,6 +19,7 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
 
+### Ray Data
 py_test(
     name = "datasets_train",
     size = "medium",
@@ -42,7 +43,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "statsforecast"],
+    tags = ["exclusive", "team:ml", "timeseries_libs"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/automl_for_time_series.ipynb"]
 )
@@ -126,7 +127,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/serve/doc_code/*.py"],
+    include = ["source/serve/doc_code/**/*.py"],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -165,7 +166,10 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
-    exclude = ["source/ray-air/doc_code/hf_trainer.py"],  # Too large
+    exclude = [
+        "source/ray-air/doc_code/hf_trainer.py",  # Too large
+        "source/ray-air/doc_code/predictors.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -201,7 +205,19 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/*.py"],
-    exclude = [],
+    exclude = ["source/ray-air/doc_code/predictors.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
+)
+
+# --------------
+# Run GPU tests
+# --------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/predictors.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )

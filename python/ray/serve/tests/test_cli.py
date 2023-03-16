@@ -15,7 +15,7 @@ import ray
 from ray import serve
 from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
-from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -170,6 +170,179 @@ def test_deploy_with_http_options(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_multi_app(ray_start_stop):
+    """Deploys some valid config files and checks that the deployments work."""
+    # Initialize serve in test to enable calling serve.list_deployments()
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+
+    # Create absolute file names to YAML config files
+    two_pizzas = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_pizzas.yaml"
+    )
+    pizza_world = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+
+    success_message_fragment = b"Sent deploy request successfully!"
+
+    # Ensure the CLI is idempotent
+    num_iterations = 2
+    for iteration in range(1, num_iterations + 1):
+        print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
+
+        print("Deploying two pizzas config.")
+        deploy_response = subprocess.check_output(["serve", "deploy", two_pizzas])
+        assert success_message_fragment in deploy_response
+        print("Deploy request sent successfully.")
+
+        # Test add and mul for each of the two apps
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "3 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
+            == "2 pizzas please!",
+            timeout=15,
+        )
+        print('Application "app1" is reachable over HTTP.')
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "5 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        print('Application "app2" is reachable over HTTP.')
+
+        deployment_names = [
+            "app1_DAGDriver",
+            "app1_create_order",
+            "app1_Router",
+            "app1_Multiplier",
+            "app1_Adder",
+            "app2_DAGDriver",
+            "app2_create_order",
+            "app2_Router",
+            "app2_Multiplier",
+            "app2_Adder",
+        ]
+        assert_deployments_live(deployment_names)
+        print("All deployments are live.\n")
+
+        print("Deploying pizza world config.")
+        deploy_response = subprocess.check_output(["serve", "deploy", pizza_world])
+        assert success_message_fragment in deploy_response
+        print("Deploy request sent successfully.")
+
+        # Test app1 (simple wonderful world) and app2 (add + mul)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world",
+            timeout=15,
+        )
+        print('Application "app1" is reachable over HTTP.')
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "12 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "20 pizzas please!",
+            timeout=15,
+        )
+        print('Application "app2" is reachable over HTTP.')
+
+        deployment_names = [
+            "app1_BasicDriver",
+            "app1_f",
+            "app2_DAGDriver",
+            "app2_create_order",
+            "app2_Router",
+            "app2_Multiplier",
+            "app2_Adder",
+        ]
+        assert_deployments_live(deployment_names)
+        print("All deployments are live.\n")
+
+    ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_http_override(ray_start_stop):
+    """
+    When deploying multiple applications in one config file, the top-level host and port
+    options should override those set at per-application level.
+    """
+    config = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "apps_with_http.yaml"
+    )
+
+    deploy_response = subprocess.check_output(["serve", "deploy", config])
+    assert b"Sent deploy request successfully!" in deploy_response
+
+    # Only port 8005 should work, since it was set as a top-level option
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/app1", json=["ADD", 2]).json()
+        == "4 pizzas please!",
+        timeout=15,
+    )
+    print('Application "app1" is reachable over HTTP at port 8005.')
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/app2").text == "wonderful world",
+        timeout=15,
+    )
+    print('Application "app2" is reachable over HTTP at port 8005.')
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8000/app1", json=["ADD", 2])
+    print('Confirmed "app1" is not reachable over HTTP at port 8000.')
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8010/app2")
+    print('Confirmed "app2" is not reachable over HTTP at port 8010.')
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_put_duplicate_apps(ray_start_stop):
+    """If a config with duplicate app names is deployed, `serve deploy` should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "duplicate_app_names.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+        assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_put_duplicate_routes(ray_start_stop):
+    """If a config with duplicate routes is deployed, the PUT request should fail.
+    The response should clearly indicate a validation error.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "duplicate_app_routes.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+        assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
 
@@ -198,19 +371,39 @@ def test_config(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_multi_app(ray_start_stop):
+    """Deploys multi-app config and checks output of `serve config`."""
+
+    # Check that `serve config` works even if no Serve app is running
+    subprocess.check_output(["serve", "config", "--multi-app"])
+
+    # Deploy config
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    with open(config_file_name, "r") as config_file:
+        config = yaml.safe_load(config_file)
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    # Config should be immediately ready
+    info_response = subprocess.check_output(["serve", "config", "--multi-app"])
+    fetched_configs = list(yaml.safe_load_all(info_response))
+
+    assert config["applications"][0] == fetched_configs[0]
+    assert config["applications"][1] == fetched_configs[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
     """Deploys a config file and checks its status."""
 
     # Check that `serve status` works even if no Serve app is running
-    status_response = subprocess.check_output(["serve", "status"])
-    status = yaml.safe_load(status_response)
+    subprocess.check_output(["serve", "status"])
 
-    assert ServeStatusSchema.get_empty_schema_dict() == status
-
+    # Deploy config
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza.yaml"
     )
-
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     def num_live_deployments():
@@ -273,6 +466,102 @@ def test_status_error_msg_format(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_invalid_runtime_env(ray_start_stop):
+    """Deploys a config file with invalid runtime env and checks status.
+
+    get_status() should not throw error (meaning REST API returned 200 status code) and
+    the status be deploy failed."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "bad_runtime_env.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            app_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "Failed to set up runtime environment"
+            in app_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_syntax_error(ray_start_stop):
+    """Deploys Serve app with syntax error, checks the error message is descriptive."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "syntax_error.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            app_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "x = (1 + 2" in app_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_multi_app(ray_start_stop):
+    """Deploys a multi-app config file and checks their status."""
+    # Check that `serve status` works even if no Serve app is running
+    subprocess.check_output(["serve", "status"])
+    print("Confirmed `serve status` works when nothing has been deployed.")
+
+    # Deploy config
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    subprocess.check_output(["serve", "deploy", config_file_name])
+    print("Deployed config successfully.")
+
+    def num_live_deployments():
+        status_response = subprocess.check_output(["serve", "status"])
+        serve_status = list(yaml.safe_load_all(status_response))
+        return len(serve_status[0]["deployment_statuses"]) and len(
+            serve_status[1]["deployment_statuses"]
+        )
+
+    wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
+    print("All deployments are live.")
+
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:52365/"]
+    )
+    serve_statuses = yaml.safe_load_all(status_response)
+
+    expected_deployments = {
+        "app1_f",
+        "app1_BasicDriver",
+        "app2_DAGDriver",
+        "app2_Multiplier",
+        "app2_Adder",
+        "app2_Router",
+        "app2_create_order",
+    }
+    for status in serve_statuses:
+        for deployment in status["deployment_statuses"]:
+            expected_deployments.remove(deployment["name"])
+            assert deployment["status"] in {"HEALTHY", "UPDATING"}
+            assert "message" in deployment
+    assert len(expected_deployments) == 0
+    print("All expected deployments are present in the status output.")
+
+    for status in serve_statuses:
+        assert status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
+        assert time.time() > status["app_status"]["deployment_timestamp"]
+    print("Verified status and deployment timestamp of both apps.")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_shutdown(ray_start_stop):
     """Deploys a config file and shuts down the Serve application."""
 
@@ -305,22 +594,25 @@ def test_shutdown(ray_start_stop):
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
-        assert ServeStatusSchema.get_empty_schema_dict() != status
+        assert "There are no applications running on this cluster." != status
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
-        wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
-        print("Deletion successful. All deployments have shut down.")
 
         # `serve config` and `serve status` should print empty schemas
-        config_response = subprocess.check_output(["serve", "config"])
-        config = yaml.safe_load(config_response)
-        assert ServeApplicationSchema.get_empty_schema_dict() == config
+        def serve_config_empty():
+            config_response = subprocess.check_output(["serve", "config"])
+            config = yaml.safe_load(config_response)
+            return ServeApplicationSchema.get_empty_schema_dict() == config
 
-        status_response = subprocess.check_output(["serve", "status"])
-        status = yaml.safe_load(status_response)
-        assert ServeStatusSchema.get_empty_schema_dict() == status
+        def serve_status_empty():
+            status_response = subprocess.check_output(["serve", "status"])
+            status = yaml.safe_load(status_response)
+            return "There are no applications running on this cluster." == status
+
+        wait_for_condition(serve_config_empty)
+        wait_for_condition(serve_status_empty)
         print("`serve config` and `serve status` print empty responses.\n")
 
 
@@ -470,6 +762,72 @@ def test_run_runtime_env(ray_start_stop):
     p.wait()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port1(ray_start_stop):
+    """Test that `serve run` defaults to port 8000."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    )
+    subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port2(ray_start_stop):
+    """If config file specifies a port, the default port value should not be used."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port3(ray_start_stop):
+    """If port is specified as argument to `serve run`, it should override config."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8010/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@serve.deployment
+class ConstructorFailure:
+    def __init__(self):
+        raise RuntimeError("Intentionally failing.")
+
+
+constructor_failure_node = ConstructorFailure.bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_teardown(ray_start_stop):
+    """Consecutive serve runs should tear down controller so logs can always be seen."""
+    logs = subprocess.check_output(
+        ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        stderr=subprocess.STDOUT,
+        timeout=30,
+    ).decode()
+    assert "Intentionally failing." in logs
+
+    logs = subprocess.check_output(
+        ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        stderr=subprocess.STDOUT,
+        timeout=30,
+    ).decode()
+    assert "Intentionally failing." in logs
+
+
 @serve.deployment
 def global_f(*args):
     return "wonderful world"
@@ -515,6 +873,50 @@ def test_build(ray_start_stop, node):
             lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
         )
         print("Delete succeeded! Node is not reachable over HTTP.")
+
+
+TestBuildApp1Node = global_f.options(route_prefix="/app1").bind()
+TestBuildApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build_multi_app(ray_start_stop):
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+
+        print('Building nodes "TestBuildApp1Node" and "TestBuildApp2Node".')
+        # Build an app
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "--multi-app",
+                "ray.serve.tests.test_cli.TestBuildApp1Node",
+                "ray.serve.tests.test_cli.TestBuildApp2Node",
+                "-o",
+                tmp.name,
+            ]
+        )
+        print("Build succeeded! Deploying node.")
+
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        print("Deploy succeeded!")
+        wait_for_condition(
+            lambda: ping_endpoint("app1") == "wonderful world", timeout=15
+        )
+        print("App 1 is live and reachable over HTTP.")
+        wait_for_condition(
+            lambda: ping_endpoint("app2") == "wonderful world", timeout=15
+        )
+        print("App 2 is live and reachable over HTTP.")
+
+        print("Deleting applications.")
+        subprocess.check_output(["serve", "shutdown", "-y"])
+        wait_for_condition(
+            lambda: ping_endpoint("app1") == CONNECTION_ERROR_MSG
+            and ping_endpoint("app2") == CONNECTION_ERROR_MSG,
+            timeout=15,
+        )
+        print("Delete succeeded! Node is no longer reachable over HTTP.")
 
 
 k8sFNode = global_f.options(
@@ -585,7 +987,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     status_response = subprocess.check_output(["serve", "status"])
     status_info = yaml.safe_load(status_response)
 
-    assert len(status_info["deployment_statuses"]) == 0
+    assert status_info == "There are no applications running on this cluster."
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response

@@ -47,6 +47,8 @@ cc_library(
         ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+        "@com_github_grpc_grpc//:grpcpp_admin",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -267,6 +269,23 @@ cc_library(
         "pubsub_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
+    ],
+)
+
+# monitor/autoscaler service
+cc_grpc_library(
+    name = "monitor_cc_grpc",
+    srcs = ["//src/ray/protobuf:monitor_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:monitor_cc_proto"],
+)
+
+cc_library(
+    name = "monitor_rpc",
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":monitor_cc_grpc",
     ],
 )
 
@@ -539,6 +558,7 @@ cc_library(
         ":gcs_service_cc_grpc",
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
+        ":monitor_rpc",
         ":node_manager_rpc",
         ":observable_store_client",
         ":pubsub_lib",
@@ -546,6 +566,7 @@ cc_library(
         ":scheduler",
         ":worker_rpc",
         "@boost//:bimap",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -681,6 +702,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
@@ -812,6 +835,7 @@ cc_library(
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
+        "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -872,6 +896,18 @@ cc_test(
 )
 
 cc_test(
+    name = "core_worker_resubmit_queue_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/core_worker_resubmit_queue_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
@@ -915,17 +951,6 @@ cc_test(
     deps = [
         ":gcs_server_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "gcs_heartbeat_manager_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1035,6 +1060,20 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_event_buffer_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/task_event_buffer_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1145,6 +1184,21 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "hybrid_scheduling_policy_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/policy/hybrid_scheduling_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":scheduler",
+        "@com_google_absl//absl/random:mock_distributions",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1533,6 +1587,18 @@ cc_test(
 )
 
 cc_test(
+    name = "exponential_backoff_test",
+    size = "small",
+    srcs = ["src/ray/util/exponential_backoff_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     size = "small",
     srcs = ["src/ray/util/sample_test.cc"],
@@ -1607,6 +1673,8 @@ cc_test(
     ],
     deps = [
         ":ray_common",
+        "@boost//:filesystem",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1619,9 +1687,21 @@ cc_test(
     ],
     copts = COPTS,
     tags = ["team:core"],
-    target_compatible_with = [
-        "@platforms//os:linux",
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "worker_killing_policy_group_by_owner_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_group_by_owner_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_common",
         ":raylet_lib",
@@ -1631,7 +1711,7 @@ cc_test(
 
 cc_test(
     name = "pubsub_integration_test",
-    timeout = "short",
+    size = "small",
     srcs = ["src/ray/pubsub/test/integration_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
@@ -1811,6 +1891,20 @@ cc_library(
 )
 
 cc_test(
+    name = "gcs_health_check_manager_test",
+    size = "medium",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "gcs_node_manager_test",
     size = "small",
     srcs = [
@@ -1832,6 +1926,23 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_job_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_task_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_task_manager_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1936,6 +2047,23 @@ cc_test(
     ],
     copts = COPTS,
     tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_monitor_server_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_monitor_server_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:serverless"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -2073,10 +2201,12 @@ cc_library(
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
+        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
+        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
@@ -2087,6 +2217,7 @@ cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        "//src/ray/protobuf:usage_cc_proto",
     ],
 )
 
@@ -2152,6 +2283,7 @@ cc_test(
 
 cc_test(
     name = "gcs_client_test",
+    size = "medium",
     srcs = [
         "src/ray/gcs/gcs_client/test/gcs_client_test.cc",
     ],
@@ -2187,6 +2319,21 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "usage_stats_client_test",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
+    ],
+    copts = COPTS,
     tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
@@ -2273,6 +2420,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
@@ -2537,6 +2685,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":grpc_common_lib",
         ":ray_common",
         ":ray_mock",
         "@com_google_googletest//:gtest",
@@ -2641,6 +2790,7 @@ pyx_library(
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
+        "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
@@ -2732,11 +2882,13 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
+        "//src/ray/protobuf:monitor_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",
         "//src/ray/protobuf:runtime_env_common_py_proto",
+        "//src/ray/protobuf:usage_py_proto",
     ],
 )
 
@@ -2810,6 +2962,8 @@ genrule(
         # shellcheck disable=SC2006
         files=(`ls python/ray/core/generated/*_pb2*.py` `ls python/ray/serve/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
+        # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@

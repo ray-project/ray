@@ -4,10 +4,9 @@ Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
 import numpy as np
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -226,7 +225,7 @@ class VTraceOptimizer:
     ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
         config = self.config
         if config["opt_type"] == "adam":
-            if config["framework"] in ["tf2", "tfe"]:
+            if config["framework"] == "tf2":
                 optim = tf.keras.optimizers.Adam(self.cur_lr)
                 if config["_separate_vf_optimizer"]:
                     return optim, tf.keras.optimizers.Adam(config["_lr_vf"])
@@ -286,10 +285,6 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(
-                ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
-            )
-
             # Initialize base class.
             base.__init__(
                 self,
@@ -338,7 +333,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 )
 
             actions = train_batch[SampleBatch.ACTIONS]
-            dones = train_batch[SampleBatch.DONES]
+            dones = train_batch[SampleBatch.TERMINATEDS]
             rewards = train_batch[SampleBatch.REWARDS]
             behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
             behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]

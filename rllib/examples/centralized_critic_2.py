@@ -10,12 +10,13 @@ modifies the policy to add a centralized value function.
 """
 
 import numpy as np
-from gym.spaces import Dict, Discrete
+from gymnasium.spaces import Dict, Discrete
 import argparse
 import os
 
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.models.centralized_critic_models import (
     YetAnotherCentralizedCriticModel,
     YetAnotherTorchCentralizedCriticModel,
@@ -28,7 +29,7 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -114,26 +115,31 @@ if __name__ == "__main__":
         }
     )
 
-    config = {
-        "env": TwoStepGame,
-        "batch_mode": "complete_episodes",
-        "callbacks": FillInActions,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "multiagent": {
-            "policies": {
+    config = (
+        PPOConfig()
+        .environment(TwoStepGame)
+        .framework(args.framework)
+        .rollouts(
+            batch_mode="complete_episodes",
+            num_rollout_workers=0,
+            # TODO(avnishn) make a new example compatible w connectors.
+            enable_connectors=False,
+        )
+        .callbacks(FillInActions)
+        .training(model={"custom_model": "cc_model"})
+        .multi_agent(
+            policies={
                 "pol1": (None, observer_space, action_space, {}),
                 "pol2": (None, observer_space, action_space, {}),
             },
-            "policy_mapping_fn": (lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
-            "observation_fn": central_critic_observer,
-        },
-        "model": {
-            "custom_model": "cc_model",
-        },
-        "framework": args.framework,
-    }
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
+            if agent_id == 0
+            else "pol2",
+            observation_fn=central_critic_observer,
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -142,7 +148,9 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        "PPO", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        "PPO",
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

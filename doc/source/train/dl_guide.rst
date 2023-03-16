@@ -1,7 +1,7 @@
 .. _train-dl-guide:
 
-Deep Learning User Guide
-========================
+Distributed Deep Learning with Ray Train User Guide
+===================================================
 
 This guide explains how to use Train to scale PyTorch, TensorFlow and Horovod.
 
@@ -16,8 +16,8 @@ In this guide, we cover examples for the following use cases:
 
 .. _train-backends:
 
-Backends
---------
+Using Deep Learning Frameworks as Backends
+------------------------------------------
 
 Ray Train provides a thin API around different backend frameworks for
 distributed deep learning. At the moment, Ray Train allows you to perform
@@ -38,15 +38,15 @@ training with:
 
 .. _train-porting-code:
 
-Porting code to Ray Train
--------------------------
+Porting code from PyTorch, TensorFlow, or Horovod to Ray Train
+--------------------------------------------------------------
 
 The following instructions assume you have a training function
 that can already be run on a single worker for one of the supported
 :ref:`backend <train-backends>` frameworks.
 
-Update training function
-~~~~~~~~~~~~~~~~~~~~~~~~
+Updating your training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, you'll want to update your training function to support distributed
 training.
@@ -61,19 +61,20 @@ training.
        and :func:`ray.train.torch.prepare_data_loader` utilities below,
        and instead handle the logic directly inside your training function.
 
-    First, use the :func:~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
-    ``DistributedDataParallel``
+    First, use the :func:`~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
+    ``DistributedDataParallel``:
 
     .. code-block:: diff
 
         import torch
         from torch.nn.parallel import DistributedDataParallel
+        +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
         def train_func():
-        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
         -         torch.cuda.is_available() else "cpu")
         -   torch.cuda.set_device(device)
 
@@ -82,7 +83,7 @@ training.
 
         -   model = model.to(device)
         -   model = DistributedDataParallel(model,
-        -       device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+        -       device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
 
         +   model = train.torch.prepare_model(model)
 
@@ -91,18 +92,19 @@ training.
 
     Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
     and move the batches to the right device. This step is not necessary if you are passing in Ray Datasets to your Trainer
-    (see :ref:`train-datasets`)
+    (see :ref:`train-datasets`):
 
     .. code-block:: diff
 
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
+        +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
         def train_func():
-        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
         -          torch.cuda.is_available() else "cpu")
         -   torch.cuda.set_device(device)
 
@@ -123,7 +125,7 @@ training.
 
         .. code-block::
 
-            global_batch_size = worker_batch_size * train.world_size()
+            global_batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: TensorFlow
 
@@ -160,7 +162,7 @@ training.
     .. code-block:: diff
 
         -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * train.world_size()
+        +batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: Horovod
 
@@ -171,8 +173,8 @@ training.
     To onboard onto Horovod, please visit the `Horovod guide
     <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
 
-Create Ray Train Trainer
-~~~~~~~~~~~~~~~~~~~~~~~~
+Creating a Ray Train Trainer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``Trainer``\s are the primary Ray Train classes that are used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
@@ -193,6 +195,15 @@ with one of the following:
 
 
 .. tabbed:: TensorFlow
+
+    .. warning::
+        Ray will not automatically set any environment variables or configuration
+        related to local parallelism / threading
+        :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`.
+        If you desire greater control over TensorFlow threading, use
+        the ``tf.config.threading`` module (eg.
+        ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
+        at the beginning of your ``train_loop_per_worker`` function.
 
     .. code-block:: python
 
@@ -262,8 +273,8 @@ To customize the backend setup, you can use the :ref:`framework-specific config 
 
 For more configurability, please reference the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
-Run training function
-~~~~~~~~~~~~~~~~~~~~~
+Running your training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training!
@@ -396,8 +407,8 @@ of the :py:class:`~ray.air.result.Result` object returned by ``Trainer.fit()``.
 
 .. _train-datasets:
 
-Distributed Data Ingest with Ray Datasets
------------------------------------------
+Distributed Data Ingest with Ray Datasets and Ray Train
+-------------------------------------------------------
 
 :ref:`Ray Datasets <datasets>` are the recommended way to work with large datasets in Ray Train. Datasets provides automatic loading, sharding, and pipelined ingest (optional) of Data across multiple Train workers.
 To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
@@ -433,8 +444,8 @@ For more details on how to configure data ingest for Train, please refer to :ref
 
 .. _train-monitoring:
 
-Logging, Checkpointing and Callbacks
-------------------------------------
+Logging, Checkpointing and Callbacks in Ray Train
+-------------------------------------------------
 
 Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run
 and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, etc.).
@@ -465,7 +476,8 @@ be logged and displayed.
 .. warning::
 
     Only the results from rank 0 worker will be used. However, in order to ensure
-    consistency, ``session.report()`` has to be called on each worker.
+    consistency, ``session.report()`` has to be called on each worker. If you
+    want to aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
@@ -516,7 +528,6 @@ appropriately in distributed training.
 
         import torch
         import torch.nn as nn
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
 
@@ -541,12 +552,7 @@ appropriately in distributed training.
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                # To fetch non-DDP state_dict
-                # w/o DDP: model.state_dict()
-                # w/  DDP: model.module.state_dict()
-                # See: https://github.com/ray-project/ray/issues/20915
                 state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
                 checkpoint = Checkpoint.from_dict(
                     dict(epoch=epoch, model_weights=state_dict)
                 )
@@ -629,13 +635,13 @@ As an example, to completely disable writing checkpoints to disk:
 .. code-block:: python
     :emphasize-lines: 9,14
 
-    from ray import train
-    from ray.air import RunConfig, CheckpointConfig, ScalingConfig
+    from ray.air import session, RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
         for epoch in range(3):
-            train.save_checkpoint(epoch=epoch)
+            checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
+            session.report({}, checkpoint=checkpoint)
 
     checkpoint_config = CheckpointConfig(num_to_keep=0)
 
@@ -703,7 +709,6 @@ Checkpoints can be loaded into the training function in 2 steps:
 
         import torch
         import torch.nn as nn
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
 
@@ -740,7 +745,6 @@ Checkpoints can be loaded into the training function in 2 steps:
                 loss.backward()
                 optimizer.step()
                 state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
                 checkpoint = Checkpoint.from_dict(
                     dict(epoch=epoch, model_weights=state_dict)
                 )
@@ -902,35 +906,30 @@ A simple example for creating a callback that will print out results:
     # {'epoch': 1, '_timestamp': 1656349412, '_time_this_iter_s': 0.0013833045959472656, '_training_iteration': 2, 'time_this_iter_s': 0.016670703887939453, 'done': False, 'timesteps_total': None, 'episodes_total': None, 'training_iteration': 2, 'trial_id': '0f1d0_00000', 'experiment_id': '494a1d050b4a4d11aeabd87ba475fcd3', 'date': '2022-06-27_17-03-32', 'timestamp': 1656349412, 'time_total_s': 3.4501540660858154, 'pid': 23018, 'hostname': 'ip-172-31-43-110', 'node_ip': '172.31.43.110', 'config': {}, 'time_since_restore': 3.4501540660858154, 'timesteps_since_restore': 0, 'iterations_since_restore': 2, 'warmup_time': 0.003779172897338867, 'experiment_tag': '0'}
 
 
-Example: PyTorch Distributed metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _train-aggregating-results:
 
-In real applications, you may want to calculate optimization metrics besides
-accuracy and loss: recall, precision, Fbeta, etc.
+How to obtain and aggregate results from different workers?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
+In real applications, you may want to calculate optimization metrics besides accuracy and loss: recall, precision, Fbeta, etc.
+You may also want to collect metrics from multiple workers. While Ray Train currently only reports metrics from the rank 0
+worker, you can use third-party libraries or distributed primitives of your machine learning framework to report
+metrics from multiple workers.
 
-Here is an example:
+.. tabbed:: PyTorch
 
-.. code-block:: python
+    Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
 
-    from typing import List, Dict
-    from ray.air import session, ScalingConfig
-    from ray.train.torch import TorchTrainer
+    Here is an example of reporting both the aggregated R2 score and mean train and validation loss from all workers.
 
-    import torch
-    import torchmetrics
+    .. literalinclude:: doc_code/torchmetrics_example.py
+        :language: python
+        :start-after: __start__
 
-    def train_func(config):
-        preds = torch.randn(10, 5).softmax(dim=-1)
-        target = torch.randint(5, (10,))
-        accuracy = torchmetrics.functional.accuracy(preds, target).item()
-        session.report({"accuracy": accuracy})
+.. tabbed:: TensorFlow
 
-    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
-    result = trainer.fit()
-    print(result.metrics["accuracy"])
-    # 0.20000000298023224
+    TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
+    control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
 
 .. Running on the cloud
 .. --------------------

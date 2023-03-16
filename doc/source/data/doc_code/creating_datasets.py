@@ -112,21 +112,6 @@ ds.show(3)
 # __from_numpy_begin__
 import numpy as np
 
-# Create a tensor Dataset from a 1D NumPy ndarray.
-arr = np.arange(100)
-ds = ray.data.from_numpy(arr)
-# -> Dataset(
-#        num_blocks=1,
-#        num_rows=100,
-#        schema={value: <ArrowTensorType: shape=(), dtype=int64>},
-#    )
-
-# Each element is a scalar ndarray.
-ds.show(3)
-# -> {'value': array(0)}
-# -> {'value': array(1)}
-# -> {'value': array(2)}
-
 # Create a tensor Dataset from a 3D NumPy ndarray.
 arr = np.ones((3, 4, 4))
 # The outer dimension is treated as the row dimension.
@@ -153,7 +138,7 @@ ds.show(2)
 # __read_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
 # -> Dataset(num_blocks=3, num_rows=3, 
-#            schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
+#            schema={image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
 # -> [array([[[ 88,  70,  68],
@@ -350,7 +335,7 @@ ds = ray.data.read_parquet(
     "example://iris.parquet",
     columns=["sepal.length", "variety"],
     filter=pa.dataset.field("sepal.length") > 5.0,
-).fully_executed()  # Force a full read of the file.
+).cache()  # Force a full read of the file.
 # -> Dataset(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
 
 ds.show(2)

@@ -14,6 +14,8 @@ else
         PYTHON_VERSION="3.9"
     elif [ "$1" = "3.10" ]; then
         PYTHON_VERSION="3.10"
+    elif [ "$1" = "3.11" ]; then
+        PYTHON_VERSION="3.11"
     else
         echo "Unsupported Python version."
         exit 1

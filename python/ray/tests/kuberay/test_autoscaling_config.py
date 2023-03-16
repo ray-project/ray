@@ -17,7 +17,7 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
 
-def _get_basic_ray_cr() -> dict:
+def get_basic_ray_cr() -> dict:
     """Returns the example Ray CR included in the Ray documentation,
     modified to include a GPU worker group.
     """
@@ -33,6 +33,7 @@ def _get_basic_ray_cr() -> dict:
     gpu_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
         "nvidia.com/gpu", 3
     )
+    gpu_group["maxReplicas"] = 200
     config["spec"]["workerGroupSpecs"].append(gpu_group)
     return config
 
@@ -73,9 +74,10 @@ def _get_basic_autoscaling_config() -> dict:
                     "Custom3": 1,
                 },
             },
-            # Same as "small-group" with a GPU entry added.
+            # Same as "small-group" with a GPU resource entry added
+            # and modified max_workers.
             "gpu-group": {
-                "max_workers": 300,
+                "max_workers": 200,
                 "min_workers": 1,
                 "node_config": {},
                 "resources": {
@@ -96,7 +98,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
-        "max_workers": 600,
+        "max_workers": 500,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
@@ -108,7 +110,7 @@ def _get_ray_cr_no_cpu_error() -> dict:
     """Incorrectly formatted Ray CR without num-cpus rayStartParam and without resource
     limits. Autoscaler should raise an error when reading this.
     """
-    cr = _get_basic_ray_cr()
+    cr = get_basic_ray_cr()
     # Verify that the num-cpus rayStartParam is not present for the worker type.
     assert "num-cpus" not in cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]
     del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
@@ -127,7 +129,7 @@ def _get_no_cpu_error() -> str:
 
 def _get_ray_cr_with_overrides() -> dict:
     """CR with memory, cpu, and gpu overrides from rayStartParams."""
-    cr = _get_basic_ray_cr()
+    cr = get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
     # num-gpus rayStartParam with no gpus in container limits
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "100"
@@ -151,7 +153,7 @@ def _get_ray_cr_missing_gpu_arg() -> dict:
     """CR with gpu present in K8s limits but not in Ray start params.
     Should result in a warning that Ray doesn't see the GPUs.
     """
-    cr = _get_basic_ray_cr()
+    cr = get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["resources"][
         "limits"
     ]["nvidia.com/gpu"] = 1
@@ -168,7 +170,7 @@ def _get_gpu_complaint() -> str:
 
 
 def _get_ray_cr_with_autoscaler_options() -> dict:
-    cr = _get_basic_ray_cr()
+    cr = get_basic_ray_cr()
     cr["spec"]["autoscalerOptions"] = {
         "upscalingMode": "Conservative",
         "idleTimeoutSeconds": 300,
@@ -213,7 +215,7 @@ TEST_DATA = (
     if platform.system() == "Windows"
     else [
         pytest.param(
-            _get_basic_ray_cr(),
+            get_basic_ray_cr(),
             _get_basic_autoscaling_config(),
             None,
             None,
@@ -275,7 +277,7 @@ def test_autoscaling_config(
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 def test_cr_image_consistency():
     """Verify that the example config uses the same Ray image for all Ray pods."""
-    cr = _get_basic_ray_cr()
+    cr = get_basic_ray_cr()
 
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
     # Head, CPU group, GPU group.

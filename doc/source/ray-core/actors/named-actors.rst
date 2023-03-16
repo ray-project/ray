@@ -155,7 +155,7 @@ created with the specified arguments.
 Actor Lifetimes
 ---------------
 
-Separately, actor lifetimes can be decoupled from the job, allowing an actor to persist even after the driver process of the job exits.
+Separately, actor lifetimes can be decoupled from the job, allowing an actor to persist even after the driver process of the job exits. We call these actors *detached*.
 
 .. tabbed:: Python
 
@@ -163,7 +163,7 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
 
         counter = Counter.options(name="CounterActor", lifetime="detached").remote()
 
-    The CounterActor will be kept alive even after the driver running above script
+    The ``CounterActor`` will be kept alive even after the driver running above script
     exits. Therefore it is possible to run the following script in a different
     driver:
 
@@ -172,8 +172,8 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
         counter = ray.get_actor("CounterActor")
         print(ray.get(counter.get_counter.remote()))
 
-    Note that the lifetime option is decoupled from the name. If we only specified
-    the name without specifying ``lifetime="detached"``, then the CounterActor can
+    Note that an actor can be named but not detached. If we only specified the
+    name without specifying ``lifetime="detached"``, then the CounterActor can
     only be retrieved as long as the original driver is still running.
 
 .. tabbed:: Java
@@ -199,3 +199,8 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
 
     Customizing lifetime of an actor hasn't been implemented in C++ yet.
 
+
+Unlike normal actors, detached actors are not automatically garbage-collected by Ray.
+Detached actors must be manually destroyed once you are sure that they are no
+longer needed. To do this, use ``ray.kill`` to :ref:`manually terminate <ray-kill-actors>` the actor.
+After this call, the actor's name may be reused.

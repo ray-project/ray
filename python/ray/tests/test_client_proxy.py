@@ -4,7 +4,8 @@ import random
 import sys
 import time
 from glob import glob
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+from itertools import chain
 
 import grpc
 import pytest
@@ -396,6 +397,80 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server, monkeypa
                 make_internal_kv_calls()
         else:
             make_internal_kv_calls()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
+def test_proxy_cancelled_grpc_request_stream():
+    """
+    Test that DataServicerProxy and LogstreamServicerProxy should gracefully
+    close grpc stream when the request stream is cancelled.
+    """
+
+    proxier.CHECK_PROCESS_INTERVAL_S = 1
+    # The timeout has likely been set to 1 in an earlier test. Increase timeout
+    # to wait for the channel to become ready.
+    proxier.CHECK_CHANNEL_TIMEOUT_S = 5
+    os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
+    pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
+
+    data_servicer = proxier.DataServicerProxy(pm)
+    logstream_servicer = proxier.LogstreamServicerProxy(pm)
+
+    # simulate cancelled grpc request stream
+    # https://github.com/grpc/grpc/blob/v1.43.0/src/python/grpcio/grpc/_server.py#L353-L354
+    class Cancelled:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise grpc.RpcError()
+
+    context = MagicMock()
+    context.set_code = MagicMock()
+    context.set_details = MagicMock()
+    context.invocation_metadata = MagicMock(
+        return_value=[
+            ("client_id", "client1"),
+            ("reconnecting", "False"),
+        ]
+    )
+
+    init = ray_client_pb2.DataRequest(
+        req_id=1,
+        init=ray_client_pb2.InitRequest(job_config=pickle.dumps(JobConfig())),
+    )
+
+    for _ in data_servicer.Datapath(chain([init], Cancelled()), context):
+        pass
+    for _ in logstream_servicer.Logstream(Cancelled(), context):
+        pass
+
+    assert not context.set_code.called, "grpc error should not be set"
+    assert not context.set_details.called, "grpc error should not be set"
+
+    class Rendezvous:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise grpc._Rendezvous()
+
+    context.invocation_metadata = MagicMock(
+        return_value=[
+            ("client_id", "client2"),
+            ("reconnecting", "False"),
+        ]
+    )
+
+    for _ in data_servicer.Datapath(chain([init], Rendezvous()), context):
+        pass
+    for _ in logstream_servicer.Logstream(Rendezvous(), context):
+        pass
+
+    assert context.set_code.called, "grpc error should be set"
+    assert context.set_details.called, "grpc error should be set"
 
 
 if __name__ == "__main__":

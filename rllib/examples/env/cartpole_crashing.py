@@ -1,5 +1,5 @@
 import logging
-from gym.envs.classic_control import CartPoleEnv
+from gymnasium.envs.classic_control import CartPoleEnv
 import numpy as np
 import time
 
@@ -58,7 +58,7 @@ class CartPoleCrashing(CartPoleEnv):
         self._rng = np.random.RandomState()
 
     @override(CartPoleEnv)
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         # Reset timestep counter for the new episode.
         self.timesteps = 0
         # Should we crash?

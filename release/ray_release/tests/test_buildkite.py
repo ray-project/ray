@@ -26,6 +26,7 @@ from ray_release.buildkite.step import (
     get_step,
     RELEASE_QUEUE_DEFAULT,
     RELEASE_QUEUE_CLIENT,
+    DOCKER_PLUGIN_KEY,
 )
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
@@ -370,6 +371,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "nightly"},
                     "team": "team_1",
+                    "run": {"type": "job"},
                 }
             ),
             Test(
@@ -378,6 +380,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "weekly",
                     "smoke_test": {"frequency": "nightly"},
                     "team": "team_2",
+                    "run": {"type": "client"},
                 }
             ),
             Test({"name": "other_1", "frequency": "weekly", "team": "team_2"}),
@@ -387,9 +390,10 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "multi"},
                     "team": "team_2",
+                    "run": {"type": "job"},
                 }
             ),
-            Test({"name": "other_3", "frequency": "disabled", "team": "team_2"}),
+            Test({"name": "other_3", "frequency": "manual", "team": "team_2"}),
             Test({"name": "test_3", "frequency": "nightly", "team": "team_2"}),
         ]
 
@@ -401,6 +405,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", False),
                 ("other_1", False),
                 ("other_2", False),
+                ("other_3", False),
                 ("test_3", False),
             ],
         )
@@ -417,6 +422,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", True),
                 ("other_1", False),
                 ("other_2", True),
+                ("other_3", False),
                 ("test_3", False),
             ],
         )
@@ -490,6 +496,28 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
         self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
 
+        # Filter by nested properties
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/type": "job"},
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False), ("other_2", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/type": "client"},
+        )
+        self.assertSequenceEqual(filtered, [("test_2", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/invalid": "xxx"},
+        )
+        self.assertSequenceEqual(filtered, [])
+
     def testGroupTests(self):
         tests = [
             (Test(name="x1", group="x"), False),
@@ -518,10 +546,12 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         step = get_step(test, smoke_test=False)
-        self.assertNotIn("--smoke-test", step["command"])
+        self.assertNotIn(
+            "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
+        )
 
         step = get_step(test, smoke_test=True)
-        self.assertIn("--smoke-test", step["command"])
+        self.assertIn("--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"])
 
         step = get_step(test, priority_val=20)
         self.assertEqual(step["priority"], 20)

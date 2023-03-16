@@ -1,7 +1,7 @@
 .. _train-getting-started:
 
-Getting Started
-===============
+Getting Started with Distributed Model Training in Ray Train
+============================================================
 
 Ray Train offers multiple ``Trainers`` which implement scalable model training for different machine learning frameworks.
 Here are examples for some of the commonly used trainers:
@@ -88,7 +88,7 @@ Here are examples for some of the commonly used trainers:
 
     First, set up your dataset and model.
 
-    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/pytorch/torch_quick_start.py
         :language: python
         :start-after: __torch_setup_begin__
         :end-before: __torch_setup_end__
@@ -96,17 +96,18 @@ Here are examples for some of the commonly used trainers:
 
     Now define your single-worker PyTorch training function.
 
-    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/pytorch/torch_quick_start.py
         :language: python
         :start-after: __torch_single_begin__
         :end-before: __torch_single_end__
 
     This training function can be executed with:
 
-    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/pytorch/torch_quick_start.py
         :language: python
         :start-after: __torch_single_run_begin__
         :end-before: __torch_single_run_end__
+        :dedent:
 
     Now let's convert this to a distributed multi-worker training function!
 
@@ -116,7 +117,7 @@ Here are examples for some of the commonly used trainers:
     This will automatically wrap your model with ``DistributedDataParallel``
     and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
-    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/pytorch/torch_quick_start.py
         :language: python
         :start-after: __torch_distributed_begin__
         :end-before: __torch_distributed_end__
@@ -124,10 +125,11 @@ Here are examples for some of the commonly used trainers:
     Then, instantiate a ``TorchTrainer``
     with 4 workers, and use it to run the new training function!
 
-    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/pytorch/torch_quick_start.py
         :language: python
         :start-after: __torch_trainer_begin__
         :end-before: __torch_trainer_end__
+        :dedent:
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
@@ -138,24 +140,25 @@ Here are examples for some of the commonly used trainers:
 
     First, set up your dataset and model.
 
-    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/tf/tensorflow_quick_start.py
         :language: python
         :start-after: __tf_setup_begin__
         :end-before: __tf_setup_end__
 
     Now define your single-worker TensorFlow training function.
 
-    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/tf/tensorflow_quick_start.py
         :language: python
         :start-after: __tf_single_begin__
         :end-before: __tf_single_end__
 
     This training function can be executed with:
 
-    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/tf/tensorflow_quick_start.py
         :language: python
         :start-after: __tf_single_run_begin__
         :end-before: __tf_single_run_end__
+        :dedent:
 
     Now let's convert this to a distributed multi-worker training function!
     All you need to do is:
@@ -165,7 +168,7 @@ Here are examples for some of the commonly used trainers:
     2. Choose your TensorFlow distributed training strategy. In this example
        we use the ``MultiWorkerMirroredStrategy``.
 
-    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/tf/tensorflow_quick_start.py
         :language: python
         :start-after: __tf_distributed_begin__
         :end-before: __tf_distributed_end__
@@ -173,9 +176,16 @@ Here are examples for some of the commonly used trainers:
     Then, instantiate a ``TensorflowTrainer`` with 4 workers,
     and use it to run the new training function!
 
-    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+    .. literalinclude:: /../../python/ray/train/examples/tf/tensorflow_quick_start.py
         :language: python
         :start-after: __tf_trainer_begin__
         :end-before: __tf_trainer_end__
+        :dedent:
 
     See :ref:`train-porting-code` for a more comprehensive example.
+
+
+Next Steps
+----------
+
+* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`.

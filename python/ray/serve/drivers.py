@@ -2,6 +2,7 @@ import functools
 import logging
 from typing import Any, Callable, Optional, Union, Dict
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.util.annotations import PublicAPI
 
@@ -134,7 +135,7 @@ class gRPCIngress:
         self._attach_grpc_server_with_schema()
 
         self.setup_complete = asyncio.Event()
-        self.running_task = asyncio.get_event_loop().create_task(self.run())
+        self.running_task = get_or_create_event_loop().create_task(self.run())
 
     async def run(self):
         """Start gRPC Server"""

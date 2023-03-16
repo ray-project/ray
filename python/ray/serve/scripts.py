@@ -3,11 +3,13 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 import click
 import yaml
+import traceback
 import re
+from pydantic import ValidationError
 
 import ray
 from ray import serve
@@ -24,8 +26,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private import api as _private_api
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -149,15 +151,17 @@ def start(address, http_host, http_port, http_location):
 
 
 @cli.command(
-    short_help="Deploy a Serve app from a YAML config file.",
+    short_help="Deploy Serve application(s) from a YAML config file.",
     help=(
-        "Deploys deployment(s) from a YAML config file.\n\n"
+        "This supports both configs of the format ServeApplicationSchema, which "
+        "deploys a single application, as well as ServeDeploySchema, which deploys "
+        "multiple applications.\n\n"
         "This call is async; a successful response only indicates that the "
         "request was sent to the Ray cluster successfully. It does not mean "
         "the the deployments have been deployed/updated.\n\n"
         "Existing deployments with no code changes will not be redeployed.\n\n"
-        "Use `serve config` to fetch the current config and `serve status` to "
-        "check the status of the deployments after deploying."
+        "Use `serve config` to fetch the current config(s) and `serve status` to "
+        "check the status of the application(s) and deployments after deploying."
     ),
 )
 @click.argument("config_file_name")
@@ -173,15 +177,30 @@ def deploy(config_file_name: str, address: str):
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    # Schematize config to validate format.
-    ServeApplicationSchema.parse_obj(config)
-    ServeSubmissionClient(address).deploy_application(config)
+    try:
+        ServeDeploySchema.parse_obj(config)
+        ServeSubmissionClient(address).deploy_applications(config)
+    except ValidationError:
+        try:
+            ServeApplicationSchema.parse_obj(config)
+            ServeSubmissionClient(address).deploy_application(config)
+        except ValidationError as e:
+            # If the config is neither a valid ServeDeploySchema nor a valid
+            # ServeApplicationSchema, surface the validation error from trying
+            # to parse as a ServeApplicationSchema
+            raise e from None
+        except RuntimeError as e:
+            # Error deploying application
+            raise e from None
+    except RuntimeError:
+        # Error deploying application
+        raise
 
     cli_logger.newline()
     cli_logger.success(
         "\nSent deploy request successfully!\n "
         "* Use `serve status` to check deployments' statuses.\n "
-        "* Use `serve config` to see the running app's config.\n"
+        "* Use `serve config` to see the current config(s).\n"
     )
     cli_logger.newline()
 
@@ -246,7 +265,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--host",
     "-h",
-    default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
     help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
@@ -254,7 +272,6 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--port",
     "-p",
-    default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
     help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
@@ -270,7 +287,11 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--gradio",
     is_flag=True,
-    help=("Whether to enable gradio visualization of deployment graph."),
+    help=(
+        "Whether to enable gradio visualization of deployment graph. The "
+        "visualization can only be used with deployment graphs with DAGDriver "
+        "as the ingress deployment."
+    ),
 )
 def run(
     config_or_import_path: str,
@@ -297,9 +318,24 @@ def run(
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
-            config = ServeApplicationSchema.parse_obj(yaml.safe_load(config_file))
+            config_dict = yaml.safe_load(config_file)
+            # If host or port is specified as a CLI argument, they should take priority
+            # over config values.
+            config_dict.setdefault("host", DEFAULT_HTTP_HOST)
+            if host is not None:
+                config_dict["host"] = host
+
+            config_dict.setdefault("port", DEFAULT_HTTP_PORT)
+            if port is not None:
+                config_dict["port"] = port
+
+            config = ServeApplicationSchema.parse_obj(config_dict)
         is_config = True
     else:
+        if host is None:
+            host = DEFAULT_HTTP_HOST
+        if port is None:
+            port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
         node = import_attr(import_path)
@@ -325,12 +361,13 @@ def run(
 
     try:
         if is_config:
-            client.deploy_app(config, _blocking=gradio)
+            client.deploy_apps(config, _blocking=gradio)
+            cli_logger.success("Submitted deploy config successfully.")
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
             handle = serve.run(node, host=host, port=port)
-        cli_logger.success("Deployed successfully.")
+            cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
             from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
@@ -348,8 +385,17 @@ def run(
         serve.shutdown()
         sys.exit()
 
+    except Exception:
+        traceback.print_exc()
+        cli_logger.error(
+            "Received unexpected error, see console logs for more details. Shutting "
+            "down..."
+        )
+        serve.shutdown()
+        sys.exit()
 
-@cli.command(help="Get the current config of the running Serve app.")
+
+@cli.command(help="Gets the current config(s) of Serve application(s) on the cluster.")
 @click.option(
     "--address",
     "-a",
@@ -358,22 +404,86 @@ def run(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def config(address: str):
-
-    app_info = ServeSubmissionClient(address).get_info()
-    if app_info is not None:
+@click.option(
+    "--multi-app",
+    "-m",
+    is_flag=True,
+    help=(
+        "A toggle between single-application and multi-application mode.\n\n"
+        "- If a single application was deployed through a config of the format "
+        "ServeApplicationSchema, then `serve config` should be used without setting "
+        'flag to fetch the current config for the default app with name="".\n'
+        "- If multiple applications were deployed through a config of the format "
+        "ServeDeploySchema, then `serve config` should be used with this flag set to "
+        "get the current app configs of all live applications on the Ray Cluster."
+    ),
+)
+@click.option(
+    "--name",
+    "-n",
+    required=False,
+    type=str,
+    help=(
+        "Name of an application. Only applies to multi-application mode. If set, this "
+        "will only fetch the config for the specified application."
+    ),
+)
+def config(address: str, multi_app: bool, name: Optional[str]):
+    # Backwards compatible single-app behavior: displays the config for default app "".
+    if not multi_app and name is None:
+        app_info = ServeSubmissionClient(address).get_info()
         print(yaml.safe_dump(app_info, sort_keys=False))
+    # Multi-app support
+    else:
+        if multi_app and name is not None:
+            cli_logger.error("Cannot set both `--multi-app` and `--name`.")
+            return
+
+        serve_details = ServeSubmissionClient(address).get_serve_details()
+
+        # Fetch app configs for all live applications on the cluster
+        if multi_app:
+            print(
+                "\n---\n\n".join(
+                    yaml.safe_dump(
+                        app.deployed_app_config.dict(exclude_unset=True),
+                        sort_keys=False,
+                    )
+                    for app in serve_details.applications.values()
+                )
+            )
+
+        # Fetch a specific app config by name.
+        elif name is not None:
+            if name not in serve_details.applications:
+                cli_logger.error(f'Application "{name}" does not exist.')
+            else:
+                print(
+                    yaml.safe_dump(
+                        serve_details.applications.get(name).deployed_app_config.dict(
+                            exclude_unset=True
+                        ),
+                        sort_keys=False,
+                    )
+                )
 
 
 @cli.command(
-    short_help="Get the current status of the running Serve app.",
+    short_help="Get the current status of all live Serve applications and deployments.",
     help=(
-        "Prints status information about all deployments in the Serve app.\n\n"
-        "Deployments may be:\n\n"
-        "- HEALTHY: all replicas are acting normally and passing their "
-        "health checks.\n\n"
+        "Prints status information about all applications on the cluster.\n\n"
+        "An application may be:\n\n"
+        "- NOT_STARTED: the application does not exist.\n"
+        "- DEPLOYING: the deployments in the application are still deploying and "
+        "haven't reached the target number of replicas.\n"
+        "- RUNNING: all deployments are healthy.\n"
+        "- DEPLOY_FAILED: the application failed to deploy or reach a running state.\n"
+        "- DELETING: the application is being deleted, and the deployments in the "
+        "application are being teared down.\n\n"
+        "The deployments within each application may be:\n\n"
+        "- HEALTHY: all replicas are acting normally and passing their health checks.\n"
         "- UNHEALTHY: at least one replica is not acting normally and may not be "
-        "passing its health check.\n\n"
+        "passing its health check.\n"
         "- UPDATING: the deployment is updating."
     ),
 )
@@ -385,19 +495,52 @@ def config(address: str):
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def status(address: str):
-    app_status = ServeSubmissionClient(address).get_status()
-    if app_status is not None:
-        # Ensure multi-line strings in app_status is dumped/printed correctly
-        yaml.SafeDumper.add_representer(str, str_presenter)
+@click.option(
+    "--name",
+    "-n",
+    default=None,
+    required=False,
+    type=str,
+    help=(
+        "Name of an application. If set, this will display only the status of the "
+        "specified application."
+    ),
+)
+def status(address: str, name: Optional[str]):
+    serve_details = ServeSubmissionClient(address).get_serve_details()
+
+    # Ensure multi-line strings in app_status is dumped/printed correctly
+    yaml.SafeDumper.add_representer(str, str_presenter)
+
+    if name is None:
+        if len(serve_details.applications) == 0:
+            print("There are no applications running on this cluster.")
+
         print(
-            yaml.safe_dump(
-                # Ensure exception tracebacks in app_status are printed correctly
-                process_dict_for_yaml_dump(app_status),
-                default_flow_style=False,
-                sort_keys=False,
+            "\n---\n\n".join(
+                yaml.safe_dump(
+                    # Ensure exception tracebacks in app_status are printed correctly
+                    process_dict_for_yaml_dump(application.get_status_dict()),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+                for application in serve_details.applications.values()
             )
         )
+    else:
+        if name not in serve_details.applications:
+            cli_logger.error(f'Application "{name}" does not exist.')
+        else:
+            print(
+                yaml.safe_dump(
+                    # Ensure exception tracebacks in app_status are printed correctly
+                    process_dict_for_yaml_dump(
+                        serve_details.applications.get(name).get_status_dict()
+                    ),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+            )
 
 
 @cli.command(
@@ -431,12 +574,13 @@ def shutdown(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Serve Deployment Graph's config file.",
     help=(
-        "Imports the ClassNode or FunctionNode at IMPORT_PATH "
-        "and generates a structured config for it that can be used by "
-        "`serve deploy` or the REST API. "
+        "Imports the ClassNode(s) or FunctionNode(s) at IMPORT_PATH(S) and generates a "
+        "structured config for it. If the flag --multi-app is set, accepts multiple "
+        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
-@click.argument("import_path")
+@click.argument("import_paths", nargs=-1, required=True)
 @click.option(
     "--app-dir",
     "-d",
@@ -460,39 +604,100 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
+@click.option(
+    "--multi-app",
+    "-m",
+    is_flag=True,
+    help="Generate a multi-application config from multiple targets.",
+)
 def build(
-    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+    import_paths: Tuple[str],
+    app_dir: str,
+    kubernetes_format: bool,
+    output_path: Optional[str],
+    multi_app: bool,
 ):
     sys.path.insert(0, app_dir)
 
-    node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-    if not isinstance(node, (ClassNode, FunctionNode)):
-        raise TypeError(
-            f"Expected '{import_path}' to be ClassNode or "
-            f"FunctionNode, but got {type(node)}."
+    def build_app_config(import_path: str, name: str = None):
+        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
+        if not isinstance(node, (ClassNode, FunctionNode)):
+            raise TypeError(
+                f"Expected '{import_path}' to be ClassNode or "
+                f"FunctionNode, but got {type(node)}."
+            )
+
+        app = build_app(node)
+        schema = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env={},
+            deployments=[
+                deployment_to_schema(d, not multi_app) for d in app.deployments.values()
+            ],
         )
+        # If building a multi-app config, auto-generate names for each application.
+        # Also, each ServeApplicationSchema should not have host and port set, it should
+        # be set at the top level of ServeDeploySchema.
+        if multi_app:
+            schema.name = name
+            schema.route_prefix = app.ingress.route_prefix
+        else:
+            schema.host = "0.0.0.0"
+            schema.port = 8000
 
-    app = build_app(node)
-    schema = ServeApplicationSchema(
-        import_path=import_path,
-        runtime_env={},
-        host="0.0.0.0",
-        port=8000,
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
-    )
-
-    if kubernetes_format:
-        config = schema.kubernetes_dict(exclude_unset=True)
-    else:
-        config = schema.dict(exclude_unset=True)
+        if kubernetes_format:
+            return schema.kubernetes_dict(exclude_unset=True)
+        else:
+            return schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
         f"on Ray v{ray.__version__}.\n\n"
     )
-    config_str += yaml.dump(
-        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
-    )
+
+    if not multi_app:
+        if len(import_paths) > 1:
+            raise click.ClickException(
+                "Got more than one argument. If you want to generate a multi-"
+                "application config, please rerun the command with the feature flag "
+                "`--multi-app`."
+            )
+
+        config_str += yaml.dump(
+            build_app_config(import_paths[0]),
+            Dumper=ServeApplicationSchemaDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+    else:
+        if kubernetes_format:
+            raise click.ClickException(
+                "Multi-application config is not supported in Kubernetes format yet."
+            )
+
+        app_configs = []
+        for app_index, import_path in enumerate(import_paths):
+            app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
+
+        deploy_config = {
+            "host": "0.0.0.0",
+            "port": 8000,
+            "applications": app_configs,
+        }
+
+        # Parse + validate the set of application configs
+        ServeDeploySchema.parse_obj(deploy_config)
+
+        config_str += yaml.dump(
+            deploy_config,
+            Dumper=ServeDeploySchemaDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+        cli_logger.info(
+            "The auto-generated application names default to `app1`, `app2`, ... etc. "
+            "Rename as necessary.\n",
+        )
 
     # Ensure file ends with only one newline
     config_str = config_str.rstrip("\n") + "\n"
@@ -501,8 +706,8 @@ def build(
         f.write(config_str)
 
 
-class ServeBuildDumper(yaml.SafeDumper):
-    """YAML dumper object with custom formatting for `serve build` command.
+class ServeApplicationSchemaDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for ServeApplicationSchema.
 
     Reformat config to follow this spacing:
     ---------------------------------------
@@ -524,8 +729,45 @@ class ServeBuildDumper(yaml.SafeDumper):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # Indents must be at most 2 to ensure that only the top 2 levels of
         # the config file have line breaks between them. The top 2 levels include
         # import_path, runtime_env, deployments, and all entries of deployments.
-        if len(self.indents) < 3:
+        if len(self.indents) <= 2:
+            super().write_line_break()
+
+
+class ServeDeploySchemaDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for ServeDeploySchema.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    host: 0.0.0.0
+
+    port: 8000
+
+    applications:
+
+    - name: app1
+
+      import_path: app1.path
+
+      runtime_env: {}
+
+      deployments:
+
+      - name: deployment1
+        ...
+
+      - name: deployment2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        # Indents must be at most 4 to ensure that only the top 4 levels of
+        # the config file have line breaks between them.
+        if len(self.indents) <= 4:
             super().write_line_break()

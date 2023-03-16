@@ -20,143 +20,6 @@ py_test(
     deps = [":ml_lib"]
 )
 
-
-py_test(
-    name = "distributed_sage_example",
-    size = "small",
-    main = "examples/pytorch_geometric/distributed_sage_example.py",
-    srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
-    tags = ["team:ml", "exclusive", "gpu"],
-    deps = [":ml_lib"],
-    args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
-)
-
-py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "small",
-    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "horovod_pytorch_example",
-    size = "small",
-    srcs = ["examples/horovod/horovod_pytorch_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--num-epochs=1"]
-)
-
-py_test(
-    name = "horovod_tune_example",
-    size = "small",
-    srcs = ["examples/horovod/horovod_tune_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test (
-    name = "huggingface_basic_language_modeling_example",
-    size = "medium",
-    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
-    args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "tensorflow_regression_example",
-    size = "medium",
-    main = "examples/tf/tensorflow_regression_example.py",
-    srcs = ["examples/tf/tensorflow_regression_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tensorflow_mnist_example",
-    size = "medium",
-    main = "examples/tf/tensorflow_mnist_example.py",
-    srcs = ["examples/tf/tensorflow_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-# py_test(
-#     name = "tensorflow_autoencoder_example", # REGRESSION
-#     size = "medium",
-#     main = "examples/tf/tensorflow_autoencoder_example.py",
-#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
-#     tags = ["team:ml", "exclusive"],
-#     deps = [":ml_lib"],
-#     args = ["--smoke-test"]
-# )
-
-py_test(
-    name = "torch_fashion_mnist_example",
-    size = "medium",
-    main = "examples/pytorch/torch_fashion_mnist_example.py",
-    srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "torch_fashion_mnist_example_gpu",
-    size = "medium",
-    main = "examples/pytorch/torch_fashion_mnist_example.py",
-    srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive", "gpu"],
-    deps = [":ml_lib"],
-    args = ["--use-gpu"]
-)
-
-py_test(
-    name = "torch_regression_example",
-    size = "medium",
-    main = "examples/pytorch/torch_regression_example.py",
-    srcs = ["examples/pytorch/torch_regression_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "torch_linear_example",
-    size = "small",
-    main = "examples/pytorch/torch_linear_example.py",
-    srcs = ["examples/pytorch/torch_linear_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tune_tensorflow_mnist_example",
-    size = "medium",
-    main = "examples/tf/tune_tensorflow_mnist_example.py",
-    srcs = ["examples/tf/tune_tensorflow_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tune_torch_regression_example.py",
-    size = "small",
-    main = "examples/pytorch/tune_torch_regression_example.py",
-    srcs = ["examples/pytorch/tune_torch_regression_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"],
-    args = ["--smoke-test"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/tests directory.
 # Covers all tests starting with `test_`.
@@ -199,7 +62,7 @@ py_test(
     name = "test_data_batch_conversion",
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
 
@@ -211,6 +74,31 @@ py_test(
     deps = [":ml_lib"]
 )
 
+
+py_test(
+    name = "test_integration_comet",
+    size = "small",
+    srcs = ["tests/test_integration_comet.py"],
+    deps = [":ml_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_integration_wandb",
+    size = "small",
+    srcs = ["tests/test_integration_wandb.py"],
+    deps = [":ml_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_integration_mlflow",
+    size = "small",
+    srcs = ["tests/test_integration_mlflow.py"],
+    deps = [":ml_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 py_test(
     name = "test_keras_callback",
     size = "small",
@@ -220,18 +108,18 @@ py_test(
 )
 
 py_test(
-    name = "test_mlflow",
+    name = "test_remote_storage",
     size = "small",
-    srcs = ["tests/test_mlflow.py"],
+    srcs = ["tests/test_remote_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_remote_storage",
+    name = "test_remote_storage_hdfs",
     size = "small",
-    srcs = ["tests/test_remote_storage.py"],
-    tags = ["team:ml", "exclusive"],
+    srcs = ["tests/test_remote_storage_hdfs.py"],
+    tags = ["team:ml", "exclusive", "hdfs"],
     deps = [":ml_lib"]
 )
 
@@ -247,7 +135,7 @@ py_test(
     name = "test_tensor_extension",
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
 
@@ -258,6 +146,95 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/air/tests/execution directory.
+# Covers all tests starting with `test_`.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_barrier",
+    size = "small",
+    srcs = ["tests/execution/test_barrier.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_e2e_train_flow",
+    size = "medium",
+    srcs = ["tests/execution/test_e2e_train_flow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_e2e_tune_flow",
+    size = "medium",
+    srcs = ["tests/execution/test_e2e_tune_flow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_event_manager",
+    size = "medium",
+    srcs = ["tests/execution/test_event_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_manager_fixed",
+    size = "small",
+    srcs = ["tests/execution/test_resource_manager_fixed.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_manager_placement_group",
+    size = "small",
+    srcs = ["tests/execution/test_resource_manager_placement_group.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_request",
+    size = "small",
+    srcs = ["tests/execution/test_resource_request.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_tracked_actor",
+    size = "small",
+    srcs = ["tests/execution/test_tracked_actor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_tracked_actor_task",
+    size = "small",
+    srcs = ["tests/execution/test_tracked_actor_task.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

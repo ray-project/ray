@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
@@ -27,14 +28,17 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 U = TypeVar("U")
 
+DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 2
+
+
 # Block transform function applied by task and actor pools.
 BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Iterable[Block]], Iterable[Block]],
-    Callable[[Iterable[Block], Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
 
@@ -70,6 +74,9 @@ class TaskPoolStrategy(ComputeStrategy):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         assert fn_constructor_args is None and fn_constructor_kwargs is None
         if fn_args is None:
             fn_args = tuple()
@@ -88,7 +95,7 @@ class TaskPoolStrategy(ComputeStrategy):
         # Bin blocks by target block size.
         if target_block_size is not None:
             _check_batch_size(blocks, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks]
         del blocks
@@ -136,7 +143,7 @@ class TaskPoolStrategy(ComputeStrategy):
         # Common wait for non-data refs.
         try:
             results = map_bar.fetch_until_complete(refs)
-        except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
+        except (ray.exceptions.RayError, KeyboardInterrupt) as e:
             # One or more mapper tasks failed, or we received a SIGINT signal
             # while waiting; either way, we cancel all map tasks.
             for ref in refs:
@@ -145,7 +152,10 @@ class TaskPoolStrategy(ComputeStrategy):
             for ref in refs:
                 try:
                     ray.get(ref)
-                except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task had already failed with
+                    # a different error, or cancellation failed. In all cases, we
+                    # swallow the exception.
                     pass
             # Reraise the original task failure exception.
             raise e from None
@@ -167,6 +177,9 @@ class TaskPoolStrategy(ComputeStrategy):
             list(new_metadata),
             owned_by_consumer=in_block_owned_by_consumer,
         )
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, TaskPoolStrategy)
 
 
 @PublicAPI
@@ -191,7 +204,7 @@ class ActorPoolStrategy(ComputeStrategy):
         self,
         min_size: int = 1,
         max_size: Optional[int] = None,
-        max_tasks_in_flight_per_actor: Optional[int] = 2,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -208,7 +221,10 @@ class ActorPoolStrategy(ComputeStrategy):
             raise ValueError("min_size must be > 1", min_size)
         if max_size is not None and min_size > max_size:
             raise ValueError("min_size must be <= max_size", min_size, max_size)
-        if max_tasks_in_flight_per_actor < 1:
+        if (
+            max_tasks_in_flight_per_actor is not None
+            and max_tasks_in_flight_per_actor < 1
+        ):
             raise ValueError(
                 "max_tasks_in_flight_per_actor must be >= 1, got: ",
                 max_tasks_in_flight_per_actor,
@@ -234,6 +250,9 @@ class ActorPoolStrategy(ComputeStrategy):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
         if fn_kwargs is None:
@@ -245,15 +264,33 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if name is None:
             name = "map"
-        blocks_in = block_list.get_blocks_with_metadata()
-        # Bin blocks by target block size.
-        if target_block_size is not None:
-            _check_batch_size(blocks_in, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(
-                blocks_in, target_block_size, name
+        blocks_in: List[
+            Tuple[ObjectRef[Block], BlockMetadata]
+        ] = block_list.get_blocks_with_metadata()
+
+        # We bundle blocks according to the following rules:
+        # 1. Attempt to bundle up to the target block size.
+        # 2. If the max concurrency of the ActorPool is set, then
+        #    cap the number of bundles to match the size of the ActorPool.
+        #    This avoids additional overhead in submitting new actor tasks and allows
+        #    the actor task to do optimizations such as batch prefetching.
+        if target_block_size is None:
+            target_block_size = 0
+        if not math.isinf(self.max_size):
+            total_size = sum(
+                meta.num_rows if meta.num_rows is not None else 0
+                for _, meta in blocks_in
             )
+            pool_max_block_size = total_size // self.max_size
+            target_block_size = max(target_block_size, pool_max_block_size)
+        if target_block_size > 0:
+            _check_batch_size(blocks_in, target_block_size, name)
+            block_bundles: List[
+                Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
+            ] = _bundle_blocks_up_to_size(blocks_in, target_block_size)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks_in]
+
         del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
 
@@ -336,6 +373,9 @@ class ActorPoolStrategy(ComputeStrategy):
         ]
         tasks = {w.ready.remote(): w for w in workers}
         tasks_in_flight = collections.defaultdict(int)
+        max_tasks_in_flight_per_actor = (
+            self.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+        )
         metadata_mapping = {}
         block_indices = {}
         ready_workers = set()
@@ -382,7 +422,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 # Schedule a new task.
                 while (
                     block_bundles
-                    and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+                    and tasks_in_flight[worker] < max_tasks_in_flight_per_actor
                 ):
                     blocks, metas = block_bundles.pop()
                     # TODO(swang): Support block splitting for compute="actors".
@@ -418,7 +458,15 @@ class ActorPoolStrategy(ComputeStrategy):
             except Exception as err:
                 logger.exception(f"Error killing workers: {err}")
             finally:
-                raise e
+                raise e from None
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, ActorPoolStrategy) and (
+            self.min_size == other.min_size
+            and self.max_size == other.max_size
+            and self.max_tasks_in_flight_per_actor
+            == other.max_tasks_in_flight_per_actor
+        )
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
@@ -493,13 +541,12 @@ def _map_block_nosplit(
 def _bundle_blocks_up_to_size(
     blocks: List[Tuple[ObjectRef[Block], BlockMetadata]],
     target_size: int,
-    name: str,
-) -> List[Tuple[List[ObjectRef[Block]], List[BlockMetadata]]]:
+) -> List[Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]]:
     """Group blocks into bundles that are up to (but not exceeding) the provided target
     size.
     """
-    block_bundles = []
-    curr_bundle = []
+    block_bundles: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = []
+    curr_bundle: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
     curr_bundle_size = 0
     for b, m in blocks:
         num_rows = m.num_rows
@@ -515,11 +562,12 @@ def _bundle_blocks_up_to_size(
         block_bundles.append(curr_bundle)
     if len(blocks) / len(block_bundles) >= 10:
         logger.warning(
-            f"Having to send 10 or more blocks to a single {name} task to create a "
-            f"batch of size {target_size}, which may result in less transformation "
-            "parallelism than expected. This may indicate that your blocks are too "
-            "small and/or your batch size is too large, and you may want to decrease "
-            "your read parallelism and/or decrease your batch size."
+            f"`batch_size` is set to {target_size}, which reduces parallelism from "
+            f"{len(blocks)} to {len(block_bundles)}. If the performance is worse than "
+            "expected, this may indicate that the batch size is too large or the "
+            "input block size is too small. To reduce batch size, consider decreasing "
+            "`batch_size` or use the default in `map_batches`. To increase input "
+            "block size, consider decreasing `parallelism` in read."
         )
     return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
 

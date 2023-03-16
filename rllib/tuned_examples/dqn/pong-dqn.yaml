@@ -1,6 +1,6 @@
 # You can expect ~20 reward within 1.1m timesteps / 2.1 hours on a K80 GPU
 pong-deterministic-dqn:
-    env: PongDeterministic-v4
+    env: ALE/Pong-v5
     run: DQN
     stop:
         episode_reward_mean: 20
@@ -8,6 +8,8 @@ pong-deterministic-dqn:
     config:
         # Works for both torch and tf.
         framework: tf
+        env_config:
+            nondeterministic: False  # deterministic
         num_gpus: 1
         gamma: 0.99
         lr: .0001

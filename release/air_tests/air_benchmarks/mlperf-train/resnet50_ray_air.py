@@ -12,6 +12,9 @@ from ray.air import session
 from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
 from ray.air.config import ScalingConfig
 from ray.data.preprocessors import BatchMapper
+from ray import tune
+from ray.tune import Tuner
+
 
 from tf_utils import (
     DEFAULT_IMAGE_SIZE,
@@ -40,6 +43,9 @@ TF_DATA = "tf.data"
 SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
+
+# Each image is about 600KB after preprocessing.
+APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
 
 
 def build_model():
@@ -194,7 +200,7 @@ def train_loop_for_worker(config):
             )
         )
 
-        # You can also use ray.air.callbacks.keras.Callback
+        # You can also use ray.air.integrations.keras.Callback
         # for reporting and checkpointing instead of reporting manually.
         session.report(
             {
@@ -218,7 +224,7 @@ def crop_and_flip_image_batch(image_batch):
     return image_batch
 
 
-def decode_tf_record_batch(tf_record_batch):
+def decode_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.DataFrame:
     def process_images():
         for image_buffer in tf_record_batch["image/encoded"]:
             image_buffer = tf.reshape(image_buffer, shape=[])
@@ -234,7 +240,7 @@ def decode_tf_record_batch(tf_record_batch):
     return df
 
 
-def decode_crop_and_flip_tf_record_batch(tf_record_batch):
+def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.DataFrame:
     """
     This version of the preprocessor fuses the load step with the crop and flip
     step, which should have better performance (at the cost of re-executing the
@@ -304,9 +310,11 @@ def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
 FIELDS = [
     "data_loader",
     "train_sleep_time_ms",
+    "num_cpu_nodes",
     "num_epochs",
     "num_images_per_epoch",
     "num_images_per_input_file",
+    "num_files",
     "batch_size",
     "shuffle_buffer_size",
     "ray_mem_monitor_enabled",
@@ -380,13 +388,15 @@ def append_to_test_output_json(path, metrics):
     output_json["runs"] = runs
 
     num_images_per_file = metrics["num_images_per_input_file"]
+    num_files = metrics["num_files"]
     data_loader = metrics["data_loader"]
+    num_cpu_nodes = metrics["num_cpu_nodes"]
 
     # Append select performance metrics to perf_metrics.
     perf_metrics = output_json.get("perf_metrics", [])
     perf_metrics.append(
         {
-            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_throughput-img-per-second",  # noqa: E501
+            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files-{num_cpu_nodes}-num-cpu-nodes_throughput-img-per-second",  # noqa: E501
             "perf_metric_value": metrics["tput_images_per_s"],
             "perf_metric_type": "THROUGHPUT",
         }
@@ -442,10 +452,32 @@ if __name__ == "__main__":
             "Default value taken from MLPerf reference implementation."
         ),
     )
+    parser.add_argument(
+        "--trainer-resources-cpu",
+        default=1,
+        type=int,
+        help=("CPU resources requested per AIR trainer instance. Defaults to 1."),
+    )
+    parser.add_argument(
+        "--tune-trials",
+        default=0,
+        type=int,
+        help=(
+            "Number of Tune trials to run. Defaults to 0, "
+            "which disables Tune and executes a Trainer instance directly."
+        ),
+    )
     parser.add_argument("--output-file", default="out.csv", type=str)
     parser.add_argument("--use-gpu", action="store_true")
     parser.add_argument("--online-processing", action="store_true")
+    parser.add_argument("--num-cpu-nodes", default=0, type=int)
     args = parser.parse_args()
+
+    ray.init(
+        runtime_env={
+            "working_dir": os.path.dirname(__file__),
+        }
+    )
 
     if args.use_tf_data or args.use_ray_data:
         assert (
@@ -456,6 +488,15 @@ if __name__ == "__main__":
 
     memory_utilization_tracker = MaxMemoryUtilizationTracker(sample_interval_s=1)
     memory_utilization_tracker.start()
+
+    # Get the available space on the current filesystem.
+    # We'll use this to check whether the job should throw an OutOfDiskError.
+    statvfs = os.statvfs("/home")
+    available_disk_space = statvfs.f_bavail * statvfs.f_frsize
+    expected_disk_usage = args.num_images_per_epoch * APPROX_PREPROCESS_IMAGE_BYTES
+    print(f"Available disk space: {available_disk_space / 1e9}GB")
+    print(f"Expected disk usage: {expected_disk_usage/ 1e9}GB")
+    disk_error_expected = expected_disk_usage > available_disk_space * 0.8
 
     datasets = {}
     train_loop_config = {
@@ -481,30 +522,66 @@ if __name__ == "__main__":
             train_loop_config["data_loader"] = TF_DATA
         else:
             logger.info("Using Ray Datasets loader")
+
+            # Enable block splitting to support larger file sizes w/o OOM.
+            ctx = ray.data.context.DatasetContext.get_current()
+            ctx.block_splitting_enabled = True
+
             datasets["train"] = build_dataset(
                 args.data_root,
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
             )
+            # Set a lower batch size for images to prevent OOM.
+            batch_size = 32
             if args.online_processing:
-                preprocessor = BatchMapper(decode_tf_record_batch)
+                preprocessor = BatchMapper(
+                    decode_tf_record_batch, batch_size=batch_size, batch_format="pandas"
+                )
             else:
-                preprocessor = BatchMapper(decode_crop_and_flip_tf_record_batch)
+                preprocessor = BatchMapper(
+                    decode_crop_and_flip_tf_record_batch,
+                    batch_size=batch_size,
+                    batch_format="pandas",
+                )
             train_loop_config["data_loader"] = RAY_DATA
 
     trainer = TensorflowTrainer(
         train_loop_for_worker,
-        scaling_config=ScalingConfig(num_workers=1, use_gpu=args.use_gpu),
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=args.use_gpu,
+            trainer_resources={"CPU": args.trainer_resources_cpu},
+        ),
         datasets=datasets,
         preprocessor=preprocessor,
         train_loop_config=train_loop_config,
     )
+
+    tuner = None
+    if args.tune_trials > 0:
+        tuner = Tuner(
+            trainer,
+            param_space={
+                "train_loop_config": {
+                    "random_var": tune.grid_search(range(1, args.tune_trials + 1))
+                }
+            },
+            tune_config=tune.TuneConfig(
+                metric="time_total_s", mode="max", num_samples=1
+            ),
+        )
+
     result = {}
     exc = None
     start_time_s = time.perf_counter()
     ray_spill_stats_start = get_ray_spilled_and_restored_mb()
     try:
-        result = trainer.fit()
+        if tuner:
+            result_grid = tuner.fit()
+            result = result_grid.get_best_result()
+        else:
+            result = trainer.fit()
         result = result.metrics
     except Exception as e:
         exc = e
@@ -522,7 +599,26 @@ if __name__ == "__main__":
         "ray_mem_monitor_enabled"
     ] = determine_if_memory_monitor_is_enabled_in_latest_session()
 
-    write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
+    result["num_files"] = len(
+        get_tfrecords_filenames(
+            train_loop_config["data_root"],
+            train_loop_config["num_images_per_epoch"],
+            train_loop_config["num_images_per_input_file"],
+        )
+    )
+
+    try:
+        write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
+    except OSError:
+        if not disk_error_expected:
+            raise
 
     if exc is not None:
-        raise exc
+        print(f"Raised exception: {exc}")
+        if not disk_error_expected:
+            raise exc
+        else:
+            # There is no way to get the error cause from the TuneError
+            # returned by AIR, so it's possible that it raised an error other
+            # than OutOfDiskError here.
+            pass

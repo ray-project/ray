@@ -1,4 +1,4 @@
-from gym.spaces import Space
+from gymnasium.spaces import Space
 from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv

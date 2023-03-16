@@ -255,7 +255,9 @@ This section explains how Serve recovers from system failures. It uses the follo
 ```
 ::::
 
-You can follow along using your own Kubernetes cluster. Make sure it has at least 4 CPUs and 6 GB of memory to run the working example. First, install the [KubeRay operator](serve-installing-kuberay-operator):
+You can follow along using your own Kubernetes cluster. Make sure it has at least 4 CPUs and 6 GB of memory to run the working example.
+Also, make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
+First, install the [KubeRay operator](serve-installing-kuberay-operator):
 
 ```console
 $ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"

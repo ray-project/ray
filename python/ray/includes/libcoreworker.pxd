@@ -66,16 +66,8 @@ ctypedef void (*plasma_callback_function) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
-cdef extern from "ray/core_worker/profiling.h" nogil:
-    cdef cppclass CProfiler "ray::core::worker::Profiler":
-        void Start()
 
-    cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
-        CProfileEvent(const shared_ptr[CProfiler] profiler,
-                      const c_string &event_type)
-        void SetExtraData(const c_string &extra_data)
-
-cdef extern from "ray/core_worker/profiling.h" nogil:
+cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
@@ -159,6 +151,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         CNodeID GetCurrentNodeId()
+        int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId()
         CWorkerID GetWorkerID()
@@ -184,13 +177,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
-        CAddress GetOwnerAddress(const CObjectID &object_id) const
+        CRayStatus GetOwnerAddress(const CObjectID &object_id,
+                                   CAddress *owner_address) const
         c_vector[CObjectReference] GetObjectRefs(
                 const c_vector[CObjectID] &object_ids) const
 
-        void GetOwnershipInfo(const CObjectID &object_id,
-                              CAddress *owner_address,
-                              c_string *object_status)
+        CRayStatus GetOwnershipInfo(const CObjectID &object_id,
+                                    CAddress *owner_address,
+                                    c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
@@ -321,7 +315,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers
-        (c_bool() nogil) kill_main
+        (c_bool(const CTaskID &) nogil) kill_main
         CCoreWorkerOptions()
         (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
@@ -329,6 +323,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool connect_on_start
         int runtime_env_hash
         int startup_token
+        c_string session_name
+        c_string entrypoint
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

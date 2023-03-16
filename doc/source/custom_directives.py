@@ -68,6 +68,9 @@ MOCK_MODULES = [
     "datasets.load",
     "gym",
     "gym.spaces",
+    "gymnasium",
+    "gymnasium.spaces",
+    "gymnasium.envs",
     "horovod",
     "horovod.runner",
     "horovod.runner.common",
@@ -77,7 +80,8 @@ MOCK_MODULES = [
     "horovod.ray.utils",
     "horovod.torch",
     "hyperopt",
-    "hyperopt.hp" "kubernetes",
+    "hyperopt.hp",
+    "kubernetes",
     "mlflow",
     "modin",
     "mxnet",
@@ -109,7 +113,15 @@ MOCK_MODULES = [
     "tensorflow.contrib.slim",
     "tree",
     "wandb",
+    "wandb.data_types",
+    "wandb.util",
     "zoopt",
+    "composer",
+    "composer.trainer",
+    "composer.loggers",
+    "composer.loggers.logger_destination",
+    "composer.core",
+    "composer.core.state",
 ]
 
 
@@ -305,9 +317,9 @@ def build_gallery(app):
         ---
         :img-top: {item["image"]}
 
-        {item["description"]}
-
         {gh_stars}
+
+        {item["description"]}
 
         +++
         .. link-button:: {item["website"]}

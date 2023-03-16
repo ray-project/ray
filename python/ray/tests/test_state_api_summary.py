@@ -3,6 +3,7 @@ import json
 import pytest
 import ray
 from unittest.mock import MagicMock
+import random
 import sys
 from dataclasses import asdict
 
@@ -20,15 +21,20 @@ else:
     from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.tests.test_state_api import (
-    generate_task_entry,
+    generate_task_data,
+    generate_task_event,
     generate_actor_data,
     generate_object_info,
 )
 from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     SummaryApiOptions,
+    Link,
+    NestedTaskSummary,
+    TaskSummaries,
+    DRIVER_TASK_ID_PREFIX,
 )
 from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
@@ -63,48 +69,44 @@ async def test_api_manager_summary_tasks(state_api_manager):
 
     first_task_name = "1"
     second_task_name = "2"
-    data_source_client.get_task_info = AsyncMock()
+    data_source_client.get_all_task_info = AsyncMock()
     ids = [TaskID((f"{i}" * 24).encode()) for i in range(5)]
     # 1: {PENDING_NODE_ASSIGNMENT:3, RUNNING:1}, 2:{PENDING_NODE_ASSIGNMENT: 1}
-    data_source_client.get_task_info.side_effect = [
-        GetTasksInfoReply(
-            owned_task_info_entries=[
-                generate_task_entry(
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(
                     id=ids[0].binary(),
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
-                generate_task_entry(
+                generate_task_event(
                     id=ids[1].binary(),
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
-                generate_task_entry(
+                generate_task_event(
                     id=ids[2].binary(),
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
-            ]
-        ),
-        GetTasksInfoReply(
-            owned_task_info_entries=[
-                generate_task_entry(
+                generate_task_event(
                     id=ids[3].binary(),
                     func_or_class=first_task_name,
                     state=TaskStatus.RUNNING,
                     type=TaskType.NORMAL_TASK,
                 ),
-                generate_task_entry(
+                generate_task_event(
                     id=ids[4].binary(),
                     func_or_class=second_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.ACTOR_TASK,
                 ),
             ]
-        ),
+        )
     ]
 
     """
@@ -221,7 +223,7 @@ async def test_api_manager_summary_objects(state_api_manager):
             core_workers_stats=[
                 generate_object_info(
                     object_ids[0].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     local_ref_count=2,
@@ -233,7 +235,7 @@ async def test_api_manager_summary_objects(state_api_manager):
                 ),
                 generate_object_info(
                     object_ids[1].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     local_ref_count=2,
@@ -259,7 +261,7 @@ async def test_api_manager_summary_objects(state_api_manager):
             core_workers_stats=[
                 generate_object_info(
                     object_ids[3].binary(),
-                    size_bytes=1024 ** 2 * 2,  # 2MB,
+                    size_bytes=1024**2 * 2,  # 2MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.RUNNING,
                     local_ref_count=1,
@@ -270,7 +272,7 @@ async def test_api_manager_summary_objects(state_api_manager):
                 ),
                 generate_object_info(
                     object_ids[4].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=second_callsite,
                     task_state=TaskStatus.RUNNING,
                     local_ref_count=4,
@@ -468,6 +470,210 @@ def test_object_summary(monkeypatch, ray_start_cluster):
         result = runner.invoke(summary_state_cli_group, ["objects"])
         assert "(deserialize task arg)" in result.output
         assert result.exit_code == 0
+
+
+def test_summarize_by_lineage():
+    """
+    Unit test for summarize by lineage.
+
+    This test starts with an expected lineage.
+    It then converts that into a single list of tasks
+    It then randomizes the order of that list.
+    It calls the summarize_by_lineage_function with the randomized list.
+    Then asserts the final result should be the same.
+    """
+    expected_summary = [
+        NestedTaskSummary(
+            name="preprocess",
+            key="preprocess",
+            type="GROUP",
+            timestamp=100,
+            state_counts={
+                "FINISHED": 20,
+            },
+            children=[
+                NestedTaskSummary(
+                    name="preprocess",
+                    key=f"preprocess-{i}",
+                    type="NORMAL_TASK",
+                    timestamp=100 + i,
+                    state_counts={
+                        "FINISHED": 2,
+                    },
+                    link=Link("task", f"preprocess-{i}"),
+                    children=[
+                        NestedTaskSummary(
+                            name="preprocess_sub_task",
+                            key=f"preprocess-{i}-0",
+                            type="NORMAL_TASK",
+                            timestamp=200,
+                            state_counts={
+                                "FINISHED": 1,
+                            },
+                            link=Link("task", f"preprocess-{i}-0"),
+                        )
+                    ],
+                )
+                for i in range(10)
+            ],
+        ),
+        NestedTaskSummary(
+            name="TuneActor",
+            key="actor:tune-actor-0",
+            type="ACTOR",
+            timestamp=1000,
+            state_counts={
+                "FINISHED": 111,
+                "RUNNING": 10,
+            },
+            link=Link("actor", "tune-actor-0"),
+            children=[
+                NestedTaskSummary(
+                    name="TuneActor.__init__",
+                    key="tune-actor-init-0",
+                    type="ACTOR_CREATION_TASK",
+                    timestamp=1000,
+                    state_counts={
+                        "FINISHED": 111,
+                        "RUNNING": 10,
+                    },
+                    link=Link("task", "tune-actor-init-0"),
+                    children=[
+                        NestedTaskSummary(
+                            name="TrainActor",
+                            key="TrainActor",
+                            type="GROUP",
+                            timestamp=1100,
+                            state_counts={
+                                "FINISHED": 110,
+                                "RUNNING": 10,
+                            },
+                            children=[
+                                NestedTaskSummary(
+                                    name="TrainActor",
+                                    key=f"actor:train-actor-{i}",
+                                    type="ACTOR",
+                                    timestamp=1100 + i,
+                                    state_counts={
+                                        "FINISHED": 11,
+                                        "RUNNING": 1,
+                                    },
+                                    link=Link("actor", f"train-actor-{i}"),
+                                    children=[
+                                        NestedTaskSummary(
+                                            name="TrainActor.__init__",
+                                            key=f"train-actor-init-{i}",
+                                            type="ACTOR_CREATION_TASK",
+                                            timestamp=1100 + i,
+                                            state_counts={
+                                                "FINISHED": 1,
+                                            },
+                                            link=Link("task", f"train-actor-init-{i}"),
+                                        ),
+                                        NestedTaskSummary(
+                                            name="TrainActor.train_step_map",
+                                            key="TrainActor.train_step_map",
+                                            type="GROUP",
+                                            timestamp=2100,
+                                            state_counts={
+                                                "FINISHED": 10,
+                                            },
+                                            children=[
+                                                NestedTaskSummary(
+                                                    name="TrainActor.train_step_map",
+                                                    key=(
+                                                        "train-actor-train-step-map-"
+                                                        f"{i}-{j}"
+                                                    ),
+                                                    type="ACTOR_TASK",
+                                                    timestamp=2100 + j,
+                                                    state_counts={
+                                                        "FINISHED": 1,
+                                                    },
+                                                    link=Link(
+                                                        "task",
+                                                        "train-actor-train-step-map-"
+                                                        f"{i}-{j}",
+                                                    ),
+                                                )
+                                                for j in range(10)
+                                            ],
+                                        ),
+                                        NestedTaskSummary(
+                                            name="TrainActor.train_step_reduce",
+                                            key=f"train-actor-train-step-reduce-{i}",
+                                            type="ACTOR_TASK",
+                                            timestamp=2200,
+                                            state_counts={
+                                                "RUNNING": 1,
+                                            },
+                                            link=Link(
+                                                "task",
+                                                f"train-actor-train-step-reduce-{i}",
+                                            ),
+                                        ),
+                                    ],
+                                )
+                                for i in range(10)
+                            ],
+                        )
+                    ],
+                )
+            ],
+        ),
+    ]
+
+    tasks = []
+
+    def grab_tasks_from_task_group(
+        task_group: NestedTaskSummary, actor_id=None, parent_task_id=None
+    ):
+        if task_group.type != "ACTOR" and task_group.type != "GROUP":
+            # "Virtual" groups don't have underlying tasks.
+            task = {
+                "name": task_group.name,
+                "task_id": task_group.key,
+                "parent_task_id": parent_task_id,
+                "state": "RUNNING"
+                if task_group.name == "TrainActor.train_step_reduce"
+                else "FINISHED",
+                "actor_id": actor_id,
+                "creation_time_ms": task_group.timestamp,
+                "func_or_class_name": task_group.name,
+                "type": task_group.type,
+            }
+            tasks.append(task)
+
+        actor_id_for_child = None
+        parent_task_id_for_child = None
+
+        if task_group.type == "ACTOR":
+            [_, actor_id_for_child] = task_group.key.split(":")
+            parent_task_id_for_child = parent_task_id
+        elif task_group.type == "GROUP":
+            actor_id_for_child = actor_id
+            parent_task_id_for_child = parent_task_id
+        else:
+            parent_task_id_for_child = task_group.key
+
+        for child in task_group.children:
+            grab_tasks_from_task_group(
+                child,
+                actor_id=actor_id_for_child,
+                parent_task_id=parent_task_id_for_child,
+            )
+
+    for group in expected_summary:
+        grab_tasks_from_task_group(group, None, f"{DRIVER_TASK_ID_PREFIX}01000000")
+
+    random.shuffle(tasks)
+
+    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks)
+
+    assert summary.total_tasks == 20
+    assert summary.total_actor_tasks == 110
+    assert summary.total_actor_scheduled == 11
+    assert summary.summary == expected_summary
 
 
 if __name__ == "__main__":

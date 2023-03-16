@@ -2,6 +2,9 @@ import { createStyles, makeStyles } from "@material-ui/core/styles";
 
 const rowStyles = makeStyles((theme) =>
   createStyles({
+    tableContainer: {
+      overflowX: "scroll",
+    },
     expandCollapseIcon: {
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
@@ -13,6 +16,16 @@ const rowStyles = makeStyles((theme) =>
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
+    },
+    OverflowCol: {
+      display: "block",
+      width: "100px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    helpInfo: {
+      marginLeft: theme.spacing(1),
     },
   }),
 );

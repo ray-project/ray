@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.experimental.state.api import list_workers
+from ray.experimental.state.api import list_workers, list_nodes
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -117,7 +117,8 @@ ray.shutdown()
         worker = get_worker_by_pid(driver_pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        assert type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_by_shutdown)
 
@@ -132,6 +133,12 @@ ray.shutdown()
         def exit_with_exit_code(self):
             sys.exit(0)
 
+        def sleep_forever(self):
+            import time
+
+            # RIP
+            time.sleep(999999)
+
     a = A.remote()
     pid = ray.get(a.pid.remote())
     with pytest.raises(ray.exceptions.RayActorError, match="exit_actor"):
@@ -141,7 +148,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit_actor" in detail
+        return True
 
     wait_for_condition(verify_worker_exit_actor)
 
@@ -154,7 +162,8 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        assert type == "INTENDED_USER_EXIT" and "exit code 0" in detail
+        return True
 
     wait_for_condition(verify_exit_code_0)
 
@@ -162,13 +171,14 @@ ray.shutdown()
     pid = ray.get(a.pid.remote())
     ray.kill(a)
     with pytest.raises(ray.exceptions.RayActorError, match="ray.kill"):
-        ray.get(a.exit_with_exit_code.remote())
+        ray.get(a.sleep_forever.remote())
 
     def verify_exit_by_ray_kill():
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        assert type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
+        return True
 
     wait_for_condition(verify_exit_by_ray_kill)
 
@@ -302,6 +312,97 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
         )
 
     wait_for_condition(verify_exit_by_actor_init_failure)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows because sigkill doesn't work on Windows",
+)
+def test_worker_start_end_time(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Worker:
+        def ready(self):
+            return os.getpid()
+
+    # Test normal exit.
+    worker = Worker.remote()
+    pid = ray.get(worker.ready.remote())
+
+    def verify():
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        print(workers)
+        assert workers["start_time_ms"] > 0
+        assert workers["end_time_ms"] == 0
+        return True
+
+    wait_for_condition(verify)
+
+    ray.kill(worker)
+
+    def verify():
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        assert workers["start_time_ms"] > 0
+        assert workers["end_time_ms"] > 0
+        return True
+
+    wait_for_condition(verify)
+
+    # Test unexpected exit.
+    worker = Worker.remote()
+    pid = ray.get(worker.ready.remote())
+    os.kill(pid, signal.SIGKILL)
+
+    def verify():
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        assert workers["start_time_ms"] > 0
+        assert workers["end_time_ms"] > 0
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_node_start_end_time(ray_start_cluster):
+    cluster = ray_start_cluster
+    # head
+    cluster.add_node(num_cpus=0)
+    nodes = list_nodes(detail=True)
+    head_node_id = nodes[0]["node_id"]
+
+    worker_node = cluster.add_node(num_cpus=0)
+    nodes = list_nodes(detail=True)
+    worker_node_data = list(
+        filter(lambda x: x["node_id"] != head_node_id and x["state"] == "ALIVE", nodes)
+    )[0]
+    assert worker_node_data["start_time_ms"] > 0
+    assert worker_node_data["end_time_ms"] == 0
+
+    # Test expected exit.
+    cluster.remove_node(worker_node, allow_graceful=True)
+    nodes = list_nodes(detail=True)
+    worker_node_data = list(
+        filter(lambda x: x["node_id"] != head_node_id and x["state"] == "DEAD", nodes)
+    )[0]
+    assert worker_node_data["start_time_ms"] > 0
+    assert worker_node_data["end_time_ms"] > 0
+
+    # Test unexpected exit.
+    worker_node = cluster.add_node(num_cpus=0)
+    nodes = list_nodes(detail=True)
+    worker_node_data = list(
+        filter(lambda x: x["node_id"] != head_node_id and x["state"] == "ALIVE", nodes)
+    )[0]
+    assert worker_node_data["start_time_ms"] > 0
+    assert worker_node_data["end_time_ms"] == 0
+
+    cluster.remove_node(worker_node, allow_graceful=False)
+    nodes = list_nodes(detail=True)
+    worker_node_data = list(
+        filter(lambda x: x["node_id"] != head_node_id and x["state"] == "DEAD", nodes)
+    )[0]
+    assert worker_node_data["start_time_ms"] > 0
+    assert worker_node_data["end_time_ms"] > 0
 
 
 if __name__ == "__main__":
