@@ -102,41 +102,19 @@ def train_func(config):
         last_step = loaded_checkpoint.to_dict()["step"]
         start = last_step + 1
 
-    for step in range(start, epochs):
+    for epoch in range(start, epochs):
         # Model training here
         # ...
 
         # Report metrics and save a checkpoint
         metrics = {"metric": "my_metric"}
-        checkpoint = Checkpoint.from_dict({"step": step})
+        checkpoint = Checkpoint.from_dict({"epoch": epoch})
         session.report(metrics, checkpoint=checkpoint)
 
 
 tuner = tune.Tuner(train_func)
 results = tuner.fit()
 # __function_api_checkpointing_end__
-
-
-# __function_api_checkpointing_periodic_start__
-
-
-def train_func(config):
-    # checkpoint occurs every three epochs.
-    checkpoint_freq = 3
-    for epoch in range(config["epochs"]):
-        # Model training here
-        # ...
-
-        # Report metrics and save a checkpoint
-        metrics = {"metric": "my_metric"}
-        if epoch % checkpoint_freq == (checkpoint_freq - 1):
-            checkpoint = Checkpoint.from_dict({"epoch": epoch})
-            session.report(metrics, checkpoint=checkpoint)
-        else:
-            session.report(metrics)
-
-
-# __function_api_checkpointing_periodic_end__
 
 
 class MyModel:
@@ -154,8 +132,22 @@ def write_model_to_dir(model, dir_path):
     pass
 
 
+def write_epoch_to_dir(epoch: int, path: str):
+    pass
+
+
+def get_epoch_from_dir(path: str) -> int:
+    pass
+
+
 def train_func(config):
-    for epoch in range(config["epochs"]):
+    start = 0
+    if session.get_checkpoint() is not None:
+        loaded_checkpoint = session.get_checkpoint()
+        with loaded_checkpoint.as_directory() as loaded_checkpoint_path:
+            start = get_epoch_from_dir(loaded_checkpoint_path) + 1
+
+    for epoch in range(start, config["epochs"]):
         # Model training here
         # ...
 
@@ -169,3 +161,25 @@ def train_func(config):
 
 
 # __function_api_checkpointing_from_dir_end__
+
+
+# __function_api_checkpointing_periodic_start__
+def train_func(config):
+    # checkpoint every three epochs.
+    checkpoint_freq = 3
+    for epoch in range(1, config["epochs"] + 1):
+        # Model training here
+        # ...
+
+        # Report metrics and save a checkpoint
+        metrics = {"metric": "my_metric"}
+        if epoch % checkpoint_freq == 0:
+            checkpoint = Checkpoint.from_dict({"epoch": epoch})
+            session.report(metrics, checkpoint=checkpoint)
+        else:
+            session.report(metrics)
+
+
+tuner = tune.Tuner(train_func, param_space={"epochs": 12})
+
+# __function_api_checkpointing_periodic_end__

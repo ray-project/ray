@@ -3,8 +3,10 @@
 How to Configure Storage Options for a Distributed Tune Experiment?
 ===================================================================
 
-Before diving into storage options, one can take a look at
-:ref:`the different types of data stored by Tune <tune-persisted-experiment-data>`.
+.. seealso::
+
+    Before diving into storage options, one can take a look at
+    :ref:`the different types of data stored by Tune <tune-persisted-experiment-data>`.
 
 Tune allows you to configure persistent storage options to enable following use cases in a distributed Ray cluster:
 
