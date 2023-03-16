@@ -269,4 +269,4 @@ class SplitCoordinator:
                 self._output_iterator = next(self._next_epoch)
 
         assert self._output_iterator is not None
-        return self._cur_epoch
+        return starting_epoch + 1
