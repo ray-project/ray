@@ -91,7 +91,7 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     assert ds.take_all() == data, ds
 
     # Check that metadata fetch is included in stats.
-    assert "from_items" in ds.stats()
+    assert "FromItems" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromItems"
 
 
@@ -780,6 +780,8 @@ def test_from_mars_e2e(ray_start_regular_shared, enable_optimizer):
     with pytest.raises(NotImplementedError):
         ray.data.range(10).to_mars()
 
+    # Check that metadata fetch is included in stats.
+    assert "FromPandasRefs" in ds.stats()
     # Underlying implementation uses `FromPandasRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
 
@@ -815,6 +817,8 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     dfds = ds.to_pandas()
 
     assert df.equals(dfds)
+    # Check that metadata fetch is included in stats.
+    assert "FromPandasRefs" in ds.stats()
     # Underlying implementation uses `FromPandasRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
 
@@ -860,7 +864,7 @@ def test_from_pandas_refs_e2e(
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
+        assert "FromPandasRefs" in ds.stats()
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -869,7 +873,7 @@ def test_from_pandas_refs_e2e(
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "from_pandas_refs" in ds.stats()
+        assert "FromPandasRefs" in ds.stats()
         assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
@@ -904,7 +908,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     values = np.stack(ds.take(8))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
+    assert "FromNumpyRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
 
     # Test from single NumPy ndarray.
@@ -912,7 +916,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     values = np.stack(ds.take(4))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
+    assert "FromNumpyRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
 
 
@@ -953,7 +957,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
     # test from single pyarrow table ref
@@ -962,7 +966,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that conversion task is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
 
@@ -991,7 +995,7 @@ def test_from_spark_e2e(enable_optimizer, spark):
     assert values == rows
 
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
@@ -1029,7 +1033,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     for ds in ray_datasets.values():
         assert isinstance(ds, ray.data.Dataset)
         ds.fully_executed()
-        assert "from_arrow_refs" in ds.stats()
+        assert "FromArrowRefs" in ds.stats()
         assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
     ray_dataset = ray.data.from_huggingface(data["train"]).fully_executed()
@@ -1037,7 +1041,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
 
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ray_dataset.stats()
+    assert "FromArrowRefs" in ray_dataset.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromArrowRefs"
 
@@ -1077,7 +1081,7 @@ def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
         tf.debugging.assert_equal(expected_label, actual_label)
 
     # Check that metadata fetch is included in stats.
-    assert "from_items" in ray_dataset.stats()
+    assert "FromItems" in ray_dataset.stats()
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
 
@@ -1109,7 +1113,7 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     assert actual_data == expected_data
 
     # Check that metadata fetch is included in stats.
-    assert "from_items" in ray_dataset.stats()
+    assert "FromItems" in ray_dataset.stats()
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
 
