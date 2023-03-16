@@ -31,10 +31,8 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
-    List,
     Union,
     Coroutine,
-    Awaitable,
 )
 
 import grpc
@@ -1923,39 +1921,3 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     # completion:
     task.add_done_callback(background_tasks.discard)
     return task
-
-
-async def run_and_discard_awaitables(
-    awaitables: List[Awaitable], discard: List[Awaitable] = None
-) -> List[Any]:
-    """Executes awaitables serially and then discards specified results.
-
-    Args:
-        awaitables: Ordered list of awaitables. Each awaitable will
-            be awaited in list order.
-        discard: List of awaitables whose results to discard. Any awaitable in
-            this list must also be present in awaitables. These awaitables are
-            still executed.
-
-    Return:
-        List of results from awaitables, excluding the results of
-        awaitables in discard. Same order as awaitables.
-    """
-
-    if discard is None:
-        discard = []
-
-    if set(discard).intersection(set(awaitables)) != set(discard):
-        raise ValueError(
-            "All awaitables in discard must also be passed into the "
-            "awaitables list. Got some awaitables in discard that were not "
-            "in the awaitables list!"
-        )
-
-    results = []
-    for awaitable in awaitables:
-        result = await awaitable
-        if awaitable not in discard:
-            results.append(result)
-
-    return result
