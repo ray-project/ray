@@ -1,43 +1,4 @@
-// =========== Primitives for downscaling ====================
-
-enum NodeState {
-  BOOTSTRAPPING = 1;
-  ACTIVE = 2; // Maybe 2 states (one for idle)
-  CRASHED = 3;
-  DRAINING = 4;
-  DRAINED = 5;
-}
-
-message ReportAutoscalerNodeState {
-  bytes node_id = 1;
-  bytes node_ip = 2;
-
-  /*
-  // Option 1:
-  NodeState state = 3;
-  */
-
-  // Option 2:
-  bool success = 3;
-  string reason = 4;
-}
-
-message InfeasibleRequestData {
-  ResourceRequest infeasible_request = 1;
-
-  // Optionally
-  uint64_t timestamp_ns = 2;
-  string reason = 3;
-}
-
-
-
-
-
-
-
-
-// ============= Primitives for upscaling scheduling ====================
+// ============= Scheduling Status Primitives ====================
 
 message AntiAffinity {
   string label = 1;
@@ -67,4 +28,93 @@ message NodeStatus {
 
   // The corresponding total resources on the node.
   map<string, double> total_resources = 3;
+}
+
+// =========== Primitives autoscaler insights ====================
+
+enum AutoscalerNodeStates {
+  // The underlying cloud resource is alive, it's up to the cluster to decide
+  // if the node has joined the cluster (active) or not (still starting up).
+  ALIVE = 1;
+  // A terminal state, indicating the autoscaler believes this node will never
+  // join the cluster.
+  DEAD = 2;
+  // A hint that this node will be downscaled. Ray doesn't get a say in whether
+  // this node will be downscaled. It only has an opportunity to minimize the
+  // blast radius. Preemption, can happen for multiple reasons such as spot
+  // instance failure.
+  PREMPTED = 3;
+}
+
+message AutoscalerNode {
+  bytes node_id = 1;
+  AutoscalerNodeStates node_state = 2;
+  string description = 4;
+}
+
+message AutoscalerDecision {
+  oneof possible_autoscaler_decisions {
+    // Information about actions taken on nodes.
+    AutoscalerNode autoscaler_node = 1;
+    // Feedback about whether a resource request was infeasible.
+    ResourceRequest infeasible_request_data = 2;
+    //  TODO: Information about pending launches/pending launch failures.
+  }
+}
+
+// ============= Batched approach =======================
+message ReportBatchAutoscalerDecisionsReply {}
+
+message ReportBatchAutoscalerDecisionsRequest {
+  bytes scheduling_state_id = 1;
+  repeated AutoscalerDecision decisions = 2;
+}
+
+message GetBatchSchedulingStatusReply {
+  bytes scheduling_state_id = 1;
+  repeated NodeStatus node_states = 2;
+  repeated ResourceRequest resource_requests = 3;
+  repeated ClusterSizeConstraint cluster_size_constraints = 4;
+}
+
+message GetBatchSchedulingStatusRequest {
+  // The last seen scheduling state id. The default value is reserved for if a
+  // previous scheduling state has never been seen.
+  bytes last_seen_scheduling_state_id = 01;
+}
+
+service BatchAutoscalerService {
+  rpc GetBatchSchedulingStatus(GetBatchSchedulingStatusRequest) returns GetBatchSchedulingStatusReply;
+  rpc ReportAutoscalerDecisions(ReportBatchAutoscalerDecisionsRequest) returns ReportBatchAutoscalerDecisionsReply;
+}
+
+// ================ Streaming approach ================
+
+
+message ReportBatchAutoscalerDecisionsStreamReply {}
+
+message ReportAutoscalerDecisionsStreamPacket {
+  bytes scheduling_state_id = 1;
+  AutoscalerDecision decision = 2;
+}
+
+message GetStreamSchedulingStatusPacket{
+  bytes scheduling_state_id = 1;
+  oneof update_type {
+     NodeStatus node_states = 2;
+     ResourceRequest resource_requests = 3;
+     ClusterSizeConstraint cluster_size_constraints = 4;
+  }
+}
+
+message GetStreamSchedulingStatusRequest {
+  // The last seen scheduling state id. The default value is reserved for if a
+  // previous scheduling state has never been seen.
+  bytes last_seen_scheduling_state_id = 01;
+}
+
+
+service StreamAutoscalerService {
+  rpc GetBatchSchedulingStatus(GetStreamSchedulingStatusRequest) returns (stream GetStreamSchedulingStatusPacket);
+  rpc ReportAutoscalerDecisionsStream(stream ReportAutoscalerDecisionsStreamPacket) returns ReportBatchAutoscalerDecisionsStreamReply;
 }
