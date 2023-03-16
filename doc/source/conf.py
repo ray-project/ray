@@ -157,10 +157,9 @@ language = None
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
-    "_build",
-    "source/workflows/api/doc/ray.workflow.*",
-    "source/serve/api/doc/ray.serve.*",
-    "source/templates/*",
+    "workflows/api/doc/ray.workflow.*",
+    "serve/api/doc/ray.serve.*",
+    "templates/*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
