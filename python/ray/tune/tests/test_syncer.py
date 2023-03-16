@@ -90,6 +90,7 @@ def mock_s3_bucket_uri():
         )
         # Disable server HTTP request logging
         logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
         yield s3_uri
         logging.getLogger("werkzeug").setLevel(logging.INFO)
 
@@ -252,11 +253,11 @@ def test_sync_config_validate_custom_syncer():
 def test_sync_config_upload_dir_custom_syncer_mismatch():
     # Shouldn't be able to disable syncing if upload dir is specified
     with pytest.raises(ValueError):
-        tune.SyncConfig(upload_dir="s3://valid/bucket", syncer=None)
+        tune.SyncConfig(syncer=None).validate_upload_dir("s3://valid/bucket")
 
     # Shouldn't be able to use a custom cloud syncer without specifying cloud dir
     with pytest.raises(ValueError):
-        tune.SyncConfig(upload_dir=None, syncer=_DefaultSyncer())
+        tune.SyncConfig(syncer=_DefaultSyncer()).validate_upload_dir(None)
 
 
 def test_syncer_sync_up_down(temp_data_dirs):

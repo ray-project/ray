@@ -189,9 +189,20 @@ class SyncConfig:
             upload_dir: Path to validate.
         """
         upload_dir = upload_dir or self.upload_dir
+
         if isinstance(self.syncer, Syncer):
+            if not upload_dir:
+                raise ValueError(
+                    "Must specify a remote `storage_path` to use a custom `syncer`."
+                )
             return self.syncer.validate_upload_dir(upload_dir)
         else:
+            if self.syncer is None and upload_dir:
+                raise ValueError(
+                    "You specified a remote storage path but set `syncer` to `None`. "
+                    "Choose a local storage path instead or set a syncer. You can "
+                    "also use `syncer='auto'"
+                )
             return Syncer.validate_upload_dir(upload_dir)
 
 
@@ -457,6 +468,7 @@ class Syncer(abc.ABC):
         Args:
             upload_dir: Path to validate.
         """
+
         if not upload_dir:
             return True
 
