@@ -615,13 +615,11 @@
 # Workspace templates release tests #
 #####################################
 
-# 01_batch_inference
-
-- name: workspace_template_latest_small_01_batch_inference
+- name: workspace_template_small_01_batch_inference
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
   python: "3.9"
-  frequency: manual
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_test_cluster_env.yaml
@@ -633,46 +631,11 @@
       --to script --output _test batch_inference.ipynb && ipython _test.py
 
 
-
-- name: workspace_template_latest_large_01_batch_inference
-  group: Workspace templates
-  working_dir: workspace_templates/01_batch_inference
-  python: "3.9"
-  frequency: manual
-  team: ml
-  cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_large.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test batch_inference.ipynb && ipython _test.py
-
-
-- name: workspace_template_master_large_01_batch_inference
-  group: Workspace templates
-  working_dir: workspace_templates/01_batch_inference
-  python: "3.9"
-  frequency: weekly
-  team: ml
-  cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_large.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test batch_inference.ipynb && ipython _test.py
-
-
-# 02_many_model_training
-
-- name: workspace_template_latest_small_02_many_model_training
+- name: workspace_template_small_02_many_model_training
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
   python: "3.9"
-  frequency: manual
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_test_cluster_env.yaml
@@ -684,46 +647,12 @@
       && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
       --to script --output _test many_model_training.ipynb && ipython _test.py
 
-- name: workspace_template_latest_large_02_many_model_training
-  group: Workspace templates
-  working_dir: workspace_templates/02_many_model_training
-  python: "3.9"
-  frequency: manual
-  team: ml
-  cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/cpu/aws_large.yaml
 
-  run:
-    timeout: 900
-    script: pip install --user -U -r requirements.txt
-      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test many_model_training.ipynb && ipython _test.py
-
-
-- name: workspace_template_master_large_02_many_model_training
-  group: Workspace templates
-  working_dir: workspace_templates/02_many_model_training
-  python: "3.9"
-  frequency: weekly
-  team: ml
-  cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/cpu/aws_large.yaml
-
-  run:
-    timeout: 900
-    script: pip install --user -U -r requirements.txt
-      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test many_model_training.ipynb && ipython _test.py
-
-# 03_serving_stable_diffusion
-
-- name: workspace_template_latest_small_03_serving_stable_diffusion
+- name: workspace_template_small_03_serving_stable_diffusion
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
   python: "3.9"
-  frequency: manual
+  frequency: nightly
   team: ml
   cluster:
     cluster_env: ../configs/release_test_cluster_env.yaml
@@ -731,42 +660,8 @@
 
   run:
     timeout: 900
-    script:  pip install -U -r requirements.txt
+    script: pip install -U -r requirements.txt
       && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
-
-
-- name: workspace_template_latest_large_03_serving_stable_diffusion
-  group: Workspace templates
-  working_dir: workspace_templates/03_serving_stable_diffusion
-  python: "3.9"
-  frequency: manual
-  team: ml
-  cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_large.yaml
-
-  run:
-    timeout: 900
-    script: pip install --user -U -r requirements.txt
-      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
-      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
-
-
-- name: workspace_template_master_large_03_serving_stable_diffusion
-  group: Workspace templates
-  working_dir: workspace_templates/03_serving_stable_diffusion
-  python: "3.9"
-  frequency: weekly
-  team: ml
-  cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_large.yaml
-
-  run:
-    timeout: 900
-    script: pip install --user -U -r requirements.txt
-      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='small'
       --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
 
