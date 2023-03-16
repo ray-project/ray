@@ -223,12 +223,9 @@ class TrialRunner:
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
-        self._local_checkpoint_dir = local_checkpoint_dir
 
-        if self._local_checkpoint_dir:
-            os.makedirs(self._local_checkpoint_dir, exist_ok=True)
-
-        self._experiment_dir_name = experiment_dir_name
+        if self._local_experiment_path:
+            os.makedirs(self._local_experiment_path, exist_ok=True)
 
         self._stopper = stopper or NoopStopper()
 
@@ -278,7 +275,9 @@ class TrialRunner:
 
     @property
     def experiment_state_path(self) -> str:
-        return os.path.join(self._local_checkpoint_dir, self.experiment_state_file_name)
+        return os.path.join(
+            self._local_experiment_path, self.experiment_state_file_name
+        )
 
     def setup_experiments(
         self, experiments: List[Experiment], total_num_samples: int
@@ -304,8 +303,8 @@ class TrialRunner:
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
-            local_checkpoint_dir=self._local_checkpoint_dir,
-            remote_checkpoint_dir=self._remote_checkpoint_dir,
+            local_checkpoint_dir=self._local_experiment_path,
+            remote_checkpoint_dir=self._remote_experiment_path,
             checkpoint_period=self._checkpoint_period,
             sync_config=self._sync_config,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
@@ -323,12 +322,6 @@ class TrialRunner:
     def scheduler_alg(self):
         return self._scheduler_alg
 
-    @property
-    def _remote_checkpoint_dir(self):
-        if self._sync_config.upload_dir and self._experiment_dir_name:
-            return str(URI(self._sync_config.upload_dir) / self._experiment_dir_name)
-        return None
-
     @classmethod
     def checkpoint_exists(cls, directory: str) -> bool:
         if not os.path.exists(directory):
@@ -345,7 +338,7 @@ class TrialRunner:
         This method will save the trial runner state, the searcher state,
         and the callback states into the experiment directory.
         """
-        experiment_dir = experiment_dir or self._local_checkpoint_dir
+        experiment_dir = experiment_dir or self._local_experiment_path
 
         # Get state from trial executor and runner
         runner_state = {
@@ -371,10 +364,10 @@ class TrialRunner:
         )
 
         self._search_alg.save_to_dir(
-            self._local_checkpoint_dir, session_str=self._session_str
+            self._local_experiment_path, session_str=self._session_str
         )
         self._callbacks.save_to_dir(
-            self._local_checkpoint_dir, session_str=self._session_str
+            self._local_experiment_path, session_str=self._session_str
         )
 
     def restore_from_dir(self, experiment_dir: Optional[str] = None) -> List[Trial]:
@@ -387,20 +380,20 @@ class TrialRunner:
         and the callback states. It will then parse the trial states
         and return them as a list of Trial objects.
         """
-        experiment_dir = experiment_dir or self._local_checkpoint_dir
+        experiment_dir = experiment_dir or self._local_experiment_path
 
         # Update local checkpoint dir
-        self._local_checkpoint_dir = experiment_dir
+        self._local_experiment_path = experiment_dir
 
         # Find newest state file
         newest_state_path = _find_newest_experiment_checkpoint(
-            self._local_checkpoint_dir
+            self._local_experiment_path
         )
 
         if not newest_state_path:
             raise ValueError(
-                f"Tried to resume from checkpoint dir "
-                f"`{self._local_checkpoint_dir}`, but no "
+                f"Tried to resume experiment from directory "
+                f"`{self._local_experiment_path}`, but no "
                 f"experiment checkpoint data was found."
             )
 
@@ -410,7 +403,7 @@ class TrialRunner:
         )
 
         logger.warning(
-            f"Attempting to resume experiment from {self._local_checkpoint_dir}. "
+            f"Attempting to resume experiment from {self._local_experiment_path}. "
             "This will ignore any new changes to the specification."
         )
 
@@ -422,11 +415,11 @@ class TrialRunner:
         self.__setstate__(runner_state["runner_data"])
 
         # 2. Restore search algorithm and callback state
-        if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
-            self._search_alg.restore_from_dir(self._local_checkpoint_dir)
+        if self._search_alg.has_checkpoint(self._local_experiment_path):
+            self._search_alg.restore_from_dir(self._local_experiment_path)
 
-        if self._callbacks.can_restore(self._local_checkpoint_dir):
-            self._callbacks.restore_from_dir(self._local_checkpoint_dir)
+        if self._callbacks.can_restore(self._local_experiment_path):
+            self._callbacks.restore_from_dir(self._local_experiment_path)
 
         # 3. Load trials
         trials = []
@@ -435,7 +428,9 @@ class TrialRunner:
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
-            trial.local_dir = self._local_checkpoint_dir
+            # ATTN: Set `local_experiment_path` to update trial checkpoints!
+            trial.local_experiment_path = self._local_experiment_path
+            trial.remote_experiment_path = self._remote_experiment_path
             trial.sync_config = self._sync_config
             trial.experiment_dir_name = self._experiment_dir_name
 
@@ -443,14 +438,14 @@ class TrialRunner:
             # since the dir might not be creatable locally.
             # TODO(ekl) this is kind of a hack.
             if not ray.util.client.ray.is_connected():
-                trial.init_logdir()  # Create logdir if it does not exist
+                trial.init_local_path()  # Create logdir if it does not exist
 
             trials.append(trial)
 
         return trials
 
     def checkpoint(self, force: bool = False, wait: bool = False):
-        """Saves execution state to `self._local_checkpoint_dir`.
+        """Saves execution state to `self._local_experiment_path`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
@@ -1236,7 +1231,8 @@ class TrialRunner:
             "trial_executor",
             "_callbacks",
             "_checkpoint_manager",
-            "_local_checkpoint_dir",
+            "_local_experiment_path",
+            "_remote_experiment_path",
             "_sync_config",
             "_experiment_dir_name",
             "_insufficient_resources_manager",

@@ -367,7 +367,7 @@ class Trial:
 
         # Set default experiment dir name
         if not local_experiment_path:
-            local_experiment_path = Path(DEFAULT_RESULTS_DIR / experiment_dir_name)
+            local_experiment_path = str(Path(DEFAULT_RESULTS_DIR) / experiment_dir_name)
 
         # Set remote experiment path if upload_dir is set
         if self.sync_config.upload_dir:

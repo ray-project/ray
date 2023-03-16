@@ -302,7 +302,7 @@ def test_change_trial_local_dir(tmpdir):
 
     # Specify a new local dir, and the logdir/checkpoint path should be updated
     with tempfile.TemporaryDirectory() as new_local_dir:
-        trial.local_dir = new_local_dir
+        trial.local_experiment_path = new_local_dir
 
         assert trial.local_path.startswith(new_local_dir)
         assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)

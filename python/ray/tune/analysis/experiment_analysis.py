@@ -100,8 +100,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = self._checkpoints_and_paths[0][1].parent
-
+        self._local_experiment_path = self._checkpoints_and_paths[0][1]
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -110,15 +109,19 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        self._sync_config = sync_config
+        remote_experiment_path = None
+        if sync_config and sync_config.upload_dir:
+            remote_experiment_path = sync_config.upload_dir
+
+        self._remote_experiment_path = remote_experiment_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
-        if not self._sync_config or not self._sync_config.upload_dir:
+        if not self._remote_experiment_path:
             return None
 
         return local_path.replace(
-            str(self._local_base_dir), self._sync_config.upload_dir
+            str(self._local_experiment_path), self._remote_experiment_path
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
@@ -795,7 +798,7 @@ class ExperimentAnalysis:
             for trial_json_state, path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_dir = str(path)
+                    trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
