@@ -23,7 +23,8 @@ def retry(f):
             else:
                 return resp
         if resp is None or resp.status_code >= 500:
-            print("still errorred after many retries")
+            print("still errorred after many retries, response content:")
+            print(resp.content)
             sys.exit(1)
 
     return inner
