@@ -634,6 +634,29 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
 
+    def get_status_dict(self) -> Dict:
+        # NOTE(zcin): We use json.loads(model.json()) since model.dict() doesn't expand
+        # dataclasses (ApplicationStatusInfo and DeploymentStatusInfo are dataclasses)
+        # See https://github.com/pydantic/pydantic/issues/3764.
+        return json.loads(
+            ServeStatusSchema(
+                name=self.name,
+                app_status=ApplicationStatusInfo(
+                    status=self.status,
+                    message=self.message,
+                    deployment_timestamp=self.last_deployed_time_s,
+                ),
+                deployment_statuses=[
+                    DeploymentStatusInfo(
+                        name=name,
+                        status=d.status,
+                        message=d.message,
+                    )
+                    for name, d in self.deployments.items()
+                ],
+            ).json()
+        )
+
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
