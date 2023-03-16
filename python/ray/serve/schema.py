@@ -485,26 +485,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
-    root_path: str = Field(
-        default="",
-        description=(
-            'Root path to mount the serve application (for example, "/serve"). All '
-            'deployment routes will be prefixed with this path. Defaults to "".'
-        ),
-    )
-    location: DeploymentMode = Field(
-        default=DeploymentMode.EveryNode,
-        description=(
-            "The location of HTTP servers.\n"
-            '- "EveryNode" (default): start one HTTP server per node.\n'
-            '- "HeadOnly": start one HTTP server on the head node.\n'
-            '- "NoServer": disable HTTP server.'
-        ),
-    )
-
-
-@PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     host: str = Field(
         default="0.0.0.0",
         description=(
@@ -520,6 +500,26 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             "Port for HTTP server. Defaults to 8000. Cannot be updated once "
             "Serve has started running. Serve must be shut down and restarted "
             "with the new port instead."
+        ),
+    )
+    root_path: str = Field(
+        default="",
+        description=(
+            'Root path to mount the serve application (for example, "/serve"). All '
+            'deployment routes will be prefixed with this path. Defaults to "".'
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    proxy_location: DeploymentMode = Field(
+        default=DeploymentMode.EveryNode,
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode" (default): start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
         ),
     )
     http_options: HTTPOptionsSchema = Field(

@@ -230,23 +230,23 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         client = serve_start(
             detached=True,
             http_options={
-                "host": config.host,
-                "port": config.port,
+                "host": config.http_options.host,
+                "port": config.http_options.port,
                 "root_path": config.http_options.root_path,
-                "location": config.http_options.location,
+                "location": config.proxy_location,
             },
         )
 
         # Check HTTP Host
         host_conflict = self.check_http_options(
-            "host", client.http_config.host, config.host
+            "host", client.http_config.host, config.http_options.host
         )
         if host_conflict is not None:
             return host_conflict
 
         # Check HTTP Port
         port_conflict = self.check_http_options(
-            "port", client.http_config.port, config.port
+            "port", client.http_config.port, config.http_options.port
         )
         if port_conflict is not None:
             return port_conflict
@@ -260,7 +260,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         # Check HTTP location
         location_conflict = self.check_http_options(
-            "location", client.http_config.location, config.http_options.location
+            "location", client.http_config.location, config.proxy_location
         )
         if location_conflict is not None:
             return location_conflict

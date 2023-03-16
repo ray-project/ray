@@ -495,7 +495,7 @@ class ServeController:
             # fields to support single-app mode, but in multi-app mode the host and port
             # fields at the top-level deploy config is used instead. Eventually, after
             # migration, we should remove these fields from ServeApplicationSchema.
-            host, port = config.host, config.port
+            host, port = config.http_options.host, config.http_options.port
             for app_config in config.applications:
                 app_config_dict = app_config.dict(exclude_unset=True)
                 if "host" in app_config_dict:

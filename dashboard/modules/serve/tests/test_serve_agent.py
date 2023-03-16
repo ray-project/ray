@@ -593,10 +593,10 @@ def test_serve_namespace(ray_start_stop):
 @pytest.mark.parametrize(
     "option,override",
     [
-        ("host", "127.0.0.2"),
-        ("port", 8005),
+        ("proxy_location", "HeadOnly"),
+        ("http_options", {"host": "127.0.0.2"}),
+        ("http_options", {"port": 8000}),
         ("http_options", {"root_path": "/serve_updated"}),
-        ("http_options", {"location": "HeadOnly"}),
     ],
 )
 def test_put_with_http_options(ray_start_stop, option, override):
@@ -610,11 +610,11 @@ def test_put_with_http_options(ray_start_stop, option, override):
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     original_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "proxy_location": "EveryNode",
         "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
             "root_path": "/serve",
-            "location": "EveryNode",
         },
         "applications": [
             {
