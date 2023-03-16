@@ -120,7 +120,7 @@ def main(
 
     team = test.get("team")
     if team == "core":
-        test["run"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
+        test["run"]["type"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
         test["env"] = test.get("env", DEFAULT_CORE_ENV_TYPE)
 
     env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
