@@ -103,5 +103,5 @@ enum TagKey {
   // AIR
   // AIR trainer, or custom trainer that instantiates BaseTrainer interface.
   // Example: TorchTrainer
-  AIR_TRAINER = 401;
+  AIR_TRAINER = 500;
 }

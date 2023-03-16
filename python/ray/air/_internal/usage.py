@@ -8,11 +8,14 @@ if TYPE_CHECKING:
 
 def tag_air_trainer(trainer: "BaseTrainer"):
     from ray.train.trainer import BaseTrainer
+    from ray.train.registry import AIR_TRAINERS
 
     assert isinstance(trainer, BaseTrainer)
     module_path = trainer.__module__
     if module_path.startswith("ray.train"):
-        result = f"{trainer.__class__.__name__}"
+        trainer_name = "{trainer.__class__.__name__}"
+        if trainer_name not in AIR_TRAINERS:
+            trainer_name = "CustomTrainer"
     else:
-        result = "custom_trainer"
-    record_extra_usage_tag(TagKey.AIR_TRAINER, result)
+        trainer_name = "CustomTrainer"
+    record_extra_usage_tag(TagKey.AIR_TRAINER, trainer_name)
