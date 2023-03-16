@@ -293,7 +293,7 @@ class _ResourceUpdater:
     def debug_string(self, total_allocated_resources: Dict[str, Any]) -> str:
         """Returns a human readable message for printing to the console."""
         if self._last_resource_refresh > 0:
-            status = "Logical Resource Usage: {}/{} CPUs, {}/{} GPUs".format(
+            status = "Logical resource usage: {}/{} CPUs, {}/{} GPUs".format(
                 total_allocated_resources.pop("CPU", 0),
                 self._avail_resources.cpu,
                 total_allocated_resources.pop("GPU", 0),
