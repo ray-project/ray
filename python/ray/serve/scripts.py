@@ -27,7 +27,11 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve._private import api as _private_api
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -439,7 +443,9 @@ def config(address: str, multi_app: bool, name: Optional[str]):
             cli_logger.error("Cannot set both `--multi-app` and `--name`.")
             return
 
-        serve_details = ServeSubmissionClient(address).get_serve_details()
+        serve_details = ServeInstanceDetails(
+            **ServeSubmissionClient(address).get_serve_details()
+        )
 
         # Fetch app configs for all live applications on the cluster
         if multi_app:
@@ -507,7 +513,9 @@ def config(address: str, multi_app: bool, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
-    serve_details = ServeSubmissionClient(address).get_serve_details()
+    serve_details = ServeInstanceDetails(
+        **ServeSubmissionClient(address).get_serve_details()
+    )
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
     yaml.SafeDumper.add_representer(str, str_presenter)
