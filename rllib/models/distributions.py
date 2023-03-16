@@ -101,9 +101,7 @@ class Distribution(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
+    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
         """Returns the required shape of an input parameter tensor for a
         particular space and an optional dict of distribution-specific
         options.
@@ -116,7 +114,6 @@ class Distribution(abc.ABC):
             space: The space this distribution will be used for,
                 whose shape attributes will be used to determine the required shape of
                 the input parameter tensor.
-            model_config: Model's config dict (as defined in catalog.py)
 
         Returns:
             size of the required input vector (minus leading batch dimension).

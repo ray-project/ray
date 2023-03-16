@@ -1,16 +1,13 @@
 from functools import partial
-from typing import Optional, Mapping, Any
 
 from typing import Optional, Mapping, Any
 import functools
 
-import numpy as np
 import gymnasium as gym
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import ModelConfig
@@ -34,31 +31,63 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDiagGaussian,
     TorchMultiActionDistribution,
     TorchMultiCategorical,
-    TorchDirichlet,
 )
 from ray.rllib.models.utils import get_filter_config
-from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict
 
 
-def _pass_through_required_model_output_shape_method(_partial):
-    """Adds the required_model_output_shape method to the given class or partial.
+def _multi_action_dist_partial_helper(
+    catalog_cls, action_space, framework, deterministic
+) -> TorchMultiActionDistribution:
+    """Helper method to get a partial TorchMultiActionDistribution.
 
-    This requires _partial to be a partial of a class that has a
-    required_model_output_shape method.
+    This is useful for when we want to create MultiActionDistributions from
+    logits later, but know the action space now.
 
     Args:
-        partial: The partial to add the required_model_output_shape method to.
+        catalog_cls: The ModelCatalog class to use.
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+        deterministic: Whether to use the deterministic child distributions.
+
+    Returns:
+        A partial TorchMultiActionDistribution class.
     """
-    if isinstance(_partial, partial):
-        _partial.required_model_output_shape = _partial.func.required_model_output_shape
-        return _partial
+    action_space_struct = get_base_struct_from_space(action_space)
+    flat_action_space = flatten_space(action_space)
+    child_distribution_cls_struct = tree.map_structure(
+        lambda s: catalog_cls.get_dist_cls_from_action_space(
+            action_space=s,
+            framework=framework,
+            deterministic=deterministic,
+        ),
+        action_space_struct,
+    )
+    flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
+
+    input_lens = [
+        int(e.required_model_output_shape(space))
+        for e, space in zip(flat_distribution_clses, flat_action_space)
+    ]
+
+    if framework == "torch":
+        multi_action_dist_cls = TorchMultiActionDistribution
+    elif framework == "tf":
+        multi_action_dist_cls = TfMultiActionDistribution
     else:
-        raise ValueError(f"Expected a partial function, got {partial} instead.")
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_torch_multi_action_distribution_cls = (
+        multi_action_dist_cls.get_partial_dist_cls(
+            space=action_space,
+            child_distribution_cls_struct=child_distribution_cls_struct,
+            input_lens=input_lens,
+        )
+    )
+    return partial_torch_multi_action_distribution_cls
 
 
 class Catalog:
@@ -384,6 +413,8 @@ class Catalog:
                 TorchCategorical,
                 TorchDeterministic,
                 TorchDiagGaussian,
+                TorchMultiActionDistribution,
+                TorchMultiCategorical,
             )
 
             distribution_dicts = {
@@ -396,6 +427,8 @@ class Catalog:
                 TfCategorical,
                 TfDeterministic,
                 TfDiagGaussian,
+                TfMultiActionDistribution,
+                TfMultiCategorical,
             )
 
             distribution_dicts = {
@@ -408,6 +441,20 @@ class Catalog:
                 f"Unknown framework: {framework}. Only 'torch' and 'tf2' are "
                 "supported for RLModule Catalogs."
             )
+
+        # Only add a MultiAction distribution class to the dict if we can compute its
+        # components (we need a Tuple/Dict space for this).
+        if isinstance(action_space, (Tuple, Dict)):
+            partial_torch_multi_action_distribution_cls = (
+                _multi_action_dist_partial_helper(
+                    catalog_cls=cls,
+                    action_space=action_space,
+                    framework=framework,
+                    deterministic=deterministic,
+                )
+            )
+
+            distribution_dicts["multi"] = partial_torch_multi_action_distribution_cls
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
@@ -446,144 +493,12 @@ class Catalog:
 
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
-            # TODO(Artur): Support multi-discrete.
-            raise NotImplementedError("MultiDiscrete spaces not yet supported.")
-
-        # Unknown type -> Error.
-        else:
-            raise NotImplementedError(f"Unsupported action space: `{action_space}`")
-
-    @classmethod
-    def get_action_dist_cls_dict(
-        cls,
-        action_space: gym.Space,
-        model_config_dict: ModelConfigDict,
-        deterministic: Optional[bool] = False,
-    ) -> Mapping[str, Any]:
-        """Returns a mapping from framework to distribution class.
-
-        You can get the required input dimension for the distribution by calling
-        `action_dict_cls.required_model_output_shape(action_space, config)` on the
-        retrieved class. This is useful, because the Catalog needs to find out
-        about the required input dimension for the distribution before the model that
-        outputs these inputs is configured.
-
-        Args:
-            action_space: Action space of the target gym env.
-            model_config_dict: Optional model config.
-            deterministic: Whether to return a deterministic distributions instead of
-                a diagonal Gaussian ones.
-
-        Returns:
-                Mapping from framework to distribution class.
-        """
-        assert not model_config_dict.get("custom_action_dist"), (
-            "Specify a custom action "
-            "distribution by overwriting "
-            "Catalog.get_action_distribution."
-        )
-
-        model_config_dict = model_config_dict or MODEL_DEFAULTS
-
-        # Box space -> DiagGaussian OR Deterministic.
-        if isinstance(action_space, Box):
-            if action_space.dtype.name.startswith("int"):
-                low_ = np.min(action_space.low)
-                high_ = np.max(action_space.high)
-                num_cats = int(np.product(action_space.shape))
-
-                return {
-                    "torch": _pass_through_required_model_output_shape_method(
-                        partial(
-                            TorchMultiCategorical,
-                            input_lens=[high_ - low_ + 1 for _ in range(num_cats)],
-                            action_space=action_space,
-                        )
-                    ),
-                    "tf": _pass_through_required_model_output_shape_method(
-                        partial(
-                            TfMultiCategorical,
-                            input_lens=[high_ - low_ + 1 for _ in range(num_cats)],
-                            action_space=action_space,
-                        )
-                    ),
-                }
-            else:
-                if len(action_space.shape) > 1:
-                    raise UnsupportedSpaceException(
-                        "Action space has multiple dimensions "
-                        "{}. ".format(action_space.shape)
-                        + "Consider reshaping this into a single dimension, "
-                        "using a custom action distribution, "
-                        "using a Tuple action space, or the multi-agent API."
-                    )
-                if deterministic:
-                    return {"torch": TorchDeterministic, "tf": TfDeterministic}
-                else:
-                    return {
-                        "torch": _pass_through_required_model_output_shape_method(
-                            partial(TorchDiagGaussian, action_space=action_space)
-                        ),
-                        "tf": _pass_through_required_model_output_shape_method(
-                            partial(TfDiagGaussian, action_space=action_space)
-                        ),
-                    }
-
-        # Discrete Space -> Categorical.
-        elif isinstance(action_space, Discrete):
-            return {"torch": TorchCategorical, "tf": TfCategorical}
-
-        # Tuple/Dict Spaces -> MultiAction.
-        elif isinstance(action_space, (Tuple, Dict)):
-            flat_action_space = flatten_space(action_space)
-            torch_child_dists = tree.map_structure(
-                lambda s: cls.get_action_dist_cls_dict(s, model_config_dict)["torch"],
-                flat_action_space,
-            )
-            tf_child_dists = tree.map_structure(
-                lambda s: cls.get_action_dist_cls_dict(s, model_config_dict)["tf"],
-                flat_action_space,
-            )
-            return {
-                "torch": _pass_through_required_model_output_shape_method(
-                    partial(
-                        TorchMultiActionDistribution,
-                        action_space=action_space,
-                        child_distributions=torch_child_dists,
-                        input_lens=[
-                            int(e.required_model_output_shape(space, model_config_dict))
-                            for e, space in zip(torch_child_dists, flat_action_space)
-                        ],
-                    )
-                ),
-                "tf": _pass_through_required_model_output_shape_method(
-                    partial(
-                        TfMultiActionDistribution,
-                        action_space=action_space,
-                        child_distributions=tf_child_dists,
-                        input_lens=[
-                            int(e.required_model_output_shape(space, model_config_dict))
-                            for e, space in zip(tf_child_dists, flat_action_space)
-                        ],
-                    )
-                ),
-            }
-
-        # Simplex -> Dirichlet.
-        elif isinstance(action_space, Simplex):
-            # TODO(Artur): Supported this (in torch)
-            raise NotImplementedError("Simplex action space not supported yet.")
-
-        # MultiDiscrete -> MultiCategorical.
-        elif isinstance(action_space, MultiDiscrete):
-            return {
-                "torch": _pass_through_required_model_output_shape_method(
-                    partial(TorchMultiCategorical, input_lens=action_space.nvec)
-                ),
-                "tf": _pass_through_required_model_output_shape_method(
-                    partial(TfMultiCategorical, input_lens=action_space.nvec)
-                ),
-            }
+            # TODO(Artur): Implement this!!
+            # TODO(Artur): Implement this!!
+            # TODO(Artur): Implement this!!
+            # TODO(Artur): Implement this!!
+            partial(TorchMultiCategorical, input_lens=action_space.nvec)
+            partial(TfMultiCategorical, input_lens=action_space.nvec)
 
         # Unknown type -> Error.
         else:

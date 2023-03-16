@@ -126,9 +126,7 @@ class TfCategorical(TfDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
+    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
         return (int(space.n),)
 
     @override(TfDistribution)
@@ -199,9 +197,7 @@ class TfDiagGaussian(TfDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
+    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
         return (int(np.prod(space.shape, dtype=np.int32) * 2),)
 
     @override(TfDistribution)
@@ -279,9 +275,7 @@ class TfDeterministic(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
+    def required_model_output_shape(space: gym.Space) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
         return (int(np.prod(space.shape, dtype=np.int32)),)
 
