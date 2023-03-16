@@ -526,6 +526,16 @@ def test_placement_group_equal_hash(ray_start_regular):
     s.add(pg1)
     assert pg2 in s
 
+    # Compare in remote task
+    @ray.remote(num_cpus=0)
+    def same(a, b):
+        return a == b and b in {a}
+
+    assert ray.get(same.remote(pg1, pg2))
+
+    # Compare before/after object store
+    assert ray.get(ray.put(pg1)) == pg1
+
 
 @pytest.mark.filterwarnings("default:placement_group parameter is deprecated")
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
