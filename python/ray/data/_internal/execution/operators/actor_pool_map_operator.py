@@ -66,9 +66,10 @@ class ActorPoolMapOperator(MapOperator):
             ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
-        # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
-        # after the `min_workers` have been created.
-        self._actor_pool = _ActorPool(max_tasks_in_flight=1)
+        self._actor_pool = _ActorPool(
+            max_tasks_in_flight=self._autoscaling_policy._config.max_tasks_in_flight,
+            max_tasks_rampup_threshold=self._autoscaling_policy.min_workers,
+        )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -180,16 +181,6 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
-            # After the minimum number of workers have been created, then ramp up to the
-            # default `max_tasks_in_flight`.
-            if (
-                self._actor_pool.num_running_actors()
-                + self._actor_pool.num_idle_actors()
-                >= self._autoscaling_policy.min_workers
-            ):
-                self._actor_pool._max_tasks_in_flight = (
-                    self._autoscaling_policy._config.max_tasks_in_flight
-                )
         # For either a completed task or ready worker, we try to dispatch queued tasks.
         self._dispatch_tasks()
 
@@ -442,10 +433,27 @@ class _ActorPool:
     This class is in charge of tracking the number of in-flight tasks per actor,
     providing the least heavily loaded actor to the operator, and killing idle
     actors when the operator is done submitting work to the pool.
+
+    Args:
+        max_tasks_in_flight: The maximum number of tasks to queue on a single actor at
+            a time. The actual max_tasks_in_flight starts at 1, and then ramps up
+            to this value after `ramp_up_threshold` actors have been created, to allow
+            for even scheduling for datasets with a small number of partitions.
+        max_tasks_rampup_threshold: The number of actors to wait for before ramping up
+            `max_tasks_in_flight`.
     """
 
-    def __init__(self, max_tasks_in_flight: int = float("inf")):
-        self._max_tasks_in_flight = max_tasks_in_flight
+    def __init__(
+        self,
+        max_tasks_in_flight: int = float("inf"),
+        max_tasks_rampup_threshold: int = 1,
+    ):
+        # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
+        # after the `max_tasks_rampup_threshold` have been created.
+        self._max_tasks_in_flight_final = max_tasks_in_flight
+        self._max_tasks_in_flight = 1
+        self._max_tasks_rampup_threshold = max_tasks_rampup_threshold
+
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
@@ -493,6 +501,11 @@ class _ActorPool:
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
         self._actor_locations[actor] = ray.get(ready_ref)
+
+        # Ramp up to the final `max_tasks_in_flight` value after the threshold is
+        # reached.
+        if len(self._num_tasks_in_flight) >= self._max_tasks_rampup_threshold:
+            self._max_tasks_in_flight = self._max_tasks_in_flight_final
         return True
 
     def pick_actor(
