@@ -126,6 +126,7 @@ class _TrialIterator:
         self.counter += 1
         return _create_trial_from_spec(
             spec,
+            self.output_path,
             self.parser,
             evaluated_params=_flatten_resolved_vars(resolved_vars),
             trial_id=trial_id,
