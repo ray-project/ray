@@ -68,7 +68,7 @@ def test_memory_sanity(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=500e6)
     ds = ray.data.range(10)
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    ds.fully_executed()
+    ds.cache()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
 
     # Sanity check spilling is happening as expected.
@@ -170,7 +170,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    ds.fully_executed()
+    ds.cache()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
@@ -188,7 +188,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             # Should get fused into single stage.
             ds = ds.lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-            ds.random_shuffle().fully_executed()
+            ds.random_shuffle().cache()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
             assert "Spilled" not in meminfo, meminfo
             return
@@ -224,12 +224,12 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert ds2.fully_executed().take() == [
+    assert ds2.cache().take() == [
         {"one": 3, "two": "a"},
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
     ]
-    assert ds3.fully_executed().take() == [
+    assert ds3.cache().take() == [
         {"one": 3, "two": "a"},
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
@@ -254,8 +254,8 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert ds2.fully_executed().take() == list(range(2, 12))
-    assert ds3.fully_executed().take() == list(range(2, 12))
+    assert ds2.cache().take() == list(range(2, 12))
+    assert ds3.cache().take() == list(range(2, 12))
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -268,10 +268,10 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.
-    assert ds1.fully_executed().take() == list(range(2, 12))
-    assert ds2.fully_executed().take() == list(range(2, 12))
-    # Test that first map is executed twice, because ds1.fully_executed()
-    # clears up the previous snapshot blocks, and ds2.fully_executed()
+    assert ds1.cache().take() == list(range(2, 12))
+    assert ds2.cache().take() == list(range(2, 12))
+    # Test that first map is executed twice, because ds1.cache()
+    # clears up the previous snapshot blocks, and ds2.cache()
     # has to re-execute ds.map(inc) again.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -305,7 +305,7 @@ def test_stage_linking(ray_start_regular_shared):
     assert len(ds._plan._stages_before_snapshot) == 0
     _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
     assert ds._plan._last_optimized_stages is None
-    ds = ds.fully_executed()
+    ds = ds.cache()
     _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
     assert len(ds._plan._stages_after_snapshot) == 0
     _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
@@ -317,12 +317,7 @@ def test_optimize_reorder(ray_start_regular_shared):
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
-    ds = (
-        ray.data.range(10)
-        .randomize_block_order()
-        .map_batches(dummy_map)
-        .fully_executed()
-    )
+    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).cache()
     expect_stages(
         ds,
         2,
@@ -334,7 +329,7 @@ def test_optimize_reorder(ray_start_regular_shared):
         .randomize_block_order()
         .repartition(10)
         .map_batches(dummy_map)
-        .fully_executed()
+        .cache()
     )
     expect_stages(
         ds2,

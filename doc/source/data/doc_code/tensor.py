@@ -52,7 +52,7 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(single_col_udf)
-ds.fully_executed()
+ds.cache()
 # -> Dataset(num_blocks=17, num_rows=1000,
 #            schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
@@ -74,7 +74,7 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(multi_col_udf)
-ds.fully_executed()
+ds.cache()
 # -> Dataset(num_blocks=17, num_rows=1000,
 #            schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64),
 #                    embed: TensorDtype(shape=(256,), dtype=uint8)})
@@ -156,7 +156,7 @@ print(ds.schema())
 #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 # __create_parquet_2_end__
 
-ds.fully_executed()
+ds.cache()
 shutil.rmtree(path)
 
 # __create_parquet_3_begin__
@@ -193,7 +193,7 @@ print(ds.schema())
 # -> one: int64
 #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 # __create_parquet_3_end__
-ds.fully_executed()
+ds.cache()
 
 # __create_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
@@ -449,7 +449,7 @@ next(ds.iter_batches(batch_format="numpy"))
 # __consume_numpy_2_end__
 
 
-ds.fully_executed()
+ds.cache()
 shutil.rmtree("/tmp/some_path")
 
 # __write_1_begin__
@@ -468,7 +468,7 @@ print(read_ds.schema())
 #    label: string
 # __write_1_end__
 
-read_ds.fully_executed()
+read_ds.cache()
 shutil.rmtree("/tmp/some_path")
 
 # __write_2_begin__
