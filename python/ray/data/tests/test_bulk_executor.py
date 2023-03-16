@@ -89,7 +89,7 @@ def test_basic_stats(ray_start_10_cpus_shared):
     expected = [[x * 4] for x in range(20)]
     assert output == expected, (output, expected)
     stats_str = executor.get_stats().to_summary().to_string()
-    assert "Stage 0 read:" in stats_str, stats_str
+    assert "Stage 0 Read:" in stats_str, stats_str
     assert "Stage 1 Foo:" in stats_str, stats_str
     assert "Stage 2 Bar:" in stats_str, stats_str
     assert "Extra metrics:" in stats_str, stats_str
