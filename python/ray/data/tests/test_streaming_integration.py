@@ -183,6 +183,33 @@ def test_streaming_split_barrier(ray_start_10_cpus_shared):
         ray.get([consume.remote(i1, 2), consume.remote(i2, 1)], timeout=3)
 
 
+def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
+    ds = ray.data.range(20, parallelism=20)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x, times):
+        i = 0
+        for _ in range(times):
+            for _ in x.iter_rows():
+                i += 1
+        return i
+
+    # InvalidIterator error from too many concurrent readers.
+    with pytest.raises(ValueError):
+        ray.get(
+            [
+                consume.remote(i1, 4),
+                consume.remote(i2, 4),
+                consume.remote(i1, 4),
+                consume.remote(i2, 4),
+            ]
+        )
+
+
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):
     DatasetContext.get_current().new_execution_backend = True
     DatasetContext.get_current().use_streaming_executor = True
