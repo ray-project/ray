@@ -83,7 +83,6 @@ class StreamSplitDatasetIterator(DatasetIterator):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
-        self._epoch_idx = 0
 
     def iter_batches(
         self,
@@ -98,10 +97,10 @@ class StreamSplitDatasetIterator(DatasetIterator):
     ) -> Iterator[DataBatch]:
         """Implements DatasetIterator."""
 
-        cur_epoch = self._epoch_idx
-        self._epoch_idx += 1
-
         def gen_blocks() -> Iterator[ObjectRef[Block]]:
+            cur_epoch = ray.get(
+                self._coord_actor.start_epoch.remote(self._output_split_idx)
+            )
             future: ObjectRef[
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
@@ -166,6 +165,7 @@ class SplitCoordinator:
         self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
+
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
@@ -190,14 +190,27 @@ class SplitCoordinator:
         self._next_epoch = gen_epochs()
         self._output_iterator = None
 
-    def get(self, epoch_idx: int, output_split_idx: int) -> Optional[ObjectRef[Block]]:
+    def start_epoch(self, split_idx: int) -> str:
+        """Called to start an epoch.
+
+        Returns:
+            UUID for the epoch, which must be used when accessing results via get().
+        """
+
+        # Wait for all clients to arrive at the barrier before starting a new epoch.
+        epoch_id = self._barrier(split_idx)
+        return epoch_id
+
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[ObjectRef[Block]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
         """
 
-        # Wait for all clients to arrive at the barrier before starting a new epoch.
-        self._barrier(epoch_idx, output_split_idx)
+        if epoch_id != self._cur_epoch:
+            raise ValueError(
+                "Invalid iterator: the datastream has moved on to another epoch."
+            )
 
         try:
             # Ensure there is at least one bundle.
@@ -224,34 +237,36 @@ class SplitCoordinator:
         except StopIteration:
             return None
 
-    def _barrier(self, epoch_idx: int, split_idx: int) -> None:
+    def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
 
-        if epoch_idx > self._cur_epoch:
-            if epoch_idx != self._cur_epoch + 1:
-                raise ValueError("Epoch out of range")
-            # Decrement and await all clients to arrive here.
-            with self._lock:
-                self._unfinished_clients_in_epoch -= 1
-            start_time = time.time()
-            while (
-                self._cur_epoch < epoch_idx and self._unfinished_clients_in_epoch != 0
-            ):
-                if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
-                    if log_once(f"stream_split_blocked_{split_idx}_{epoch_idx}"):
-                        logger.warning(
-                            f"StreamSplitDatasetIterator(epoch={epoch_idx}, "
-                            f"split={split_idx}) blocked waiting on other clients "
-                            f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
-                            "clients must read from the DatasetIterator splits at "
-                            "the same time. This warning will not be printed again "
-                            "for this epoch."
-                        )
-                time.sleep(0.1)
-            # Advance to the next epoch.
-            with self._lock:
-                if self._cur_epoch != epoch_idx:
-                    self._cur_epoch = epoch_idx
-                    self._unfinished_clients_in_epoch = self._n
-                    self._output_iterator = next(self._next_epoch)
+        # Decrement and await all clients to arrive here.
+        with self._lock:
+            starting_epoch = self._cur_epoch
+            self._unfinished_clients_in_epoch -= 1
+
+        start_time = time.time()
+        while (
+            self._cur_epoch == starting_epoch and self._unfinished_clients_in_epoch != 0
+        ):
+            if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
+                if log_once(f"stream_split_blocked_{split_idx}_{starting_epoch}"):
+                    logger.warning(
+                        f"StreamSplitDatasetIterator(epoch={starting_epoch}, "
+                        f"split={split_idx}) blocked waiting on other clients "
+                        f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
+                        "clients must read from the DatasetIterator splits at "
+                        "the same time. This warning will not be printed again "
+                        "for this epoch."
+                    )
+            time.sleep(0.1)
+
+        # Advance to the next epoch.
+        with self._lock:
+            if self._cur_epoch == starting_epoch:
+                self._cur_epoch += 1
+                self._unfinished_clients_in_epoch = self._n
+                self._output_iterator = next(self._next_epoch)
+
         assert self._output_iterator is not None
+        return self._cur_epoch

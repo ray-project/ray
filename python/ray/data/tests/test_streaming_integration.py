@@ -158,6 +158,31 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 assert lengths == [300, 300, 400], lengths
 
 
+def test_streaming_split_barrier(ray_start_10_cpus_shared):
+    ds = ray.data.range(20, parallelism=20)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x, times):
+        i = 0
+        for _ in range(times):
+            for _ in x.iter_rows():
+                i += 1
+        return i
+
+    # Succeeds.
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+
+    # Blocks forever since one reader is stalled.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get([consume.remote(i1, 2), consume.remote(i2, 1)], timeout=3)
+
+
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):
     DatasetContext.get_current().new_execution_backend = True
     DatasetContext.get_current().use_streaming_executor = True
