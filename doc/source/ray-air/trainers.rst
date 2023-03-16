@@ -178,7 +178,8 @@ just as you would if you were running Accelerate without Ray.
 
 .. note::
     ``AccelerateTrainer`` will override some settings set with ``accelerate config``, mainly related to
-    the topology and networking. See the ``AccelerateTrainer`` API reference for more details.
+    the topology and networking. See the :class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>`
+    API reference for more details.
 
 Aside from Accelerate support, the usage is identical to :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, meaning you define your own training function
 and use the :ref:`Session <air-session-ref>` API to report metrics, save checkpoints etc.
