@@ -349,7 +349,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
-
         if v is None:
             return
 
@@ -405,9 +404,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         config = self.dict(**kwargs)
         for idx, deployment in enumerate(config["deployments"]):
-
             if isinstance(deployment.get("ray_actor_options"), dict):
-
                 # JSON-serialize ray_actor_options' resources dictionary
                 if isinstance(deployment["ray_actor_options"].get("resources"), dict):
                     deployment["ray_actor_options"]["resources"] = json.dumps(
@@ -634,6 +631,29 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
 
+    def get_status_dict(self) -> Dict:
+        # NOTE(zcin): We use json.loads(model.json()) since model.dict() doesn't expand
+        # dataclasses (ApplicationStatusInfo and DeploymentStatusInfo are dataclasses)
+        # See https://github.com/pydantic/pydantic/issues/3764.
+        return json.loads(
+            ServeStatusSchema(
+                name=self.name,
+                app_status=ApplicationStatusInfo(
+                    status=self.status,
+                    message=self.message,
+                    deployment_timestamp=self.last_deployed_time_s,
+                ),
+                deployment_statuses=[
+                    DeploymentStatusInfo(
+                        name=name,
+                        status=d.status,
+                        message=d.message,
+                    )
+                    for name, d in self.deployments.items()
+                ],
+            ).json()
+        )
+
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
@@ -698,7 +718,6 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
 
 @DeveloperAPI
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
-
     return ServeStatusSchema(
         name=serve_status.name,
         app_status=serve_status.app_status,

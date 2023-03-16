@@ -572,6 +572,7 @@ def read_images(
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
     include_paths: bool = False,
+    ignore_missing_paths: bool = False,
 ):
     """Read images from the specified paths.
 
@@ -633,6 +634,8 @@ def read_images(
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
 
     Returns:
         A :class:`~ray.data.Dataset` containing tensors that represent the images at
@@ -653,6 +656,7 @@ def read_images(
         size=size,
         mode=mode,
         include_paths=include_paths,
+        ignore_missing_paths=ignore_missing_paths,
     )
 
 
@@ -766,6 +770,7 @@ def read_json(
         PathPartitionFilter
     ] = JSONDatasource.file_extension_filter(),
     partitioning: Partitioning = Partitioning("hive"),
+    ignore_missing_paths: bool = False,
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -810,6 +815,8 @@ def read_json(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -824,6 +831,7 @@ def read_json(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
         **arrow_json_args,
     )
 
@@ -839,6 +847,7 @@ def read_csv(
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    ignore_missing_paths: bool = False,
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     r"""Create an Arrow dataset from csv files.
@@ -911,6 +920,8 @@ def read_csv(
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
         arrow_csv_args: Other csv read options to pass to pyarrow.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -925,6 +936,7 @@ def read_csv(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
         **arrow_csv_args,
     )
 
@@ -943,6 +955,7 @@ def read_text(
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    ignore_missing_paths: bool = False,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -975,6 +988,8 @@ def read_text(
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -991,6 +1006,7 @@ def read_text(
         partitioning=partitioning,
         drop_empty_lines=drop_empty_lines,
         encoding=encoding,
+        ignore_missing_paths=ignore_missing_paths,
     )
 
 
@@ -1006,6 +1022,7 @@ def read_numpy(
         PathPartitionFilter
     ] = NumpyDatasource.file_extension_filter(),
     partitioning: Partitioning = None,
+    ignore_missing_paths: bool = False,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -1039,6 +1056,8 @@ def read_numpy(
             match "*.npy*".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -1052,6 +1071,7 @@ def read_numpy(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
         **numpy_load_args,
     )
 
@@ -1065,6 +1085,7 @@ def read_tfrecords(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Dataset[PandasRow]:
     """Create a dataset from TFRecord files that contain
@@ -1133,6 +1154,8 @@ def read_tfrecords(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match ``"*.tfrecords*"``.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
 
@@ -1150,6 +1173,7 @@ def read_tfrecords(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
         tf_schema=tf_schema,
     )
 
@@ -1166,6 +1190,7 @@ def read_binary_files(
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    ignore_missing_paths: bool = False,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -1196,6 +1221,8 @@ def read_binary_files(
             By default, this does not filter out any files.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -1211,6 +1238,7 @@ def read_binary_files(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
     )
 
 
