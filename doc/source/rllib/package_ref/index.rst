@@ -24,7 +24,6 @@ If you think there is anything missing, please open an issue on `Github`_.
     policy.rst
     models.rst
     evaluation.rst
-    offline.rst
     parallel_requests.rst
     train_ops.rst
     replay-buffers.rst
