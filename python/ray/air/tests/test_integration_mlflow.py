@@ -19,7 +19,7 @@ from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
 class MockTrial(
-    namedtuple("MockTrial", ["config", "trial_name", "trial_id", "logdir"])
+    namedtuple("MockTrial", ["config", "trial_name", "trial_id", "local_path"])
 ):
     def __hash__(self):
         return hash(self.trial_id)
