@@ -1245,20 +1245,19 @@ class TestDeployApp:
 
         client.deploy_apps(ServeDeploySchema(**test_config))
 
-        # TODO: Check serve instance details
         def check():
             serve_details = ServeInstanceDetails(
                 **ray.get(client._controller.get_serve_instance_details.remote())
             )
             app1_running = (
-                "app1" in serve_details.application_details
-                and serve_details.application_details["app1"].app_status == "RUNNING"
+                "app1" in serve_details.applications
+                and serve_details.applications["app1"].status == "RUNNING"
             )
             app3_running = (
-                "app3" in serve_details.application_details
-                and serve_details.application_details["app3"].app_status == "RUNNING"
+                "app3" in serve_details.applications
+                and serve_details.applications["app3"].status == "RUNNING"
             )
-            app2_gone = "app2" not in serve_details.application_details
+            app2_gone = "app2" not in serve_details.applications
             return app1_running and app3_running and app2_gone
 
         wait_for_condition(check)
