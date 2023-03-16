@@ -39,7 +39,7 @@ class AllToAllOperator(PhysicalOperator):
         self._next_task_index = 0
         self._num_outputs = num_outputs
         self._sub_progress_bar_names = sub_progress_bar_names
-        self._sub_progress_bar_dict = {}
+        self._sub_progress_bar_dict = None
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
@@ -85,6 +85,7 @@ class AllToAllOperator(PhysicalOperator):
     def initialize_sub_progress_bars(self, position: int) -> int:
         """Initialize all internal sub progress bars, and return the number of bars."""
         if self._sub_progress_bar_names is not None:
+            self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:
                 bar = ProgressBar(name, self.num_outputs_total() or 1, position)
                 # NOTE: call `set_description` to trigger the initial print of progress
@@ -96,6 +97,6 @@ class AllToAllOperator(PhysicalOperator):
 
     def close_sub_progress_bars(self):
         """Close all internal sub progress bars."""
-        if self._sub_progress_bar_names is not None:
+        if self._sub_progress_bar_dict is not None:
             for sub_bar in self._sub_progress_bar_dict.values():
                 sub_bar.close()
