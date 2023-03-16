@@ -535,6 +535,27 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             )
         return v
 
+    @root_validator
+    def nested_host_and_port(cls, values):
+        # TODO (zcin): ServeApplicationSchema still needs to have host and port
+        # fields to support single-app mode, but in multi-app mode the host and port
+        # fields at the top-level deploy config is used instead. Eventually, after
+        # migration, we should remove these fields from ServeApplicationSchema.
+        for app_config in values.get("applications"):
+            if "host" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f'Host "{app_config.host}" is set in the config for application '
+                    f"`{app_config.name}`. Please remove it and set host in the top "
+                    "top level deploy config only."
+                )
+            if "port" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f"Port {app_config.port} is set in the config for application "
+                    f"`{app_config.name}`. Please remove it and set port in the top "
+                    "top level deploy config only."
+                )
+        return values
+
     @staticmethod
     def get_empty_schema_dict() -> Dict:
         """Returns an empty deploy schema dictionary.

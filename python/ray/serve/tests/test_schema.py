@@ -737,6 +737,24 @@ class TestServeDeploySchema:
         }
         ServeDeploySchema.parse_obj(deploy_config_dict)
 
+    @pytest.mark.parametrize("option,value", [("host", "127.0.0.1"), ("port", 8000)])
+    def test_deploy_config_nested_http_options(self, option, value):
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        deploy_config_dict["applications"][0][option] = value
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert option in str(e.value)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):

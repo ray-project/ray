@@ -181,26 +181,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=repr(e),
             )
 
-        # TODO (zcin): ServeApplicationSchema still needs to have host and port
-        # fields to support single-app mode, but in multi-app mode the host and port
-        # fields at the top-level deploy config is used instead. Eventually, after
-        # migration, we should remove these fields from ServeApplicationSchema.
-        host, port = config.host, config.port
-        for app_config in config.applications:
-            app_config_dict = app_config.dict(exclude_unset=True)
-            if "host" in app_config_dict:
-                logger.info(
-                    f"Host {app_config_dict['host']} is set in the config for "
-                    f"application `{app_config.name}`. This will be ignored, as "
-                    f"the host {host} from the top level deploy config is used."
-                )
-            if "port" in app_config:
-                logger.info(
-                    f"Port {app_config_dict['port']} is set in the config for "
-                    f"application `{app_config.name}`. This will be ignored, as "
-                    f"the port {port} from the top level deploy config is used."
-                )
-
         return self.submit_config(config)
 
     def submit_config(self, config):
