@@ -140,8 +140,8 @@ To use this trainer, you will need to first run ``pip install -U lightgbm-ray``.
 Other Trainers
 --------------
 
-HuggingFace
-~~~~~~~~~~~
+Hugging Face
+~~~~~~~~~~~~
 
 Transformers
 ************
