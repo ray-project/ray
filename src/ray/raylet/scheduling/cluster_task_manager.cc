@@ -81,13 +81,16 @@ bool ClusterTaskManager::CancelAllTaskOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
+  // Only tasks and regular actors are canceled because their lifetime is
+  // the same as the owner.
   auto shapes_it = tasks_to_schedule_.begin();
   while (shapes_it != tasks_to_schedule_.end()) {
     auto &work_queue = shapes_it->second;
     auto work_it = work_queue.begin();
     while (work_it != work_queue.end()) {
       const auto &task = (*work_it)->task;
-      if (task.GetTaskSpecification().CallerWorkerId() == worker_id) {
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
         ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_it = work_queue.erase(work_it);
       } else {
@@ -107,7 +110,8 @@ bool ClusterTaskManager::CancelAllTaskOwnedBy(
     auto work_it = work_queue.begin();
     while (work_it != work_queue.end()) {
       const auto &task = (*work_it)->task;
-      if (task.GetTaskSpecification().CallerWorkerId() == worker_id) {
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
         ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_it = work_queue.erase(work_it);
       } else {

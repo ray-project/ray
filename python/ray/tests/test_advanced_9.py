@@ -273,6 +273,12 @@ import time
 def use_gpu():
     time.sleep(1)
 
+@ray.remote(num_gpus=10)
+class A:
+    pass
+
+A.options(name="a", lifetime="detached").remote()
+
 print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 """
 
@@ -288,9 +294,9 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
         status = json.loads(status.decode())
         return len(status["load_metrics_report"]["resource_demand"]) == n
 
-    wait_for_condition(lambda: check_demands(1))
+    wait_for_condition(lambda: check_demands(2))
     proc.terminate()
-    wait_for_condition(lambda: check_demands(0))
+    wait_for_condition(lambda: check_demands(1))
 
 
 if __name__ == "__main__":
