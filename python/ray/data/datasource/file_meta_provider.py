@@ -418,12 +418,12 @@ def _expand_paths(
             and common_path == _unwrap_protocol(partitioning.base_dir)
         ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
             yield from _get_file_infos_common_path_prefix(
-                paths, common_path, filesystem
+                paths, common_path, filesystem, ignore_missing_paths
             )
         # 3. Parallelization case.
         else:
             # Parallelize requests via Ray tasks.
-            yield from _get_file_infos_parallel(paths, filesystem)
+            yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
 
 
 def _get_file_infos_serial(
@@ -439,9 +439,12 @@ def _get_file_infos_common_path_prefix(
     paths: List[str],
     common_path: str,
     filesystem: "pyarrow.fs.FileSystem",
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     path_to_size = {path: None for path in paths}
-    for path, file_size in _get_file_infos(common_path, filesystem):
+    for path, file_size in _get_file_infos(
+        common_path, filesystem, ignore_missing_paths
+    ):
         if path in path_to_size:
             path_to_size[path] = file_size
     # Dictionaries are insertion-ordered, so this path + size pairs should be
@@ -454,6 +457,7 @@ def _get_file_infos_common_path_prefix(
 def _get_file_infos_parallel(
     paths: List[str],
     filesystem: "pyarrow.fs.FileSystem",
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
         PATHS_PER_FILE_SIZE_FETCH_TASK,
@@ -469,7 +473,9 @@ def _get_file_infos_parallel(
     def _file_infos_fetcher(paths: List[str]) -> List[Tuple[str, int]]:
         fs = _unwrap_s3_serialization_workaround(filesystem)
         return list(
-            itertools.chain.from_iterable(_get_file_infos(path, fs) for path in paths)
+            itertools.chain.from_iterable(
+                _get_file_infos(path, fs, ignore_missing_paths) for path in paths
+            )
         )
 
     yield from _fetch_metadata_parallel(

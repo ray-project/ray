@@ -213,8 +213,13 @@ def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
     df2.to_csv(path2, index=False, storage_options=storage_options)
 
     meta_provider = DefaultFileMetadataProvider()
-    file_paths, _ = meta_provider.expand_paths(
-        paths_with_missing, fs, ignore_missing_paths=True
+    file_paths, _ = map(
+        list,
+        zip(
+            *meta_provider.expand_paths(
+                paths_with_missing, fs, ignore_missing_paths=True
+            )
+        ),
     )
 
     assert len(file_paths) == 2
@@ -400,6 +405,7 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
+
     mock_get.assert_called_once_with(paths, fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
@@ -468,7 +474,9 @@ def test_fast_file_metadata_provider(
 def test_fast_file_metadata_provider_ignore_missing():
     meta_provider = FastFileMetadataProvider()
     with pytest.raises(ValueError):
-        meta_provider.expand_paths([], None, ignore_missing_paths=True)
+        paths = meta_provider.expand_paths([], None, ignore_missing_paths=True)
+        for _ in paths:
+            pass
 
 
 if __name__ == "__main__":

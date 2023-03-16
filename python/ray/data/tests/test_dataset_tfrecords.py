@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+
 def tf_records_partial():
     """Underlying data corresponds to `data_partial` fixture."""
     import tensorflow as tf
