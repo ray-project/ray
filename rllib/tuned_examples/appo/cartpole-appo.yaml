@@ -7,13 +7,13 @@ cartpole-appo:
     config:
         # Works for both torch and tf.
         framework: tf2
-        # num_envs_per_worker: 1
         num_workers: 4
         num_gpus: 0
         observation_filter: MeanStdFilter
-        num_sgd_iter: 1
+        num_sgd_iter: 6
         vf_loss_coeff: 0.01
         vtrace: True
+        grad_clip: 0
         model:
             fcnet_hiddens: [32]
             fcnet_activation: linear
@@ -21,4 +21,5 @@ cartpole-appo:
         enable_connectors: True
         _enable_learner_api: True
         _enable_rl_module_api: True
-        eager_tracing: True
+        eager_tracing: False
+        # lr: 0.001

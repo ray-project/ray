@@ -1435,7 +1435,9 @@ class Policy(metaclass=ABCMeta):
         # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
-        elif (is_overridden(self.loss) or self.config.get("_enable_rl_module_api", False)) and not self.config["in_evaluation"]:
+        elif (
+            is_overridden(self.loss) or self.config.get("_enable_rl_module_api", False)
+        ) and not self.config["in_evaluation"]:
             self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         # TODO(jungong) : clean up after all agents get migrated.

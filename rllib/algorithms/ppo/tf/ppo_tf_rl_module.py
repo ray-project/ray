@@ -51,7 +51,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
             SampleBatch.ACTION_DIST_INPUTS,
             SampleBatch.ACTION_DIST,
             SampleBatch.VF_PREDS,
-            "entropy"
+            "entropy",
         ]
 
     @override(RLModule)

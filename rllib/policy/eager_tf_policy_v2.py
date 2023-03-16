@@ -140,7 +140,7 @@ class EagerTFPolicyV2(Policy):
         # tf.function trace operations, never when calling the already
         # traced function after that.
         self._re_trace_counter = 0
-        
+
         if self.config.get("_enable_rl_module_api", False):
             self._initialize_loss_from_dummy_batch()
 

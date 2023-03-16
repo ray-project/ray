@@ -1,8 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-import numpy as np
-from typing import Any, Dict, List, Mapping
-import tree
+from typing import Any, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
@@ -63,8 +61,8 @@ class AppoHPs(ImpalaHPs):
 class APPOTfLearner(ImpalaTfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner.
 
-    This class implements the APPO loss under `_compute_loss_per_module()` and 
-        implements the target network and KL coefficient updates under 
+    This class implements the APPO loss under `_compute_loss_per_module()` and
+        implements the target network and KL coefficient updates under
         `additional_updates_per_module()`
     """
 
@@ -73,6 +71,7 @@ class APPOTfLearner(ImpalaTfLearner):
         self.kl_target = self._hps.kl_target
         self.clip_param = self._hps.clip_param
         self.kl_coeffs = defaultdict(lambda: self._hps.kl_coeff)
+        self.kl_coeff = self._hps.kl_coeff
         self.tau = self._hps.tau
         self.sampled_kls = {}
 
@@ -84,7 +83,9 @@ class APPOTfLearner(ImpalaTfLearner):
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
 
-        old_target_policy_actions_logp = old_target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        old_target_policy_actions_logp = old_target_policy_dist.logp(
+            batch[SampleBatch.ACTIONS]
+        )
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
@@ -147,20 +148,24 @@ class APPOTfLearner(ImpalaTfLearner):
         )
 
         # The policy gradients loss.
-        is_ratio = tf.math.exp(behaviour_actions_logp_time_major - old_actions_logp_time_major)
-
-        logp_ratio = is_ratio * tf.math.exp(target_actions_logp_time_major - behaviour_actions_logp_time_major)
+        is_ratio = tf.math.exp(
+            behaviour_actions_logp_time_major - old_actions_logp_time_major
+        )
+        logp_ratio = is_ratio * tf.math.exp(
+            target_actions_logp_time_major - behaviour_actions_logp_time_major
+        )
 
         surrogate_loss = tf.math.minimum(
             pg_advantages * logp_ratio,
-            (pg_advantages *
-                tf.clip_by_value(logp_ratio, 1 - self.clip_param, 1 + self.clip_param)
-            )
+            (
+                pg_advantages
+                * tf.clip_by_value(logp_ratio, 1 - self.clip_param, 1 + self.clip_param)
+            ),
         )
 
         action_kl = old_target_policy_dist.kl(target_policy_dist)
         mean_kl_loss = tf.math.reduce_mean(action_kl)
-        mean_pi_loss = - tf.math.reduce_mean(surrogate_loss)
+        mean_pi_loss = -tf.math.reduce_mean(surrogate_loss)
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
@@ -171,24 +176,37 @@ class APPOTfLearner(ImpalaTfLearner):
 
         # The summed weighted loss.
         total_loss = (
-            mean_pi_loss + (mean_vf_loss * self.vf_loss_coeff) + (mean_entropy_loss * 
-            self.entropy_coeff) + (mean_kl_loss * self.kl_coeffs[module_id])
+            mean_pi_loss
+            + (mean_vf_loss * self.vf_loss_coeff)
+            + (mean_entropy_loss * self.entropy_coeff)
+            + (mean_kl_loss * self.kl_coeffs[module_id])
         )
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "mean_pi_loss": mean_pi_loss,
-            "mean_vf_loss": mean_vf_loss,
-            "mean_entropy_loss": mean_entropy_loss,
+            "policy_loss": mean_pi_loss,
+            "vf_loss": mean_vf_loss,
+            "entropy": mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
 
-    def compile_results(self, batch: MultiAgentBatch, fwd_out: Mapping[str, Any], postprocessed_loss: Mapping[str, Any], postprocessed_gradients: Mapping[str, Any]) -> Mapping[str, Any]:
-        results = super().compile_results(batch, fwd_out, postprocessed_loss, postprocessed_gradients)
+    def compile_results(
+        self,
+        batch: MultiAgentBatch,
+        fwd_out: Mapping[str, Any],
+        postprocessed_loss: Mapping[str, Any],
+        postprocessed_gradients: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        results = super().compile_results(
+            batch, fwd_out, postprocessed_loss, postprocessed_gradients
+        )
         module_ids = set(results.keys()) - {ALL_MODULES}
-        self.sampled_kls = {module_id : results[module_id][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY] for module_id in module_ids}
+        self.sampled_kls = {
+            module_id: results[module_id][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
+            for module_id in module_ids
+        }
         return results
-    
+
     @override(ImpalaTfLearner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
@@ -211,14 +229,16 @@ class APPOTfLearner(ImpalaTfLearner):
             encoder_old_current_pair = {"old": old_encoder, "current": current_encoder}
             pi_old_current_pair = {"old": old_pi, "current": current_pi}
             for network_pair in [encoder_old_current_pair, pi_old_current_pair]:
-                for old_var, current_var in zip(network_pair["old"].variables, network_pair["current"].variables):
-                    updated_var = self.tau * current_var + (1. - self.tau) * old_var
+                for old_var, current_var in zip(
+                    network_pair["old"].variables, network_pair["current"].variables
+                ):
+                    updated_var = self.tau * current_var + (1.0 - self.tau) * old_var
                     old_var.assign(updated_var)
 
     def _update_module_kl_coeff(self):
         """Dynamically update the KL loss coefficients of each module with.
-        
-        The update is completed using the mean KL divergence between the action 
+
+        The update is completed using the mean KL divergence between the action
         distributions current policy and old policy of each module. That action
         distribution is computed during the most recent update/call to `compute_loss`.
 
@@ -236,4 +256,3 @@ class APPOTfLearner(ImpalaTfLearner):
         self._update_module_target_pi()
         self._update_module_kl_coeff()
         return {}
-

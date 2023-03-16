@@ -3,6 +3,7 @@ import logging
 import platform
 import queue
 import random
+import time
 from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
 import ray
@@ -691,6 +692,9 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
+        if not train_results:
+            # adding this allows results to be properly logged by ray tune.
+            time.sleep(1e-1)
         return train_results
 
     @classmethod
@@ -863,7 +867,10 @@ class Impala(Algorithm):
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
             lg_results = self.learner_group.update(
-                batch, reduce_fn=_reduce_impala_results, block=blocking
+                batch,
+                reduce_fn=_reduce_impala_results,
+                block=blocking,
+                num_iters=self.config.num_sgd_iter,
             )
         else:
             lg_results = None

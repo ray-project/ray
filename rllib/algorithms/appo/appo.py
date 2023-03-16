@@ -14,7 +14,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, LEARNER_RESULTS_KL_KEY
+from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
@@ -166,9 +166,9 @@ class APPOConfig(ImpalaConfig):
                 `kl_coeff` automatically).
             tau: The factor by which to update the target policy network towards
                 the current policy network. Can range between 0 and 1.
-            target_update_frequency: The number of training updates to wait before 
+            target_update_frequency: The number of training updates to wait before
                 updating the target policy and tuning the kl loss coefficients that are
-                used during training. Note that this is only applicable when using the 
+                used during training. Note that this is only applicable when using the
                 learner api (_enable_learner_api=True and _enable_rl_module_api=True).
 
         Returns:
@@ -203,7 +203,7 @@ class APPOConfig(ImpalaConfig):
             self.target_update_frequency = target_update_frequency
 
         return self
-    
+
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
         if self.framework_str == "tf2":
@@ -245,7 +245,7 @@ class APPO(Impala):
         super().setup(config)
 
         # TODO(avnishn):
-        # this attribute isn't used anywhere else in the code. I think we can safely 
+        # this attribute isn't used anywhere else in the code. I think we can safely
         # delete it.
         if not self.config._enable_rl_module_api:
             self.update_kl = UpdateKL(self.workers)
@@ -263,30 +263,32 @@ class APPO(Impala):
             train_results: The results dict collected during the most recent
                 training step.
         """
-        
+
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
         if self.config._enable_learner_api:
             if train_results:
-                # using steps trained here instead of sampled ... I'm not sure why the 
+                # using steps trained here instead of sampled ... I'm not sure why the
                 # other implemenetation uses sampled.
                 # to be quite frank, im not sure if I understand how their target update
-                # freq would work. The difference in steps sampled/trained is pretty 
-                # much always going to be larger than self.config.num_sgd_iter * 
-                # self.config.minibatch_buffer_size unless the number of steps collected 
+                # freq would work. The difference in steps sampled/trained is pretty
+                # much always going to be larger than self.config.num_sgd_iter *
+                # self.config.minibatch_buffer_size unless the number of steps collected
                 # is really small. The thing is that the default rollout fragment length
                 # is 50, so the minibatch buffer size * num_sgd_iter is going to be
-                # have to be 50 to even meet the threshold of having delayed target 
+                # have to be 50 to even meet the threshold of having delayed target
                 # updates.
-                # we should instead have the target / kl threshold update be based off 
-                # of the train_batch_size * some target update frequency * num_sgd_iter. We can 
+                # we should instead have the target / kl threshold update be based off
+                # of the train_batch_size * some target update frequency * num_sgd_iter.
                 cur_ts = self._counters[
                     NUM_ENV_STEPS_TRAINED
                     if self.config.count_steps_by == "env_steps"
                     else NUM_AGENT_STEPS_TRAINED
                 ]
                 target_update_steps_freq = (
-                    self.config.num_sgd_iter * self.config.train_batch_size * self.config.target_update_frequency
+                    self.config.num_sgd_iter
+                    * self.config.train_batch_size
+                    * self.config.target_update_frequency
                 )
                 if cur_ts - last_update > target_update_steps_freq:
                     self._counters[NUM_TARGET_UPDATES] += 1
@@ -327,7 +329,9 @@ class APPO(Impala):
                             # Make the actual `Policy.update_kl()` call.
                             pi.update_kl(kl)
                         else:
-                            logger.warning("No data for {}, not updating kl".format(pi_id))
+                            logger.warning(
+                                "No data for {}, not updating kl".format(pi_id)
+                            )
 
                     # Update KL on all trainable policies within the local (trainer)
                     # Worker.
@@ -354,21 +358,26 @@ class APPO(Impala):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config._enable_rl_module_api:
-                raise ValueError("APPO with the torch backend is not yet supported by "
-                                 " the RLModule and Learner API.")
+                raise ValueError(
+                    "APPO with the torch backend is not yet supported by "
+                    " the RLModule and Learner API."
+                )
             else:
                 from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
+
                 return APPOTorchPolicy
         elif config["framework"] == "tf":
             if config._enable_rl_module_api:
-                raise ValueError("RLlib's RLModule and Learner API is not supported for"
-                                 " tf1.")
+                raise ValueError(
+                    "RLlib's RLModule and Learner API is not supported for" " tf1."
+                )
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF1Policy
 
             return APPOTF1Policy
         else:
             if config._enable_rl_module_api:
                 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+
                 return EagerTFPolicyV2
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
