@@ -26,6 +26,8 @@ tuner.fit()
 # __resource_allocation_1_end__
 # fmt: on
 
+ray.shutdown()
+
 # fmt: off
 # __resource_allocation_2_begin__
 import ray

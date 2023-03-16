@@ -1,8 +1,12 @@
 # flake8: noqa
+import ray
+import dask.array as da
+
+z = da.ones(100)
 
 # fmt: off
 # __timer_callback_begin__
-from ray.util.dask import RayDaskCallback
+from ray.util.dask import RayDaskCallback, ray_dask_get
 from timeit import default_timer as timer
 
 

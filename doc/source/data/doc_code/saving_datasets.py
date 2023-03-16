@@ -91,6 +91,9 @@ ds.repartition(3).write_numpy("/tmp/multi_numpy")
 # fmt: on
 
 # fmt: off
+ray.shutdown()
+ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
+
 # __write_tfrecords_begin__
 import ray
 
