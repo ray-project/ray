@@ -116,19 +116,6 @@ class APPOConfig(ImpalaConfig):
         self.entropy_coeff_schedule = None
         self.tau = 1.0
 
-        self._learner_hps.discount_factor = self.gamma
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
-        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
-        self._learner_hps.vtrace_clip_pg_rho_threshold = (
-            self.vtrace_clip_pg_rho_threshold
-        )
-        self._learner_hps.rollout_frag_or_episode_len = self.rollout_fragment_length
-        self._learner_hps.tau = self.tau
-        self._learner_hps.kl_target = self.kl_target
-        self._learner_hps.kl_coeff = self.kl_coeff
-        self._learner_hps.clip_param = self.clip_param
         # __sphinx_doc_end__
         # fmt: on
 
@@ -224,6 +211,14 @@ class APPOConfig(ImpalaConfig):
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+    @override(ImpalaConfig)
+    def validate(self) -> None:
+        super().validate()
+        self._learner_hps.tau = self.tau
+        self._learner_hps.kl_target = self.kl_target
+        self._learner_hps.kl_coeff = self.kl_coeff
+        self._learner_hps.clip_param = self.clip_param
 
 
 class APPO(Impala):

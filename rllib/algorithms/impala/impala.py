@@ -150,15 +150,6 @@ class ImpalaConfig(AlgorithmConfig):
         self._tf_policy_handles_more_than_one_loss = True
         # __sphinx_doc_end__
         # fmt: on
-        self._learner_hps.discount_factor = self.gamma
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
-        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
-        self._learner_hps.vtrace_clip_pg_rho_threshold = (
-            self.vtrace_clip_pg_rho_threshold
-        )
-        self._learner_hps.rollout_frag_or_episode_len = self.rollout_fragment_length
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
@@ -284,15 +275,10 @@ class ImpalaConfig(AlgorithmConfig):
             self.vtrace = vtrace
         if vtrace_clip_rho_threshold is not NotProvided:
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
-            self._learner_hps.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-            self._learner_hps.vtrace_clip_pg_rho_threshold = (
-                vtrace_clip_pg_rho_threshold
-            )
         if vtrace_drop_last_ts is not NotProvided:
             self.vtrace_drop_last_ts = vtrace_drop_last_ts
-            self._learner_hps.vtrace_drop_last_ts = vtrace_drop_last_ts
         if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
@@ -333,10 +319,8 @@ class ImpalaConfig(AlgorithmConfig):
             self.epsilon = epsilon
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-            self._learner_hps.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-            self._learner_hps.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
         if _separate_vf_optimizer is not NotProvided:
@@ -347,7 +331,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.after_train_step = after_train_step
         if gamma is not NotProvided:
             self.gamma = gamma
-            self._learner_hps.discount_factor = self.gamma
 
         return self
 
@@ -398,6 +381,14 @@ class ImpalaConfig(AlgorithmConfig):
                 )
         self._learner_hps.rollout_frag_or_episode_len = (
             self.get_rollout_fragment_length()
+        )
+        self._learner_hps.discount_factor = self.gamma
+        self._learner_hps.entropy_coeff = self.entropy_coeff
+        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
+        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
+        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
+        self._learner_hps.vtrace_clip_pg_rho_threshold = (
+            self.vtrace_clip_pg_rho_threshold
         )
 
     @override(AlgorithmConfig)
