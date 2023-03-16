@@ -208,7 +208,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         schema=schema,
-    ).fully_executed()
+    ).cache()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
         "Dataset(\n"
@@ -227,7 +227,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-    ).fully_executed()
+    ).cache()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
         "Dataset(\n"
@@ -245,7 +245,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-    ).fully_executed()
+    ).cache()
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=5,\n"
