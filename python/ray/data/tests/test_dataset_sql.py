@@ -1,6 +1,6 @@
 import sqlite3
 import tempfile
-from typing import Any, Generator, List, Tuple
+from typing import Generator
 
 import pytest
 
@@ -15,16 +15,18 @@ def temp_database_fixture() -> Generator[str, None, None]:
 
 def test_read_sql(temp_database: str):
     connection = sqlite3.connect(temp_database)
-    connection.execute(f"CREATE TABLE movie(title, year, score)")
-    values = [
+    connection.execute("CREATE TABLE movie(title, year, score)")
+    expected_values = [
         ("Monty Python and the Holy Grail", 1975, 8.2),
         ("And Now for Something Completely Different", 1971, 7.5),
     ]
-    connection.executemany("INSERT INTO movie VALUES (?, ?, ?)", values)
+    connection.executemany("INSERT INTO movie VALUES (?, ?, ?)", expected_values)
+    connection.commit()
     connection.close()
 
     dataset = ray.data.read_sql(
-        "SELECT * FROM movies", lambda: sqlite3.connect(temp_database)
+        "SELECT * FROM movie", lambda: sqlite3.connect(temp_database)
     )
 
-    assert [record.values() for record in dataset.take_all()] == values
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+    assert sorted(actual_values) == sorted(expected_values)

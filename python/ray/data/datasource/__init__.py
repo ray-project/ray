@@ -9,6 +9,7 @@ from ray.data.datasource.datasource import (
     Reader,
     WriteResult,
 )
+from ray.data.datasource.dbapi2_datasource import Connection, DBAPI2Datasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
 
 from ray.data.datasource.file_based_datasource import (
@@ -45,8 +46,10 @@ __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "BlockWritePathProvider",
+    "Connection",
     "CSVDatasource",
     "Datasource",
+    "DBAPI2Datasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",

@@ -1,5 +1,16 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 
 import numpy as np
 
@@ -26,8 +37,10 @@ from ray.data.dataset import Dataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
+    Connection,
     CSVDatasource,
     Datasource,
+    DBAPI2Datasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
@@ -68,10 +81,10 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
-Connection = Any
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
 
 @PublicAPI
 def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
@@ -1226,8 +1239,14 @@ def read_sql(
 
     Returns:
         A :class:`Dataset` containing the queried data.
-    """
-    raise NotImplementedError
+    """  # noqa: E501
+    datasource = DBAPI2Datasource(connection_factory)
+    return read_datasource(
+        datasource,
+        sql=sql,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+    )
 
 
 @PublicAPI
