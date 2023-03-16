@@ -69,7 +69,12 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
-from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger
+from ray._private.ray_logging import (
+    global_worker_stdstream_dispatcher,
+    stdout_deduplicator,
+    stderr_deduplicator,
+    setup_logger,
+)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -1692,8 +1697,16 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    print_file = sys.stderr if data["is_err"] else sys.stdout
-    print_worker_logs(data, print_file)
+    metadata = data.copy()
+    del metadata["lines"]
+    if data["is_err"]:
+        if data.get("pid") != "autoscaler":
+            data["lines"] = stderr_deduplicator.deduplicate(data["lines"], metadata)
+        print_worker_logs(data, sys.stderr)
+    else:
+        if data.get("pid") != "autoscaler":
+            data["lines"] = stdout_deduplicator.deduplicate(data["lines"], metadata)
+        print_worker_logs(data, sys.stdout)
 
 
 # Start time of this process, used for relative time logs.
@@ -2232,6 +2245,10 @@ def disconnect(exiting_interpreter=False):
 
         worker._session_index += 1
 
+        for leftover in stdout_deduplicator.flush():
+            print_worker_logs(leftover, sys.stdout)
+        for leftover in stderr_deduplicator.flush():
+            print_worker_logs(leftover, sys.stderr)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.

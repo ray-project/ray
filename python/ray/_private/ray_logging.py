@@ -1,14 +1,21 @@
+import colorama
 import logging
 import os
+import regex as re
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-from typing import Callable
+import time
+from typing import Callable, Dict, Tuple, List
 
 import ray
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray._private.utils import binary_to_hex
+from ray.util.debug import log_once
 
 _default_handler = None
+
+RAY_DEDUP_LOGS = bool(int(os.environ.get("RAY_DEDUP_LOGS", "1")))
 
 
 def setup_logger(
@@ -253,3 +260,89 @@ class WorkerStandardStreamDispatcher:
 
 
 global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
+
+
+NUMBERS = re.compile(r"(\d+|0x[0-9a-fA-F]+)")
+AGGREGATION_WINDOW_S = 3.0
+
+
+def canonicalise_log_line(line):
+    # remove words containing numbers or hex, since those tend to differ between workers
+    return " ".join(x for x in line.split() if not NUMBERS.search(x))
+
+
+class LogDeduplicator:
+    def __init__(self):
+        # Map of dedup_key -> (timestamp, count, instance, metadata).
+        self.recent: Dict[str, Tuple[int, int, str, dict]] = {}
+
+    def deduplicate(self, lines: List[str], metadata: dict) -> List[str]:
+        global _log_dedup_warned
+        if not RAY_DEDUP_LOGS:
+            return lines
+        now = time.time()
+        output = []
+        for line in lines:
+            if RAY_TQDM_MAGIC in line:
+                output.append(line)
+                continue
+            dedup_key = canonicalise_log_line(line)
+            if dedup_key in self.recent:
+                if log_once("log_dedup_warning"):
+                    output.append(
+                        "Warning: Ray is deduplicating repetitive log messages "
+                        "across the cluster. This may delay log output by up to "
+                        f"{AGGREGATION_WINDOW_S} seconds. "
+                        "Set RAY_DEDUP_LOGS=0 to disable."
+                    )
+                timestamp, count, _, _ = self.recent[dedup_key]
+                self.recent[dedup_key] = (timestamp, count + 1, line, metadata)
+            else:
+                self.recent[dedup_key] = (now, 0, line, metadata)
+                output.append(line)
+        while self.recent:
+            if now - next(iter(self.recent.values()))[0] > AGGREGATION_WINDOW_S:
+                dedup_key = next(iter(self.recent))
+                _, count, line, metadata = self.recent.pop(dedup_key)
+                # we already logged an instance of this line immediately when received,
+                # so don't log for count == 0
+                if count > 1:
+                    # (Actor pid=xxxx) [repeated 2x across cluster] ...
+                    output.append(
+                        line + self._color(f" [repeated {count}x across cluster] ")
+                    )
+                    # Continue aggregating for this key but reset timestamp and count.
+                    self.recent[dedup_key] = (now, 0, line, metadata)
+                elif count > 0:
+                    # Aggregation wasn't fruitful, print the line and stop aggregating.
+                    output.append(line)
+            else:
+                break
+        return output
+
+    def flush(self) -> List[dict]:
+        output = []
+        for _, count, line, metadata in self.recent.values():
+            if count > 1:
+                output.append(
+                    dict(
+                        metadata,
+                        **{
+                            "lines": [
+                                line
+                                + self._color(f" [repeated {count}x across cluster]")
+                            ]
+                        },
+                    )
+                )
+            elif count > 0:
+                output.append(dict(metadata, **{"lines": [line]}))
+        self.recent.clear()
+        return output
+
+    def _color(self, msg: str) -> str:
+        return "{}{}{}".format(colorama.Style.DIM, msg, colorama.Style.RESET_ALL)
+
+
+stdout_deduplicator = LogDeduplicator()
+stderr_deduplicator = LogDeduplicator()
