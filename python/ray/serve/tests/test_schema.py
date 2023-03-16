@@ -625,34 +625,6 @@ class TestServeApplicationSchema:
 
 
 class TestServeDeploySchema:
-    def test_serve_application_to_deploy_config(self):
-        app_config_dict = {
-            "import_path": "module.graph",
-            "runtime_env": {"working_dir": "s3://path/file.zip"},
-            "host": "1.1.1.1",
-            "port": 7470,
-            "deployments": [
-                {
-                    "name": "alice",
-                    "num_replicas": 2,
-                    "route_prefix": "/A",
-                },
-                {
-                    "name": "bob",
-                    "num_replicas": 3,
-                },
-            ],
-        }
-        app_config = ServeApplicationSchema.parse_obj(app_config_dict)
-        deploy_config = app_config.to_deploy_schema()
-
-        assert deploy_config.applications[0].name == ""
-        assert deploy_config.dict(exclude_unset=True) == {
-            "host": "1.1.1.1",
-            "port": 7470,
-            "applications": [app_config_dict],
-        }
-
     def test_deploy_config_duplicate_apps(self):
         deploy_config_dict = {
             "host": "127.0.0.1",

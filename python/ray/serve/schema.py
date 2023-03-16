@@ -474,13 +474,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return ServeApplicationSchema.parse_obj(app_config)
 
-    def to_deploy_schema(self):
-        return ServeDeploySchema(
-            host=self.host,
-            port=self.port,
-            applications=[self],
-        )
-
 
 @PublicAPI(stability="alpha")
 class ServeDeploySchema(BaseModel, extra=Extra.forbid):
@@ -546,13 +539,13 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
                 raise ValueError(
                     f'Host "{app_config.host}" is set in the config for application '
                     f"`{app_config.name}`. Please remove it and set host in the top "
-                    "top level deploy config only."
+                    "level deploy config only."
                 )
             if "port" in app_config.dict(exclude_unset=True):
                 raise ValueError(
                     f"Port {app_config.port} is set in the config for application "
                     f"`{app_config.name}`. Please remove it and set port in the top "
-                    "top level deploy config only."
+                    "level deploy config only."
                 )
         return values
 
