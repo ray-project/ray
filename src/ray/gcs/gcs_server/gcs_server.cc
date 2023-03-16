@@ -643,6 +643,7 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
+        pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
 
         if (!RayConfig::instance().use_ray_syncer()) {
           gcs_ray_syncer_->RemoveNode(*node);
@@ -667,6 +668,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
+        pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
       });
 
   // Install job event listeners.

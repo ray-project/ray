@@ -257,6 +257,57 @@ assert ray.get_runtime_context().get_job_id() == '02000000'
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_gcs_connection_no_leak(ray_start_cluster):
+    cluster = ray_start_cluster
+    head_node = cluster.add_node()
+
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    ray.init(cluster.address)
+
+    def get_gcs_num_of_connections():
+        import psutil
+
+        p = psutil.Process(gcs_server_pid)
+        print(">>", p.num_fds())
+        return p.num_fds()
+
+    # Wait for everything to be ready.
+    import time
+
+    time.sleep(10)
+
+    curr_fds = get_gcs_num_of_connections()
+
+    @ray.remote
+    class A:
+        def ready(self):
+            print("HELLO")
+            return "WORLD"
+
+    num_of_actors = 10
+    a = [A.remote() for _ in range(num_of_actors)]
+    print(ray.get([t.ready.remote() for t in a]))
+
+    # Kill the actor
+    del a
+
+    # Make sure the # of fds opened by the GCS dropped.
+    wait_for_condition(lambda: get_gcs_num_of_connections() == curr_fds)
+
+    n = cluster.add_node(wait=True)
+
+    # Make sure the # of fds opened by the GCS increased.
+    wait_for_condition(lambda: get_gcs_num_of_connections() > curr_fds)
+
+    cluster.remove_node(n)
+
+    # Make sure the # of fds opened by the GCS dropped.
+    wait_for_condition(lambda: get_gcs_num_of_connections() == curr_fds)
+
+
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --num-cpus=2"],
