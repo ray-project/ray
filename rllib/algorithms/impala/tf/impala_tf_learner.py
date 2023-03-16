@@ -15,7 +15,7 @@ class ImpalaTfLearner(TfLearner, ImpalaBaseLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
     def __init__(self, *args, **kwargs):
-        TfLearner.__init__(*args, **kwargs)
+        TfLearner.__init__(self, *args, **kwargs)
         ImpalaBaseLearner.__init__(self, *args, **kwargs)
 
     @override(TfLearner)
