@@ -106,7 +106,10 @@ def test_verify_node_options():
 
     with pytest.raises(
         ValueError,
-        match="Setting option 'node_ip_address' for head nodes is not allowed.*The option is controlled by Ray on Spark",
+        match=(
+            "Setting the option 'node_ip_address' for head nodes is not allowed.*"
+            "This option is controlled by Ray on Spark"
+        ),
     ):
         _verify_node_options(
             node_options={"node_ip_address": "127.0.0.1"},
@@ -116,7 +119,10 @@ def test_verify_node_options():
 
     with pytest.raises(
         ValueError,
-        match="Setting option 'not_permitted' for worker nodes is not allowed.*You should set the 'permitted' argument instead",
+        match=(
+            "Setting the option 'not_permitted' for worker nodes is not allowed.*"
+            "You should set the 'permitted' option instead",
+        )
     ):
         _verify_node_options(
             node_options={"not_permitted": "bad"},

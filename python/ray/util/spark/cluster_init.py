@@ -769,17 +769,17 @@ def _verify_node_options(node_options, block_keys, node_type):
 
         if key in block_keys:
             common_err_msg = (
-                f"Setting option '{key}' for {node_type} nodes is not allowed."
+                f"Setting the option '{key}' for {node_type} nodes is not allowed."
             )
             replacement_arg = block_keys[key]
             if replacement_arg:
                 raise ValueError(
-                    f"{common_err_msg} You should set the '{replacement_arg}' argument "
+                    f"{common_err_msg} You should set the '{replacement_arg}' option "
                     "instead."
                 )
             else:
                 raise ValueError(
-                    f"{common_err_msg} The option is controlled by Ray on Spark."
+                    f"{common_err_msg} This option is controlled by Ray on Spark."
                 )
 
 
