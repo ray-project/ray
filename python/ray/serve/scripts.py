@@ -151,15 +151,17 @@ def start(address, http_host, http_port, http_location):
 
 
 @cli.command(
-    short_help="Deploy a Serve app from a YAML config file.",
+    short_help="Deploy Serve application(s) from a YAML config file.",
     help=(
-        "Deploys deployment(s) from a YAML config file.\n\n"
+        "This supports both configs of the format ServeApplicationSchema, which "
+        "deploys a single application, as well as ServeDeploySchema, which deploys "
+        "multiple applications.\n\n"
         "This call is async; a successful response only indicates that the "
         "request was sent to the Ray cluster successfully. It does not mean "
         "the the deployments have been deployed/updated.\n\n"
         "Existing deployments with no code changes will not be redeployed.\n\n"
-        "Use `serve config` to fetch the current config and `serve status` to "
-        "check the status of the deployments after deploying."
+        "Use `serve config` to fetch the current config(s) and `serve status` to "
+        "check the status of the application(s) and deployments after deploying."
     ),
 )
 @click.argument("config_file_name")
@@ -198,7 +200,7 @@ def deploy(config_file_name: str, address: str):
     cli_logger.success(
         "\nSent deploy request successfully!\n "
         "* Use `serve status` to check deployments' statuses.\n "
-        "* Use `serve config` to see the running app's config.\n"
+        "* Use `serve config` to see the current config(s).\n"
     )
     cli_logger.newline()
 
@@ -393,7 +395,7 @@ def run(
         sys.exit()
 
 
-@cli.command(help="Get the current config of the running Serve app.")
+@cli.command(help="Gets the current config(s) of Serve application(s) on the cluster.")
 @click.option(
     "--address",
     "-a",
@@ -402,22 +404,86 @@ def run(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def config(address: str):
-
-    app_info = ServeSubmissionClient(address).get_info()
-    if app_info is not None:
+@click.option(
+    "--multi-app",
+    "-m",
+    is_flag=True,
+    help=(
+        "A toggle between single-application and multi-application mode.\n\n"
+        "- If a single application was deployed through a config of the format "
+        "ServeApplicationSchema, then `serve config` should be used without setting "
+        'flag to fetch the current config for the default app with name="".\n'
+        "- If multiple applications were deployed through a config of the format "
+        "ServeDeploySchema, then `serve config` should be used with this flag set to "
+        "get the current app configs of all live applications on the Ray Cluster."
+    ),
+)
+@click.option(
+    "--name",
+    "-n",
+    required=False,
+    type=str,
+    help=(
+        "Name of an application. Only applies to multi-application mode. If set, this "
+        "will only fetch the config for the specified application."
+    ),
+)
+def config(address: str, multi_app: bool, name: Optional[str]):
+    # Backwards compatible single-app behavior: displays the config for default app "".
+    if not multi_app and name is None:
+        app_info = ServeSubmissionClient(address).get_info()
         print(yaml.safe_dump(app_info, sort_keys=False))
+    # Multi-app support
+    else:
+        if multi_app and name is not None:
+            cli_logger.error("Cannot set both `--multi-app` and `--name`.")
+            return
+
+        serve_details = ServeSubmissionClient(address).get_serve_details()
+
+        # Fetch app configs for all live applications on the cluster
+        if multi_app:
+            print(
+                "\n---\n\n".join(
+                    yaml.safe_dump(
+                        app.deployed_app_config.dict(exclude_unset=True),
+                        sort_keys=False,
+                    )
+                    for app in serve_details.applications.values()
+                )
+            )
+
+        # Fetch a specific app config by name.
+        elif name is not None:
+            if name not in serve_details.applications:
+                cli_logger.error(f'Application "{name}" does not exist.')
+            else:
+                print(
+                    yaml.safe_dump(
+                        serve_details.applications.get(name).deployed_app_config.dict(
+                            exclude_unset=True
+                        ),
+                        sort_keys=False,
+                    )
+                )
 
 
 @cli.command(
-    short_help="Get the current status of the running Serve app.",
+    short_help="Get the current status of all live Serve applications and deployments.",
     help=(
-        "Prints status information about all deployments in the Serve app.\n\n"
-        "Deployments may be:\n\n"
-        "- HEALTHY: all replicas are acting normally and passing their "
-        "health checks.\n\n"
+        "Prints status information about all applications on the cluster.\n\n"
+        "An application may be:\n\n"
+        "- NOT_STARTED: the application does not exist.\n"
+        "- DEPLOYING: the deployments in the application are still deploying and "
+        "haven't reached the target number of replicas.\n"
+        "- RUNNING: all deployments are healthy.\n"
+        "- DEPLOY_FAILED: the application failed to deploy or reach a running state.\n"
+        "- DELETING: the application is being deleted, and the deployments in the "
+        "application are being teared down.\n\n"
+        "The deployments within each application may be:\n\n"
+        "- HEALTHY: all replicas are acting normally and passing their health checks.\n"
         "- UNHEALTHY: at least one replica is not acting normally and may not be "
-        "passing its health check.\n\n"
+        "passing its health check.\n"
         "- UPDATING: the deployment is updating."
     ),
 )
@@ -429,19 +495,52 @@ def config(address: str):
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def status(address: str):
-    app_status = ServeSubmissionClient(address).get_status()
-    if app_status is not None:
-        # Ensure multi-line strings in app_status is dumped/printed correctly
-        yaml.SafeDumper.add_representer(str, str_presenter)
+@click.option(
+    "--name",
+    "-n",
+    default=None,
+    required=False,
+    type=str,
+    help=(
+        "Name of an application. If set, this will display only the status of the "
+        "specified application."
+    ),
+)
+def status(address: str, name: Optional[str]):
+    serve_details = ServeSubmissionClient(address).get_serve_details()
+
+    # Ensure multi-line strings in app_status is dumped/printed correctly
+    yaml.SafeDumper.add_representer(str, str_presenter)
+
+    if name is None:
+        if len(serve_details.applications) == 0:
+            print("There are no applications running on this cluster.")
+
         print(
-            yaml.safe_dump(
-                # Ensure exception tracebacks in app_status are printed correctly
-                process_dict_for_yaml_dump(app_status),
-                default_flow_style=False,
-                sort_keys=False,
+            "\n---\n\n".join(
+                yaml.safe_dump(
+                    # Ensure exception tracebacks in app_status are printed correctly
+                    process_dict_for_yaml_dump(application.get_status_dict()),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+                for application in serve_details.applications.values()
             )
         )
+    else:
+        if name not in serve_details.applications:
+            cli_logger.error(f'Application "{name}" does not exist.')
+        else:
+            print(
+                yaml.safe_dump(
+                    # Ensure exception tracebacks in app_status are printed correctly
+                    process_dict_for_yaml_dump(
+                        serve_details.applications.get(name).get_status_dict()
+                    ),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+            )
 
 
 @cli.command(
@@ -475,7 +574,7 @@ def shutdown(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Serve Deployment Graph's config file.",
     help=(
-        "Imports the ClassNode or FunctionNode at IMPORT_PATH and generates a "
+        "Imports the ClassNode(s) or FunctionNode(s) at IMPORT_PATH(S) and generates a "
         "structured config for it. If the flag --multi-app is set, accepts multiple "
         "ClassNode/FunctionNodes and generates a multi-application config. Config "
         "outputted from this command can be used by `serve deploy` or the REST API. "

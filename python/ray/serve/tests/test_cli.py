@@ -15,7 +15,7 @@ import ray
 from ray import serve
 from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
-from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -371,19 +371,39 @@ def test_config(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_multi_app(ray_start_stop):
+    """Deploys multi-app config and checks output of `serve config`."""
+
+    # Check that `serve config` works even if no Serve app is running
+    subprocess.check_output(["serve", "config", "--multi-app"])
+
+    # Deploy config
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    with open(config_file_name, "r") as config_file:
+        config = yaml.safe_load(config_file)
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    # Config should be immediately ready
+    info_response = subprocess.check_output(["serve", "config", "--multi-app"])
+    fetched_configs = list(yaml.safe_load_all(info_response))
+
+    assert config["applications"][0] == fetched_configs[0]
+    assert config["applications"][1] == fetched_configs[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
     """Deploys a config file and checks its status."""
 
     # Check that `serve status` works even if no Serve app is running
-    status_response = subprocess.check_output(["serve", "status"])
-    status = yaml.safe_load(status_response)
+    subprocess.check_output(["serve", "status"])
 
-    assert ServeStatusSchema.get_empty_schema_dict() == status
-
+    # Deploy config
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza.yaml"
     )
-
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     def num_live_deployments():
@@ -490,6 +510,58 @@ def test_status_syntax_error(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_multi_app(ray_start_stop):
+    """Deploys a multi-app config file and checks their status."""
+    # Check that `serve status` works even if no Serve app is running
+    subprocess.check_output(["serve", "status"])
+    print("Confirmed `serve status` works when nothing has been deployed.")
+
+    # Deploy config
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    subprocess.check_output(["serve", "deploy", config_file_name])
+    print("Deployed config successfully.")
+
+    def num_live_deployments():
+        status_response = subprocess.check_output(["serve", "status"])
+        serve_status = list(yaml.safe_load_all(status_response))
+        return len(serve_status[0]["deployment_statuses"]) and len(
+            serve_status[1]["deployment_statuses"]
+        )
+
+    wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
+    print("All deployments are live.")
+
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:52365/"]
+    )
+    serve_statuses = yaml.safe_load_all(status_response)
+
+    expected_deployments = {
+        "app1_f",
+        "app1_BasicDriver",
+        "app2_DAGDriver",
+        "app2_Multiplier",
+        "app2_Adder",
+        "app2_Router",
+        "app2_create_order",
+    }
+    for status in serve_statuses:
+        for deployment in status["deployment_statuses"]:
+            expected_deployments.remove(deployment["name"])
+            assert deployment["status"] in {"HEALTHY", "UPDATING"}
+            assert "message" in deployment
+    assert len(expected_deployments) == 0
+    print("All expected deployments are present in the status output.")
+
+    for status in serve_statuses:
+        assert status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
+        assert time.time() > status["app_status"]["deployment_timestamp"]
+    print("Verified status and deployment timestamp of both apps.")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_shutdown(ray_start_stop):
     """Deploys a config file and shuts down the Serve application."""
 
@@ -522,22 +594,25 @@ def test_shutdown(ray_start_stop):
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
-        assert ServeStatusSchema.get_empty_schema_dict() != status
+        assert "There are no applications running on this cluster." != status
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
-        wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
-        print("Deletion successful. All deployments have shut down.")
 
         # `serve config` and `serve status` should print empty schemas
-        config_response = subprocess.check_output(["serve", "config"])
-        config = yaml.safe_load(config_response)
-        assert ServeApplicationSchema.get_empty_schema_dict() == config
+        def serve_config_empty():
+            config_response = subprocess.check_output(["serve", "config"])
+            config = yaml.safe_load(config_response)
+            return ServeApplicationSchema.get_empty_schema_dict() == config
 
-        status_response = subprocess.check_output(["serve", "status"])
-        status = yaml.safe_load(status_response)
-        assert ServeStatusSchema.get_empty_schema_dict() == status
+        def serve_status_empty():
+            status_response = subprocess.check_output(["serve", "status"])
+            status = yaml.safe_load(status_response)
+            return "There are no applications running on this cluster." == status
+
+        wait_for_condition(serve_config_empty)
+        wait_for_condition(serve_status_empty)
         print("`serve config` and `serve status` print empty responses.\n")
 
 
@@ -912,7 +987,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     status_response = subprocess.check_output(["serve", "status"])
     status_info = yaml.safe_load(status_response)
 
-    assert len(status_info["deployment_statuses"]) == 0
+    assert status_info == "There are no applications running on this cluster."
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
