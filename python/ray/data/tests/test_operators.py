@@ -73,7 +73,7 @@ def test_all_to_all_operator():
         input_op=input_op,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
-        name="TestAll"
+        name="TestAll",
     )
 
     # Initialize progress bar.
