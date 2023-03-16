@@ -16,6 +16,7 @@ import pandas as pd
 
 import ray
 from ray._private.dict import flatten_dict
+from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
@@ -356,7 +357,6 @@ class TuneReporterBase(ProgressReporter):
         messages = [
             "== Status ==",
             _time_passed_str(self._start_time, time.time()),
-            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -692,7 +692,6 @@ class CLIReporter(TuneReporterBase):
         mode: Optional[str] = None,
         sort_by_metric: bool = False,
     ):
-
         super(CLIReporter, self).__init__(
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -709,7 +708,7 @@ class CLIReporter(TuneReporterBase):
         )
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         self._print(self._progress_str(trials, done, *sys_info))
@@ -749,20 +748,6 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
             np.nan,
             "Unknown memory usage. Please run `pip install psutil` to resolve",
         )
-
-
-def _memory_debug_str() -> str:
-    """Generate a message to be shown to the user showing memory consumption.
-
-    Returns:
-        String to be shown to the user with formatted memory consumption
-            stats.
-    """
-    used_gb, total_gb, message = _get_memory_usage()
-    if np.isnan(used_gb):
-        return message
-    else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -1329,7 +1314,7 @@ class TrialProgressCallback(Callback):
         self._display_handle = None
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def on_trial_result(
         self,
