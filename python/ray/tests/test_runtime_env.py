@@ -79,7 +79,7 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.2.0": "b6af0887ee5f2e460202133791ad941a41f15beb"}
+    test_commits = {"2.3.0": "cf7a56b4b0b648c324722df7c99c168e92ff0b45"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
