@@ -55,6 +55,10 @@ class Trial:
         return str(Path(self.experiment_path) / self.experiment_dir_name)
 
     @property
+    def local_experiment_path(self):
+        return self.experiment_path
+
+    @property
     def remote_path(self):
         return self.remote_checkpoint_dir
 
