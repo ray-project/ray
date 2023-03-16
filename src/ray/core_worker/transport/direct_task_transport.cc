@@ -44,16 +44,25 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
-            if (status.ok()) {
-              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              // Copy the actor's reply to the GCS for ref counting purposes.
+            if (status.ok() || status.IsCreationTaskError()) {
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              task_finisher_->CompletePendingTask(task_id,
-                                                  push_task_reply,
-                                                  reply.actor_address(),
-                                                  /*is_application_error=*/false);
+              if (status.IsCreationTaskError()) {
+                RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
+                                 "creation task, actor id = "
+                              << actor_id << ", task id = " << task_id;
+              } else {
+                RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
+              }
+              // NOTE: When actor creation task failed we will not retry the creation
+              // task so just marking the task fails.
+              task_finisher_->CompletePendingTask(
+                  task_id,
+                  push_task_reply,
+                  reply.actor_address(),
+                  /*is_application_error=*/status.IsCreationTaskError());
             } else {
+              // Either fails the rpc call or actor scheduling cancelled.
               rpc::RayErrorInfo ray_error_info;
               if (status.IsSchedulingCancelled()) {
                 RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
