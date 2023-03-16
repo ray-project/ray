@@ -216,7 +216,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
-  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
+  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
