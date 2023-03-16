@@ -103,6 +103,7 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         paths: List[str],
         filesystem: Optional["pyarrow.fs.FileSystem"],
         partitioning: Optional[Partitioning] = None,
+        ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
         """Expands all paths into concrete file paths by walking directories.
 
@@ -116,6 +117,8 @@ class BaseFileMetadataProvider(FileMetadataProvider):
                  given filesystem.
              filesystem: The filesystem implementation that should be used for
                  expanding all paths and reading their files.
+             ignore_missing_paths: If True, ignores any file paths in ``paths`` that
+                are not found. Defaults to False.
 
          Returns:
              An iterator of (file_path, file_size) pairs. None may be returned for the
@@ -159,6 +162,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
         partitioning: Optional[Partitioning] = None,
+        ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
         if len(paths) > 1:
             logger.warning(
@@ -168,7 +172,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
                 f"with `meta_provider=FastFileMetadataProvider()`."
             )
 
-        yield from _expand_paths(paths, filesystem, partitioning)
+        yield from _expand_paths(paths, filesystem, partitioning, ignore_missing_paths)
 
 
 @DeveloperAPI
@@ -180,7 +184,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
     negligible for local filesystems, it can be substantial for cloud storage service
     providers.
 
-    This should only be used when all input paths are known to be files.
+    This should only be used when all input paths exist and are known to be files.
     """
 
     def expand_paths(
@@ -188,7 +192,15 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
         partitioning: Optional[Partitioning] = None,
+        ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
+        if ignore_missing_paths:
+            raise ValueError(
+                "`ignore_missing_paths` cannot be set when used with "
+                "`FastFileMetadataProvider`. All paths must exist when "
+                "using `FastFileMetadataProvider`."
+            )
+
         logger.warning(
             f"Skipping expansion of {len(paths)} path(s). If your paths contain "
             f"directories or if file size collection is required, try rerunning this "
@@ -370,6 +382,7 @@ def _expand_paths(
     paths: List[str],
     filesystem: "pyarrow.fs.FileSystem",
     partitioning: Optional[Partitioning],
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     """Get the file sizes for all provided file paths."""
     from pyarrow.fs import LocalFileSystem
@@ -392,7 +405,7 @@ def _expand_paths(
         # Local file systems are very fast to hit.
         or isinstance(filesystem, LocalFileSystem)
     ):
-        yield from _get_file_infos_serial(paths, filesystem)
+        yield from _get_file_infos_serial(paths, filesystem, ignore_missing_paths)
     else:
         # 2. Common path prefix case.
         # Get longest common path of all paths.
@@ -405,29 +418,33 @@ def _expand_paths(
             and common_path == _unwrap_protocol(partitioning.base_dir)
         ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
             yield from _get_file_infos_common_path_prefix(
-                paths, common_path, filesystem
+                paths, common_path, filesystem, ignore_missing_paths
             )
         # 3. Parallelization case.
         else:
             # Parallelize requests via Ray tasks.
-            yield from _get_file_infos_parallel(paths, filesystem)
+            yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
 
 
 def _get_file_infos_serial(
     paths: List[str],
     filesystem: "pyarrow.fs.FileSystem",
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     for path in paths:
-        yield from _get_file_infos(path, filesystem)
+        yield from _get_file_infos(path, filesystem, ignore_missing_paths)
 
 
 def _get_file_infos_common_path_prefix(
     paths: List[str],
     common_path: str,
     filesystem: "pyarrow.fs.FileSystem",
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     path_to_size = {path: None for path in paths}
-    for path, file_size in _get_file_infos(common_path, filesystem):
+    for path, file_size in _get_file_infos(
+        common_path, filesystem, ignore_missing_paths
+    ):
         if path in path_to_size:
             path_to_size[path] = file_size
     # Dictionaries are insertion-ordered, so this path + size pairs should be
@@ -440,6 +457,7 @@ def _get_file_infos_common_path_prefix(
 def _get_file_infos_parallel(
     paths: List[str],
     filesystem: "pyarrow.fs.FileSystem",
+    ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
         PATHS_PER_FILE_SIZE_FETCH_TASK,
@@ -455,7 +473,9 @@ def _get_file_infos_parallel(
     def _file_infos_fetcher(paths: List[str]) -> List[Tuple[str, int]]:
         fs = _unwrap_s3_serialization_workaround(filesystem)
         return list(
-            itertools.chain.from_iterable(_get_file_infos(path, fs) for path in paths)
+            itertools.chain.from_iterable(
+                _get_file_infos(path, fs, ignore_missing_paths) for path in paths
+            )
         )
 
     yield from _fetch_metadata_parallel(
@@ -464,29 +484,35 @@ def _get_file_infos_parallel(
 
 
 def _get_file_infos(
-    path: str,
-    filesystem: "pyarrow.fs.FileSystem",
-) -> Iterator[Tuple[str, int]]:
+    path: str, filesystem: "pyarrow.fs.FileSystem", ignore_missing_path: bool = False
+) -> List[Tuple[str, int]]:
     """Get the file info for all files at or under the provided path."""
     from pyarrow.fs import FileType
 
+    file_infos = []
     try:
         file_info = filesystem.get_file_info(path)
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:
-        yield from _expand_directory(path, filesystem)
+        for (file_path, file_size) in _expand_directory(path, filesystem):
+            file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
-        yield path, file_info.size
+        file_infos.append((path, file_info.size))
+    elif file_info.type == FileType.NotFound and ignore_missing_path:
+        pass
     else:
         raise FileNotFoundError(path)
+
+    return file_infos
 
 
 def _expand_directory(
     path: str,
     filesystem: "pyarrow.fs.FileSystem",
     exclude_prefixes: Optional[List[str]] = None,
-) -> Iterator[Tuple[str, int]]:
+    ignore_missing_path: bool = False,
+) -> List[Tuple[str, int]]:
     """
     Expand the provided directory path to a list of file paths.
 
@@ -506,7 +532,7 @@ def _expand_directory(
 
     from pyarrow.fs import FileSelector
 
-    selector = FileSelector(path, recursive=True)
+    selector = FileSelector(path, recursive=True, allow_not_found=ignore_missing_path)
     files = filesystem.get_file_info(selector)
     base_path = selector.base_dir
     out = []
@@ -521,4 +547,4 @@ def _expand_directory(
             continue
         out.append((file_path, file_.size))
     # We sort the paths to guarantee a stable order.
-    yield from sorted(out)
+    return sorted(out)
