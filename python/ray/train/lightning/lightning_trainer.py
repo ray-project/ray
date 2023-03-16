@@ -439,12 +439,8 @@ def _lightning_train_loop_per_worker(config):
 
     # AIR needs a RayModelCheckpoint for metircs logging anyway.
     trainer_config["enable_checkpointing"] = True
-
-    ray_checkpoint_callback = RayModelCheckpoint(**model_checkpoint_config)
-
-    # Choose "epoch" as the default because it is always available.
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
-        ray_checkpoint_callback
+        RayModelCheckpoint(**model_checkpoint_config)
     ]
 
     trainer = pl.Trainer(**trainer_config)

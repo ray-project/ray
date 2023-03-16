@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 
 from torch import Tensor
 from copy import deepcopy
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.strategies import DDPStrategy
@@ -119,9 +119,6 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_model_path = None
         self.is_checkpoint_step = False
 
-    def set_tuning_metric(self, metric: Union[str, None]) -> None:
-        self.tuning_metric = metric
-
     def format_checkpoint_name(
         self,
         metrics: Dict[str, Tensor],
@@ -147,16 +144,16 @@ class RayModelCheckpoint(ModelCheckpoint):
         # Report latest logged metrics
         kwargs = {}
         metrics = {}
-        tensor_metrics = self._monitor_candidates(trainer)
-        for k, v in tensor_metrics.items():
+        for k, v in self._monitor_candidates(trainer).items():
+            if k == "_stage":
+                logger.warning(
+                    "'_stage' is a reserved key in AIR report metrics. "
+                    "Original values are overwritten!"
+                )
+                continue
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.item()
 
-        if "_stage" in metrics:
-            logger.warning(
-                "'_stage' is a reserved key in AIR report metrics. "
-                "Original values are overwritten!"
-            )
         metrics["_stage"] = stage
         kwargs["metrics"] = metrics
 
@@ -187,7 +184,6 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_k_models = deepcopy(self.best_k_models)
         self.last_best_model_path = self.best_model_path
 
-        # Only report when the tuning metric is ready
         session.report(**kwargs)
 
     def _save_topk_checkpoint(
