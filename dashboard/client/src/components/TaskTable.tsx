@@ -32,7 +32,6 @@ export type TaskTableProps = {
   jobId?: string;
   filterToTaskId?: string;
   onFilterChange?: () => void;
-  newIA?: boolean;
   actorId?: string;
 };
 
@@ -41,7 +40,6 @@ const TaskTable = ({
   jobId,
   filterToTaskId,
   onFilterChange,
-  newIA = false,
   actorId,
 }: TaskTableProps) => {
   const [pageNo, setPageNo] = useState(1);
@@ -241,7 +239,7 @@ const TaskTable = ({
                     <StatusChip type="task" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <TaskTableActions task={task} newIA={newIA} />
+                    <TaskTableActions task={task} />
                   </TableCell>
                   <TableCell align="center">
                     {start_time_ms && start_time_ms > 0 ? (
@@ -343,11 +341,10 @@ const useTaskTableActionsStyles = makeStyles(() =>
 );
 
 type TaskTableActionsProps = {
-  newIA?: boolean;
   task: Task;
 };
 
-const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
+const TaskTableActions = ({ task }: TaskTableActionsProps) => {
   const classes = useTaskTableActionsStyles();
   const { ipLogMap } = useContext(GlobalContext);
   const [showErrorDetailsDialog, setShowErrorDetailsDialog] = useState(false);
@@ -373,15 +370,9 @@ const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
           <React.Fragment>
             <Link
               target="_blank"
-              to={
-                newIA
-                  ? `/new/logs/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-                  : `/log/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-              }
+              to={`/logs/${encodeURIComponent(
+                ipLogMap[task.profiling_data.node_ip_address],
+              )}?fileName=worker-${task.worker_id}`}
             >
               Log
             </Link>

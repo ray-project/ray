@@ -45,7 +45,7 @@ describe("Metrics", () => {
   it("renders", async () => {
     expect.assertions(5);
 
-    render(<Metrics newIA />, { wrapper: Wrapper });
+    render(<Metrics />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
     expect(screen.getByText(/5 minutes/)).toBeVisible();
     expect(screen.getByText(/Tasks and Actors/)).toBeVisible();
@@ -59,7 +59,7 @@ describe("Metrics", () => {
   it("renders warning when ", async () => {
     expect.assertions(5);
 
-    render(<Metrics newIA />, { wrapper: MetricsDisabledWrapper });
+    render(<Metrics />, { wrapper: MetricsDisabledWrapper });
     await screen.findByText(/Grafana or prometheus server not detected./);
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
     expect(screen.queryByText(/5 minutes/)).toBeNull();
