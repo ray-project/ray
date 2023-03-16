@@ -69,7 +69,7 @@ class DummyTrainer(DataParallelTrainer):
                 start = time.perf_counter()
                 # Force execution to time preprocessing since Datasets are lazy by
                 # default.
-                ds.fully_executed()
+                ds.cache()
                 print(
                     f"Preprocessed {dataset_name} in",
                     time.perf_counter() - start,

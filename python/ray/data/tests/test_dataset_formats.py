@@ -12,6 +12,7 @@ from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
@@ -47,7 +48,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
@@ -55,7 +56,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -68,7 +69,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -76,7 +77,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -305,7 +306,7 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
     assert node_ids == {bar_node_id}
 
 
-def test_read_s3_file_error(ray_start_regular_shared, s3_path):
+def test_read_s3_file_error(shutdown_only, s3_path):
     dummy_path = s3_path + "_dummy"
     error_message = "Please check that file exists and has properly configured access."
     with pytest.raises(OSError, match=error_message):
@@ -322,6 +323,39 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
             "Error [code 15]: No response body.. Is this a 'parquet' file?"
         )
         _handle_read_os_error(error, dummy_path)
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
+def test_get_read_tasks(ray_start_cluster):
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(cluster.address)
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+
+    # Issue read so `_get_read_tasks` being executed.
+    ray.data.range(10).cache()
+
+    # Verify `_get_read_tasks` being executed on same node (head node).
+    def verify_get_read_tasks():
+        from ray.experimental.state.api import list_tasks
+
+        task_states = list_tasks(
+            address=cluster.address, filters=[("name", "=", "_get_read_tasks")]
+        )
+        # Verify only one task being executed on same node.
+        assert len(task_states) == 1
+        assert task_states[0]["name"] == "_get_read_tasks"
+        assert task_states[0]["node_id"] == head_node_id
+        return True
+
+    wait_for_condition(verify_get_read_tasks, timeout=20)
 
 
 if __name__ == "__main__":
