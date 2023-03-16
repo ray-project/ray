@@ -155,15 +155,15 @@ def test_dataset(
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks_per_task * num_tasks
 
     map_ds = ds.map_batches(lambda x: x, compute=compute)
-    map_ds.fully_executed()
+    map_ds.cache()
     assert map_ds.num_blocks() == num_tasks
     map_ds = ds.map_batches(
         lambda x: x, batch_size=num_blocks_per_task * num_tasks, compute=compute
     )
-    map_ds.fully_executed()
+    map_ds.cache()
     assert map_ds.num_blocks() == 1
     map_ds = ds.map(lambda x: x, compute=compute)
-    map_ds.fully_executed()
+    map_ds.cache()
     assert map_ds.num_blocks() == num_blocks_per_task * num_tasks
 
     ds_list = ds.split(5)
@@ -177,7 +177,7 @@ def test_dataset(
 
     new_ds = ds.union(ds, ds)
     assert new_ds.num_blocks() == num_tasks * 3
-    new_ds.fully_executed()
+    new_ds.cache()
     assert new_ds.num_blocks() == num_blocks_per_task * num_tasks * 3
 
     new_ds = ds.random_shuffle()
@@ -187,7 +187,7 @@ def test_dataset(
     assert ds.groupby("one").count().count() == num_blocks_per_task * num_tasks
 
     new_ds = ds.zip(ds)
-    new_ds.fully_executed()
+    new_ds.cache()
     assert new_ds.num_blocks() == num_blocks_per_task * num_tasks
 
     assert len(ds.take(5)) == 5
@@ -243,12 +243,12 @@ def test_filter(
     )
 
     ds = ds.filter(lambda _: True)
-    ds.fully_executed()
+    ds.cache()
     assert ds.count() == num_blocks_per_task
     assert ds.num_blocks() == num_blocks_per_task
 
     ds = ds.filter(lambda _: False)
-    ds.fully_executed()
+    ds.cache()
     assert ds.count() == 0
     assert ds.num_blocks() == num_blocks_per_task
 
@@ -336,7 +336,7 @@ def test_lazy_block_list(
         assert metadata.num_rows == 1
 
     # Check internal states of LazyBlockList after execution
-    ds.fully_executed()
+    ds.cache()
     metadata = block_list.get_metadata()
 
     assert block_list._num_computed() == num_tasks
