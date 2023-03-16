@@ -768,11 +768,13 @@ def test_run_config_port1(ray_start_stop):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
-    subprocess.Popen(["serve", "run", config_file_name])
+    p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "wonderful world",
         timeout=15,
     )
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -781,11 +783,13 @@ def test_run_config_port2(ray_start_stop):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
     )
-    subprocess.Popen(["serve", "run", config_file_name])
+    p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
         lambda: requests.post("http://localhost:8005/").text == "wonderful world",
         timeout=15,
     )
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -794,11 +798,13 @@ def test_run_config_port3(ray_start_stop):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
     )
-    subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
+    p = subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
     wait_for_condition(
         lambda: requests.post("http://localhost:8010/").text == "wonderful world",
         timeout=15,
     )
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 @serve.deployment

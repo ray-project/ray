@@ -75,7 +75,8 @@ void GcsSubscriberClient::PubsubCommandBatch(
 
 }  // namespace
 
-GcsClient::GcsClient(const GcsClientOptions &options) : options_(options) {}
+GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
+    : options_(options), gcs_client_id_(gcs_client_id) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
