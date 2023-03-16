@@ -489,27 +489,9 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
-            config = config.to_deploy_schema()
+            applications = [config]
         else:
-            # TODO (zcin): ServeApplicationSchema still needs to have host and port
-            # fields to support single-app mode, but in multi-app mode the host and port
-            # fields at the top-level deploy config is used instead. Eventually, after
-            # migration, we should remove these fields from ServeApplicationSchema.
-            host, port = config.http_options.host, config.http_options.port
-            for app_config in config.applications:
-                app_config_dict = app_config.dict(exclude_unset=True)
-                if "host" in app_config_dict:
-                    logger.info(
-                        f"Host {app_config_dict['host']} is set in the config for "
-                        f"application `{app_config.name}`. This will be ignored, as "
-                        f"the host {host} from the top level deploy config is used."
-                    )
-                if "port" in app_config:
-                    logger.info(
-                        f"Port {app_config_dict['port']} is set in the config for "
-                        f"application `{app_config.name}`. This will be ignored, as "
-                        f"the port {port} from the top level deploy config is used."
-                    )
+            applications = config.applications
 
         if not deployment_time:
             deployment_time = time.time()
@@ -523,7 +505,7 @@ class ServeController:
 
         new_config_checkpoint = {}
 
-        for app_config in config.applications:
+        for app_config in applications:
             # Prepend app name to each deployment name
             if not _internal:
                 app_config = app_config.prepend_app_name_to_deployment_names()
@@ -577,7 +559,7 @@ class ServeController:
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
-        new_applications = {app_config.name for app_config in config.applications}
+        new_applications = {app_config.name for app_config in applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):

@@ -680,8 +680,11 @@ def build(
             app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
 
         deploy_config = {
-            "host": "0.0.0.0",
-            "port": 8000,
+            "proxy_location": "EveryNode",
+            "http_options": {
+                "host": "0.0.0.0",
+                "port": 8000,
+            },
             "applications": app_configs,
         }
 
