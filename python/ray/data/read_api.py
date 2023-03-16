@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     import pymongoarrow.api
     import tensorflow as tf
     import torch
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
 
 T = TypeVar("T")
@@ -1078,6 +1079,7 @@ def read_tfrecords(
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
+    tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Dataset[PandasRow]:
     """Create a dataset from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1147,6 +1149,8 @@ def read_tfrecords(
             match ``"*.tfrecords*"``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
+            of the underlying Dataset.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1163,6 +1167,7 @@ def read_tfrecords(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
+        tf_schema=tf_schema,
     )
 
 
