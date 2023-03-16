@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import time
 import threading
 from typing import (
     List,
@@ -27,6 +28,7 @@ from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.types import ObjectRef
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -39,6 +41,9 @@ else:
     from typing_extensions import Literal
 
 logger = logging.getLogger(__name__)
+
+
+BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
 class StreamSplitDatasetIterator(DatasetIterator):
@@ -93,15 +98,20 @@ class StreamSplitDatasetIterator(DatasetIterator):
         """Implements DatasetIterator."""
 
         def gen_blocks() -> Iterator[ObjectRef[Block]]:
+            cur_epoch = ray.get(
+                self._coord_actor.start_epoch.remote(self._output_split_idx)
+            )
             future: ObjectRef[
                 Optional[ObjectRef[Block]]
-            ] = self._coord_actor.get.remote(self._output_split_idx)
+            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
                 block_ref: Optional[ObjectRef[Block]] = ray.get(future)
                 if not block_ref:
                     break
                 else:
-                    future = self._coord_actor.get.remote(self._output_split_idx)
+                    future = self._coord_actor.get.remote(
+                        cur_epoch, self._output_split_idx
+                    )
                     yield block_ref
 
         yield from batch_block_refs(
@@ -154,29 +164,54 @@ class SplitCoordinator:
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
-        self._finished = False
         self._lock = threading.RLock()
+
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
+        self._unfinished_clients_in_epoch = n
+        self._cur_epoch = -1
 
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+        def gen_epochs():
+            while True:
+                executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
 
-        def add_split_op(dag):
-            return OutputSplitter(dag, n, equal, locality_hints)
+                def add_split_op(dag):
+                    return OutputSplitter(dag, n, equal, locality_hints)
 
-        self._output_iterator = execute_to_legacy_bundle_iterator(
-            executor,
-            dataset._plan,
-            True,
-            dataset._plan._dataset_uuid,
-            dag_rewrite=add_split_op,
-        )
+                output_iterator = execute_to_legacy_bundle_iterator(
+                    executor,
+                    dataset._plan,
+                    True,
+                    dataset._plan._dataset_uuid,
+                    dag_rewrite=add_split_op,
+                )
+                yield output_iterator
 
-    def get(self, output_split_idx: int) -> Optional[ObjectRef[Block]]:
+        self._next_epoch = gen_epochs()
+        self._output_iterator = None
+
+    def start_epoch(self, split_idx: int) -> str:
+        """Called to start an epoch.
+
+        Returns:
+            UUID for the epoch, which must be used when accessing results via get().
+        """
+
+        # Wait for all clients to arrive at the barrier before starting a new epoch.
+        epoch_id = self._barrier(split_idx)
+        return epoch_id
+
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[ObjectRef[Block]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
         """
+
+        if epoch_id != self._cur_epoch:
+            raise ValueError(
+                "Invalid iterator: the datastream has moved on to another epoch."
+            )
+
         try:
             # Ensure there is at least one bundle.
             with self._lock:
@@ -201,3 +236,37 @@ class SplitCoordinator:
             return block
         except StopIteration:
             return None
+
+    def _barrier(self, split_idx: int) -> int:
+        """Arrive and block until the start of the given epoch."""
+
+        # Decrement and await all clients to arrive here.
+        with self._lock:
+            starting_epoch = self._cur_epoch
+            self._unfinished_clients_in_epoch -= 1
+
+        start_time = time.time()
+        while (
+            self._cur_epoch == starting_epoch and self._unfinished_clients_in_epoch != 0
+        ):
+            if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
+                if log_once(f"stream_split_blocked_{split_idx}_{starting_epoch}"):
+                    logger.warning(
+                        f"StreamSplitDatasetIterator(epoch={starting_epoch}, "
+                        f"split={split_idx}) blocked waiting on other clients "
+                        f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
+                        "clients must read from the DatasetIterator splits at "
+                        "the same time. This warning will not be printed again "
+                        "for this epoch."
+                    )
+            time.sleep(0.1)
+
+        # Advance to the next epoch.
+        with self._lock:
+            if self._cur_epoch == starting_epoch:
+                self._cur_epoch += 1
+                self._unfinished_clients_in_epoch = self._n
+                self._output_iterator = next(self._next_epoch)
+
+        assert self._output_iterator is not None
+        return starting_epoch + 1

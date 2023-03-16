@@ -5,6 +5,7 @@ import sys
 
 from ray.data._internal.util import _default_batch_format
 from ray.data.block import DataBatch
+from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
 
@@ -24,6 +25,7 @@ class DatasetIteratorImpl(DatasetIterator):
         base_dataset: "Dataset",
     ):
         self._base_dataset = base_dataset
+        self._base_context = DatasetContext.get_current()
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
@@ -39,6 +41,8 @@ class DatasetIteratorImpl(DatasetIterator):
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
+
+        DatasetContext._set_current(self._base_context)
 
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
@@ -85,5 +89,5 @@ class DatasetIteratorImpl(DatasetIterator):
             )
 
             return getattr(self._base_dataset, name)
-        else:
-            return super().__getattr__(name)
+
+        raise AttributeError()
