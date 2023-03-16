@@ -93,7 +93,9 @@ class AllToAllOperator(PhysicalOperator):
                 bar.set_description(f"  *- {name}")
                 self._sub_progress_bar_dict[name] = bar
                 position += 1
-        return len(self._sub_progress_bar_dict)
+            return len(self._sub_progress_bar_dict)
+        else:
+            return 0
 
     def close_sub_progress_bars(self):
         """Close all internal sub progress bars."""
