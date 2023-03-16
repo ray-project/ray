@@ -3,50 +3,225 @@
 Environments
 ============
 
-Any environment type provided by you to RLlib (e.g. a user-defined `gym.Env <https://github.com/openai/gym>`_ class),
-is converted internally into the :py:class:`~ray.rllib.env.base_env.BaseEnv` API, whose main methods are ``poll()`` and ``send_actions()``:
+BaseEnv class API
+-----------
 
-.. https://docs.google.com/drawings/d/1NtbVk-Mo89liTRx-sHu_7fqi3Kn7Hjdf3i6jIMbxGlY/edit
-.. image:: ../images/env_classes_overview.svg
+.. currentmodule:: ray.rllib.env
+
+Constructor
+~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   ~base_env.BaseEnv
+
+Interacting with the environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+
+   ~base_env.BaseEnv.poll
+   ~base_env.BaseEnv.send_actions
+   ~base_env.BaseEnv.last
+   ~base_env.BaseEnv.stop
+   ~base_env.BaseEnv.try_reset
+   ~base_env.BaseEnv.try_restart
+   ~base_env.BaseEnv.try_render
+
+Attributes
+~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+
+   ~base_env.BaseEnv.action_space
+   ~base_env.BaseEnv.observation_space
 
 
-The :py:class:`~ray.rllib.env.base_env.BaseEnv` API allows RLlib to support:
+Utilities
+~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
 
-1) Vectorization of sub-environments (i.e. individual `gym.Env <https://github.com/openai/gym>`_ instances, stacked to form a vector of envs) in order to batch the action computing model forward passes.
-2) External simulators requiring async execution (e.g. envs that run on separate machines and independently request actions from a policy server).
-3) Stepping through the individual sub-environments in parallel via pre-converting them into separate `@ray.remote` actors.
-4) Multi-agent RL via dicts mapping agent IDs to observations/rewards/etc..
+   ~base_env.BaseEnv.get_agent_ids
+   ~base_env.BaseEnv.get_sub_environments
+   ~base_env.BaseEnv.action_space_contains
+   ~base_env.BaseEnv.observation_space_contains
+   ~base_env.BaseEnv.action_space_sample
+   ~base_env.BaseEnv.observation_space_sample
 
-For example, if you provide a custom `gym.Env <https://github.com/openai/gym>`_ class to RLlib, auto-conversion to :py:class:`~ray.rllib.env.base_env.BaseEnv` goes as follows:
+VectorEnv class API
+-------------
 
-- User provides a `gym.Env <https://github.com/openai/gym>`_ -> :py:class:`~ray.rllib.env.vector_env._VectorizedGymEnv` (is-a :py:class:`~ray.rllib.env.vector_env.VectorEnv`) -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
+Constructor
+~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
 
-Here is a simple example:
+   ~vector_env.VectorEnv
 
-.. literalinclude:: ../../../../rllib/examples/documentation/custom_gym_env.py
-   :language: python
+Environment conversion
+~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
 
-..   start-after: __sphinx_doc_model_construct_1_begin__
-..   end-before: __sphinx_doc_model_construct_1_end__
-
-However, you may also conveniently sub-class any of the other supported RLlib-specific
-environment types. The automated paths from those env types (or callables returning instances of those types) to
-an RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` is as follows:
-
-- User provides a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` (is-a `gym.Env <https://github.com/openai/gym>`_) -> :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User uses a policy client (via an external simulator) -> :py:class:`~ray.rllib.env.external_env.ExternalEnv` | :py:class:`~ray.rllib.env.external_multi_agent_env.ExternalMultiAgentEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User provides a custom :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User provides a custom :py:class:`~ray.rllib.env.base_env.BaseEnv` -> do nothing
+   ~vector_env.VectorEnv.vectorize_gym_envs
+   ~vector_env.VectorEnv.to_base_env
 
 
-Environment API Reference
--------------------------
+Interacting with the environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
 
-.. toctree::
-   :maxdepth: 1
+   ~vector_env.VectorEnv.vector_reset
+   ~vector_env.VectorEnv.vector_step
+   ~vector_env.VectorEnv.reset_at
+   ~vector_env.VectorEnv.restart_at
+   ~vector_env.VectorEnv.try_render_at
 
-   env/base_env.rst
-   env/multi_agent_env.rst
-   env/vector_env.rst
-   env/external_env.rst
+
+
+MultiAgentEnv class API
+-----------------------
+
+Extends the `gym.Env` API to support multi-agent.
+
+.. currentmodule:: ray.rllib.env.multi_agent_env
+
+Public methods
+~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+
+   make_multi_agent
+
+Constructor
+~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   MultiAgentEnv
+
+
+Environment conversion
+~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+
+   ~MultiAgentEnv.to_base_env
+   
+Environment interactions
+~~~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+
+   ~MultiAgentEnv.reset
+   ~MultiAgentEnv.step
+   ~MultiAgentEnv.close
+   ~MultiAgentEnv.render
+
+Utilities
+~~~~~~~~~
+
+.. autosummary::
+   :toctree: doc/
+
+   ~MultiAgentEnv.get_agent_ids
+   ~MultiAgentEnv.action_space_contains
+   ~MultiAgentEnv.observation_space_contains
+   ~MultiAgentEnv.action_space_sample
+   ~MultiAgentEnv.observation_space_sample
+
+
+External Application API
+------------------------
+
+In some cases, for instance when interacting with an externally hosted simulator or
+production environment, it makes more sense to interact with RLlib as if it were an
+independently running service, rather than RLlib hosting the simulations itself.
+
+
+
+
+ExternalEnv class API
+~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.env.external_env
+
+Constructor
+++++++++++
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   ExternalEnv
+
+
+Environment conversion
+++++++++++++++++++++++
+.. autosummary::
+   :toctree: doc/
+
+   ExternalEnv.to_base_env
+   
+
+
+Interacting with the environment
+++++++++++++++++++++++++++++++++
+.. autosummary::
+   :toctree: doc/
+
+
+   ExternalEnv.start
+   ExternalEnv.get_action
+   ExternalEnv.start_episode
+   ExternalEnv.end_episode
+   ExternalEnv.run
+   ExternalEnv.join
+   ExternalEnv.is_alive
+
+
+Logging
++++++++
+
+.. autosummary::
+   :toctree: doc/
+
+   ExternalEnv.log_action
+   ExternalEnv.log_returns
+
+
+PolicyClient API
+~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.env.policy_client
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   PolicyClient
+   PolicyClient.start_episode
+   PolicyClient.end_episode
+   PolicyClient.get_action
+   PolicyClient.log_action
+   PolicyClient.log_returns
+   PolicyClient.update_policy_weights
+
+
+PolicyServerInput API
+~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.env.policy_server_input
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   PolicyServerInput
+   PolicyServerInput.next
+
 
