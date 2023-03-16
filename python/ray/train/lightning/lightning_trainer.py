@@ -79,7 +79,6 @@ class LightningConfigBuilder:
         self._trainer_fit_params = {}
         self._ddp_strategy_config = {}
         self._model_checkpoint_config = {}
-        self._tuning_config = {}
 
     def module(
         self, cls: Type[pl.LightningModule], **kwargs
@@ -146,20 +145,6 @@ class LightningConfigBuilder:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html
         """
         self._model_checkpoint_config.update(**kwargs)
-        return self
-
-    def tuning(self, metric: str) -> "LightningConfigBuilder":
-        """Specify the configurations for Ray Tuner.
-
-        If you are using `LightningTrainer` as a trainable for Ray Tuner, please set
-        up the target tuning metrics here. `LightningTrainer` checks and reports to
-        the Tune session only when this metric is ready.
-
-        Args:
-            metric: Only report to Tune session after the specified metric is ready.
-                Make sure you pass the same metric as the one in `tune.TuneConfig`.
-        """
-        self._tuning_config["metric"] = metric
         return self
 
     def build(self) -> Dict["str", Any]:
@@ -395,7 +380,6 @@ def _lightning_train_loop_per_worker(config):
     module_init_config = ptl_config["_module_init_config"]
     ddp_strategy_config = ptl_config["_ddp_strategy_config"]
     model_checkpoint_config = ptl_config["_model_checkpoint_config"]
-    tuning_config = ptl_config["_tuning_config"]
 
     # Prepare data
     datamodule = trainer_fit_params.get("datamodule", None)
@@ -459,8 +443,6 @@ def _lightning_train_loop_per_worker(config):
     ray_checkpoint_callback = RayModelCheckpoint(**model_checkpoint_config)
 
     # Choose "epoch" as the default because it is always available.
-    metric = tuning_config.get("metric", "epoch")
-    ray_checkpoint_callback.set_tuning_metric(metric)
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
         ray_checkpoint_callback
     ]

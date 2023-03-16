@@ -146,10 +146,11 @@ class RayModelCheckpoint(ModelCheckpoint):
 
         # Report latest logged metrics
         kwargs = {}
-        metrics = self._monitor_candidates(trainer)
-        for k, v in metrics.items():
+        metrics = {}
+        tensor_metrics = self._monitor_candidates(trainer)
+        for k, v in tensor_metrics.items():
             if isinstance(v, torch.Tensor):
-                metrics[k] = v.cpu().numpy()
+                metrics[k] = v.item()
 
         if "_stage" in metrics:
             logger.warning(
@@ -187,8 +188,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         self.last_best_model_path = self.best_model_path
 
         # Only report when the tuning metric is ready
-        if self.tuning_metric in kwargs["metrics"]:
-            session.report(**kwargs)
+        session.report(**kwargs)
 
     def _save_topk_checkpoint(
         self, trainer: "pl.Trainer", monitor_candidates: Dict[str, Tensor]
